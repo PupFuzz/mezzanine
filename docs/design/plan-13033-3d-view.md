@@ -69,6 +69,21 @@ this floor* link opens the 2-D floor page, which shows every name at any size �
 § 8 items 3 and 5). And ruling 1 stands amended to *left-drag rotates, wheel zooms*: the pan is dropped everywhere,
 right-drag is the browser's default (§ 12 item 12, § 13 item 10).
 
+**Revision 8 (2026-11-09) folds design review round 6, the final round, and records the seat's ruling on how § 8
+is written** (§ 12 item 21): three rounds running found tests in this plan's prose with hand-computed counts,
+timings and spacings that could not fail, so § 8 now names, for each leg, the PROPERTY, the PLANT and the OBSERVABLE
+that must change, and leaves the fixture, the viewport, the stream's length and its timing to be chosen at
+implementation by running the leg; every slice's acceptance gains *every plant run and seen red in this PR, the run
+recorded in its body*. The fold: the focus-follows rule acts only on `:focus-visible` focus, since a mouse press
+focuses a link and would otherwise snap under a drag (M1); the cull's below-bound leg derives a stage on which it
+culls (m1, with the *provably empty* claim turned into a stated assumption); the stream legs outlive the glide by
+construction, `data-gliding`'s writer is named, and the ungated plant's observable is zero arrivals (m2); the cull's
+leader has one source (m3); a turn sets the resting view (m4); `betweenPoses()` has one signature and one return
+shape, and `camera-view.js`'s header is a changed file (m5); a line- or page-mode wheel event is a discrete notch
+(m6, § 12 item 22); READING ORDER is defined once for the list and the cull (m7); and the leftovers and the three
+hygiene items.
+
+
 
 
 **Design approval.** The operator's request of 2026-11-09, recorded on card#13033: offered a building view, a
@@ -397,7 +412,8 @@ ruling, and the list beside the stage carries each floor's name and notices, nev
 
 **There is no free camera.** The operator's answer A (§ 13 ruling 8): the view is either the **overview** — the
 whole building, from the home camera, turned by the viewer — or the **focus** on one floor — a fixed close-up pose
-for that floor, from which every one of its names is readable — and a wheel, a pinch, a click on a slab or the
+for that floor, from which every one of its names is readable on a stage above § 3.4's bound, and the names that
+fit below it — and a wheel, a pinch, a click on a slab or the
 **+** button moves the camera in **one smooth animation** from the one to the other; a wheel out, **−** or *Fit the
 building* brings it back. The poses are computed ahead from the stack and the stage, so the camera never drifts,
 never lands on empty space and never passes through a floor; the consequence the operator accepted is that there is
@@ -466,16 +482,20 @@ browser size*, so the stages below the bound are reachable, and two overlapping 
 mis-tappable. **Below the bound the close-up is a PARTIAL view** (§ 13 ruling 9, the operator's answer A): the labels that fit
 without overlapping are drawn, in the floor's reading order (§ 3.4's cull), every name stays in the accessibility
 tree, and a *Read this floor* link opens the 2-D floor page, which shows every name at any size — no new camera
-mechanism. Above the bound the cull is provably empty (two furniture boxes never overlap, so two labels narrower
-than a box on the screen cannot), which § 8 item 3 holds as the consistency between the predicate and the cull.
-gets its own revision when the answer lands.
+mechanism. Above the bound the cull is EXPECTED to be empty — § 3.4 states the assumption that rests on, and § 8
+item 3 checks it on the fixtures rather than taking it as proven.
 
-**The transition — `betweenPoses(from, to, t)`**, the glide's step, pure: the target moves in a straight line, and
+**The transition — `betweenPoses(from, to, t, axis)`**, the glide's step, pure, over two SHOWN values `{ view, camera }`
+(item 2 below; one signature, one shape — round 6's minor 5): it answers `{ view: to.view, camera }` with the camera
+interpolated, and `to` itself at `t ≥ 1`, so the last step applies the exact destination. The target moves in a
+straight line, and
 the camera moves in **cylindrical coordinates about the stack's axis** — its radius and its height linearly, its
 azimuth the shortest way round. The house glide drives it: `wire/camera-view.js`'s `glideTo(from, to, ms)` over
 `GLIDE_MS` (850 ms, `wire/camera.js` L75) — a cut under `prefers-reduced-motion` (`glideMs(reduce)`, L315) — with
 `cameraView()` given the interpolation as an option (`cameraView(apply, { between })`; today it hard-wires
-`camera.js`'s `between()` — its import at L23, the call at L66 — and this is its second caller with a different one; the 2-D pages pass nothing).
+`camera.js`'s `between()` — its import at L23, the call at L66 — and this is its second caller with a different one; the
+2-D pages pass nothing; its header's sentence *the steps between are `camera.js`'s `between()`*, L13, gains *unless the
+page gives its own*, which is why the header is among § 4's changed files).
 **Why cylindrical**: a straight line from an overview camera at the back azimuth to the front focus pose passes
 through the stack (`snap5.py`'s plant: from 180° to floor 1 it crosses the third slab at t = 0.79); on the
 cylindrical path the camera's radius never falls under the smaller of its two ends — **11.4 units** at the focus
@@ -528,13 +548,15 @@ places, each named:
    `show(from)` (L54) and the header's rule are unchanged.
 2. **The page's `show`** — the function the wires are given — gates first: `if (view.gliding()) return;`, so an
    answer during a glide never reaches `view.show()`. Then a view whose pose equals the resting one (a turn) is
-   `view.show(shownOf(next))`, and a different pose culls the desk labels and is `view.glideTo(shownOf(resting),
-   shownOf(next), glideMs(reduce))`. `shownOf(view)` = `{ view, camera: poseCamera(view, stack, surface) }`, the
+   `view.show(shownOf(next))` **and sets the resting view to `next`** — a turn never arrives, so nothing else would
+   record its azimuth and the next glide would start from a stale one (round 6's minor 4) — and a different pose
+   culls the desk labels, **writes the stage's `data-gliding="true"`** (this is its one writer) and is
+   `view.glideTo(shownOf(resting), shownOf(next), glideMs(reduce))`. `shownOf(view)` = `{ view, camera: poseCamera(view, stack, surface) }`, the
    value `apply` draws; `between` is a closure the page writes over its live stack — `(a, b, t) => betweenPoses(a, b,
    t, live.stack.axis)` — interpolating the two cameras about the stack's axis (the surface is already in them).
    `onArrive(to)` sets the resting view, tells the acts (`acts.arrived(to.view)`), docks and un-culls the labels,
-   writes the status line and the stage's `data-view` (`overview` or `focus:<key>`) and `data-gliding` (the browser
-   leg's observables), and re-applies the keyboard rule (minor 8, § 3.4). A click's handler asks `view.gliding()`
+   writes the status line and the stage's `data-view` (`overview` or `focus:<key>`) and `data-gliding="false"` (the
+   browser leg's observables), and re-applies the keyboard rule (minor 8, § 3.4) with the leader § 3.4 names. A click's handler asks `view.gliding()`
    first; a resize completes a glide with `view.glideTo(view.current(), shownOf(destination), 0)`, the cut path,
    which arrives.
 3. **The acts' mute — until the gesture goes quiet, not until arrival** (round 5's minor 4: a stream that outlives
@@ -544,11 +566,13 @@ places, each named:
    wheel, Ctrl+wheel and pinch step: if `now − last ≥ GESTURE_GAP_MS` (**300** ms, a seat ruling: longer than a
    trackpad stream's gaps between events, shorter than a deliberate second gesture) the gesture is new — `muted`
    false, both buckets `0`; `last = now`; if `gliding()` or `muted`, the resting view is answered and nothing else
-   changes; else the bucket accumulates and, at a notch, the intent fires, `muted` true, the bucket `0`. A
-   two-finger swipe snaps once at its first notch and is muted for the rest of its stream and its inertia; the next
-   swipe, after a quiet gap, starts clean — the sub-notch residual revision 5 accepted is gone with the reset. Keys
-   and clicks are one gesture each by nature and need no timer; the page's `show` and the click handler drop them
-   while gliding.
+   changes; else a PIXEL-mode scroll is added to the bucket and, at a notch, the intent fires, `muted` true, the
+   bucket `0`. **A wheel event in line or page mode (`deltaMode` 1 or 2) is a DISCRETE NOTCH and fires alone** —
+   a mouse's click of the wheel in Firefox is three lines, under `NOTCH_PX` once normalised, and a bucket the gap
+   empties would never let slow clicks add up to a notch (round 6's minor 6; § 12 item 22) — the mute and the gap
+   applying to it as to any firing. A two-finger swipe snaps once at its first notch and is muted for the rest of
+   its stream and its inertia; the next swipe, after a quiet gap, starts clean. Keys and clicks are one gesture each
+   by nature and need no timer; the page's `show` and the click handler drop them while gliding.
 
 During a glide, then: the wires fire, the acts answer the resting view, the page drops it; a `focusin` on a label is
 recorded and acted on at arrival (§ 3.4). A snap that interrupts a snap cannot be reached, which is why the sweep
@@ -567,9 +591,10 @@ a 2-D screen's:
 - `pan({ deltaX, deltaY, deltaMode }, point)` — a plain wheel. **The wire is extended by one argument**: it hands
   the plain wheel's point beside its deltas (`camera-gestures.js` L213 passes the deltas alone today; a 2-D
   screen's `pan()` ignores the second argument). The act normalises the scroll as `camera.js`'s `zoom()` does
-  (L250: pixels, `LINE_PX` lines, the surface's height for pages) and adds it to a **bucket**: at `+NOTCH_PX`
-  (100 px, L49 — a mouse's one notch) the intent is *out*, at `−NOTCH_PX` *in* over `point`, and the bucket resets;
-  short of a notch nothing moves. **That is how a trackpad's stream becomes one snap**: a two-finger swipe's many
+  (L250: pixels, `LINE_PX` lines, the surface's height for pages); a pixel-mode scroll goes into a **bucket** — at
+  `+NOTCH_PX` (100 px, L49 — a mouse's one notch) the intent is *out*, at `−NOTCH_PX` *in* over `point`, and the
+  bucket resets; short of a notch nothing moves — and a line- or page-mode event is a discrete notch that fires alone
+  by its sign (item 3 above). **That is how a trackpad's stream becomes one snap**: a two-finger swipe's many
   small `deltaY`s fill the bucket once, the snap fires, and the acts are muted until the stream — and its inertia —
   has been quiet for `GESTURE_GAP_MS` (above). Always `consumed` (ruling 1: the wheel over the canvas never scrolls
   the page), and the wire prevents it;
@@ -579,8 +604,9 @@ a 2-D screen's:
 - `pinch(from, to, factor)` — a touch pinch's or Safari's gesture's step: a second bucket over `log(factor)`,
   fired at `±log(PINCH_SNAP)` (**1.25**: a quarter's spread) — in over `to`, the fingers' midpoint, out otherwise;
   reset on firing and at a new gesture, muted as the wheel is;
-- `drag(dx, dy)` — a press that moved, or an arrow key: at the overview, the azimuth by `dx`; `dy` is nothing; at a
-  focus pose, nothing;
+- `drag(dx, dy)` — a press that moved, or an arrow key: at the overview, the azimuth by `dx`, **recorded as the acts'
+  resting azimuth** (a turn never arrives; `arrived()` overrides — round 6's minor 4); `dy` is nothing; at a focus
+  pose, nothing;
 - `camera()` — the resting view with `bounds` (the stack's, or `null` before any floor has an extent), so the
   wire's one gate (`framesNothing()`, `camera.js` L114) and `offerKeys()` withhold every gesture, the buttons, the
   hint and the tab stop until the stack is drawn, as on the drawn pages;
@@ -608,7 +634,7 @@ proven path, there is no move left to constrain.
 
 **One element, one tab stop** (round 5's minor 7): both wires are given `#building-stage`, and `offerKeys()`
 writes the tab stop and the shortcuts on the element it is given (`camera-keys.js` L124–125), so the STAGE is the
-page's `role="group"` (§ 3.4) — not the canvas. The wire's `KEY_SHORTCUTS` (L60) advertises `ArrowUp` and
+page's `role="group"` (§ 3.4) — not the canvas. The wire's `KEY_SHORTCUTS` (L57) advertises `ArrowUp` and
 `ArrowDown`, which reach `drag(0, ±PAN_STEP_PX)` and move nothing here; so **`offerKeys()` takes the shortcuts it
 advertises as a fourth, optional argument** — `offerKeys(element, buttons, camera, shortcuts = KEY_SHORTCUTS)`,
 the 2-D pages passing nothing — and the building page passes `'+ - ArrowLeft ArrowRight'`: what is advertised is
@@ -643,7 +669,8 @@ the desk's label — plus the ground entry, the page's lobby href (`route('dashb
 (`FLOOR.md` § 4.4's floor-route paragraph: *below the drawing the page renders the desks as text too*, § 4.5's
 list view); here it is the names and their links only, not the list view's rows — the facts are the floor page's.
 It is the **accessible surface**: every floor and every desk is a link in it, in document order — floors in
-`plates()` order, desks in slot order — **whatever the camera shows**, and that order is the tab order; before the
+`plates()` order, desks in READING ORDER (defined once below, for the list and the cull alike) — **whatever the
+camera shows**, and that order is the tab order; before the
 first applied snapshot and layout it flows as one WAITING placeholder (the view carries no layout — there is no
 list until the client has fetched one, as on the lobby), and it is the whole page when WebGL is unavailable (§ 7).
 **The stack is not drawn until at least one floor's scene has an extent**: every scene is `null` until `loadArt()`
@@ -664,19 +691,27 @@ camera but changes every projection). One element is both the label and the link
 **Which labels are drawn — `labelsShown(view, labels, boxes, leader)`**, pure, from the state and the measured
 boxes: a **floor entry** always; a **desk label** when its floor is the focused one, no glide is in flight, **and
 the overlap cull keeps it**. **The cull — `cullOverlaps(labels, boxes, leader)`** (§ 13 ruling 9, the operator's
-answer A): the focused floor's labels in the floor's **reading order** — the drawing's rows top to bottom, left to
-right (the nameplate anchor's scene `y`, then `x`; the order the list under the stage lists them, so the names
-shown are always the first of the list that fit) — walked once, each kept if its screen box intersects no box
-already kept, culled otherwise; with a **leader** named (the label keyboard focus rests on, below) it is walked
-first, so it is always kept. Deterministic: the same boxes give the same set, whatever the camera did before. A
-label's box is its anchor projected by the pose's camera (`projectPoint()`, the model's own projection, so the
-probe needs no browser), centred under a width the page measured once per text (`measurer()` in `FONT_NAME` plus
-the label rule's padding and border) and `LABEL_H` tall. Above § 3.3's bound the cull is EMPTY — two furniture
-boxes never overlap (§ 10.4 item 3), so two labels narrower than a box on the screen cannot — and every name is
-drawn, which is where § 3.3 proves the legibility of *every name*; below it the close-up is a partial view: in a
-row of desks at the box's pitch with full-width names, wherever `box.w × scale < LABEL_MAX` the cull keeps every
-other name (the predicate's own condition — on 1,024 × 700 the back row's pitch is 154 px against 162), and the
-front rows, at a larger scale, keep more. A per-label scale or occlusion test (revision 4's `labelVisible()`) has
+answer A): the focused floor's labels in **READING ORDER — the one order of a floor's desks on this page, for the
+list under the stage and for the cull alike (round 6's minor 7): by the nameplate anchor's scene `y`, then `x` —
+the drawing's rows top to bottom, left to right.** (`mapDesks()` orders desks by Tiled object id, `floor-layout.js`
+L312; this page does not use that order anywhere, so the names shown are always the first of the list that fit.)
+Walked once, each label is kept if its screen box intersects no box already kept, culled otherwise; with a
+**leader** named it is walked first, so it is always kept. **The leader has one source** (round 6's minor 3):
+`document.activeElement` when it is a desk label of the focused floor — read at arrival and on `focusin`; on
+`focusout`, `event.relatedTarget` (the element gaining focus) when that is one; otherwise none. Deterministic: the
+same boxes and leader give the same set, whatever the camera did before. A label's box is its anchor projected by
+the pose's camera (`projectPoint()`, the model's own projection, so the probe needs no browser), centred under a
+width the page measured once per text (`measurer()` in `FONT_NAME` plus the label rule's padding and border) and
+`LABEL_H` tall. The cull can cull only where two anchors' spacing on the screen is under a label's width —
+`min(anchor spacing) × scale < label width` — so on a map whose desks stand farther apart than the box, as the
+shipped default's do, the stage on which the cull first culls is NARROWER than the stage on which § 3.3's predicate
+first fails (round 6's minor 1); the probe derives both from the fixture's own anchors and widths (§ 8 item 3).
+**Above § 3.3's bound the cull is EXPECTED to be empty — an ASSUMPTION, not a proof**: two furniture boxes are
+disjoint in scene px and a label is narrower than a box at the predicate's scale; what the argument takes for
+granted is perspective, which draws two anchors at different depths at different scales. The probe checks it on
+the fixtures (§ 8 item 3) and the browser leg's box assertion checks it on the page; below the bound the close-up
+is a partial view — the names that fit, in reading order — and the front rows, at a larger scale, keep more.
+A per-label scale or occlusion test (revision 4's `labelVisible()`) has
 nothing left to decide and is gone. **A label that is not drawn is CULLED, never hidden** (round 4's M3): it keeps
 `data-home="stage"` and its place in the tab order and takes the sheet's existing **`.visually-hidden`** class
 (`mezzanine.css` L333–342: absolute, 1 × 1, clipped — in the accessibility tree and focusable; the floor page's
@@ -692,7 +727,11 @@ otherwise (the attribute: it is a control that does not apply, not a label). So 
 is a partial view and full reading is one tap away, on the page that already does it.
 
 **The keyboard reaches every floor through the labels.** Keyboard focus landing on a label of a floor that is not
-the focused one (a `focusin` on `#building-floors`) is the table's *click on slab k* (§ 3.3): the view snaps to that
+the focused one — a `focusin` on `#building-floors` **whose `event.target.matches(':focus-visible')`**, which is
+keyboard focus and not the focus a mouse press gives a link (round 6's M1: Chromium and Windows Firefox focus an
+`<a href>` on `mousedown`, and the gesture wire prevents no `pointerdown`, `camera-gestures.js` L262–295, so without
+the predicate a left-drag begun on a floor entry would snap to that floor and the page's gate would then drop the
+drag — the amended ruling 1 broken by its own labels) — is the table's *click on slab k* (§ 3.3): the view snaps to that
 floor, and on arrival its labels are un-culled — so a Tab through the list brings each floor into view as its
 entries are reached, the way a browser scrolls a focused link into view, and a culled desk label a viewer tabs to
 is revealed where it stands within the glide. Focus on a label of the focused floor, on the ground's entry or on
@@ -705,7 +744,7 @@ at, the view snaps on to that floor, so focus rests on an invisible link for at 
 the focused floor **a culled label that receives focus leads the cull**: `focusin` on it re-runs `cullOverlaps()`
 with it as the leader, so it is drawn at its docked point and the labels it would overlap are culled in its place —
 focus is never left on an invisible link, and no two drawn labels ever intersect; `focusout` re-runs the cull with
-the newly active label, or none, as the leader.
+`relatedTarget`, or none, as the leader (the one source, above).
 
 **The label element**: an `<a>` at `FONT_NAME` (13 px bold, `desk-layout.js` L69 — set on the element from the
 import, so the sheet restates no font; the floor page's own nameplate size, which `FLOOR.md` § 12's *Nameplate type
@@ -740,27 +779,27 @@ WebGL. New files under `server/public/js/`:
 | `floor/floor-compose.js` (hoist) | none | `composeFloor(floor, building, seatsByRoom)`, `artInputs()`, `roomMaps()`, `sceneInput()`, `SCENE_INPUT_KEYS` — § 2 item 1 | every existing floor test (control); `TheFloorCompositionIsOneForBothScreensTest`: `floor-screen.js` imports it and holds no second `placeRooms()`/`assignSlots()` call site |
 | `floor/floor-data.js` (hoist) | none (`fetch` injected) | `FloorData` — § 2 item 2 | `TheElevatorIsAControlOnTheDrawingTest`'s door-view leg (control), the building screen's probe |
 | `building/stack-model.js` | none | `stackModel()`, `storeySpacing()`, `fitDistance()`, `overviewPose()`, `focusPose()`, `betweenPoses()`, `snap()`, `aim()`, `nearestToCentre()`, `labelCorner()`, `labelsShown()`, `cullOverlaps()`, `projectPoint()`, `readFloorLink()`, `focusScale()`, `textureSize()`, `textureScale()`, `worldOf()`, `segmentClears()`, the unit, storey, tilt, margin and snap constants — §§ 3.1, 3.3, 3.4 | `stack-model-probe.mjs` under `TheBuildingViewStacksTheFloorsTest` (AT-D3-37) |
-| `building/building-acts.js` | none | the 3-D act set the house wires are given (§ 3.3): `pan()`, `zoom()`, `pinch()`, `drag()`, `zoomStep()`, `camera()`, `arrived()`, each over `snap()` and the two buckets (`wheelBucket()`, `pinchBucket()` — pure over an explicit bucket; the acts hold the buckets, the resting view, the mute and the last event's time); given a clock (`{ now }`) and a `gliding` predicate; `GESTURE_GAP_MS` | `building-acts-probe.mjs` under node with a stub clock, `camera-wire-probe.mjs`'s shape (§ 8 item 3) |
+| `building/building-acts.js` | none | the 3-D act set the house wires are given (§ 3.3): `pan()`, `zoom()`, `pinch()`, `drag()`, `zoomStep()`, `camera()`, `arrived()`, each over `snap()` and the two buckets (`wheelBucket()`, `pinchBucket()` — pure over an explicit bucket; the acts hold the buckets, the resting view — set by `drag()` on a turn and by `arrived()` — the mute and the last event's time); a line- or page-mode wheel event a discrete notch; given a clock (`{ now }`) and a `gliding` predicate; `GESTURE_GAP_MS` | `building-acts-probe.mjs` under node with a stub clock, `camera-wire-probe.mjs`'s shape (§ 8 item 3) |
 | `building/building-screen.js` | none | `BuildingScreen`: drains the journal once (`LobbyScreen#render()`'s shape, L162–186: `building.layout` applied, the layout fetched once after the first applied snapshot), runs ONE `DeskFloor` over every held seat with `reduce: true`, holds one `FloorData` and prefetches every row on entry and on each layout change; **applies `room.map`** through `Building#applyRoomMap(entry, rendered)` with `rendered` = every room of every `plates()` row (D2 § 8.7's *a client applies a `room.map` only for a room it renders* — this screen renders every room), records the apply's line in the client's record as the floor screen does (`floor-screen.js` L657–667) and then loads **the applied room's tilesets alone** — `FloorData#roomTilesets(installId)`, one row of the press sequence's tileset step (`door-views.js` L74's call for one id) — never `prefetch()` again, which re-enters every room and re-requests every room whose last request failed (`wire/building.js` L234–247: *a room whose last request failed is fetched again whatever it holds*), so a `room.map` for one floor would have re-fetched another floor's failed map, which the fixture scripts one answer for (review round 3, minor 4); **the interface change**: `BuildingScreen#render()` is `applyRoomMap()`'s second screen caller (the floor screen's `#layoutActs()` is the first; the lobby applies none, `lobby-screen.js` L23) and the first whose `rendered` set is the whole building, so a re-saved or recovered map refreshes its slab on the next render; and per `plates()` row: `composeFloor()` → the frame → `buildScene(frame, sceneInput(art, docs))` with `effects: []`, `previous` empty, the four in-flight members empty, `maps` from `roomMaps()`, `hallway` the row's, `tilesets` the `FloorData`'s, `failed` this screen's set — fed by every floor's painter through its `failed` callback, so a theme or character a slab could not draw is on that floor's notices as it is on the floor page's strip — then `deskLabels(scene)` (§ 3.4) → `{ row, frame, scene, labels }`; returns `{ floors, stack: stackModel(…), strip, failure, statement, layout, notices }`. No camera (the view is the page's and holds no state the screen reads), no ride, no panel | `fleet-client-probe.mjs` gains a `building` entry beside `floor` and `lobby` (one renderer per scenario, L519's rule), which injects one rejected theme as the `floor` entry does (L669); AT-D3-37 |
 | `building/floor-picture.js` | DOM (hidden hosts, canvas, `<img>`); `tokenNames()` and `pictureSvg()` pure | one painter per floor over a hidden `<div>` in `#building-pictures`, each **`createPainter({ host, omit: new Set(['nameplate']), characters, themes, failed, select: () => {}, house, clock })`** — every member `floor/main.js` L411–423 hands its own painter but `ride` (defaulted) and `select` (required at L249, a no-op here: the building view opens no panel), from `artInputs()`'s art; round 4's minor 8: the short form in revision 4 would have thrown at `characters.poseFrames` (`painter.js` L368); the rasterisation of § 3.2 at `textureScale()`'s scale — the focused slab at `focusScale()`, the rest at 1 — each canvas kept in `#building-pictures` with `data-floor` (it is its texture's `image`, and the browser leg reads the page's own pixels there, § 8 item 5); the compare that skips an unchanged (SVG, scale) pair | `picture-probe.mjs` for the two pure functions; the browser leg for the rest |
 | `building/stack-paint.js` | **Three.js** | the renderer over `#building-canvas`, the slab meshes (`BoxGeometry`, a `MeshBasicMaterial` per face — the top face the floor's `CanvasTexture`, the others the sheet's slab token), the ground slab, lights (none: unlit materials, the drawings carry their own light), the camera applied from a pose (`position.set()`, `lookAt()`) on every `apply`, `setPixelRatio(devicePixelRatio)`, the pointer-to-world ray (`unproject`) handed to `aim()`, `resize()`, and the projector (`Vector3.project`) the labels module docks with. **No OrbitControls** (§ 3.3) | the browser leg |
-| `building/labels.js` | DOM (`#building-floors`, `#building-view-status`) | the list — floors, their notices, their desks — and the one docking function: `data-home="stage|flow"`, each entry's anchor through `labelCorner()` / `worldOf()`, projected by the paint's projector on every applied camera and on resize, culled with `.visually-hidden` by `labelsShown()` over `cullOverlaps()` (the label widths measured once per text, the focused label leading), the label's font from `FONT_NAME`; the *Read this floor* link's `hidden` and `href` by `readFloorLink()`; the `focusin` that snaps to a label's floor or leads the cull; the status line's text on arrival | the browser leg: each entry's `data-home`; the top floor's desk labels `.visually-hidden` at the overview and un-culled after a wheel stream over its slab; a culled label is focusable and not `display: none`; at 1,024 × 700 the link shown and no two drawn boxes intersecting |
-| `building/main.js` | DOM entry | `livePage()`, the ids, the screen, the pictures, the paint, `cameraGestures()` and `cameraKeys()` / `offerKeys(…, '+ - ArrowLeft ArrowRight')` on `#building-stage` with the 3-D acts, `cameraView(apply, { between, onArrive })` and the page's `show` that drops every answer while `gliding()` and glides on a pose change (§ 3.3), the slab click, the labels, the WebGL check | `BuildingPageWiringTest` (ids both ways; the log handed to the screen and used nowhere else — `LobbyPageWiringTest`'s shape; `cameraGestures(` and `cameraKeys(` each called once, on the stage; `view.gliding()` read in the page's `show`; `OrbitControls` nowhere) |
+| `building/labels.js` | DOM (`#building-floors`, `#building-view-status`) | the list — floors, their notices, their desks — and the one docking function: `data-home="stage|flow"`, each entry's anchor through `labelCorner()` / `worldOf()`, projected by the paint's projector on every applied camera and on resize, culled with `.visually-hidden` by `labelsShown()` over `cullOverlaps()` (the label widths measured once per text, the focused label leading), the label's font from `FONT_NAME`; the *Read this floor* link's `hidden` and `href` by `readFloorLink()`; the `focusin` that — **only when `event.target.matches(':focus-visible')`** — snaps to a label's floor or leads the cull, the leader read from `activeElement` (arrival, `focusin`) or `relatedTarget` (`focusout`); the status line's text on arrival | the browser leg: each entry's `data-home`; the top floor's desk labels `.visually-hidden` at the overview and un-culled after a wheel stream over its slab; a culled label is focusable and not `display: none`; at 1,024 × 700 the link shown and no two drawn boxes intersecting |
+| `building/main.js` | DOM entry | `livePage()`, the ids, the screen, the pictures, the paint, `cameraGestures()` and `cameraKeys()` / `offerKeys(…, '+ - ArrowLeft ArrowRight')` on `#building-stage` with the 3-D acts, `cameraView(apply, { between, onArrive })` and the page's `show` that drops every answer while `gliding()`, sets the resting view on a turn, writes `data-gliding="true"` and glides on a pose change (§ 3.3), the slab click, the labels, the WebGL check | `BuildingPageWiringTest` (ids both ways; the log handed to the screen and used nowhere else — `LobbyPageWiringTest`'s shape; `cameraGestures(` and `cameraKeys(` each called once, on the stage; `view.gliding()` read in the page's `show`; `OrbitControls` nowhere) |
 
 Changed files: `floor/floor-screen.js` (calls `composeFloor()` and `sceneInput()`), `floor/main.js` (calls `artInputs()`),
 `floor/door-views.js` (holds a `FloorData`), `floor/floor-data.js` (`roomTilesets()`, with the hoist), `floor/painter.js`
 (`host` and `omit` options; `painter-probe.mjs` gains the `omit` leg), `wire/camera-gestures.js` (the plain wheel's
 point handed to `pan()` beside its deltas, § 3.3; `camera-wire-probe.mjs` holds the 2-D acts unchanged by it),
-`wire/camera-view.js` (`cameraView(apply, { between, onArrive })` and a `gliding()` member, § 3.3), `wire/camera-keys.js`
+`wire/camera-view.js` (`cameraView(apply, { between, onArrive })`, a `gliding()` member, and its header's L13 sentence
+qualified, § 3.3), `wire/camera-keys.js`
 (`offerKeys()`'s optional fourth argument, the shortcuts it advertises),
 `server/routes/web.php`, `server/resources/views/building.blade.php` (new), `partials/camera-hint.blade.php` (its
 text as a slot), `dashboard.blade.php` and `floor.blade.php` (the entry link, § 6), `public/css/mezzanine.css` (the
 stage's size: the viewport height the chrome leaves, `#floor-drawing`'s rule at L851–858; the label rules keyed on
-`data-home`), **the rename of `TheCameraWireIsOneForBothPagesTest` to `…ForEveryPageTest`** (§ 3.3), which touches
-ten live files — the test itself and the four that name it (`FloorPageWiringTest`, `LobbyPageWiringTest`,
-`TheCameraMovesTheViewerAndNeverTheFleetTest`, `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`), the three
-wire headers (`camera-gestures.js`, `camera-keys.js`, `camera-view.js`), `FLOOR.md` and this plan — and leaves the
-two archived changelogs that name it (`docs/changelog/v0.7.0.md`, `v0.8.0.md`) as the history they are;
+`data-home`), **the rename of `TheCameraWireIsOneForBothPagesTest` to `…ForEveryPageTest`** (§ 3.3), whose file set is
+`grep -rl TheCameraWireIsOneForBothPagesTest server docs/design` run at the slice — the test, the tests and wire
+headers that name it, `FLOOR.md` and this plan — and which leaves the archived changelogs under `docs/changelog/`
+(the same grep over `docs/changelog`) as the history they are;
 `tools/design/render-floor-view.php` (a `building` view for the browser tool).
 ⚠ **The 2-D floor page's drawing is changed by none of these**: `omit` defaults to nothing, `roomTilesets()` is a
 new method the floor page does not call, the gesture wire's extra argument reaches a 2-D `pan()` that reads one, the
@@ -927,7 +966,19 @@ are still held as each `CanvasTexture`'s `image`, so the re-upload is Three's ow
 floor is re-painted for it (review round 2, minor 6). The statement is a constant in `building-screen.js` (text is a decision),
 and the WebGL probe is the page's (a capability read is the browser's own fact, not a model's).
 
-## 8. How the tests pin it — each RED a plant in the shipped tree
+## 8. How the tests pin it — property, plant, observable
+
+**The rule this section is written under — a seat ruling, § 12 item 21.** Three review rounds running found tests
+written in this plan's prose with hand-computed counts, timings and spacings that could not fail: a stream too short
+to outlive the glide, a stage on which the cull culls nothing, a notch count off by one. Prose arithmetic about a
+fixture is the defect class, and no review of prose converges on it. So each leg below names the PROPERTY it asserts,
+the PLANT that breaks it, and the OBSERVABLE that must change — and nothing else: the fixture, the viewport, the
+stream's length and its timing are chosen at implementation, by running the leg, and are not written here. Where a
+leg needs a precondition — a stage on which the cull culls at least one label; a point that `aim()` names as another
+floor from the destination pose — the leg DERIVES it from the model's own functions over the fixture and FAILS AS A
+CONTROL if it finds none. Each slice's acceptance (§ 9) is: every plant its legs name is run and seen red in that
+PR, and the PR body records the run — canon #9, a check is evidence only once it has been seen to fail. The figures
+in §§ 3.1–3.4 are the design's derivations (`occl4.py`, `snap5.py`) and stay; none is a test assertion.
 
 Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClientModule`), and one browser leg:
 
@@ -944,9 +995,10 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
    shipped drawing); one with `omit = {'nameplate'}` draws neither and draws every other member's elements — the
    chip's rect and text, the facts, the monitor, the character — in the same count at the same rects. **Plants**: an
    `omit` that reads an element's `kind` instead of its `member` (the plate rect, kind `plate`, survives → the
-   `.plate` assertion reds); an `omit` that also skips the chip (the chip's assertion reds). **The two wire
+   `.plate` assertion reds); an `omit` that also skips the chip (the chip's assertion reds). **The three wire
    extensions are controls too**: `camera-wire-probe.mjs`'s existing legs hold that a 2-D `pan()` still receives
-   its deltas first and that `cameraView()` with no option still glides on `camera.js`'s `between()`.
+   its deltas first, that `cameraView()` with no option still glides on `camera.js`'s `between()`, and that
+   `offerKeys()` with no fourth argument still advertises `KEY_SHORTCUTS`.
 2. **AT-D3-37 — the building view stacks the floors** (`FLOOR.md` § 11, gated at Appendix B row 47):
    a **new run `building_stack` in `fx-camera.json`** (review round 2's M4a: `building_room` has `rooms: []`, no map
    endpoint and heartbeats only, so it could drive neither the `room.map` clause nor the failing-map clause): the
@@ -1013,148 +1065,150 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
    probe's *two renderers, one journal* rule (L519–520) reads SCENARIO keys, not calls, and would not catch this;
    the counter is what does; *the map that never refreshes* — `applyRoomMap()` not called on a `room.map` entry →
    the delivered map's scene is the old one; *the pose through a floor* — `FOCUS_POLAR` set to 0, a top-down pose
-   over the footprint → the path from the fifth floor's pose to the first's crosses the slabs between (item 3's
-   sweep reds at t = 0.28), and the pose check's *in front of the stack* clause reds on every floor; *the pose that
-   cannot be read* — the focus distance doubled → the far corners' scale falls to 0.22, under the widest
-   label's 0.368 bound; *the glide through the stack* — `betweenPoses()` interpolating the camera in a straight
-   line → from the back azimuth to the first floor's pose the sweep reds at t = 0.79 on the third slab; *the aim
+   over the footprint → the path between two floors' poses crosses a slab between (item 3's sweep), and the pose
+   check's *in front of the stack* clause reds on every floor; *the pose that cannot be read* — the focus distance
+   doubled → the far corners' scale falls under the label bound on a stage that held it; *the glide through the
+   stack* — `betweenPoses()` interpolating the camera in a straight line → from a back azimuth to a low floor's
+   pose the sweep meets a slab; *the aim
    re-read* — the acts' mute dropped → a wheel stream that outlives the glide, over a point that lies on another
    floor from the destination, yields a second pose change (item 3's plant); *the label hidden from the tree* — a culled label given
    `hidden` instead of `.visually-hidden` → the browser leg's focusability and `display` reads red; *the nameplate
    painted twice* — the building page's painter without `omit` → the picture holds a `text.role-name` (the browser
    leg's assertion); *the failure routed nowhere* — a painter whose `failed` reports nothing → the rejected theme's
    floor has `art_failed` false (the browser leg's plant; the node GREEN's subject is the harness's injection).
-3. **The stack's arithmetic, the poses, the paths and the snap** — `stack-model-probe.mjs` and
-   `building-acts-probe.mjs`: `storeySpacing()` over fixtures of one, two, five and ten slabs of the shipped
-   default's depth and of unequal depths, on 1,280 × 600, 1,280 × 800 and 390 × 700 surfaces, asserting convergence
-   within the bound (§ 3.1: `|Δs| < 0.01` within 8 iterations) and `s ≥ g(s)` strictly; and **the occlusion test,
-   cast from the computed camera**: take `overviewPose(…, 0)` — the position `fitDistance()` and `HOME_POLAR` give
-   — and for every slab below the top, the ground included, cast the ray from that position to each of the slab's
-   three back-edge points (both corners and the middle); where the ray crosses the vertical plane of the slab
-   above's front edge, its height must be below that slab's underside (`segmentClears()`, § 3.3's primitive). ⚠ The
-   first draft's test checked `s · tan(θ) ≥ D`, which the formula satisfies by construction and so could fail only
-   on the `BAND_H` control (review round 2's M1); this one reads the camera, not the formula. **Plants, each seen
-   red**: `storeySpacing()` replaced by the parallel-ray formula `max(d) · cot(50°) + SLAB_T` → on the five-floor
-   fixture the ground's back-edge rays cross the plane above about 2.8 units ABOVE slab 0's underside and slab 0's
-   about 1.4 above slab 1's (`occl4.py`); the last iterate returned without the tolerance → `s ≥ g(s)` fails by
-   about +0.0005 on the five-floor fixture (round 3's minor 2, planted rather than tolerated); the `BAND_H` storey →
-   every lower slab fails; `plates()`'s rows alone as the population → the one-slab fixture's storey collapses to
-   `SLAB_T` and the ground's back edge fails; a stack whose deepest slab is not the one the spacing was derived from
-   → that slab fails. **The focus pose, four properties on every floor of every fixture** (§ 3.3): (1) the camera
-   outside every slab's box and in front of the stack's front face; (2) the segment from the camera to each of the
-   face's four corners and its back edge's midpoint clears every other slab; (3) the four corners project inside
-   the stage inset by `LABEL_MARGIN`; (4) the scale at the farthest corner is at least `LABEL_MAX / box.w` — asserted
-   on the 1,280 × 600, 1,280 × 800, 1,920 × 1,000, 1,366 × 500 and 1,100 × 700 stages, and PRINTED on 1,024 × 700,
-   1,024 × 600, 960 × 700, 1,200 × 450, 1,600 × 420, 768 × 950 and 390 × 700, where it is under the bound and the plan
-   says so (§ 3.3; an assertion there would red on correct code — below the bound the cull's own legs, below, hold). **Plants**: `FOCUS_POLAR` 0 → (1) reds on
-   every floor; the distance doubled → (4) reds (0.22); the distance halved → (3) reds; `LABEL_MARGIN` 0 → an
-   edge desk's label box crosses the stage's edge, which the browser leg's label-box assertion (item 5) catches. **The paths**:
-   from `overviewPose()` at every azimuth in 15° steps to every floor's pose, every pose to every other, and every
-   pose back to every azimuth, on the five stages § 3.3 names (1,600 × 420 and 1,366 × 500 among them), sampled at
-   200 steps, every step's segment clear of every slab (`segmentClears()`), and the least clearance beyond the
-   stack's support printed (2.05 units on one floor at 1,600 × 420, 7.1 on five at 1,280 × 600 — `snap5.py`). **Plants**:
-   `betweenPoses()` linear in position → from azimuth 180° to floor 1 the third slab is crossed at t = 0.79;
-   `FOCUS_POLAR` 0 → the path between two floors' poses crosses every slab between. **The floor entries' corner**:
-   from every overview azimuth on the grid, the segment to `labelCorner()`'s corner of every slab, lifted a hair,
-   clears every slab; the plant: the front-left corner always → from 45° the lower slabs' entries are hidden.
-   **The snap table** (§ 3.3), every cell on the five-floor fixture: from the overview, a wheel in over the third
-   floor's projected centre → `{ floor: 3 }`; over the ground's → unchanged; over the sky → unchanged; a click on
-   the second slab → `{ floor: 2 }`; **+** → `{ floor: 2 }` (the nearest to the centre; on the ten-floor fixture
-   the fifth, on one and two floors the first); **−** and a wheel out → unchanged; from `{ floor: 3 }`, a wheel out
-   → `overview` at the azimuth it left (the fixture turns it to 40° first); **+** → unchanged; a click on the
-   third slab → unchanged, on the first → `{ floor: 1 }`; *Fit* → `overview` at 0. `aim()`: a ray through a
-   slab's underside answers `null`. **The acts** (`building-acts-probe.mjs`, `camera-wire-probe.mjs`'s shape, the
-   acts under stand-in gestures and a stub clock stepping 16 ms an event): a plain wheel of `deltaY` **−100** in
-   pixel mode over floor 3 → one `pan()` answer whose pose is `{ floor: 3 }`, consumed (a NEGATIVE `deltaY` is in —
-   `camera.js` L245–257's sign, round 5's minor 1; `+100` is out and, from the overview, *stay*); **a stream of
-   thirty wheel events of `deltaY` −4** over the same point → exactly one pose change, at the twenty-fifth (the
-   bucket at `NOTCH_PX`), every later event `consumed` and unchanged — muted; the gliding predicate true from the
-   twenty-fifth event and `arrived({ floor: 3 })` at the fifty-fourth (850 ms at 16 ms an event), the stream
-   continued to the sixty-fourth: still no second change; then an event 300 ms after the last → a new gesture, its
-   bucket empty (a `−40` moves nothing; the residual is gone); a Ctrl+wheel of `deltaY` −10 → one change
-   (`PINCH_GAIN`); `pinch()` steps of factor 1.1 → the third fires (1.331 ≥ 1.25) and the fourth does not; a
-   line-mode wheel of `deltaY` −7 → one change (7 × `LINE_PX` ≥ `NOTCH_PX`); `drag(100, 0)` at the overview → the
-   azimuth by 100 × `ORBIT_RAD_PER_PX`, the pose unchanged; `drag(100, 0)` at a focus pose → unchanged; `camera()`
-   before any extent → `bounds: null`. **The mute's plant can fail** (round 5's minor 2): on the **768 × 950
-   ten-floor fixture** the probe searches the stage's grid with `aim()` for a point that names one floor at the
-   overview and a DIFFERENT floor at that floor's focus pose (the reviewer's `cascade.py` found most of the stage
-   so from the second floor's pose; the probe fails as a control if it finds none), and runs the sixty-four-event
-   stream over it with `arrived()` at the fifty-fourth: with the mute, one pose change; with the mute dropped, the
-   fifty-fifth event aims from the new pose and a second change follows — the plant reds. **Plants**: `±1` per
-   wheel event → thirty changes; the bucket never reset on firing → the thirty-first event fires again; the mute
-   dropped → the second change above; the gap read from the firing event instead of the last event → a slow stream
-   re-arms mid-stream; `drag()` reading `dy` → an upward drag changes the view. **`labelsShown()`**: `overview` →
-   every floor entry, no desk label; `{ floor: 3 }` at rest → floor 3's desks the cull keeps and every floor entry;
-   `{ floor: 3 }` in flight → no desk label. **`cullOverlaps()`** over synthetic boxes: (a) no two kept boxes
-   intersect; (b) of an overlapping pair the earlier in reading order (smaller scene `y`, then `x`) is kept; (c) a
-   leader is kept and the labels it overlaps culled; (d) the same input twice gives the same set; (e) **consistency
-   with the predicate**: on the five-floor fixture at 1,280 × 600 with every label at `LABEL_MAX`, the cull is empty
-   and `readFloorLink()` is `hidden`; at 1,024 × 700 it is not, and the link is shown with `/floor/<key>`; (f) a row
-   of desks at the box's pitch at scale 0.351 with 162 px labels keeps every other name. **Plants**: the cull
-   keeping every label → (a) reds at 1,024 × 700; the order by screen `x` → (b) reds; the leader ignored → (c)
-   reds; `LABEL_MAX` doubled → (e) reds at 1,280 × 600; the link's predicate inverted → (e) reds. **`focusScale()`**: 1,280 × 600 at DPR 1 → 1; at DPR 2 → 1.26; 2,560 × 1,300 at
-   DPR 2 → the cap's 2.296 (`snap5.py`). **`worldOf()`**: the drawing's bottom-left maps to the slab's front-left
-   corner and its top-right to the back-right (the alignment rule, § 3.1). `fitDistance()` fits the bounding sphere
-   for a wide and a tall surface; `textureSize()` holds 1:1 under the cap and scales proportionally over it
-   (controls: a 1,784 × 864 extent at scale 1 is itself; at scale 2.296 it is 4,096 × 1,984; at cap 1,024 and
-   scale 1 it is 1,024 × 496). `tokenNames()` returns every token the sheet test holds `STYLE` to; `pictureSvg()`
-   writes each token once on the root and the sizes in place of the percentages (plant: a token left out → the
-   browser leg's chip rect reads black, which is the leg that can see it).
+3. **The stack's arithmetic, the poses, the paths, the snap, the acts and the cull** — `stack-model-probe.mjs` and
+   `building-acts-probe.mjs`, each leg a property, its plant and its observable, over stacks of one, two, five and
+   ten slabs of the shipped default's footprint and of unequal footprints, on the stages § 3.3 names and whatever
+   others a leg derives:
+   - **The storey converges and clears.** Property: `storeySpacing()` settles within the bound (§ 3.1) with
+     `s ≥ g(s)` strictly, and from `overviewPose(…, 0)` the ray to each lower slab's three back-edge points — the
+     ground's included — passes under the slab above's underside at that slab's front plane (`segmentClears()`).
+     Plants → observable: the parallel-ray formula → a back-edge ray crosses above the underside; the last iterate
+     without the tolerance → `s ≥ g(s)` false; the `BAND_H` storey → every lower slab's ray crosses; the ground
+     dropped from the population → the one-slab stack's ground ray crosses; the deepest slab not the one derived
+     from → that slab's ray crosses. ⚠ The first draft's test checked `s · tan(θ) ≥ D`, which the formula satisfies
+     by construction (review round 2's M1); this one reads the camera.
+   - **The focus pose's four properties, on every floor of every fixture** (§ 3.3): (1) the camera outside every
+     slab and in front of the stack's face; (2) the sight lines to the face's corners and back-edge midpoint clear of
+     every other slab; (3) the corners inside the stage less `LABEL_MARGIN`; (4) the farthest corner's scale at least
+     `LABEL_MAX / box.w` on the stages § 3.3's predicate holds on, PRINTED on the stages it does not. Plants →
+     observable: `FOCUS_POLAR` 0 → (1) false on every floor; the distance doubled → (4) false on a stage that held;
+     halved → (3) false; `LABEL_MARGIN` 0 → an edge desk's label box crosses the stage's edge (item 5's box
+     assertion).
+   - **The paths clear.** Property: from `overviewPose()` at every azimuth on a grid to every floor's pose, every
+     pose to every other, every pose back to every azimuth, sampled, no step's segment meets a slab; the least
+     clearance beyond the stack's support is printed, not asserted. Plants: `betweenPoses()` linear in position → a
+     step from a back azimuth to a low floor meets a slab; `FOCUS_POLAR` 0 → a step between two floors' poses meets
+     a slab between.
+   - **The floor entries' corner.** Property: from every azimuth on the grid the segment to `labelCorner()`'s corner
+     of every slab, lifted a hair, clears every slab. Plant: the front-left corner always → from a side azimuth a
+     lower slab's corner is behind the slab above.
+   - **The snap table, cell by cell** (§ 3.3). Property: each cell's answer on each fixture — a wheel in over a
+     floor's projected centre focuses it, over the ground's or the sky stays; a click likewise; **+** from the
+     overview is the floor whose top-face centre projects nearest the stage's centre, whichever the fixture makes it
+     (the probe prints which), and from a focus pose unchanged; **−** and a wheel out stay at the overview and
+     return to it from a focus pose at the azimuth the fixture had turned to; *Fit* returns at 0; `aim()` through a
+     slab's underside answers `null`. Plants: **+** aiming at the centre's ray instead of choosing a floor → on a
+     fixture whose centre ray meets no slab (the probe asserts that precondition first) no floor is chosen; a *stay*
+     cell answering a move → the view changes where it must not; `aim()` taking any face → an underside hit is a
+     floor.
+   - **The acts**, under stand-in gestures and a stub clock. Properties: a plain wheel is IN for a negative `deltaY`
+     and OUT for a positive one (`camera.js` L245–257's sign); a pixel-mode stream fills the bucket and fires exactly
+     once — **the stream's length and spacing chosen by running the leg so that it both fills the bucket and
+     continues past the glide, arrival driven from the stub clock at `GLIDE_MS` after the firing event** — every
+     later event consumed and unchanged; a line- or page-mode event is a discrete notch and fires alone (§ 3.3,
+     § 12 item 22); an event after a quiet gap of `GESTURE_GAP_MS` starts a new gesture with an empty bucket; a
+     Ctrl+wheel reaches a notch by `PINCH_GAIN`; a pinch fires at the step whose cumulative ratio first crosses
+     `PINCH_SNAP` and not at the next; `drag(dx, 0)` at the overview turns and records the resting azimuth, at a
+     focus pose changes nothing; `camera()` before any extent has `bounds: null`. Plants → observable: `±1` per
+     event → as many changes as events; the bucket not reset on firing → the next event fires again; **the mute
+     dropped → on a point the probe DERIVES — one that `aim()` names as one floor at the overview and as a
+     different floor at that floor's pose, searched over the stage's grid on each fixture, a control failure if none
+     exists on any — a stream that outlives the glide yields a second pose change**; the gap read from the firing
+     event instead of the last → a slow stream re-arms mid-stream; a line-mode notch put through the bucket → one
+     click of a Firefox wheel does not snap; `drag()` reading `dy` → an upward drag changes the view; `drag()` not
+     recording the azimuth → the next glide's first step jumps (its origin's azimuth differs from the shown one).
+   - **`labelsShown()` and `cullOverlaps()`**, over synthetic boxes and over the fixtures. Properties: (a) no two
+     kept boxes intersect; (b) of an overlapping pair the earlier in READING ORDER (§ 3.4) is kept; (c) a leader is
+     kept and the labels it overlaps culled, and an arrival with a culled active label keeps it; (d) the same input
+     gives the same set; (e) **the predicate and the cull agree**: on a stage § 3.3's predicate holds on, the cull is
+     empty and `readFloorLink()` is `hidden`; on **a stage on which the cull culls at least one label — derived by
+     the probe from the fixture's own anchors and measured widths, narrowing the stage until it does, a control
+     failure if no stage does** (the shipped default's desks stand farther apart than the box, so a stage the
+     predicate fails on need not cull — round 6's minor 1) — the cull is non-empty and the link is shown with
+     `/floor/<key>`. Plants → observable: the cull keeping every label → (a) false on the derived stage; the order
+     by screen `x` → (b) false; the leader ignored → (c) false; `LABEL_MAX` doubled → (e) false on a stage that
+     held; the link's predicate inverted → (e) false.
+   - **The rest.** `focusScale()`: at least 1, at most the cap over the floor's longer side, and the pose's
+     nearest-edge scale in device px between (plant: the DPR dropped → on a high-DPR stage it stays 1 where it
+     should not); `worldOf()`: the drawing's bottom-left maps to the slab's front-left corner and its top-right to
+     the back-right (§ 3.1); `fitDistance()`: the bounding sphere fits for a wide and a tall surface; `textureSize()`:
+     1:1 under the cap, proportional over it; `tokenNames()`: every token the sheet test holds `STYLE` to;
+     `pictureSvg()`: each token once on the root and the sizes in place of the percentages (plant: a token left out →
+     item 5's chip rect reads black, the leg that can see it).
 4. **The page wiring** — `BuildingPageWiringTest`: the ids both ways, the log handed to the screen only, no `fetch`
    or `EventSource` outside `livePage()`, `cameraGestures(` and `cameraKeys(` each called once with the stage and
-   the camera row's buttons, `cameraView(` called with a `between` option, `OrbitControls` nowhere under
+   the camera row's buttons, `cameraView(` called with `between` and `onArrive` options and `view.gliding()` read in
+   the page's `show`, `matches(':focus-visible')` in `labels.js`'s `focusin`, `OrbitControls` nowhere under
    `building/`, `createPainter(` called with `omit` in `floor-picture.js` and without it in `floor/main.js`.
 5. **The browser leg** — `tools/design/building-view.browser.mjs`, in `design-doc-verifiers.yml`'s `browser-smoke`
    job after the `starts` row, on the pinned shell: the served `/building` (`render-floor-view.php building`) fed
-   the `floor_rides` run as `floor-ride.browser.mjs` feeds the lobby; GREEN: no uncaught exception, the stream
-   asked for, `#building-canvas` holds a WebGL 2 context — **`getContext('2d')` on it answers `null`** (a canvas
-   holding a context of one kind refuses another; the first draft's *`getContext('webgl2')` returns the same
-   context* created one on a bare canvas and compared it with itself — review round 3, minor 8), one `.floor-scene`
-   SVG per composed floor under `#building-pictures` with **no `text.role-name` and no `.plate` in it**, one
-   `canvas[data-floor]` per picture beside it — **the page's own rasters, read where the page keeps them**: a desk's
-   chip rect in the top floor's canvas is not the background, by `getImageData()` on the page's canvas and not on a
-   reconstruction (minor 8's first half: the first draft rasterised the hidden host's SVG again through the tool's
-   own `pictureSvg()` import, so the page's token resolution and its Blob → `<img>` → canvas path were never read);
-   each list entry `data-home="stage"`; at the overview every desk label carries `.visually-hidden` and every floor
-   entry none; **a culled label is in the accessibility tree and the tab order**: its computed `display` is not
-   `none`, `focus()` on it makes it `document.activeElement`, and — the focus-follows rule — that focus starts a
-   glide to its floor (under the shell's reduced-motion emulation, a cut) after which the label is un-culled; **the
-   label boxes, at two viewports**: at 1,280 × 600 (above the bound) every desk label of the arrived floor is
-   un-culled and `#building-read-floor` is `hidden`; at 1,024 × 700 (a second launch, below it) at least one is
-   culled, the link is shown with `href` `/floor/<key>`, and `focus()` on a culled label of the floor un-culls it; at
-   both, no two un-culled labels' `getBoundingClientRect()`s intersect and every one lies inside the stage (round
-   5's minor 3 — the measured label, not the plate); **the stream, one event per animation
-   frame, with motion ON** (this run of the leg drops the shell's reduced-motion emulation): sixty-four `wheel`
-   events of `deltaY` −4 dispatched over the top slab's projected centre from a `requestAnimationFrame` loop, the
-   stage sampled each frame — `data-gliding="true"` from the twenty-fifth event for at least forty consecutive
-   frames, the floor entries' `transform`s changing between those frames (the camera is moving), exactly one
-   change of `data-view` (`overview` → `focus:<key>`) and one write of `#building-view-status` with that floor's
-   name, the top floor's desk labels un-culled at that frame and no other floor's, and no second `data-view` change
-   though the stream outlives the glide; a wheel out from there returns every desk label to `.visually-hidden`;
-   **the mute's plant on the real surface**: the leg reads each floor's extent off the page's own `canvas[data-floor]`
-   (its size at scale 1), builds the stack with `stackModel()` under node for its viewport, searches the grid with
-   `aim()` for a point that names one floor at the overview and another at that floor's pose — at 1,280 × 600
-   first, else re-launching the shell at 768 × 950, and failing as a control if neither has one — and runs the same
-   stream there: one `data-view` change with the mute, two with it dropped; the strip's art line names the fixture's
-   rejected theme (minor 7's browser half). `--selftest` plants: the token inlining
-   dropped (`style` attribute stripped) → the chip rect reads black; a floor removed from the layout → one host
-   fewer; `--disable-3d-apis` on the shell → the § 7 statement and no canvas; a painter whose `failed` reports
-   nothing in `floor-picture.js` → the art line is empty; a culled label given `hidden` → `display: none` and
-   `focus()` leaves `activeElement` on the body; the acts' mute dropped → the cascade stream's second `data-view` change; the page's
-   `show` not gated on `gliding()` → `data-gliding` never holds for forty frames (each event cuts the glide); the
-   cull keeping every label → at 1,024 × 700 two drawn label boxes intersect; the link's predicate inverted → at
-   1,280 × 600 the link is shown. It prints each floor's
-   paint and rasterise time at scale 1 and the focused floor's at its `focusScale()`, and the page's
-   `performance.memory` where the shell exposes it. ⚠ **What it does not hold**: that a real GPU, Safari or Firefox
-   rasterise the SVG as SwiftShader does, that a pinch on a real touch screen snaps, or how the snap feels under a
-   real trackpad — named, not claimed; `--out building.png` saves a picture for the eye, as
-   `floor-fixture.browser.mjs` does.
+   the `floor_rides` run as `floor-ride.browser.mjs` feeds the lobby. The still properties: no uncaught exception;
+   the stream asked for; `#building-canvas` holds a WebGL 2 context and **`getContext('2d')` on it answers `null`**
+   (a canvas holding a context of one kind refuses another; the first draft compared a bare canvas's context with
+   itself — review round 3, minor 8); one `.floor-scene` SVG per composed floor under `#building-pictures` with **no
+   `text.role-name` and no `.plate` in it**; one `canvas[data-floor]` per picture beside it, **the page's own
+   rasters read where the page keeps them** — a desk's chip rect in the top floor's canvas is not the background, by
+   `getImageData()` on the page's canvas, never a reconstruction; each list entry `data-home="stage"`; at the
+   overview every desk label carries `.visually-hidden` and every floor entry none; the strip's art line names the
+   fixture's rejected theme. The moving properties, each with its plant and observable:
+   - **A culled label is in the tree and the tab order, and keyboard focus follows.** Property: a culled label's
+     computed `display` is not `none`; a Tab (a keyboard event through the protocol, so the focus is
+     `:focus-visible`) that lands on a culled label of another floor makes it `document.activeElement` and starts a
+     glide to its floor — a cut under the shell's reduced-motion emulation — after which the label is un-culled.
+     Plant: the label given `hidden` → `display: none` and the Tab skips it; the focus rule dropped → `data-view`
+     unchanged after the Tab.
+   - **A mouse press on a label does not snap** (round 6's M1). Property: a mouse press on a floor entry at the
+     overview followed by a drag of more than `DRAG_SLOP_PX` leaves `data-view` unchanged and changes the floor
+     entries' `transform`s (the building turned). Plant: the `:focus-visible` predicate dropped → `data-view`
+     changes to that floor at the press.
+   - **The label boxes, on two stages.** Property: on a stage § 3.3's predicate holds on, every desk label of the
+     arrived floor is un-culled and `#building-read-floor` is `hidden`; **on a stage on which the cull culls at least
+     one label — derived as item 3 derives it, from the extents read off the page's `canvas[data-floor]`s and the
+     widths off its labels, run through `cullOverlaps()` under node, the leg failing as a control if it finds none
+     and re-launching the shell at the viewport it finds** — at least one label is culled, the link is shown with
+     `href` `/floor/<key>`, and a Tab onto a culled label of the floor un-culls it; on both stages no two un-culled
+     labels' `getBoundingClientRect()`s intersect and every one lies inside the stage. Plants: the cull keeping every
+     label → two boxes intersect on the derived stage; the link's predicate inverted → shown where nothing is culled.
+   - **The stream, one event per animation frame, with motion ON** (this run drops the shell's reduced-motion
+     emulation). Property: `wheel` events of a small negative `deltaY` dispatched over a floor's projected centre
+     from a `requestAnimationFrame` loop make `data-gliding` `true` (its one writer is the page's `show`, § 3.3) and
+     keep it so across consecutive frames until arrival, the floor entries' `transform`s changing between those
+     frames; exactly one `data-view` change (`overview` → `focus:<key>`) and one write of `#building-view-status`
+     with that floor's name; that floor's desk labels un-culled at arrival and no other's; **the stream continued
+     until `data-gliding` has read `false` for a run of frames the leg chooses — so it outlives the glide by
+     construction — with no second `data-view` change**; a wheel out from there returns every desk label to
+     `.visually-hidden`. Plants → observable: the page's `show` not gated on `gliding()` → ZERO `data-view` changes
+     (every event cuts the glide at its origin, so it never arrives); **the acts' mute dropped → a second `data-view`
+     change, on a point the leg derives as item 3 does (`aim()` over the grid at each viewport it tries; a control
+     failure if none)**.
+   - **`--selftest` plants**, each seen red: the token inlining dropped (`style` attribute stripped) → the chip rect
+     reads black; a floor removed from the layout → one host fewer; `--disable-3d-apis` on the shell → the § 7
+     statement and no canvas; a painter whose `failed` reports nothing in `floor-picture.js` → the art line is empty;
+     and each plant above.
+   It prints each floor's paint and rasterise time at scale 1 and the focused floor's at its `focusScale()`, and
+   the page's `performance.memory` where the shell exposes it. ⚠ **What it does not hold**: that a real GPU, Safari
+   or Firefox rasterise the SVG as SwiftShader does, that a pinch on a real touch screen snaps, which `deltaMode`
+   each browser's wheel sends, or how the snap feels under a real trackpad — named, not claimed; `--out
+   building.png` saves a picture for the eye, as `floor-fixture.browser.mjs` does.
 
 ## 9. The slice plan, for the coder
 
 Each slice is one PR to `dev`, titled `card#13033 [no-close]: …` until the last, which `(closes card#13033)`
 only when the operator has read the sandbox (§ 13 ruling 5's reading); each carries
-`docs/changelog.d/13033-<slug>.md` and the `FLOOR.md` landing marker for its half of row 47.
+`docs/changelog.d/13033-<slug>.md` and the `FLOOR.md` landing marker for its half of row 47. **Every slice's
+acceptance includes § 8's rule (§ 12 item 21): every plant its legs name is run and seen red in the PR, and the PR
+body records that run** — a leg whose plant has not been seen red is not done.
 
 1. **The hoists, the painter's two options, and the two wire extensions** (`floor-compose.js` with
    `composeFloor()`, `artInputs()`, `roomMaps()`, `sceneInput()`; `floor-data.js` with `roomTilesets()`; the
@@ -1236,8 +1290,14 @@ only when the operator has read the sandbox (§ 13 ruling 5's reading); each car
   Named for the review; a *View this floor* button per entry is the fallback if a reader rules it a change of
   context.
 - **A drag begun on a label turns the building** (§ 3.4): the wire listens on the stage, the labels are inside it,
-  and a press that moves `DRAG_SLOP_PX` is the camera's with its click vetoed — the lobby's board boxes over its
-  camera layer behave the same. Not defended.
+  and a press that moves `DRAG_SLOP_PX` is the camera's with its click vetoed. The press also FOCUSES the link
+  (Chromium, Windows Firefox: an `<a href>` takes focus on `mousedown`, and the wire prevents no `pointerdown`), and
+  that focus does not match `:focus-visible`, so the focus-follows rule ignores it (round 6's M1; § 8 item 5 holds
+  it). Not defended beyond that: a browser that marks a mouse-given focus `:focus-visible` would snap at the press
+  — read on the sandbox per browser.
+- **The wheel's unit per browser** (§ 3.3): a pixel-mode stream fills the bucket; a line- or page-mode event is a
+  discrete notch and fires alone. Which `deltaMode` each browser's mouse and trackpad send, and how a snap feels on
+  each, is read on the sandbox per browser; one rule to move if a browser's stream is line-mode.
 - **The label's size is a px size** — the floor page's nameplate's (`FONT_NAME`), not the page's `rem`: a viewer's
   text-size setting scales the lobby's directory faces (§ 4.1 decision 37) and not these, as it does not scale the
   floor page's nameplate either (SVG px under its camera). A seat ruling (§ 12 item 16), reversible to `rem`.
@@ -1353,18 +1413,19 @@ would do, stated now so stage 1 builds nothing that stage 2 must undo:
     or nothing stays; a click on a slab focuses it, never opens it; **+** focuses the floor nearest the stage's
     centre from the overview and does nothing from a focus pose; a wheel out, a pinch out or **−** returns to the
     overview at the azimuth it left; *Fit the building* returns to the overview at the front. One snap per
-    gesture by the bucket at one notch (the wheel), `PINCH_GAIN` on a Ctrl+wheel, and a quarter's spread (a pinch);
-    the buckets empty when a gesture begins.
+    gesture by the bucket at one notch (a pixel-mode wheel), `PINCH_GAIN` on a Ctrl+wheel, and a quarter's spread (a
+    pinch); the buckets empty when a gesture begins; a line- or page-mode wheel event is a notch on its own (item 22).
 16. **The nameplate is omitted from the slab's picture and carried as a label over the stage** — at the floor page's
     nameplate size in px (not the page's `rem`), docked at the nameplate's centre, a link to the desk's
     drill-down; **drawn exactly for the focused floor at rest, culled with `.visually-hidden` otherwise** (in the
     tree and the tab order, never `hidden`); **on a stage below the bound the labels that fit are drawn, in the
-    floor's reading order with the focused label leading, the rest culled, and the *Read this floor* link to the
-    floor page is shown** (§ 3.4); the floor entries always, at the slab's corner nearest the camera; the chip, the
+    floor's READING ORDER — defined once in § 3.4, the list's order too — with the focused label leading, the rest
+    culled, and the *Read this floor* link to the floor page is shown** (§ 3.4); the floor entries always, at the slab's corner nearest the camera; the chip, the
     facts, the bubble and the strip stay in the picture (§ 3.4).
-17. **Keyboard focus on a label of another floor snaps to that floor**, as a browser scrolls a focused link into
-    view; a snap moves focus nowhere and the status line announces the floor; focus that landed during a glide is
-    read again at arrival (§ 3.4).
+17. **Keyboard focus on a label of another floor snaps to that floor** — a `focusin` whose target matches
+    `:focus-visible`, never the focus a mouse press gives a link — as a browser scrolls a focused link into view; a
+    snap moves focus nowhere and the status line announces the floor; focus that landed during a glide is read again
+    at arrival; the cull's leader is `activeElement` at arrival and on `focusin`, `relatedTarget` on `focusout` (§ 3.4).
 18. **The focused slab's picture is rasterised at `focusScale()`** — the pose's nearest-edge scale in device px, at
     least 1 and at most the texture cap over the floor's longer side — every other at 1 (§ 3.2 step 8).
 19. The keys and the buttons go through the house wire (`wire/camera-keys.js`); the wheel, the drag and the pinch
@@ -1372,6 +1433,15 @@ would do, stated now so stage 1 builds nothing that stage 2 must undo:
     parameter its 2-D callers do not pass (§ 3.3, § 6).
 20. **The stage is the one element**: the wires', the `role="group"`, the tab stop; it advertises `+ - ArrowLeft
     ArrowRight`, and the vertical arrows move nothing (§ 3.3).
+21. **§ 8 names properties, plants and observables, never fixture arithmetic.** Three review rounds found tests in
+    this plan's prose with hand-computed counts, timings and spacings that could not fail; prose arithmetic about a
+    fixture is the defect class. The fixture, the viewport, the stream's length and its timing are chosen at
+    implementation by running the leg; a precondition a leg needs is derived from the model over the fixture and is
+    a control failure if absent; and every slice's acceptance is *every plant run and seen red in this PR, the run
+    recorded in its body* (§ 8's preamble, § 9).
+22. **A line- or page-mode wheel event is a discrete notch** and fires alone; the bucket is for pixel-mode streams
+    (§ 3.3) — the alternative, resetting the bucket only after a snap, was not taken because it would let two
+    unrelated nudges minutes apart add up to a snap.
 
 ## 13. Operator rulings of 2026-11-09 — decided (card comment 16451; `kbcard comments --task 13033`)
 
