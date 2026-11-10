@@ -276,7 +276,7 @@ const CHIP_MAX_W = 160;
 const CHIP_PAD = 6;
 
 /** The nameplate's text width inside its 160 px plate. */
-const PLATE_TEXT_W = 148;
+export const PLATE_TEXT_W = 148;
 
 /** The badges a § 7 treatment reads — § 7.3's `config_invalid` and § 7.4's `fold_lag`. */
 export const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);

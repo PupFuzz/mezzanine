@@ -12107,8 +12107,8 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   rejected theme for the floor drawn in it as its `floor` entry does; a heartbeat and a `seat.delta` applied after
   entry, then the `camera_floor` run's `room.map` for the first floor at the new version; then the same floors
   entered one at a time at `/floor/{key}` through the harness's `floor` entry, for comparison; the stack model's
-  probe over stacks of one, two, five and ten slabs on three stage sizes; and the acts' probe under stand-in
-  gestures. **Reads:** **the harness**, the **building view**, the **floor composition**, the **scene**, the
+  probe over stacks of one, two, five and ten slabs of the shipped default's footprint and one of unequal footprints,
+  on the stages plan § 3.3 names; and the acts' probe under stand-in gestures. **Reads:** **the harness**, the **building view**, the **floor composition**, the **scene**, the
   **animation log**.
 - **GREEN — one slab per floor, in the directory's order:** the building frame carries one `{ row, scene, labels }`
   per `plates()` row, in `plates()` order, the first row at the top storey (`storey = n − 1 − level`) and the lobby
@@ -12121,17 +12121,22 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   and enters no room, and the next render's scene for it is built from the authored document; the scene's INPUT
   members — maps, hallway, tilesets, layout version, failed assets, reduce, effects, previous — are assembled by the
   one function the floor screen uses (`floor/floor-compose.js`'s `sceneInput()`), its member set equal to the floor
-  screen's; the floor drawn in the rejected theme has its scene's `art_failed` set and its notices name the theme in
-  the floor page's words; **the labels**: per floor one label per desk the scene holds and none for an intern, its
+  screen's; the floor drawn in the rejected theme has its scene's `art_failed` set with the theme among its failed
+  assets, no other floor's art fails, and the status strip's art line is the floor page's words for it; **the labels**: per floor one label per desk the scene holds and none for an intern, its
   text that desk's nameplate element's text, its point that element's centre, its link the desk's drill-down by the
   floor's KEY; the ground slab's link is the page's lobby href and every other slab's `/floor/{key}` by the KEY
   ([§ 4.4](#44-routes-and-what-each-one-fetches)'s ⛔).
 - **GREEN — a picture and no fact:** the stack model reads a row's key, level, name and link and the scene's extent
   and nothing else of the row (the row carries the directory's counts, and the page's header prints the layout's
-  totals as the floor page's does — neither is the view's); no slab, label or notice carries a figure; the frame
+  totals as the floor page's does — neither is the view's); a slab carries its row's key, level, name and link and its
+  extent and nothing more, a label its desk's nameplate text, point and links and nothing more, and a floor's notices
+  are the floor page's notices for that floor, word for word (the floor page's own words carry figures — a map
+  failure's HTTP status, a reserved desk's id — and the view adds none); the frame
   holds no camera member and no ride member; every scene is built under `reduce` with no effect in flight; the
   animation log holds the fixture's own rows — the desks' held rows through the one desk floor — and nothing a slab,
-  a texture, a label or a camera act wrote; and the page's import graph from `building/main.js` is held to an
+  a texture, a label or a camera act wrote — the same rows a client that never enters `/building` writes through its
+  desk floor alone; and the page's import graph from `building/main.js` (until it lands, from the screen, the acts
+  and the model it will import, where the log's path through `wire/live-page.js` is not yet on the graph) is held to an
   explicit bound in the lobby test's form: the log constructed in `wire/live-page.js` and the set in
   `desk/desk-floor.js` alone, and each other importer of the set's module on the graph — the scene and the desk
   render — held to its one exact import line of constants and pure readers (plan § 8 item 2 lists the two lines);
@@ -12191,7 +12196,8 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   stream keeps its old picture, and the re-fetch assertion fails.
 - **Eighth RED — the pose through a floor:** the focus tilt set to straight down, which puts the camera over the
   footprint → the pose's *in front of the stack* clause fails on every floor, and the transition from the fifth
-  floor's pose to the first's crosses the slabs between.
+  floor's pose to the first's crosses a slab — the fifth floor's own, the camera descending through it from straight
+  above.
 - **Ninth RED — the pose that cannot be read:** the focus distance doubled → the farthest corner's scale falls under
   the widest nameplate's overlap bound on every desktop stage.
 - **Tenth RED — the glide through the stack:** the transition interpolating the camera in a straight line → from the
@@ -12210,6 +12216,11 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   boxes intersect; the no-intersection assertion fails on the browser leg and in the probe.
 - **Fifteenth RED — the link that lies:** the *Read this floor* link's predicate inverted → shown where nothing is
   culled and hidden where names are; either stage fails.
+- **The red list, confirmed against the plants (slice 3, 2026-11-10):** the first, second, third (both halves), fourth,
+  fifth, seventh, eighth, ninth and tenth (both halves) REDs, and the probe's halves of the fourteenth and fifteenth,
+  were each planted in the shipped tree and seen red on `TheBuildingViewStacksTheFloorsTest`'s legs, and are held there
+  as planted controls; the run is recorded on card#13033. The sixth, eleventh, twelfth and thirteenth, and the browser
+  halves of the tenth, fourteenth and fifteenth, are the browser leg's, slice 4.
 - **Discriminating control:** the three floors entered through the `floor` entry draw the same extents the building
   frame carries, and a client that never enters `/building` writes the same log rows, so the equalities are known to
   be reachable and the log's silence known to be the view's; and the probe's transition on the one-slab stack, which

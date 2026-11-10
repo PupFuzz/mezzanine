@@ -180,7 +180,7 @@ the page entry. Three hoists come first, each at its second caller:
    `{ box, measure, character, draw, crest, headClear, themes }` from `loadArt()`'s result and the page's measurer,
    `themeInputs()` (`cab-paint.js` L90) as today — **`roomMaps(frame, building)`** — the `Map` of each room's held
    map, L1122 — and **`sceneInput(art, docs)`** — the frozen union of the art inputs and the per-frame documents
-   `{ maps, hallway, tilesets, layout_version, failed, reduce, effects, previous }` plus the four in-flight members,
+   `{ maps, hallway, tilesets, layout_version, failed, reduce, effects, previous }` plus the floor screen's in-flight members,
    with the member list `SCENE_INPUT_KEYS` exported beside it. `#sceneDocs()` becomes one `sceneInput()` call;
    `floor/main.js` calls `artInputs()`; the building screen calls both. The painter's `failed` callback
    (`createPainter({ failed })`, `painter.js` L249–260) feeds the screen's `assetsFailed()` set on both screens, so
@@ -307,7 +307,13 @@ naturally at; any constant works and this one is written once).
   page reads it: back wall at the far edge, desks nearer.
 
 `stackModel(rows, extents, lobbyHref, surface)` returns `{ storey: s, slabs: [{ floor, name, href, level, storey, box: {x, y, z, w, h,
-d}, picture: boolean }], ground: {…}, bounds: {x, y, z, w, h, d} }` — frozen, no DOM, no Three.
+d}, picture: boolean }], ground: {…}, bounds: {x, y, z, w, h, d}, surface: {width, height} }` — frozen, no DOM, no Three
+— or `null` while no row's scene has an extent or the stage has no width or no height. ⚠ **The stage's size has this one
+owner** (slice 3's review, G1): a collapsed or hidden stage reads `clientWidth` 0 and is handed to the screen's `resize()`;
+every pose, snap and act reads the stage from the stack it was built for (`stack.surface` — the acts take no stage of
+their own), so a `null` stack, which every wire gate already reads as framing nothing, keeps an unsized stage from every
+aspect, every pose search and every drag. The focus search's doubling is bounded too (`FOCUS_SEARCH_BOUND`): a face no
+distance frames is an error that names the floor, never a loop.
 
 ### 3.2 The texture — the floor page's drawing, rasterised, with its palette inlined
 
@@ -454,7 +460,12 @@ panned camera would start from a position no derivation covers.
 `HOME_POLAR`**, aimed at floor `i`'s top-face centre, at the least distance at which the face's four corners project
 inside the stage inset by `LABEL_MARGIN` — half the widest label across (`LABEL_MAX / 2` = **81** px: the
 nameplate's text bound plus the label's padding and border, property (4) below) and a label's height down
-(**20** px) — so no label on an edge desk is cut by the frame; found by bisection on the distance (the predicate is monotone). On a
+(**20** px) — so no label on an edge desk is cut by the frame; found by bisection on the distance (the predicate is monotone).
+⚠ **On an axis too short for two margins the inset is a quarter of that axis** (`focusInset()`, slice 3): the first
+draft's inset could not be met on a stage at most 162 px across or 40 px down (the two margins leave no width for a face's two
+edges) at any distance, and the search for it never
+ended — a hang on a stage *any browser size* (`FLOOR.md` § 13 row 14) makes reachable; there the face fills the middle
+half and the partial view (§ 3.4) holds the names that fit. On a
 1,280 × 600 stage that is **14.87 units** from the centre, the camera **9.5 units above** its floor (the storey's
 gap is 10.5) and **7.1 units in front** of the stack's front face; on 1,280 × 800, 18.7 units, 12.0 above, 10.0 in
 front. Why the front: the floor's drawing is made for the front — its band at the back, its text upright — and from
@@ -485,7 +496,11 @@ the screen is `box.h · cos(FOCUS_POLAR) · scale` = 177 × 0.40 = 71 px against
 aspect-driven, not a width** (round 5's M2): the farthest corner's scale is **0.398** on 1,280 × 600, 0.438 on
 1,280 × 800, 0.640 on 1,920 × 1,000, 0.388 on 1,366 × 500 and 0.372 on 1,100 × 700 — legible; and 0.351 on
 1,024 × 700, 0.335 on 1,024 × 600, 0.331 on 960 × 700, 0.340 on 1,200 × 450, 0.361 on 1,600 × 420, 0.284 on
-768 × 950 and 0.116 on 390 × 700 — not (`snap5.py`). `FLOOR.md` § 13 row 14 (the operator, card#7341) is *any
+768 × 950 and 0.116 on 390 × 700 — not (`snap5.py`). ⚠ **These figures are the shipped default's footprint's**
+(slice 3, measured by `stack-model-probe.mjs`): the bound is the floor's as well as the stage's, since a wider floor is
+framed from farther — a 2,400 px floor reads 0.331 on 1,280 × 800 and an authored 1,952 px one fails 1,280 × 600 — so
+the probe asserts the predicate on these stages for the default's footprint only, prints it for others, and § 8 item
+3's cull leg derives the stages it holds on from the floor it is handed. `FLOOR.md` § 13 row 14 (the operator, card#7341) is *any
 browser size*, so the stages below the bound are reachable, and two overlapping `<a>` labels are unreadable and
 mis-tappable. **Below the bound the close-up is a PARTIAL view** (§ 13 ruling 9, the operator's answer A): the labels that fit
 without overlapping are drawn, in the floor's reading order (§ 3.4's cull), every name stays in the accessibility
@@ -614,7 +629,8 @@ a 2-D screen's:
   reset on firing and at a new gesture, muted as the wheel is;
 - `drag(dx, dy)` — a press that moved, or an arrow key: at the overview, the azimuth by `dx`, **recorded as the acts'
   resting azimuth** (a turn never arrives; `arrived()` overrides — round 6's minor 4); `dy` is nothing; at a focus
-  pose, nothing;
+  pose, nothing — the resting view read through `liveView()` first, as every snap reads it, so a focused floor a
+  layout dropped is the overview a drag turns (slice 3's review, G2);
 - `camera()` — the resting view with `bounds` (the stack's, or `null` before any floor has an extent), so the
   wire's one gate (`framesNothing()`, `camera.js` L114) and `offerKeys()` withhold every gesture, the buttons, the
   hint and the tab stop until the stack is drawn, as on the drawn pages;
@@ -696,7 +712,8 @@ drawing's top toward `−z`, § 3.1), and the page projects each anchor (`Vector
 `transform: translate()`, **on every applied camera and on every resize** (round 4's minor 9: a resize moves no
 camera but changes every projection). One element is both the label and the link, and no second list is written.
 
-**Which labels are drawn — `labelsShown(view, labels, boxes, leader)`**, pure, from the state and the measured
+**Which labels are drawn — `labelsShown(view, labelsByFloor, boxes, leader)`** (`view` `null` while a glide is in
+flight; `labelsByFloor` each floor's labels by key), pure, from the state and the measured
 boxes: a **floor entry** always; a **desk label** when its floor is the focused one, no glide is in flight, **and
 the overlap cull keeps it**. **The cull — `cullOverlaps(labels, boxes, leader)`** (§ 13 ruling 9, the operator's
 answer A): the focused floor's labels in **READING ORDER — the one order of a floor's desks on this page, for the
@@ -730,7 +747,7 @@ functions answer the set; the labels module toggles the class and nothing else.
 **The *Read this floor* link** — `#building-read-floor`, an `<a>` in the camera row beside the status line, its
 `href` the focused floor's own page, `/floor/{key}` by the key (§ 4.4's route; the floor page lists every desk at
 any size), its text *Read this floor*: shown exactly when the view is at a focus pose and `cullOverlaps()` culled
-at least one label of that floor — `readFloorLink(view, culled)`, pure, `{ hidden, href }` — and `hidden`
+at least one label of that floor — `readFloorLink(view, culled, stack)` (the link the floor's slab carries), pure, `{ hidden, href }` — and `hidden`
 otherwise (the attribute: it is a control that does not apply, not a label). So on a small screen the 3-D close-up
 is a partial view and full reading is one tap away, on the page that already does it.
 
@@ -786,9 +803,9 @@ WebGL. New files under `server/public/js/`:
 |---|---|---|---|
 | `floor/floor-compose.js` (hoist) | none | `composeFloor(floor, building, seatsByRoom)`, `artInputs()`, `roomMaps()`, `sceneInput()`, `SCENE_INPUT_KEYS` — § 2 item 1 | every existing floor test (control); `TheFloorCompositionIsOneForBothScreensTest`: `floor-screen.js` imports it and holds no second `placeRooms()`/`assignSlots()` call site |
 | `floor/floor-data.js` (hoist) | none (`fetch` injected) | `FloorData` — § 2 item 2 | `TheElevatorIsAControlOnTheDrawingTest`'s door-view leg (control), the building screen's probe |
-| `building/stack-model.js` | none | `stackModel()`, `storeySpacing()`, `fitDistance()`, `overviewPose()`, `focusPose()`, `betweenPoses()`, `snap()`, `aim()`, `nearestToCentre()`, `labelCorner()`, `labelsShown()`, `cullOverlaps()`, `projectPoint()`, `readFloorLink()`, `focusScale()`, `textureSize()`, `textureScale()`, `worldOf()`, `segmentClears()`, the unit, storey, tilt, margin and snap constants — §§ 3.1, 3.3, 3.4 | `stack-model-probe.mjs` under `TheBuildingViewStacksTheFloorsTest` (AT-D3-37) |
+| `building/stack-model.js` | none | `stackModel()`, `storeySpacing()`, `fitDistance()`, `overviewPose()`, `focusPose()`, `betweenPoses()`, `snap()`, `aim()`, `nearestToCentre()`, `labelCorner()`, `labelsShown()`, `cullOverlaps()`, `readingOrder()`, `labelBoxes()`, `projectPoint()`, `rayThrough()`, `scaleAt()`, `legibility()`, `readFloorLink()`, `focusScale()`, `textureSize()`, `textureScale()`, `worldOf()`, `segmentClears()`, `poseCamera()`, `liveView()` (§ 12 item 10's dropped floor), `samePose()`, `storeyNeed()` (§ 3.1's `g(s)`, which the probe reads), `focusInset()`, the unit, storey, tilt, margin and snap constants — §§ 3.1, 3.3, 3.4 | `stack-model-probe.mjs` under `TheBuildingViewStacksTheFloorsTest` (AT-D3-37) |
 | `building/building-acts.js` | none | the 3-D act set the house wires are given (§ 3.3): `pan()`, `zoom()`, `pinch()`, `drag()`, `zoomStep()`, `camera()`, `arrived()`, each over `snap()` and the two buckets (`wheelBucket()`, `pinchBucket()` — pure over an explicit bucket; the acts hold the buckets, the resting view — set by `drag()` on a turn and by `arrived()` — the mute and the last event's time); a line- or page-mode wheel event a discrete notch; given a clock (`{ now }`) and a `gliding` predicate; `GESTURE_GAP_MS` | `building-acts-probe.mjs` under node with a stub clock, `camera-wire-probe.mjs`'s shape (§ 8 item 3) |
-| `building/building-screen.js` | none | `BuildingScreen`: drains the journal once (`LobbyScreen#render()`'s shape, L162–186: `building.layout` applied, the layout fetched once after the first applied snapshot), runs ONE `DeskFloor` over every held seat with `reduce: true`, holds one `FloorData` and prefetches every row on entry and on each layout change; **applies `room.map`** through `Building#applyRoomMap(entry, rendered)` with `rendered` = every room of every `plates()` row (D2 § 8.7's *a client applies a `room.map` only for a room it renders* — this screen renders every room), records the apply's line in the client's record as the floor screen does (`floor-screen.js` L657–667) and then loads **the applied room's tilesets alone** — `FloorData#roomTilesets(installId)`, one row of the press sequence's tileset step (`door-views.js` L74's call for one id) — never `prefetch()` again, which re-enters every room and re-requests every room whose last request failed (`wire/building.js` L234–247: *a room whose last request failed is fetched again whatever it holds*), so a `room.map` for one floor would have re-fetched another floor's failed map, which the fixture scripts one answer for (review round 3, minor 4); **the interface change**: `BuildingScreen#render()` is `applyRoomMap()`'s second screen caller (the floor screen's `#layoutActs()` is the first; the lobby applies none, `lobby-screen.js` L23) and the first whose `rendered` set is the whole building, so a re-saved or recovered map refreshes its slab on the next render; and per `plates()` row: `composeFloor()` → the frame → `buildScene(frame, sceneInput(art, docs))` with `effects: []`, `previous` empty, the four in-flight members empty, `maps` from `roomMaps()`, `hallway` the row's, `tilesets` the `FloorData`'s, `failed` this screen's set — fed by every floor's painter through its `failed` callback, so a theme or character a slab could not draw is on that floor's notices as it is on the floor page's strip — then `deskLabels(scene)` (§ 3.4) → `{ row, frame, scene, labels }`; returns `{ floors, stack: stackModel(…), strip, failure, statement, layout, notices }`. No camera (the view is the page's and holds no state the screen reads), no ride, no panel | `fleet-client-probe.mjs` gains a `building` entry beside `floor` and `lobby` (one renderer per scenario, L519's rule), which injects one rejected theme as the `floor` entry does (L669); AT-D3-37 |
+| `building/building-screen.js` | none | `BuildingScreen`: drains the journal once (`LobbyScreen#render()`'s shape, L162–186: `building.layout` applied, the layout fetched once after the first applied snapshot), runs ONE `DeskFloor` over every held seat with `reduce: true`, holds one `FloorData` and prefetches every row on entry and on each layout change; **applies `room.map`** through `Building#applyRoomMap(entry, rendered)` with `rendered` = every room of every `plates()` row (D2 § 8.7's *a client applies a `room.map` only for a room it renders* — this screen renders every room), records the apply's line in the client's record as the floor screen does (`floor-screen.js` L657–667) and then loads **the applied room's tilesets alone** — `FloorData#roomTilesets(installId)`, one row of the press sequence's tileset step (`door-views.js` L74's call for one id) — never `prefetch()` again, which re-enters every room and re-requests every room whose last request failed (`wire/building.js` L234–247: *a room whose last request failed is fetched again whatever it holds*), so a `room.map` for one floor would have re-fetched another floor's failed map, which the fixture scripts one answer for (review round 3, minor 4); **the interface change**: `BuildingScreen#render()` is `applyRoomMap()`'s second screen caller (the floor screen's `#layoutActs()` is the first; the lobby applies none, `lobby-screen.js` L23) and the first whose `rendered` set is the whole building, so a re-saved or recovered map refreshes its slab on the next render; and per `plates()` row: `composeFloor()` → the frame → `buildScene(frame, sceneInput(art, docs))` with `effects: []`, `previous` empty, the in-flight members empty, `maps` from `roomMaps()`, `hallway` the row's, `tilesets` the `FloorData`'s, `failed` this screen's set — fed by every floor's painter through its `failed` callback, so a theme or character a slab could not draw is among that floor's scene's failed assets and on the building's strip, as it is on the floor page's — then `deskLabels(scene, row)` (§ 3.4) → `{ row, frame, scene, labels, notices }`, the frame exactly the members `buildScene()` reads and `notices` the floor page's for that floor; returns `{ floors, stack: stackModel(…), strip, failure, statement, layout }` (slice 3: the first draft's top-level `notices` had no writer and was dropped), and takes the stage (`surface`, `resize()`), which the storey is derived from. No camera (the view is the page's and holds no state the screen reads), no ride, no panel | `fleet-client-probe.mjs` gains a `building` entry beside `floor` and `lobby` (one renderer per scenario, L519's rule), which injects one rejected theme as the `floor` entry does (L669); AT-D3-37 |
 | `building/floor-picture.js` | DOM (hidden hosts, canvas, `<img>`); `tokenNames()` and `pictureSvg()` pure | one painter per floor over a hidden `<div>` in `#building-pictures`, each **`createPainter({ host, omit: new Set(['nameplate']), characters, themes, failed, select: () => {}, house, clock })`** — every member `floor/main.js` L411–423 hands its own painter but `ride` (defaulted) and `select` (required at L249, a no-op here: the building view opens no panel), from `artInputs()`'s art; round 4's minor 8: the short form in revision 4 would have thrown at `characters.poseFrames` (`painter.js` L368); the rasterisation of § 3.2 at `textureScale()`'s scale — the focused slab at `focusScale()`, the rest at 1 — each canvas kept in `#building-pictures` with `data-floor` (it is its texture's `image`, and the browser leg reads the page's own pixels there, § 8 item 5); the compare that skips an unchanged (SVG, scale) pair | `picture-probe.mjs` for the two pure functions; the browser leg for the rest |
 | `building/stack-paint.js` | **Three.js** | the renderer over `#building-canvas`, the slab meshes (`BoxGeometry`, a `MeshBasicMaterial` per face — the top face the floor's `CanvasTexture`, the others the sheet's slab token), the ground slab, lights (none: unlit materials, the drawings carry their own light), the camera applied from a pose (`position.set()`, `lookAt()`) on every `apply`, `setPixelRatio(devicePixelRatio)`, the pointer-to-world ray (`unproject`) handed to `aim()`, `resize()`, and the projector (`Vector3.project`) the labels module docks with. **No OrbitControls** (§ 3.3) | the browser leg |
 | `building/labels.js` | DOM (`#building-floors`, `#building-view-status`) | the list — floors, their notices, their desks — and the one docking function: `data-home="stage|flow"`, each entry's anchor through `labelCorner()` / `worldOf()`, projected by the paint's projector on every applied camera and on resize, culled with `.visually-hidden` by `labelsShown()` over `cullOverlaps()` (the label widths measured once per text, the focused label leading), the label's font from `FONT_NAME`; the *Read this floor* link's `hidden` and `href` by `readFloorLink()`; the `focusin` that — **only when `event.target.matches(':focus-visible')`** — snaps to a label's floor or leads the cull, the leader read from `activeElement` (arrival, `focusin`) or `relatedTarget` (`focusout`); the status line's text on arrival | the browser leg: each entry's `data-home`; the top floor's desk labels `.visually-hidden` at the overview and un-culled after a wheel stream over its slab; a culled label is focusable and not `display: none`; on a below-bound stage the leg derives from the probe's own cull, the link shown and no two drawn boxes intersecting |
@@ -1031,16 +1048,22 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
    list (L993) is empty, and the `room.map` for `aimla` loads aimla's tilesets and enters no room (minor 4); the
    `room.map` for `aimla` re-fetches its map and the next render's scene for `aimla` is built from the authored
    document (its extent differs from the default's — the assertion); the scene input's member set equals the floor
-   screen's (`SCENE_INPUT_KEYS`); **the floor drawn in the rejected theme has `scene.art_failed` true and its notices
-   name the theme** in the floor page's words; **`labels`**: per floor one label per desk the scene holds — its
+   screen's (`SCENE_INPUT_KEYS`); **the floor drawn in the rejected theme has `scene.art_failed` true and the theme
+   among `scene.failed`**, no other floor's art fails, and the strip's art line is the floor page's words (slice 3:
+   the floor page names a failed asset in no notice — its words are the strip's *some art failed to load* — so the
+   first draft's *its notices name the theme* was false of the floor page it was to match); **`labels`**: per floor one label per desk the scene holds — its
    `text` equal to that desk's nameplate element's text, its `at` that element's rect centre, its `href`
    `/floor/{key}/{seat_id}` — and none for an intern; **the frame holds no count, no camera and no ride member —
    scoped** (review round 3, minor 6): the frame's `row` is a `plates()` row and carries `held`, `summary`,
    `staffing`, `chips` and `floor_totals` (`lobby-model.js`'s `plate()`), and the screen returns `strip`, whose
    `totals` the page's header prints as the floor page prints them (`floor/main.js` L284), so what the GREEN reads
    is that `stackModel()` reads the row's key, `level`, `name` and `href` and the scene's extent and nothing else of
-   the row, that no slab, label or notice carries a figure, and that the frame has no `camera` and no `ride` key; the
-   animation log holds the fixture's own rows and nothing a slab or a texture wrote — the screen reaches the log
+   the row, that a slab and a label carry their named members and nothing more, that a floor's notices equal the
+   floor page's for that floor (slice 3: the first draft's *no notice carries a figure* was false of the floor page's
+   own words — theta's line carries `HTTP 503`, a reserved desk's its `id` — so the property is that the view adds
+   none), and that the frame has no `camera` and no `ride` key; the
+   animation log holds the fixture's own rows — equal to the desk floor's alone over the same run, the
+   discriminating control — and nothing a slab or a texture wrote — the screen reaches the log
    only through its one `DeskFloor`, held over the page's import graph from `building/main.js` **by an explicit
    bound in the form the lobby's test uses** (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` `PATH` L71–75
    and `RIDE_IMPORT` L93: an importer may load the set's module only if listed, and a constants-only importer is
@@ -1074,7 +1097,8 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
    probe's *two renderers, one journal* rule (L519–520) reads SCENARIO keys, not calls, and would not catch this;
    the counter is what does; *the map that never refreshes* — `applyRoomMap()` not called on a `room.map` entry →
    the delivered map's scene is the old one; *the pose through a floor* — `FOCUS_POLAR` set to 0, a top-down pose
-   over the footprint → the path between two floors' poses crosses a slab between (item 3's sweep), and the pose
+   over the footprint → the path between two floors' poses crosses a slab (item 3's sweep; slice 3: from straight
+   above a floor the first slab it meets is that floor's own, not one between), and the pose
    check's *in front of the stack* clause reds on every floor; *the pose that cannot be read* — the focus distance
    doubled → the far corners' scale falls under the label bound on a stage that held it; *the glide through the
    stack* — `betweenPoses()` interpolating the camera in a straight line → from a back azimuth to a low floor's
@@ -1095,7 +1119,8 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
      Plants → observable: the parallel-ray formula → a back-edge ray crosses above the underside; the last iterate
      without the tolerance → `s ≥ g(s)` false; the `BAND_H` storey → every lower slab's ray crosses; the ground
      dropped from the population → the one-slab stack's ground ray crosses; the deepest slab not the one derived
-     from → that slab's ray crosses. ⚠ The first draft's test checked `s · tan(θ) ≥ D`, which the formula satisfies
+     from → a ray crosses — the ground's, on the fixture of unequal footprints (slice 3: the ground carries the
+     deepest footprint by construction, so its ray is the one the plant uncovers first, not the deep floor's own). ⚠ The first draft's test checked `s · tan(θ) ≥ D`, which the formula satisfies
      by construction (review round 2's M1); this one reads the camera.
    - **The focus pose's four properties, on every floor of every fixture** (§ 3.3): (1) the camera outside every
      slab and in front of the stack's face; (2) the sight lines to the face's corners and back-edge midpoint clear of
@@ -1108,7 +1133,7 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
      pose to every other, every pose back to every azimuth, sampled, no step's segment meets a slab; the least
      clearance beyond the stack's support is printed, not asserted. Plants: `betweenPoses()` linear in position → a
      step from a back azimuth to a low floor meets a slab; `FOCUS_POLAR` 0 → a step between two floors' poses meets
-     a slab between.
+     a slab (the departing floor's own, first).
    - **The floor entries' corner.** Property: from every azimuth on the grid the segment to `labelCorner()`'s corner
      of every slab, lifted a hair, clears every slab. Plant: the front-left corner always → from a side azimuth a
      lower slab's corner is behind the slab above.
@@ -1169,8 +1194,9 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
    `text.role-name` and no `.plate` in it**; one `canvas[data-floor]` per picture beside it, **the page's own
    rasters read where the page keeps them** — a desk's chip rect in the top floor's canvas is not the background, by
    `getImageData()` on the page's canvas, never a reconstruction; each list entry `data-home="stage"`; at the
-   overview every desk label carries `.visually-hidden` and every floor entry none; the strip's art line names the
-   fixture's rejected theme. The moving properties, each with its plant and observable:
+   overview every desk label carries `.visually-hidden` and every floor entry none; the strip's art line is the floor
+   page's *some art failed to load* and the fixture's rejected theme is among its floor's failed assets (slice 3: the
+   floor page's strip names no asset, so *names the rejected theme* was false of it). The moving properties, each with its plant and observable:
    - **A culled label is in the tree and the tab order, and keyboard focus follows.** Property: a culled label's
      computed `display` is not `none`; a Tab (a keyboard event through the protocol, so the focus is
      `:focus-visible`) that lands on a culled label of another floor makes it `document.activeElement` and starts a
@@ -1238,7 +1264,9 @@ records that run** — a leg whose plant has not been seen red is not done.
    house wires on the stage with the 3-D acts, the page's gated `show`, `/building` in
    `EveryModuleAPageLoadsIsVersionedTest::pages()` (§ 5), the wire test's rename (§ 4's ten files),
    the hint partial's slot, the stylesheet
-   (the stage, the labels), the status line, the entry links, test 4, the browser leg with its plants,
+   (the stage, the labels), the status line, the entry links, test 4, the browser leg with its plants, AT-D3-37's
+   graph walk rooted at `building/main.js` in place of the three modules slice 3 roots it at (`ROOTS` in
+   `TheBuildingViewStacksTheFloorsTest`), its `PATH` gaining `wire/live-page.js` → `wire/animation-log.js`,
    `render-floor-view.php building`; the sandbox deployed and a screenshot on the card for the operator's reading —
    this is the reading stage 2 waits on, and where the snap's feel, the narrow-stage overlap and the side azimuths'
    occlusion (§ 10) are read.
