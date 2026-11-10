@@ -696,7 +696,7 @@ the release note's *Upgrade warnings* say so, and the precondition's message say
 **Rolling S4's code back over a new-shape layout** (round 1's m6): the pre-S4 reader refuses `name` and `aliases`
 as unknown members, which is D3 § 9 F17 on every page — the hazard D3 § 4.6's `theme` row already names for its
 own rollback (*a rollback past row 21 first saves the layout without it*). S4's `down()` therefore writes a new
-revision copying the last pre-migration revision's document (the one step 5's revision followed; `restored_from`
+revision copying the last pre-migration revision's document (the one the migration's own revision followed; `restored_from`
 set to it) with the two statements `Layouts::write()` performs (`Layouts.php:314`, private to the class — the
 migration issues them itself, inside `serialise()`'s lock), **bypassing the new reader's validation by design**: the
 old reader is the one that will read it. It prints what is lost: every name and alias authored since, and every floor the operator removed
