@@ -7,11 +7,13 @@ use Tests\Feature\Support\DrivesAShippedClientModule;
 use Tests\TestCase;
 
 /**
- * **The camera's page wire — one for the floor and the lobby.** `docs/design/FLOOR.md` Appendix B rows 15
+ * **The camera's page wire — one for every page with a camera.** `docs/design/FLOOR.md` Appendix B rows 15
  * and 16 (card#7343 r1, r2): `wire/camera-gestures.js`, the wheel, the drag and the touch pinch, and `wire/camera-keys.js`,
- * the keyboard and the zoom buttons, which both pages wire to their screen's camera acts; and
+ * the keyboard and the zoom buttons, which the floor and the lobby wire to their screen's camera acts; and
  * `wire/camera-view.js`, how each page shows the camera — at once, or as a glide, and for the lobby's ride
- * a COMMITTED glide.
+ * a COMMITTED glide. The building view (Appendix B row 47, card#13033) is the wires' third caller, with its 3-D acts and
+ * the three options each wire gained for it, which the legs here hold the 2-D callers unchanged by; how that page wires
+ * them is `Tests\Feature\Building\BuildingPageWiringTest`'s.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SHIPPED MODULES, UNDER `node`, WITH STAND-IN ELEMENTS AND A STUBBED FRAME CLOCK
@@ -67,7 +69,7 @@ use Tests\TestCase;
  * hold that each page hands its drawing, its zoom buttons and its screen's acts to `cameraGestures()` and
  * `cameraKeys()`, and grows no copy of either beside them.
  */
-class TheCameraWireIsOneForBothPagesTest extends TestCase
+class TheCameraWireIsOneForEveryPageTest extends TestCase
 {
     use DrivesAShippedClientModule;
 

@@ -49,7 +49,8 @@
 # installs ONE pinned headless Chromium and runs `floor-ride.browser.mjs --row starts --selftest`:
 # the lobby and a floor, each loaded once, red on any uncaught exception and on a page that never
 # asks for its stream or never draws its first scene, with that row's own plants each required to
-# red on the same checkout. It is the only floor-ride row wired, and it drives no ride and no timing. The same
+# red on the same checkout. It is the only floor-ride row wired, and it drives no ride and no timing. The building
+# view's two static rows (card#13033, `building-view.browser.mjs --row still --row no-webgl --selftest`) run after it. The same
 # job runs the character species distinctness check (card#12796, card#12842, `tools/characters/distinct.browser.mjs
 # --selftest`): a static render of the generator's standing frames, with its own planted controls.
 # The job also runs `seat-token-file.selftest.mjs` (card#12571), which needs its PHP and no browser.
@@ -82,6 +83,10 @@
 #       way (card#11795): absent for the same reason. Its `starts` row is the `browser-smoke` job.
 #   `sleeper-zs.browser.mjs` — the same browser, resolved the same way (card#12187): absent for
 #       the same reason.
+#   `building-view.browser.mjs --selftest`, its `tab`, `press`, `boxes` and `stream` rows — the same browser
+#       (card#13033): each times a glide, a keyboard path or a wheel stream, which nobody has measured on a runner,
+#       and its `stream` row reds on the seat's headless shell (a render holds the main thread past the acts'
+#       gesture gap, recorded on the card). Its `still` and `no-webgl` rows are the `browser-smoke` job's.
 #
 # ⛔ NONE IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this
 # very defect one layer down — a check reported as passed that never ran. They are absent and
@@ -285,6 +290,15 @@ jobs:
 
       - name: The lobby and a floor start (no uncaught exception, the stream asked for, a scene drawn), with the row's own planted controls
         run: node tools/design/floor-ride.browser.mjs --row starts --selftest
+
+      # card#13033: the building view (`/building`) starts and draws in this pinned Chromium — a WebGL 2 canvas, one
+      # picture per composed floor read in the page's own canvas, no nameplate in a picture, the list docked over the stage,
+      # the painter's failure on the strip — and without WebGL 2 is its list. Its two static rows only, with their planted
+      # controls: the rows that time a glide or a stream (`tab`, `press`, `boxes`, `stream`) are run by hand, as
+      # floor-ride's timed rows are, until they are shown to run clean on a runner. `!cancelled()`: independent of the row above.
+      - name: The building view starts and draws its pictures, and is its list without WebGL 2, with the rows' own planted controls
+        if: ${{ !cancelled() }}
+        run: node tools/design/building-view.browser.mjs --row still --row no-webgl --selftest
 
       # card#12796, card#12842: every pair of character species is told apart by silhouette or by body colour, measured
       # from the generator's standing frames as this pinned Chromium draws them. `--selftest`

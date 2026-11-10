@@ -42,7 +42,7 @@ use Tests\TestCase;
  * pinch — the screen's `pinch()`, zooming by its factor about the fingers' midpoint.
  *
  * ⚠ AND WHAT NO TEST HERE CAN: that a wheel event, a pinch or a drag in a browser reaches these acts. The
- * page half (`floor/main.js`) is wired to them and decides nothing; `TheCameraWireIsOneForBothPagesTest`
+ * page half (`floor/main.js`) is wired to them and decides nothing; `TheCameraWireIsOneForEveryPageTest`
  * holds the gesture wire under `node`, `FloorPageWiringTest` the page's elements, and card#11045 PR-B
  * drove the page in headless Chromium by hand — never a real trackpad, touch screen or Safari.
  */

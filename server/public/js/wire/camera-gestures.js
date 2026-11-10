@@ -107,7 +107,7 @@
  * and its `gesturestart` on iOS is read from how a touch begins, never seen; and a pinch that rotates as it
  * scales may still open Safari's tab overview whatever is prevented (WebKit bug 233141, per danburzo).
  *
- * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
+ * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForEveryPageTest`.
  */
 
 import { LINE_PX, framesNothing } from './camera.js';

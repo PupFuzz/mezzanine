@@ -36,7 +36,7 @@ use Tests\TestCase;
  * and the keyboard and the zoom buttons through `wire/camera-keys.js` (the lobby's too since card#7343
  * r2-2) — the rules of both — `deltaMode` and `ctrlKey`, the primary button only, the end on a
  * `pointercancel` or a buttonless move, which key zooms and which way an arrow pans — are held and
- * planted by `TheCameraWireIsOneForBothPagesTest`, and here only that the entry hands those modules its
+ * planted by `TheCameraWireIsOneForEveryPageTest`, and here only that the entry hands those modules its
  * drawing, its zoom buttons and the screen's acts, with no copy of its own — and the fit-floor control
  * and a resize (which
  * re-shows the camera at once, stopping a glide) to the screen's camera acts — a camera no event
@@ -267,7 +267,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('buttons', $this->cameraDefects($unoffered),
             'CONTROL (keys and zoom buttons never offered) did not bite');
 
-        // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForBothPagesTest
+        // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForEveryPageTest
         // plants and watches red; what can drift here is a page growing its own copy back beside it.
         $copied = str_replace('cameraKeys(drawing, ', "drawing.addEventListener('pointermove', () => {});\ncameraKeys(drawing, ", $js);
         $this->assertNotSame($copied, $js);
@@ -280,7 +280,7 @@ class FloorPageWiringTest extends TestCase
             'CONTROL (a resize that leaves a glide running over the old surface) did not bite');
 
         // The keys and the zoom buttons are wire/camera-keys.js's since card#7343 r2-2, whose own defects —
-        // the ones this file planted in the inline copy — TheCameraWireIsOneForBothPagesTest plants and
+        // the ones this file planted in the inline copy — TheCameraWireIsOneForEveryPageTest plants and
         // watches red; what can drift here is the entry's hand-off, and a copy growing back beside it.
         $keyless = str_replace('cameraKeys(drawing, ', "cameraKeys(el('floor-desks'), ", $js);
         $this->assertNotSame($keyless, $js);
@@ -330,7 +330,7 @@ class FloorPageWiringTest extends TestCase
 
         // card#7343 comment 7692 item 1: the drawing's tab stop is `offerKeys()`'s, offered only while the camera
         // frames the floor, so the markup offers none — a drawing the keyboard cannot reach is now planted in
-        // `offerKeys()` itself, `TheCameraWireIsOneForBothPagesTest`'s offer defects.
+        // `offerKeys()` itself, `TheCameraWireIsOneForEveryPageTest`'s offer defects.
         $tabbed = str_replace(' aria-label="the room drawing" data-dimmed', ' aria-label="the room drawing" tabindex="0" data-dimmed', $html);
         $this->assertNotSame($tabbed, $html);
         $this->assertArrayHasKey('focus', $this->exposureDefects($tabbed, $painter),

@@ -20,7 +20,7 @@ use Tests\TestCase;
  * `lobby.camera`) — the wheel, a Ctrl+wheel, a pinch, a drag and an arrow key over the room, *Fit the lobby*, the
  * keyboard's focus on the elevator and on a plaque's link, in view and out of it — and the same under
  * `prefers-reduced-motion`. A wheel or a drag begun over the DIRECTORY is the gesture wire's
- * (`wire/camera-gestures.js`'s scroller rule), held where that wire is driven, `TheCameraWireIsOneForBothPagesTest`.
+ * (`wire/camera-gestures.js`'s scroller rule), held where that wire is driven, `TheCameraWireIsOneForEveryPageTest`.
  *
  * ⛔ THE LOG CLAUSE HAS ITS TEETH IN THE IMPORT GRAPH, AND THIS SAYS WHY. The lobby's one § 6.2 row is A17 — the room's
  * window, fired by each `feed.heartbeat` (§ 4.1) — so the harness's log holds the run's heartbeats' A17 rows, and the

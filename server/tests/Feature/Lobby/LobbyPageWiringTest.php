@@ -222,7 +222,7 @@ class LobbyPageWiringTest extends TestCase
      * presentational. card#7343 r4b: neither page's markup offers the keys — no `aria-keyshortcuts`, the
      * zoom buttons hidden — because no camera frames anything before the first render; which keys are named
      * once one does is `wire/camera-keys.js`'s `offerKeys()`, one list for both pages
-     * (`Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`).
+     * (`Tests\Feature\Floor\TheCameraWireIsOneForEveryPageTest`).
      */
     public function test_the_drawing_takes_focus_and_its_keys_and_zoom_buttons_are_the_floors(): void
     {

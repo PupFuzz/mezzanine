@@ -34,7 +34,7 @@
  *    none of it offered, because no camera frames anything before the first render; a drawing that held
  *    the keyboard's focus when its camera stopped framing loses it to the page, the accepted edge (c7692).
  *
- * Driven under `node` with stand-in elements by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
+ * Driven under `node` with stand-in elements by `Tests\Feature\Floor\TheCameraWireIsOneForEveryPageTest`.
  */
 
 import { PAN_STEP_PX, framesNothing } from './camera.js';

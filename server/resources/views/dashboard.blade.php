@@ -70,6 +70,8 @@
             <button type="button" id="lobby-zoom-in" hidden>Zoom in</button>
             <button type="button" id="lobby-zoom-out" hidden>Zoom out</button>
             <button type="button" id="lobby-fit" hidden>Fit the lobby</button>
+            {{-- The building in 3D (card#13033, the operator's ruling 2 of 2026-11-09): a link, shown with or without a camera. --}}
+            <a class="pill building-pill" href="{{ route('building.view') }}">3D</a>
         </nav>
 
         {{--

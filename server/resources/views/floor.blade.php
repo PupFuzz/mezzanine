@@ -110,6 +110,8 @@
                 <button type="button" id="floor-zoom-out" hidden>Zoom out</button>
                 <button type="button" id="floor-fit" hidden>Fit the floor</button>
                 <a class="pill" href="{{ url('/') }}">Whole building</a>
+                {{-- The building in 3D (card#13033, the operator's ruling 2 of 2026-11-09); *Whole building* stays the lobby. --}}
+                <a class="pill building-pill" href="{{ route('building.view') }}">3D</a>
             </nav>
         </div>
 

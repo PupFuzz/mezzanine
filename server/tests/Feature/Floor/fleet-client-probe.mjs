@@ -89,7 +89,9 @@
  *                                               //  `themes.reject` injected as the floor's are, and
  *                                               //  `local_hours`/`local_minutes` as the floor's. Each render's
  *                                               //  frame is recorded in `building_renders[]` with `drains`, the
- *                                               //  number of `takeWire()` calls it made
+ *                                               //  number of `takeWire()` calls it made; with `resize`
+ *                                               //  ({width, height}) the screen is resized to it once the run
+ *                                               //  ends and the stack it answers is `building_resized`
  *      "floor.lobby_href": "<url>"              // the floor page's own *Back to the lobby* link's href,
  *                                               //  handed to the screen as the page hands it (§ 4.5's
  *                                               //  ride, card#11795) — the cab's lobby stop
@@ -147,6 +149,7 @@
  *      answer, the `ride` of the frame painted after it (`null` when it answered `null` and nothing was painted)
  *      and the `ride` of the 1 s tick's scene over that frame's desks (`sceneView()`),
  *      "building_renders": [ {at, trigger, drains, frame} ] — the building view's, each render's journal drains counted,
+ *      "building_resized": the stack the building screen answers a `resize` with, or `null` (its run names none),
  *      "lobby_renders": [ {at, trigger, frame} ] — `trigger` `render`, `ride` for the frame a page paints
  *      after a ride act (`rideView()`) and `tick` for the 1 s tick's (`tickView()`) — "camera_acts": [ {at,
  *      act, before, after, glide_ms} ] on either page —
@@ -1067,6 +1070,7 @@ async function replay(scenario) {
         floor_renders: floorRenders,
         lobby_renders: lobbyRenders,
         building_renders: buildingRenders,
+        building_resized: building !== null && buildingRun.resize !== undefined ? recorded(building.resize(buildingRun.resize)) : null,
         camera_acts: cameraActs,
         ride_acts: rideActs,
         animation_log: log.rows,

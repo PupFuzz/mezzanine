@@ -28,12 +28,13 @@ export function findChrome() {
  */
 export /**
  * Headless Chromium over the DevTools protocol, one page, at a given VIEWPORT (never the surface's own size).
- * `emulate` — `{ media, timezone }` — sets CSS media features (`[{ name, value }]`, e.g. reduced motion) and the
- * page's time zone before anything loads (card#11144's fixture renderer, which needs both fixed).
+ * `emulate` — `{ media, timezone, args }` — sets CSS media features (`[{ name, value }]`, e.g. reduced motion) and the
+ * page's time zone before anything loads (card#11144's fixture renderer, which needs both fixed), and `args` adds
+ * command-line switches to the launch (`building-view.browser.mjs`'s `--disable-3d-apis`, card#13033).
  */
 async function browser(chrome, width, height, ready = 'drawn', emulate = {}) {
   const proc = spawn(chrome, ['--headless', '--disable-gpu', '--no-sandbox', '--hide-scrollbars',
-    '--remote-debugging-port=0', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    '--remote-debugging-port=0', ...(emulate.args ?? []), 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
   const wsUrl = await new Promise((resolve, reject) => {
     let err = '';
     const timer = setTimeout(() => reject(new Error('Chromium printed no DevTools endpoint')), 30000);

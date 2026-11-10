@@ -22,7 +22,7 @@
  * drag, a resize, another glide — shows its own camera from there. ⚠ Until card#12113 a glide could be
  * COMMITTED — finished rather than stopped, its arrival run — for the lobby's ride to a plate (card#7343
  * r1); the lobby's ride is now § 4.5's cab, which glides no camera, and the committed glide went with it.
- * It is driven under `node` with a stubbed frame clock by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
+ * It is driven under `node` with a stubbed frame clock by `Tests\Feature\Floor\TheCameraWireIsOneForEveryPageTest`.
  */
 
 import { between as cameraBetween } from './camera.js';

@@ -17,8 +17,10 @@
  * glide is in flight, an act answers the resting view and changes nothing. Keys and clicks are one gesture each and need
  * no timer.
  *
- * ⛔ THE RESTING VIEW IS SET IN TWO PLACES: `arrived()`, which the page's arrival calls with the view it arrived at, and a
- * turn (`drag()` at the overview), which never arrives. Every snap is aimed from it.
+ * ⛔ THE RESTING VIEW IS SET IN TWO PLACES: `arrived()`, which the page calls with the view it rests at — on a glide's or a
+ * cut's arrival, and for a view at the resting pose it shows at once (*Fit* from a turned overview) — and a turn
+ * (`drag()` at the overview), which never arrives. Every snap is aimed from it, and it is the page's one record of where
+ * the view rests (`building/main.js`).
  */
 
 import { NOTCH_PX, PINCH_GAIN } from '../wire/camera.js';
@@ -196,7 +198,7 @@ export function buildingActs({ stack, now, gliding }) {
             return Object.freeze({ ...resting, bounds: stack()?.bounds ?? null });
         },
 
-        /** The page arrived at `view`: the resting view every later snap is aimed from. */
+        /** The page rests at `view`: the resting view every later snap is aimed from. */
         arrived(view) {
             resting = view;
         },

@@ -272,6 +272,7 @@ class EveryModuleAPageLoadsIsVersionedTest extends TestCase
             'sign in' => $login,
             'the lobby' => $this->actingAs($user)->get('/dashboard')->assertOk()->getContent() ?: '',
             'the floor' => $this->actingAs($user)->get('/floor/aimla')->assertOk()->getContent() ?: '',
+            'the building view' => $this->actingAs($user)->get(route('building.view'))->assertOk()->getContent() ?: '',
             'the console' => $this->actingAs($user)->get(route('admin.index'))->assertOk()->getContent() ?: '',
             'second-factor enrolment' => $this->actingAs(User::factory()->twoFactorUnenrolled()->create())->get(route('two-factor.enroll'))->assertOk()->getContent() ?: '',
         ];

@@ -834,7 +834,7 @@ main > section.lobby {
     content: "\2922" / "";
 }
 
-#floor-camera > .pill::before,
+#floor-camera > .pill:not(.building-pill)::before,
 .floor-home::before {
     content: "\2302" / "";
 }
@@ -1265,7 +1265,137 @@ main > section.lobby {
     color: var(--dim);
 }
 
-/* ── The camera's gesture hint — both pages, one line (card#11045, `resources/views/partials/camera-hint`) ── */
+/* ── The building view (card#13033, `resources/views/building.blade.php`) ─────────────────────────────────────────
+ *
+ * The floor's column, its strip, its camera row and its hint row, by their shared classes; the stage takes the height
+ * the chrome leaves, as `#floor-drawing` does, and it has that size whether or not the stack is drawn — the stack is
+ * derived from the stage's size (`building/stack-model.js`), so a stage sized only once drawn would never be drawn.
+ *
+ * WHERE AN ENTRY STANDS IS ITS OWN `data-home` (`public/js/building/labels.js`'s `dock()`, its one writer): `flow`, the
+ * floors' list in the stage as a plain list — before the first stack, and the whole page without WebGL 2 — or `stage`,
+ * each entry a label over the canvas at its anchor's projection (an inline `transform`, `place()`'s). A desk label's box
+ * — its font, padding, border and height — is the model's (`--label-*`, written from `stack-model.js`), so the cull's
+ * measured boxes are the boxes drawn; its colours are the painter's own plate tokens.
+ */
+.page-building main {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100dvh - var(--reveal));
+    padding-bottom: 0;
+}
+
+.page-building main > :not(.app-header) {
+    margin-inline: 0;
+}
+
+.page-building main > #building {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+#building > * {
+    margin: 0;
+}
+
+#building > :not(.floor-stage) {
+    flex: 0 0 auto;
+}
+
+#building-view-status {
+    margin: 0 auto 0 0;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+#building-camera-row > nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#building-stage {
+    flex: 1 1 0;
+    min-height: 320px;
+    position: relative;
+    overflow: auto;
+    background: radial-gradient(ellipse at center, var(--ground) 0%, var(--ground-deep) 75%);
+}
+
+#building-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: grab;
+}
+
+#building-floors {
+    margin: 0;
+    padding: 12px var(--gutter);
+}
+
+#building-floors ul {
+    margin: 0;
+}
+
+#building-floors[data-home="stage"] {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    overflow: hidden;
+    pointer-events: none;
+    list-style: none;
+}
+
+#building-floors[data-home="stage"] ul {
+    padding: 0;
+    list-style: none;
+}
+
+#building-floors [data-home="stage"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: auto;
+    white-space: nowrap;
+}
+
+.building-floor-head[data-home="stage"] > a {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.building-floor-head[data-home="stage"] > .building-notices > li {
+    max-width: 320px;
+    white-space: normal;
+    font-size: 12px;
+    color: var(--warn);
+}
+
+.building-desk[data-home="stage"] {
+    box-sizing: border-box;
+    height: var(--label-h);
+    padding: 0 var(--label-pad);
+    border: var(--label-border) solid var(--scene-plate-edge);
+    background: var(--scene-plate);
+    color: var(--scene-ink);
+    font: var(--label-font);
+    line-height: calc(var(--label-h) - 2 * var(--label-border));
+    text-decoration: none;
+}
+
+/* ── The camera's gesture hint — every camera page, one line (card#11045, `resources/views/partials/camera-hint`) ── */
 
 .camera-hint {
     margin: 0;
@@ -1312,7 +1442,7 @@ main > section.lobby {
     }
 
     #floor-camera > #floor-fit,
-    #floor-camera > .pill,
+    #floor-camera > .pill:not(.building-pill),
     .app-header > .floor-home {
         width: 34px;
         justify-content: center;
@@ -1321,7 +1451,7 @@ main > section.lobby {
     }
 
     #floor-fit::before,
-    #floor-camera > .pill::before,
+    #floor-camera > .pill:not(.building-pill)::before,
     .floor-home::before {
         margin: 0;
         font-size: 16px;

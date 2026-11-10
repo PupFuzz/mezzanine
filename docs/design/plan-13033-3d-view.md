@@ -94,6 +94,30 @@ and re-includes that one directory (§ 5), names the header's version line `pack
 
 
 
+**Revision 10 (2026-11-10, with slice 4) records where the page's code departs from this text**, each corrected where it
+stands: a click aims through the model's own `rayThrough()` inside `snap()`, so `stack-paint.js` carries no unproject
+(§ 3.3, § 4); the page's resting view is the acts' — its `show` records a view at the resting pose through
+`acts.arrived()` — not a second copy (§ 3.3); `snap()` gains the intent `{ act: 'floor', floor }`, the keyboard's focus on
+a floor's label as the table's *click on slab k* by its key, and the model gains `viewStatus()` for the status line
+(§ 3.3, § 3.4); the label's padding, border, height and font are written onto the list from `stack-model.js`'s constants
+and read by the sheet, not read off a computed style (§ 3.3 (4)); `tokenNames()` reads the CSS alone and the sheet test
+subtracts the painter's own `setProperty` tokens as before (§ 3.2 step 1); § 7's statement has a status line of its own,
+`#building-webgl` (§ 7); the building screen's `resize()` answers the stack re-derived over the new stage, so the acts
+read the new stage at once, and `startBuildingScreen()` awaits the page's draw so a render's pictures are that render's
+(§ 3.1, § 3.2); an arrival asks for a render only where a raster scale changed (§ 3.2 step 8); the graph walk follows
+`floor/painter.js`'s art loader into the asset route as it follows `cab-paint.js`'s (§ 8 item 2); and the browser leg
+(§ 8 item 5) runs on `building_stack` — its cottage theme made to throw in its band, since a theme module that fails to
+load is reported by the art loader with no painter involved and could not tell the painter's routing from it — derives
+the cull's stage by narrowing the live page's window, and finds the stream's point only on narrow windows of this
+fixture, where the floor it snaps to carries no desk (the *labels at arrival* half is the `boxes` row's). Its `still` and
+`no-webgl` rows are in `browser-smoke`; the timed rows run by hand. It does NOT print per-floor paint and rasterise times.
+⚠ **§ 10's paint-time trigger has fired**: on the seat's headless shell a render of `building_stack`'s two pictured floors
+held the main thread for 300–1,800 ms (long tasks read by a `PerformanceObserver`, 2026-11-10), past the acts' 300-ms
+gesture gap, so the `stream` row's wheel events, paced by animation frames, re-arm after the first snap and snap again.
+The per-floor minimum interval § 10 names is a seat ruling and is not built here; the record is on the card. While the
+`stream` row reds unplanted its two plants (the mute dropped, the page's `show` ungated) are unmeasured in the browser;
+the mute's node plant (§ 8 item 3) is held.
+
 **Design approval.** The operator's request of 2026-11-09, recorded on card#13033: offered a building view, a
 floor view, or both, the operator chose *"Both"*, building view first. The card's technical notes fix the library
 (Three.js with OrbitControls, plain ES modules, no framework — OrbitControls itself is not used, since under
@@ -345,8 +369,10 @@ So the pipeline, in `building/floor-picture.js` (DOM; its two string functions a
 1. `tokenNames(css)` — the set of `--…` names `STYLE` and `CAB_STYLE` reference, pure, and **the one extraction
    predicate**: `var(--name` followed by `)` OR by `,` — the fallback form `var(--dv-floor, color-mix(…))` that
    `cab-paint.js` L138–148 uses, which `ThePageChromeIsOneLinkedStylesheetTest`'s own regex `var\(--([a-z0-9_-]+)\)`
-   (L181) does not match — less the tokens the painter sets on elements itself (`setProperty('--…')`, which that test
-   reads at L186). It returns `[{ name, hasFallback }]`, and that test drives it under node (as its `painterStyle()`
+   (L181) does not match. It reads the CSS alone (slice 4: the tokens the painter sets on elements itself,
+   `setProperty('--…')`, are subtracted by that test as before, since a pure function of the CSS cannot see the painter's
+   code; on the page such a token resolves to nothing on `:root` and step 4 leaves it out). It returns
+   `[{ name, hasFallback }]` — `hasFallback` false when any read of the name is bare — and that test drives it under node (as its `painterStyle()`
    already evaluates `STYLE` under node, L229–235) in place of its regex — holding the **no-fallback** tokens to the
    sheet's `:root` as today, and **exempting the fallback-form tokens from the declared check**: the cab's `--dv-*`
    carriers (`door-view.js` `VIEW_CARRIERS` L55–67, read off a theme's `PALETTE` by `paletteOf()` L126) are declared
@@ -489,7 +515,8 @@ face is in frame with its margins* by construction. (4) *Every name is legible �
 := scale at the face's farthest corner ≥ LABEL_MAX / box.w`, the scale `H / (2 · depth · tan(fov/2) · UNIT)` at the
 back corners and `LABEL_MAX` the widest a label can be — the nameplate's text is cut to `PLATE_TEXT_W` (148 px in
 the name role, `desk-layout.js`'s `fit()` bound, L1159) plus the label rule's padding and border (6 + 1 px a side,
-the sheet's constants, which the page reads once off a label's computed style — round 5's minor 3: the label is a
+`stack-model.js`'s `LABEL_PAD` and `LABEL_BORDER`, which `labels.js` writes onto the list as the custom properties the
+sheet's label rule reads, so the measured box and the drawn box have one source — round 5's minor 3: the label is a
 bold 13 px text in a box, not the plate) — **162 / 440 = 0.368**. From the bound inward no two desks' labels can
 overlap, because two furniture boxes never do (§ 10.4 item 3), and the rows cannot either, since a row's pitch on
 the screen is `box.h · cos(FOCUS_POLAR) · scale` = 177 × 0.40 = 71 px against a 20 px label. **The bound is
@@ -635,12 +662,15 @@ a 2-D screen's:
   wire's one gate (`framesNothing()`, `camera.js` L114) and `offerKeys()` withhold every gesture, the buttons, the
   hint and the tab stop until the stack is drawn, as on the drawn pages;
 - `zoomStep(n)` — `+`/`−` and the two buttons: the table's **+** and **−** columns;
-- `arrived(view)` — the page's `onArrive` tells the acts the resting view, which every later aim starts from.
+- `arrived(view)` — the page's `onArrive` tells the acts the resting view, which every later aim starts from; and the
+  page's `show` calls it for a view at the resting pose, so the acts' resting view is the page's one record of it
+  (slice 4: the page holds no second copy).
 
 The page's `show(view)` is what turns an act's answer into motion (item 2 above). A click on the stage that the
 wire has not vetoed (a press that never moved `DRAG_SLOP_PX`, L115), that is not on a label (`event.target
-.closest('a')`) and that arrives while no glide is in flight is the table's *click*: the page unprojects the point,
-`aim()` names the slab, and `show(snap(…))`.
+.closest('a')`) and that arrives while no glide is in flight is the table's *click*: `show(snap(resting, { act:
+'click', point }, …))`, the snap aiming through the model's own `rayThrough()` — the one inverse of the projection, so
+the renderer carries no unproject of its own (slice 4).
 **OrbitControls is not used** — under A there is no free camera for it to control: its orbit is an azimuth the
 house drag act sets in one line, its pan is gone, its zoom was gone in revision 4, and its pointer and wheel
 listeners on the same canvas would race the house wire's for every press. The operator's ruling 1 named the
@@ -807,7 +837,7 @@ WebGL. New files under `server/public/js/`:
 | `building/building-acts.js` | none | the 3-D act set the house wires are given (§ 3.3): `pan()`, `zoom()`, `pinch()`, `drag()`, `zoomStep()`, `camera()`, `arrived()`, each over `snap()` and the two buckets (`wheelBucket()`, `pinchBucket()` — pure over an explicit bucket; the acts hold the buckets, the resting view — set by `drag()` on a turn and by `arrived()` — the mute and the last event's time); a line- or page-mode wheel event a discrete notch; given a clock (`{ now }`) and a `gliding` predicate; `GESTURE_GAP_MS` | `building-acts-probe.mjs` under node with a stub clock, `camera-wire-probe.mjs`'s shape (§ 8 item 3) |
 | `building/building-screen.js` | none | `BuildingScreen`: drains the journal once (`LobbyScreen#render()`'s shape, L162–186: `building.layout` applied, the layout fetched once after the first applied snapshot), runs ONE `DeskFloor` over every held seat with `reduce: true`, holds one `FloorData` and prefetches every row on entry and on each layout change; **applies `room.map`** through `Building#applyRoomMap(entry, rendered)` with `rendered` = every room of every `plates()` row (D2 § 8.7's *a client applies a `room.map` only for a room it renders* — this screen renders every room), records the apply's line in the client's record as the floor screen does (`floor-screen.js` L657–667) and then loads **the applied room's tilesets alone** — `FloorData#roomTilesets(installId)`, one row of the press sequence's tileset step (`door-views.js` L74's call for one id) — never `prefetch()` again, which re-enters every room and re-requests every room whose last request failed (`wire/building.js` L234–247: *a room whose last request failed is fetched again whatever it holds*), so a `room.map` for one floor would have re-fetched another floor's failed map, which the fixture scripts one answer for (review round 3, minor 4); **the interface change**: `BuildingScreen#render()` is `applyRoomMap()`'s second screen caller (the floor screen's `#layoutActs()` is the first; the lobby applies none, `lobby-screen.js` L23) and the first whose `rendered` set is the whole building, so a re-saved or recovered map refreshes its slab on the next render; and per `plates()` row: `composeFloor()` → the frame → `buildScene(frame, sceneInput(art, docs))` with `effects: []`, `previous` empty, the in-flight members empty, `maps` from `roomMaps()`, `hallway` the row's, `tilesets` the `FloorData`'s, `failed` this screen's set — fed by every floor's painter through its `failed` callback, so a theme or character a slab could not draw is among that floor's scene's failed assets and on the building's strip, as it is on the floor page's — then `deskLabels(scene, row)` (§ 3.4) → `{ row, frame, scene, labels, notices }`, the frame exactly the members `buildScene()` reads and `notices` the floor page's for that floor; returns `{ floors, stack: stackModel(…), strip, failure, statement, layout }` (slice 3: the first draft's top-level `notices` had no writer and was dropped), and takes the stage (`surface`, `resize()`), which the storey is derived from. No camera (the view is the page's and holds no state the screen reads), no ride, no panel | `fleet-client-probe.mjs` gains a `building` entry beside `floor` and `lobby` (one renderer per scenario, L519's rule), which injects one rejected theme as the `floor` entry does (L669); AT-D3-37 |
 | `building/floor-picture.js` | DOM (hidden hosts, canvas, `<img>`); `tokenNames()` and `pictureSvg()` pure | one painter per floor over a hidden `<div>` in `#building-pictures`, each **`createPainter({ host, omit: new Set(['nameplate']), characters, themes, failed, select: () => {}, house, clock })`** — every member `floor/main.js` L411–423 hands its own painter but `ride` (defaulted) and `select` (required at L249, a no-op here: the building view opens no panel), from `artInputs()`'s art; round 4's minor 8: the short form in revision 4 would have thrown at `characters.poseFrames` (`painter.js` L368); the rasterisation of § 3.2 at `textureScale()`'s scale — the focused slab at `focusScale()`, the rest at 1 — each canvas kept in `#building-pictures` with `data-floor` (it is its texture's `image`, and the browser leg reads the page's own pixels there, § 8 item 5); the compare that skips an unchanged (SVG, scale) pair | `picture-probe.mjs` for the two pure functions; the browser leg for the rest |
-| `building/stack-paint.js` | **Three.js** | the renderer over `#building-canvas`, the slab meshes (`BoxGeometry`, a `MeshBasicMaterial` per face — the top face the floor's `CanvasTexture`, the others the sheet's slab token), the ground slab, lights (none: unlit materials, the drawings carry their own light), the camera applied from a pose (`position.set()`, `lookAt()`) on every `apply`, `setPixelRatio(devicePixelRatio)`, the pointer-to-world ray (`unproject`) handed to `aim()`, `resize()`, and the projector (`Vector3.project`) the labels module docks with. **No OrbitControls** (§ 3.3) | the browser leg |
+| `building/stack-paint.js` | **Three.js** | the renderer over `#building-canvas`, the slab meshes (`BoxGeometry`, a `MeshBasicMaterial` per face — the top face the floor's `CanvasTexture`, the others the sheet's slab token), the ground slab, lights (none: unlit materials, the drawings carry their own light), the camera applied from a pose (`position.set()`, `lookAt()`) on every `apply`, `setPixelRatio(devicePixelRatio)`, `resize()`, and the projector (`Vector3.project`) the labels module docks with — no unproject: a click aims through the model's `rayThrough()` inside `snap()` (§ 3.3) **No OrbitControls** (§ 3.3) | the browser leg |
 | `building/labels.js` | DOM (`#building-floors`, `#building-view-status`) | the list — floors, their notices, their desks — and the one docking function: `data-home="stage|flow"`, each entry's anchor through `labelCorner()` / `worldOf()`, projected by the paint's projector on every applied camera and on resize, culled with `.visually-hidden` by `labelsShown()` over `cullOverlaps()` (the label widths measured once per text, the focused label leading), the label's font from `FONT_NAME`; the *Read this floor* link's `hidden` and `href` by `readFloorLink()`; the `focusin` that — **only when `event.target.matches(':focus-visible')`** — snaps to a label's floor or leads the cull, the leader read from `activeElement` (arrival, `focusin`) or `relatedTarget` (`focusout`); the status line's text on arrival | the browser leg: each entry's `data-home`; the top floor's desk labels `.visually-hidden` at the overview and un-culled after a wheel stream over its slab; a culled label is focusable and not `display: none`; on a below-bound stage the leg derives from the probe's own cull, the link shown and no two drawn boxes intersecting |
 | `building/main.js` | DOM entry | `livePage()`, the ids, the screen, the pictures, the paint, `cameraGestures()` and `cameraKeys()` / `offerKeys(…, '+ - ArrowLeft ArrowRight')` on `#building-stage` with the 3-D acts, `cameraView(apply, { between, onArrive })` and the page's `show` that drops every answer while `gliding()`, sets the resting view on a turn, writes `data-gliding="true"` and glides on a pose change (§ 3.3), the slab click, the labels, the WebGL check | `BuildingPageWiringTest` (ids both ways; the log handed to the screen and used nowhere else — `LobbyPageWiringTest`'s shape; `cameraGestures(` and `cameraKeys(` each called once, on the stage; `view.gliding()` read in the page's `show`; `OrbitControls` nowhere) |
 
@@ -980,8 +1010,10 @@ own graph test (§ 8) is the first.
 
 Three.js has required WebGL 2 since its WebGL 1 support was removed (r163, per its release notes — the coder
 confirms at the pinned version by reading `WebGLRenderer`'s context request, which throws without one). Before constructing anything,
-`main.js` asks `document.createElement('canvas').getContext('webgl2')`; on `null` it writes the model's one
-statement into `#building-statement` — *this browser offers no WebGL 2, so the building is not drawn; the floors
+`main.js` asks `document.createElement('canvas').getContext('webgl2')` (r187's `WebGLRenderer` asks for `'webgl2'` and
+throws without it — read in the vendored `three.module.js`, slice 4); on `null` it writes the model's one
+statement into `#building-webgl` (a status line of its own: `#building-statement` is § 9 F4/F5's store statement, as
+`#floor-statement` is on the floor) — *this browser offers no WebGL 2, so the building is not drawn; the floors
 are listed below* — leaves `#building-canvas` and the camera row hidden, leaves the list in flow
 (`data-home="flow"`), paints no picture and constructs no painter. The list is the whole page then, and it is
 the same list the drawn page docks to its slabs (§ 3.4), so no second rendering exists. A renderer that **loses**
@@ -1185,9 +1217,10 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
    the camera row's buttons, `cameraView(` called with `between` and `onArrive` options and `view.gliding()` read in
    the page's `show`, `matches(':focus-visible')` in `labels.js`'s `focusin`, `OrbitControls` nowhere under
    `building/`, `createPainter(` called with `omit` in `floor-picture.js` and without it in `floor/main.js`.
-5. **The browser leg** — `tools/design/building-view.browser.mjs`, in `design-doc-verifiers.yml`'s `browser-smoke`
-   job after the `starts` row, on the pinned shell: the served `/building` (`render-floor-view.php building`) fed
-   the `floor_rides` run as `floor-ride.browser.mjs` feeds the lobby. The still properties: no uncaught exception;
+5. **The browser leg** — `tools/design/building-view.browser.mjs`, its static rows (`still`, `no-webgl`) in
+   `design-doc-verifiers.yml`'s `browser-smoke` job after the `starts` row, on the pinned shell: the served `/building`
+   (`render-floor-view.php building`) fed the `building_stack` run through `served-pages.mjs`, the rig it shares with
+   `floor-ride.browser.mjs` (revision 10). The still properties: no uncaught exception;
    the stream asked for; `#building-canvas` holds a WebGL 2 context and **`getContext('2d')` on it answers `null`**
    (a canvas holding a context of one kind refuses another; the first draft compared a bare canvas's context with
    itself — review round 3, minor 8); one `.floor-scene` SVG per composed floor under `#building-pictures` with **no
@@ -1294,8 +1327,10 @@ records that run** — a leg whose plant has not been seen red is not done.
 - **Paint and rasterisation time.** Every render paints N floors in full and — since a staffed floor's text carries
   ages (§ 3.2) — re-rasterises nearly every one, awaited inside the render: a delta storm could request several
   renders a second. `requestRender()`'s coalescing (`live-page.js`) bounds renders to one at a time; nothing else
-  does until measured — the browser leg prints the per-floor paint and rasterise times, and a figure over 100 ms per
-  floor on the pinned shell is the trigger to add a per-floor minimum interval (a seat ruling then).
+  does until measured — and a figure over 100 ms per floor on the pinned shell is the trigger to add a per-floor
+  minimum interval (a seat ruling then). **Measured at slice 4 (revision 10): a render of two pictured floors held the
+  seat's headless shell's main thread for 300–1,800 ms — the trigger has fired**; the browser leg's `stream` row reds
+  on it, and the ruling is the seat's.
 - **The stack moves under the viewer.** `s` is re-derived when a slab's extent changes (§ 3.1) — a seat overflowing
   onto the strip makes its floor's slab deeper and can move every storey — so the stack re-lays out while a viewer
   looks at it. § 3.3's resize rule re-applies the resting pose at once; what is not defended is the jump itself,

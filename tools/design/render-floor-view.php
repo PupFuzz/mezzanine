@@ -17,7 +17,10 @@
  * with a FIXTURE token (never a minted one), the button's ingest URL derived by the controller's own
  * `tokenFileIngestUrl()` from `app.url` — the second argument, `https://mezzanine.example` when absent.
  *
- *   php tools/design/render-floor-view.php [floor|dashboard|login|console|tokens-issued [<app.url>]]
+ * `building-view.browser.mjs` (card#13033) needs the building view (`building`), the same way — through the layout, as the
+ * route serves it.
+ *
+ *   php tools/design/render-floor-view.php [floor|dashboard|login|console|building|tokens-issued [<app.url>]]
  */
 
 use App\Admin\ConsoleModules;
@@ -53,6 +56,7 @@ if ($which !== 'floor') {
 echo match ($which) {
     'floor' => view('floor', ['floor' => 'aimla', 'seat' => null])->render(),
     'dashboard' => view('dashboard')->render(),
+    'building' => view('building')->render(),
     'login' => view('auth.login')->render(),
     'console' => view('console.index', ['modules' => ConsoleModules::all(), 'active' => null])->render(),
     'tokens-issued' => (function () use ($argv): string {
