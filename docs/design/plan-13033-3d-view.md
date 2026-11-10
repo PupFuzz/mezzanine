@@ -83,6 +83,14 @@ shape, and `camera-view.js`'s header is a changed file (m5); a line- or page-mod
 (m6, § 12 item 22); READING ORDER is defined once for the list and the cull (m7); and the leftovers and the three
 hygiene items.
 
+**Revision 9 (2026-11-09, with slice 2) moves every run record from the PR body to the card.** `bin/pr-body-lint.py`
+holds a change PR's body to the closed section set (Highlights, Upgrade warnings, Bundled, Release artifacts), so a
+plant run, a transfer size or a wall-time delta "in the PR body" was a record the CI gate refuses: § 1's re-run
+readings, § 5's transfer size and decision rule, § 8's preamble, § 9's preamble and item 2 and § 12 item 21 now say
+*on the card*. Slice 2 also found the root `.gitignore`'s unanchored `vendor/` ignoring `server/public/js/vendor/`
+and re-includes that one directory (§ 5), names the header's version line `package version` (§ 5), and moves
+`/building` in `EveryModuleAPageLoadsIsVersionedTest::pages()` to slice 4, where the route lands (§ 9).
+
 
 
 
@@ -133,7 +141,7 @@ L2566 `y = span.y − BAND_H` — and `scene.extent` is the union of band, exten
 frame, L121, L1565–1570; review round 3's minor 5 found it missing from this sentence), desks and strip
 (L1624–1630), so the shipped default's slab is **1,784 × 864 scene px**, and deeper by the overflow strip's gap,
 header and row only when `frame.overflow.length > 0` (L1503) — **one figure, used everywhere below**). ⚠ **Not re-run for this plan**: the worktree carries no `.env`, and the live checkout is not
-this plan's to enter. The coder re-runs those three commands before slice 3 and records the readings in the PR.
+this plan's to enter. The coder re-runs those three commands before slice 3 and records the readings on the card.
 
 Each floor's **drawing** is `floor/scene.js`'s `buildScene(frame, input)` painted by `floor/painter.js` — the
 band (back wall, clock, windows, elevator), each room's plane and scenery, the desks with their characters, labels
@@ -830,14 +838,14 @@ repos/mrdoob/three.js/releases/latest`). The package's `build/` directory at tha
 free camera for it to control (§ 3.3) — and with it goes its `from 'three'` bare specifier, the one reason the house
 import map would have needed an entry.
 
-**Where.** `server/public/js/vendor/three/three.module.js`, `three.core.js` and `LICENSE` (the package's, 1,081 B — *Copyright © 2010-2026 three.js authors*, the MIT text). Under `public/`,
+**Where.** `server/public/js/vendor/three/three.module.js`, `three.core.js` and `LICENSE` (the package's, 1,081 B — *Copyright © 2010-2026 three.js authors*, the MIT text). The root `.gitignore`'s unanchored `vendor/` (Composer's and every other install directory) matches this path, so the file re-includes `/server/public/js/vendor/` by name — the one `vendor/` that is source. Under `public/`,
 so `PublicAsset::moduleMap()` lists each by its URL and versions it by mtime with no change
 (`EveryModuleAPageLoadsIsVersionedTest`'s population is the files on disk). The payload is about 2.05 MB of
 unminified JavaScript on the building page and nowhere else (`three.module.js` imports `three.core.js`; no other
 page imports either). ⚠ **Whether Apache compresses it is unverified**: `mod_headers` is known absent on the
 sandbox (`PublicAsset.php`'s header, 2026-10-20) and `mod_deflate` was not checked; the coder measures
-`curl -sI -H 'Accept-Encoding: gzip' <sandbox>/js/vendor/three/three.core.js` in slice 2 and records the transfer
-size. No minification step: the repository builds nothing (§ 1.2), and a minifier would be a build.
+`curl -sI -H 'Accept-Encoding: gzip' <sandbox>/js/vendor/three/three.core.js` once slice 2 is deployed and records
+the transfer size on the card, beside slice 2's local `gzip -6` figure. No minification step: the repository builds nothing (§ 1.2), and a minifier would be a build.
 
 **Pin.** Each vendored file gets the house vendor header — the form `bin/pr-body-lint.py` L1–60 carries: upstream
 repo, path, the version and the published commit, the upstream file's sha256, the declared local edits (**none**
@@ -845,9 +853,9 @@ for both) — and a row in `bin/vendor-pin-check.sh`'s manifest. That script der
 line from the first that is neither blank nor a `#` comment (its header, *WHAT IT PINS*); a JavaScript header is
 `//` lines, so the manifest row grows a fourth column, the comment leader (`#` for the rows it has, `//` for these),
 and `BODY_AWK` takes it — the one primitive extended, not a sibling script. **The selftest's arms take the leader
-too**: today the RED arm writes its mutated body line as `# vendor-pin-check selftest: …` (L236), and the GREEN arm
-requires line 2 to begin `#` and writes its mutated header line as `# …` (L247–253); with `//` rows those three
-sites read the row's leader, or the GREEN arm would refuse every JavaScript row and the RED arm would plant a
+too**: before slice 2 the RED arm wrote its mutated body line as `# vendor-pin-check selftest: …`, and the GREEN
+arm required line 2 to begin `#` and wrote its mutated header line as `# …`; with `//` rows those three sites read
+the row's leader, or the GREEN arm would refuse every JavaScript row and the RED arm would plant a
 syntax-neutral line the body sha still catches but for the wrong reason. With no local edit the body IS the
 upstream file byte for byte, so the body sha256 equals the published file's digest: jsDelivr publishes each as a
 base64 SHA-256 — `three.module.js` `EE9WFFiZciCUVWSQ14eq4GF8wvwzgvMd8C1yTqGu40E=`, `three.core.js`
@@ -869,7 +877,7 @@ inside the maintenance window (L4260–4264) and `npm run build` (L4268), so eve
 `dist.fileCount` from `https://registry.npmjs.org/three/0.187.0`, read 2026-11-09), served by nothing and imported
 by nothing (the test suite runs with no `node_modules`, `php-tests.yml` L103; the page imports the vendored copy).
 A first draft of this paragraph said nothing installs it; review round 2 (minor 2) read the deploy. The vendor header's version is held equal to the lockfile's by a check in
-`bin/vendor-pin-check.sh`'s run (a row-level comparison beside the sha: the header's `plugin version` line against
+`bin/vendor-pin-check.sh`'s run (a row-level comparison beside the sha: the header's `package version` line against
 `package-lock.json`'s `node_modules/three` version), so the audited version is the served one. Accepting the gap on
 the record was considered and rejected: a rendering library that reads no network input is a low-risk surface, but
 a declared-and-checked one costs one lockfile entry.
@@ -884,13 +892,14 @@ withdrawn (review round 2, minor 4); should an upstream version ever match one, 
 and allowed by name in the test's allow-list, which is how it treats its own exceptions. `CoordModuleWiringTest` and
 `DrillDownModuleWiringTest` walk the tree for a second `export function clockTime(` and for the drill-down's imports
 — a vendored file cannot carry the anchor they look for. `EveryModuleAPageLoadsIsVersionedTest` includes it (above)
-and **gains `/building` in `pages()`** (L272–277 hardcodes the lobby, the floor, the console and enrolment; without
-the row the building page's module scripts would go unversioned unchecked — review round 2, minor 5).
+and **gains `/building` in `pages()`** with the route, in slice 4 (`pages()` hardcodes the lobby, the floor, the
+console and enrolment; without the row the building page's module scripts would go unversioned unchecked — review
+round 2, minor 5). Until the page exists the vendored files are in the test's population as files on disk, and every
+existing page's import map must version them.
 `DrivesAShippedClientModule::mutatedModules()` copies the WHOLE `public/js` tree for every planted control (L235, for
-the `../` imports): `grep -rc 'mutatedModules(' server/tests` counts **487** call sites today, and the tree grows from
-1.35 MB (`du -sb server/public/js`) to about 3.5 MB with the vendored files, so a suite run writes about 1.7 GB of
-copies instead of 0.66 GB. **The decision rule** (a seat ruling, § 12): the slice-2 PR body states the `php-tests`
-job's wall time before and after; a delta **under 5 %** of the baseline keeps the plain copy; over it,
+the `../` imports): `grep -rc 'mutatedModules(' server/tests` counts the call sites, and the vendored files add about
+2.1 MB to the tree each call copies (`du -sb server/public/js`). **The decision rule** (a seat ruling, § 12): slice 2
+records on the card the `php-tests` wall time before and after; a delta **under 5 %** of the baseline keeps the plain copy; over it,
 `mutatedModules()` **symlinks** `vendor/` into each copy instead of copying it — nothing is ever planted under
 `vendor/`, and a symlink resolves the same relative imports, so no probe learns a second layout. **The one
 exclusion that stands**: none. `ModuleSpecifiers` walks reach it only from `building/main.js` (the building page's own graph
@@ -977,7 +986,7 @@ stream's length and its timing are chosen at implementation, by running the leg,
 leg needs a precondition — a stage on which the cull culls at least one label; a point that `aim()` names as another
 floor from the destination pose — the leg DERIVES it from the model's own functions over the fixture and FAILS AS A
 CONTROL if it finds none. Each slice's acceptance (§ 9) is: every plant its legs name is run and seen red in that
-PR, and the PR body records the run — canon #9, a check is evidence only once it has been seen to fail. The figures
+PR, and the card records the run (a change PR's body holds only the sections `bin/pr-body-lint.py` allows) — canon #9, a check is evidence only once it has been seen to fail. The figures
 in §§ 3.1–3.4 are the design's derivations (`occl4.py`, `snap5.py`) and stay; none is a test assertion.
 
 Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClientModule`), and one browser leg:
@@ -1207,8 +1216,8 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
 Each slice is one PR to `dev`, titled `card#13033 [no-close]: …` until the last, which `(closes card#13033)`
 only when the operator has read the sandbox (§ 13 ruling 5's reading); each carries
 `docs/changelog.d/13033-<slug>.md` and the `FLOOR.md` landing marker for its half of row 47. **Every slice's
-acceptance includes § 8's rule (§ 12 item 21): every plant its legs name is run and seen red in the PR, and the PR
-body records that run** — a leg whose plant has not been seen red is not done.
+acceptance includes § 8's rule (§ 12 item 21): every plant its legs name is run and seen red in the PR, and the card
+records that run** — a leg whose plant has not been seen red is not done.
 
 1. **The hoists, the painter's two options, and the two wire extensions** (`floor-compose.js` with
    `composeFloor()`, `artInputs()`, `roomMaps()`, `sceneInput()`; `floor-data.js` with `roomTilesets()`; the
@@ -1217,16 +1226,17 @@ body records that run** — a leg whose plant has not been seen red is not done.
    import-graph bounds of the lobby (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`) unchanged.
 2. **Three.js vendored and pinned**: the two files and `LICENSE`, the vendor headers, `vendor-pin-check.sh`'s leader
    column with its `--selftest` seen red on a planted body edit, `docs/ATTRIBUTION.md`'s section, `three` in
-   `package.json`'s devDependencies with the header-to-lockfile version check and `/building` in
-   `EveryModuleAPageLoadsIsVersionedTest::pages()`; the transfer-size measurement and the `php-tests` wall-time
-   delta (§ 5's decision rule) in the PR body.
+   `package.json`'s devDependencies with the header-to-lockfile version check, and the root `.gitignore`'s
+   re-include of `server/public/js/vendor/`; the transfer-size measurement and the `php-tests` wall-time delta
+   (§ 5's decision rule) on the card.
 3. **The model, the acts and the screen**: `stack-model.js` (the storey with the ground in its population, the two
    poses, the cylindrical transition, the snap table, the top-face aim, the labels' corner and set, the focus
    scale), `building-acts.js` (the 3-D act set with its two buckets, its mute and its clock), `building-screen.js` (with `deskLabels()` and
    the one-room tileset step after a `room.map`), the probe's `building` entry (with its rejected theme), the
    `building_stack` run in `fx-camera.json`, tests 2–3, `FLOOR.md`'s AT-D3-37 red list confirmed against the plants.
 4. **The page**: route, view, `main.js`, `floor-picture.js` (the focus scale), `stack-paint.js`, `labels.js`, the
-   house wires on the stage with the 3-D acts, the page's gated `show`, the wire test's rename (§ 4's ten files),
+   house wires on the stage with the 3-D acts, the page's gated `show`, `/building` in
+   `EveryModuleAPageLoadsIsVersionedTest::pages()` (§ 5), the wire test's rename (§ 4's ten files),
    the hint partial's slot, the stylesheet
    (the stage, the labels), the status line, the entry links, test 4, the browser leg with its plants,
    `render-floor-view.php building`; the sandbox deployed and a screenshot on the card for the operator's reading —
@@ -1438,7 +1448,7 @@ would do, stated now so stage 1 builds nothing that stage 2 must undo:
     fixture is the defect class. The fixture, the viewport, the stream's length and its timing are chosen at
     implementation by running the leg; a precondition a leg needs is derived from the model over the fixture and is
     a control failure if absent; and every slice's acceptance is *every plant run and seen red in this PR, the run
-    recorded in its body* (§ 8's preamble, § 9).
+    recorded on the card* (§ 8's preamble, § 9; revision 9).
 22. **A line- or page-mode wheel event is a discrete notch** and fires alone; the bucket is for pixel-mode streams
     (§ 3.3) — the alternative, resetting the bucket only after a snap, was not taken because it would let two
     unrelated nudges minutes apart add up to a snap.

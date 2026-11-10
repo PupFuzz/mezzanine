@@ -13,11 +13,13 @@
 # happened to be TRUE — it is pinned here too, because "true today" is not a check.
 #
 # WHAT IT PINS. The BODY only, never the header. Body = from the first line after line 1 (the
-# shebang) that is neither blank nor a `#` comment (indented `   # …` included), to EOF —
-# DERIVED at run time by the awk below and never written down as a line number, so the headers
-# above it are free to grow (and they have) without touching the pin. A header edit is expected
-# and passes; a body edit reds. That split is the whole design: the header is mezzanine's to
-# write, the body is not. Blank lines are tolerated as header by the PIN so a re-wrapped header
+# shebang, or in a file with none the header's own first line) that is neither blank nor a comment
+# in the row's COMMENT LEADER (indented `   # …` included), to EOF — DERIVED at run time by the
+# awk below and never written down as a line number, so the headers above it are free to grow (and
+# they have) without touching the pin. The leader is the manifest's fourth column: `#` for a
+# script or a workflow, `//` for a JavaScript module, whose header is `//` lines. A header edit is
+# expected and passes; a body edit reds. That split is the whole design: the header is mezzanine's
+# to write, the body is not. Blank lines are tolerated as header by the PIN so a re-wrapped header
 # cannot shift it — but do NOT add one to the mover's header: its own `--help` prints the header
 # up to the first non-`#` line, blanks INCLUDED, so a blank truncates the help text while this
 # check stays green. That is the mover's contract, not this one's; this check does not see it.
@@ -31,6 +33,16 @@
 # private, and a public runner cannot clone it. What stands in for it is the sha — any body
 # edit reds and a human reads the diff. So a green here means "the body is what this repo last
 # DECLARED", never "the body matches upstream". Said plainly rather than left to be inferred.
+# One set is the exception: `server/public/js/vendor/three/*.js` declare NO local edit, so each
+# body IS the published file and its pin is the digest jsDelivr publishes for it — for those rows a
+# green does mean "the body matches upstream", re-derivable offline from each file's own header.
+#
+# AND ONE ROW-LEVEL VERSION LEG. A row in the VERSIONS table below names a lockfile entry; the
+# check reds when the `package version` line in that file's HEADER and the lockfile's version
+# disagree. With the body pinned to the published file of the version the header names, that
+# makes the version the dependency audit reads (`server/package-lock.json`) the one a page is
+# served — so long as a re-vendor re-derives the header and the pin together, which no check here
+# can see.
 #
 # WHAT A RED MEANS. Not "revert it" — the declared local edits are deliberate and
 # correct. It means the body changed, and everything that describes the body must be brought
@@ -41,7 +53,8 @@
 # WHY NOT `git diff` AGAINST UPSTREAM. Upstream is a private repo; a public CI runner cannot
 # clone it. The sha is the offline stand-in — it cannot tell you WHAT changed, only that
 # something did, which is the signal that was missing. The pin commit in each manifest row is
-# provenance for a human, not something this script fetches. No network, no git, stdlib only.#
+# provenance for a human, not something this script fetches. No network and no git: bash, awk,
+# and python3's stdlib `json` for the lockfile read.
 #
 # ⭐ ONE VENDORED SET HAS A PIN THIS SCRIPT DOES NOT WRITE, AND IT IS THE BETTER ONE.
 # `bin/pr-body-lint-fixtures/*` has NO row here and needs none. Those files are captured PR bodies
@@ -66,7 +79,7 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# --- The manifest: <repo-relative path>|<pin commit it was vendored from>|<sha256 of its BODY>
+# --- The manifest: <repo-relative path>|<pin commit it was vendored from>|<sha256 of its BODY>|<comment leader>
 # Re-pin with the command the failure message prints. Never re-pin without also updating the
 # declared-local-edits list in that file's own header AND the FRAGMENTS table below. Those two
 # are the same list written twice, and this check enforces it in ONE direction only: every
@@ -84,13 +97,15 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # no behaviour; it is spelled out because a column that silently holds two kinds of thing is how a
 # reader gets a wrong answer confidently.
 MANIFEST=(
-  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|796695b361003301c8b79f3f9606d6bcb5f4b002faa44f2b4120f687aa0ac973"
-  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|258d8e7f083b6db44381e7bd1d8136d44a6914868db54b1809ec63227391d073"
-  "bin/pr-body-lint.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|5711a19e4f7af120b969caa1ed432290f8dac1ec64dc27e50d742f8f2c0e3913"
-  "bin/pr-body-lint.selftest.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|fb7e8ecf503221a8a96ed45f2e47221bb09a47f9bcdad9fc75af8b69aae38a00"
-  ".github/workflows/dependency-audit.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|71b68902619fe84a14990a124a1af335f5afd0de41f348d20f6f9d3d10054239"
-  ".github/workflows/dependency-ref-matrix.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|1a867e8435290a5d0f1d385c9501e09d65d4a4e841fb61b1951e6eae57d29705"
-  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|2c82aab9280da78d93fc8423ba5050915e067edd42b9104eef316c60be2a4241"
+  "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|796695b361003301c8b79f3f9606d6bcb5f4b002faa44f2b4120f687aa0ac973|#"
+  "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|258d8e7f083b6db44381e7bd1d8136d44a6914868db54b1809ec63227391d073|#"
+  "bin/pr-body-lint.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|5711a19e4f7af120b969caa1ed432290f8dac1ec64dc27e50d742f8f2c0e3913|#"
+  "bin/pr-body-lint.selftest.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|fb7e8ecf503221a8a96ed45f2e47221bb09a47f9bcdad9fc75af8b69aae38a00|#"
+  ".github/workflows/dependency-audit.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|71b68902619fe84a14990a124a1af335f5afd0de41f348d20f6f9d3d10054239|#"
+  ".github/workflows/dependency-ref-matrix.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|1a867e8435290a5d0f1d385c9501e09d65d4a4e841fb61b1951e6eae57d29705|#"
+  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|2c82aab9280da78d93fc8423ba5050915e067edd42b9104eef316c60be2a4241|#"
+  "server/public/js/vendor/three/three.module.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|104f56145899722094556490d787aae0617cc2fc3382f31df02d724ea1aee341|//"
+  "server/public/js/vendor/three/three.core.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|613e370f76638fdef83926642bf256dc9615684922de1ce1f63a8583e5d78578|//"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>
@@ -124,22 +139,55 @@ FRAGMENTS=(
   "bin/dependency-audit.selftest.sh|(2) the card#11434 comment carries no private coordination reference|# card#11434 (backend) within card#11604:"
 )
 
-# The ONE spelling of the body rule. Both files use it; the failure message quotes it verbatim
-# so a human re-derives the sha exactly the way this script did.
-BODY_AWK='NR>1 && $0 ~ /[^[:space:]]/ && $0 !~ /^[[:space:]]*#/ {print NR; exit}'
+# --- The version leg: <repo-relative path>|<lockfile, repo-relative>|<the lockfile's packages key>
+# The file's header carries a `<leader>   package version   <version>` line; the lockfile entry's
+# `version` must equal it. A vendored file with no row here has no package version to hold.
+VERSIONS=(
+  "server/public/js/vendor/three/three.module.js|server/package-lock.json|node_modules/three"
+  "server/public/js/vendor/three/three.core.js|server/package-lock.json|node_modules/three"
+)
+
+# The ONE spelling of the body rule, `lead` being the row's comment leader, matched literally.
+# Both files use it; the failure message quotes it verbatim so a human re-derives the sha exactly
+# the way this script did.
+BODY_AWK='NR>1 { s = $0; sub(/^[[:space:]]+/, "", s); if (s != "" && index(s, lead) != 1) { print NR; exit } }'
 
 # (`awk -- prog file` is not portable — the program text is already positional, so the path is
 # passed plain. Every path this is called with is absolute, so it can never read as an option.)
-body_start() { awk "$BODY_AWK" "$1"; }
+body_start() { awk -v lead="$2" "$BODY_AWK" "$1"; }
 
-# check_one <path> <expected-sha> [<label>] -> prints one line; 0 = ok, 1 = drift/unreadable.
+# header_version <path> <leader> <body start> -> the header's `package version` value, or nothing.
+# Read from the HEADER alone, so a body that happens to contain the phrase cannot answer for it.
+header_version() {
+  head -n "$(( $3 - 1 ))" -- "$1" | awk -v lead="$2" '
+    { s = $0; sub(/^[[:space:]]+/, "", s) }
+    index(s, lead) == 1 {
+      t = substr(s, length(lead) + 1)
+      if (match(t, /^[[:space:]]+package version[[:space:]]+/)) {
+        t = substr(t, RLENGTH + 1); split(t, a, /[[:space:]]+/); print a[1]; exit
+      }
+    }'
+}
+
+# lock_version <lockfile> <packages key> -> that entry's version, or nothing when it has none.
+lock_version() {
+  python3 -I -c '
+import json, sys
+try:
+    print(json.load(open(sys.argv[1], encoding="utf-8"))["packages"][sys.argv[2]]["version"])
+except (OSError, ValueError, KeyError, TypeError):
+    pass
+' "$1" "$2"
+}
+
+# check_one <path> <expected-sha> <label> <leader> -> prints its lines; 0 = ok, 1 = drift/unreadable.
 check_one() {
-  local f="$1" want="$2" label="${3:-$1}" n got body rc=0 row rf rwhat rfrag
+  local f="$1" want="$2" label="$3" lead="$4" n got body rc=0 row rf rwhat rfrag rlock rkey hv lv
   if [ ! -f "$f" ]; then
     printf 'MISMATCH %s — the manifest names a file that is not here\n' "$label"
     return 1
   fi
-  n="$(body_start "$f")"
+  n="$(body_start "$f" "$lead")"
   if [ -z "$n" ]; then
     printf 'MISMATCH %s — no body found: every line after the shebang is blank or a comment\n' "$label"
     return 1
@@ -167,15 +215,31 @@ check_one() {
       rc=1
     fi
   done
+
+  # The version leg: the header's declared version against the lockfile's, read from $ROOT.
+  for row in "${VERSIONS[@]}"; do
+    IFS='|' read -r rf rlock rkey <<<"$row"
+    [ "$rf" = "$label" ] || continue
+    hv="$(header_version "$f" "$lead" "$n")"
+    lv="$(lock_version "$ROOT/$rlock" "$rkey")"
+    if [ -n "$hv" ] && [ "$hv" = "$lv" ]; then
+      printf 'ok %s package version %s = %s %s\n' "$label" "$hv" "$rlock" "$rkey"
+    else
+      printf 'MISMATCH-VERSION %s — the header declares package version %s but %s has %s at %s\n' \
+        "$label" "${hv:-<none>}" "$rlock" "${lv:-<none>}" "$rkey"
+      rc=1
+    fi
+  done
   return "$rc"
 }
 
 # How to get back to green, printed on any red so nobody has to read this script to fix it.
 drift_advice() {
-  local f="$1"
+  local f="$1" lead="$2"
   cat >&2 <<EOF
 
-The body of $f no longer matches the sha its header declares.
+The body of $f no longer matches the sha its header declares — or, on a MISMATCH-VERSION line,
+its header's package version is not the lockfile's: move the two together.
 Nothing here says which of the two happened — you do:
 
   YOU FORKED IT (a deliberate local edit, like #51's two sites). Then ALL THREE:
@@ -193,50 +257,51 @@ Nothing here says which of the two happened — you do:
 
 Re-derive the sha with exactly:
 
-  tail -n +\$(awk '$BODY_AWK' $f) $f | sha256sum
+  tail -n +\$(awk -v lead='$lead' '$BODY_AWK' $f) $f | sha256sum
 
 EOF
 }
 
 run_check() {
-  local row f pin want rc=0
+  local row f pin want lead rc=0
   for row in "${MANIFEST[@]}"; do
-    IFS='|' read -r f pin want <<<"$row"
-    if ! check_one "$ROOT/$f" "$want" "$f"; then
+    IFS='|' read -r f pin want lead <<<"$row"
+    if ! check_one "$ROOT/$f" "$want" "$f" "$lead"; then
       rc=1
-      drift_advice "$f"
+      drift_advice "$f" "$lead"
     fi
   done
   return "$rc"
 }
 
 # --- --selftest: a pin nobody has seen fail is a decoration (canon #9). ------------------------
-# Three arms, all on COPIES: a body mutation MUST red the sha leg; a header-comment mutation
-# MUST NOT red anything; and deleting a declared edit MUST red the MISSING-EDIT leg. The middle
-# arm is the control for both legs — without it a check that reds on everything would pass the
-# other two and quietly make every header edit a merge blocker.
+# Four arms, all on COPIES: a body mutation MUST red the sha leg; a header-comment mutation
+# MUST NOT red anything; deleting a declared edit MUST red the MISSING-EDIT leg; and, on a row
+# with a VERSIONS entry, a changed header version MUST red the version leg. The second arm is the
+# control for the others — without it a check that reds on everything would pass them and
+# quietly make every header edit a merge blocker. Each arm writes in the row's comment leader.
 #
 # Every copy is built with head/tail/printf/grep rather than an in-place rewrite, so every byte
 # outside the mutated or deleted line is preserved exactly (including whether the file ends in
 # a newline).
 SELFTEST_TMP=""   # global on purpose: the EXIT trap fires after the function's locals are gone.
 run_selftest() {
-  local tmp row f pin want n total mid out rc fails=0 frow rf rwhat rfrag
+  local tmp row f pin want lead n total mid out rc fails=0 frow rf rwhat rfrag vrow
   SELFTEST_TMP="$(mktemp -d)"; tmp="$SELFTEST_TMP"
   trap 'rm -rf "${SELFTEST_TMP:-}"' EXIT
 
   for row in "${MANIFEST[@]}"; do
-    IFS='|' read -r f pin want <<<"$row"
-    n="$(body_start "$ROOT/$f")"
+    IFS='|' read -r f pin want lead <<<"$row"
+    n="$(body_start "$ROOT/$f" "$lead")"
     total="$(wc -l <"$ROOT/$f")"
     mid=$(( n + (total - n) / 2 ))   # a line in the MIDDLE of the body, not its edge
 
     # RED ARM — one line inside the body replaced.
     { head -n "$(( mid - 1 ))" -- "$ROOT/$f"
-      printf '%s\n' "# vendor-pin-check selftest: this body line was mutated"
+      printf '%s\n' "$lead vendor-pin-check selftest: this body line was mutated"
       tail -n +"$(( mid + 1 ))" -- "$ROOT/$f"
     } >"$tmp/body-mutated"
-    out="$(check_one "$tmp/body-mutated" "$want" "$f")" && rc=0 || rc=$?
+    out="$(check_one "$tmp/body-mutated" "$want" "$f" "$lead")" && rc=0 || rc=$?
     if [ "$rc" -eq 1 ] && [ "${out#MISMATCH}" != "$out" ]; then
       printf 'ok   %s — a body mutation (line %s) reds: %s\n' "$f" "$mid" "$out"
     else
@@ -245,16 +310,16 @@ run_selftest() {
     fi
 
     # GREEN ARM (the control) — comment line 2, well above the body, replaced.
-    if [ "$(sed -n '2p' -- "$ROOT/$f" | cut -c1)" != "#" ]; then
-      printf 'FAIL %s — line 2 is not a comment; the header arm cannot be built\n' "$f"
+    if [ "$(sed -n '2p' -- "$ROOT/$f" | cut -c1-"${#lead}")" != "$lead" ]; then
+      printf 'FAIL %s — line 2 is not a %s comment; the header arm cannot be built\n' "$f" "$lead"
       fails=$(( fails + 1 ))
       continue
     fi
     { head -n 1 -- "$ROOT/$f"
-      printf '%s\n' "# vendor-pin-check selftest: this HEADER comment was mutated"
+      printf '%s\n' "$lead vendor-pin-check selftest: this HEADER comment was mutated"
       tail -n +3 -- "$ROOT/$f"
     } >"$tmp/header-mutated"
-    out="$(check_one "$tmp/header-mutated" "$want" "$f")" && rc=0 || rc=$?
+    out="$(check_one "$tmp/header-mutated" "$want" "$f" "$lead")" && rc=0 || rc=$?
     if [ "$rc" -eq 0 ]; then
       printf 'ok   %s — a header-comment mutation still passes: %s\n' "$f" "$out"
     else
@@ -270,11 +335,30 @@ run_selftest() {
       IFS='|' read -r rf rwhat rfrag <<<"$frow"
       [ "$rf" = "$f" ] || continue
       grep -Fv -- "$rfrag" "$ROOT/$f" >"$tmp/frag-deleted" || true
-      out="$(check_one "$tmp/frag-deleted" "$want" "$f")" && rc=0 || rc=$?
+      out="$(check_one "$tmp/frag-deleted" "$want" "$f" "$lead")" && rc=0 || rc=$?
       if [ "$rc" -eq 1 ] && [ "${out#*MISSING-EDIT}" != "$out" ]; then
         printf 'ok   %s — deleting a declared edit reds MISSING-EDIT: %s\n' "$f" "$rwhat"
       else
         printf 'FAIL %s — deleting a declared edit did NOT red MISSING-EDIT (rc=%s): %s\n' "$f" "$rc" "$out"
+        fails=$(( fails + 1 ))
+      fi
+    done
+
+    # VERSION ARM — the header's `package version` value replaced and the body untouched, so the
+    # version leg is the one that must red, and the sha leg must stay quiet.
+    for vrow in "${VERSIONS[@]}"; do
+      [ "${vrow%%|*}" = "$f" ] || continue
+      awk -v lead="$lead" -v stop="$n" '
+        { s = $0; sub(/^[[:space:]]+/, "", s) }
+        NR < stop && index(s, lead) == 1 && s ~ /package version/ {
+          print lead "   package version   0.0.0-vendor-pin-check-selftest"; next
+        }
+        { print }' "$ROOT/$f" >"$tmp/version-mutated"
+      out="$(check_one "$tmp/version-mutated" "$want" "$f" "$lead")" && rc=0 || rc=$?
+      if [ "$rc" -eq 1 ] && [ "${out#*MISMATCH-VERSION}" != "$out" ] && [ "${out#*MISMATCH }" = "$out" ]; then
+        printf 'ok   %s — a header version the lockfile does not hold reds MISMATCH-VERSION\n' "$f"
+      else
+        printf 'FAIL %s — a changed header version did NOT red MISMATCH-VERSION alone (rc=%s): %s\n' "$f" "$rc" "$out"
         fails=$(( fails + 1 ))
       fi
     done
@@ -284,7 +368,7 @@ run_selftest() {
     printf 'vendor-pin-check --selftest: %s arm(s) FAILED — the real check below proves nothing.\n' "$fails" >&2
     return 1
   fi
-  printf 'vendor-pin-check --selftest: every arm behaved (bodies and dropped edits red, headers do not).\n'
+  printf 'vendor-pin-check --selftest: every arm behaved (bodies, dropped edits and header versions red; header comments do not).\n'
   return 0
 }
 
