@@ -61,7 +61,11 @@
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
  * row, through the real `placeDesk()` / `placeBubbles()`.
  *
- * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, fade, defects: [ … ] }`
+ * ⛔ THE PAINTER's `host` AND `omit` (card#13033): one staffed desk painted by the default painter and by one given a host
+ * of its own and `omit = {'nameplate'}` — the second draws no `.plate` rect and no `text.role-name`, and every other node
+ * of the desk, the chip's two among them, exactly as the first does, in its own host. `omit` carries the readings.
+ *
+ * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, fade, omit, defects: [ … ] }`
  * — `interns` counts each form painted, so a leg that painted nothing reads as such.
  */
 
@@ -1406,4 +1410,66 @@ const body_ = { apart: 0, recached: false, unheld: false };
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, intern_forms: internForms, fade, poses: [...poses].sort(), walker: walker_, body: body_, defects }));
+// ── the painter's `host` and `omit` (card#13033): a staffed desk painted into a host of the caller's, its nameplate member
+// left out — the plate's rect and the name's text gone, and every other node of the desk painted as the default painter
+// paints it, in the same order at the same attributes ───────────────────────────────────────────────────────────────
+const omit_ = { desk: null, plate: 0, name: 0, omitted_plate: 0, omitted_name: 0, chip: 0, omitted_chip: 0, nodes: 0, omitted_nodes: 0, own_host: false };
+{
+    const desk = desks.find((d) => d.elements.some((e) => e.member === 'nameplate' && e.kind === 'nameplate') && d.elements.some((e) => e.kind === 'chip')) ?? null;
+
+    if (desk === null) {
+        defects.push('omit: no planted desk carries both a nameplate and a chip — the omit leg reads nothing');
+    } else {
+        const deskGroup = (root) => walkOf(root).find((n) => n.name === 'g' && n.getAttribute('data-key') === desk.key) ?? null;
+        const signature = (n) => `${n.name} ${JSON.stringify(n.attrs)} «${n.textContent}»`;
+        const isPlate = (n) => n.name === 'rect' && classes(n).includes('plate');
+        const isName = (n) => n.name === 'text' && classes(n).includes('role-name');
+        const isChip = (n) => classes(n).includes('chip') || classes(n).includes('t-chip');
+        const own = new Node('div');
+
+        createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
+        const shipped = walkOf(deskGroup(host) ?? new Node('none')).slice(1);
+        createPainter({ host: own, omit: new Set(['nameplate']), characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
+        const omitted = walkOf(deskGroup(own) ?? new Node('none')).slice(1);
+
+        Object.assign(omit_, {
+            desk: desk.key,
+            plate: shipped.filter(isPlate).length,
+            name: shipped.filter(isName).length,
+            omitted_plate: omitted.filter(isPlate).length,
+            omitted_name: omitted.filter(isName).length,
+            chip: shipped.filter(isChip).length,
+            omitted_chip: omitted.filter(isChip).length,
+            nodes: shipped.length,
+            omitted_nodes: omitted.length,
+            own_host: deskGroup(own) !== null,
+        });
+
+        if (omit_.plate === 0 || omit_.name === 0) {
+            defects.push(`omit: the default painter drew ${omit_.plate} plate rect(s) and ${omit_.name} name text(s) for ${desk.key} — the control reads nothing`);
+        }
+
+        if (omit_.omitted_plate !== 0 || omit_.omitted_name !== 0) {
+            defects.push(`omit: with the nameplate omitted, ${desk.key} still drew ${omit_.omitted_plate} plate rect(s) and ${omit_.omitted_name} name text(s)`);
+        }
+
+        if (omit_.chip === 0 || omit_.omitted_chip !== omit_.chip) {
+            defects.push(`omit: ${desk.key}'s chip drew ${omit_.chip} node(s) by default and ${omit_.omitted_chip} with the nameplate omitted`);
+        }
+
+        const kept = shipped.filter((n) => !isPlate(n) && !isName(n)).map(signature);
+        const got = omitted.map(signature);
+
+        if (JSON.stringify(kept) !== JSON.stringify(got)) {
+            const at = kept.findIndex((sig, i) => sig !== got[i]);
+
+            defects.push(`omit: with the nameplate omitted, ${desk.key} painted ${got.length} other node(s) where the default painted ${kept.length}; first difference at ${at}: «${got[at] ?? 'nothing'}» for «${kept[at] ?? 'nothing'}»`);
+        }
+
+        if (!omit_.own_host) {
+            defects.push('omit: the painter given a host did not paint the desk into it');
+        }
+    }
+}
+
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, intern_forms: internForms, fade, poses: [...poses].sort(), walker: walker_, body: body_, omit: omit_, defects }));

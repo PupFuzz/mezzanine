@@ -13,7 +13,9 @@
  *   S1 `entering` at alpha · S2 `chosen('bravo')` · S3 bravo's map 503 · S3b bravo held at v1 under a failed refetch ·
  *   S4 bravo's map answering after `chosen` began (the wake and the one repaint) · S5 the cottage module absent ·
  *   S6 `charlie`'s two rooms, and again with a tileset the loader lacks · S7 a stop the stops do not offer ·
- *   S8 the press with `/api/building` answering 503, and again 401.
+ *   S8 the press with `/api/building` answering 503, and again 401 ·
+ *   S9 `floor/floor-data.js`'s `roomTilesets()` (card#13033): one room's held map's tilesets loaded, no room entered —
+ *   with another room's last request failed, which any re-entry would fetch again.
  *
  * `globalThis.location` names the floor page's own path throughout, so a painter that read it would read `alpha`.
  */
@@ -42,6 +44,7 @@ export async function doorViewLeg(JS, census, clipOf) {
     const themesDir = join(REPO, 'resources', 'floor', 'themes');
     const cabPaint = await import(js('floor', 'cab-paint.js'));
     const { DoorViews } = await import(js('floor', 'door-views.js'));
+    const { FloorData } = await import(js('floor', 'floor-data.js'));
     const { SCALE, ROOM_H: MODEL_ROOM_H, PARTITION_H } = await import(js('floor', 'door-view.js'));
     const { BAND_H, ELEVATOR } = await import(js('floor', 'floor-layout.js'));
     const { mapTiles, sceneryInput } = await import(js('floor', 'map-tiles.js'));
@@ -417,6 +420,33 @@ export async function doorViewLeg(JS, census, clipOf) {
             room_requests: Object.fromEntries(['bravo', 'charlie', 'charlie-2'].map((id) => [id, p.requests.filter((r) => r === `/api/building/rooms/${encodeURIComponent(id)}/map`).length])),
             layout_failure: p.building.layoutFailure,
             floors_kept: p.building.floors === floorsBefore,
+        };
+    }
+
+    // ── S9: one room's tilesets — alpha's (the shipped tileset), then charlie-2's (it and one more) — with bravo's map failed ──
+    {
+        const requests = [];
+        const base = fx.scripted(o, { alpha: { map: maps.alpha }, 'charlie-2': { map: fx.charlieMap(o, 496, true) } }, { fail: ['/rooms/bravo/'] });
+        const fetch = async (path, init) => { requests.push(path); return base(path, init); };
+        const building = new Building(fetch);
+        const tilesets = new tileset.TilesetLoader(fetch);
+        let wakes = 0;
+        const data = new FloorData({ building, tilesets, rows: () => ROWS, wake: () => { wakes += 1; } });
+
+        await building.enterRooms(['alpha', 'charlie-2', 'bravo']);
+        requests.length = 0;
+        await data.roomTilesets('alpha');
+        const alpha = [...requests];
+
+        requests.length = 0;
+        await data.roomTilesets('charlie-2');
+
+        out.s9 = {
+            bravo_failed: building.room('bravo')?.failure !== null && building.room('bravo') !== null,
+            alpha_requests: alpha,
+            charlie2_requests: [...requests],
+            owed: { alpha: [o.url], charlie2: [o.tilesetUrl('tiles/extra.tsx')] },
+            wakes,
         };
     }
 

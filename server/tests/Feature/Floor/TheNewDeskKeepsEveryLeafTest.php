@@ -521,6 +521,30 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
         $this->assertNotSame([], $swap($byPlace), 'CONTROL (interns keyed by their place in the row) did not red the reorder check');
     }
 
+    /**
+     * The painter's `host` and `omit` (card#13033, the building view's): a painter given a host paints into it, and one
+     * given `omit = {'nameplate'}` paints a staffed desk with no plate rect and no name text and every other node — the
+     * chip's, the facts', the monitor's, the character's — as the default painter paints it. The default painter's own
+     * drawing of the same desk is the control (`painter-probe.mjs`'s `omit` leg).
+     */
+    public function test_the_painters_omit_leaves_out_its_member_and_nothing_else(): void
+    {
+        $omitDefects = fn (array $run): array => array_values(array_filter($run['defects'], fn (string $d): bool => str_starts_with($d, 'omit:')));
+        $shipped = $this->painterRun();
+
+        $this->assertSame([], $omitDefects($shipped));
+        $this->assertGreaterThan(0, $shipped['omit']['plate'], 'the omit leg\'s control drew no plate');
+        $this->assertGreaterThan(0, $shipped['omit']['chip'], 'the omit leg\'s control drew no chip');
+
+        foreach ([
+            'omit read off the element\'s kind, not its member' => ['../floor/painter.js', '            if (omit.has(e.member)) {', '            if (omit.has(e.kind)) {'],
+            'omit skipping the chip too' => ['../floor/painter.js', '            if (omit.has(e.member)) {', "            if (omit.has(e.member) || (omit.size > 0 && e.kind === 'chip')) {"],
+            'the host option ignored' => ['../floor/painter.js', "    if (host === null) {\n        throw new Error('the painter has no host", "    host = document.getElementById('floor-drawing');\n\n    if (host === null) {\n        throw new Error('the painter has no host"],
+        ] as $what => $edit) {
+            $this->assertNotSame([], $omitDefects($this->painterRun(dirname($this->mutatedModules($edit)))), "CONTROL ({$what}) did not red");
+        }
+    }
+
     /** @return array{desks: int, painted: int, interns: array<string, int>, defects: list<string>} */
     private function painterRun(?string $jsRoot = null): array
     {

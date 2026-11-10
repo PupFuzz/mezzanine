@@ -10,8 +10,13 @@
  *
  * ⛔ THIS FILE DECIDES WHERE NOTHING GOES: it is the browser's frame clock and nothing else. Where the
  * camera goes and how long it may take — none at all under `prefers-reduced-motion`, where it cuts —
- * are the screen's (`glide_ms`); the steps between are `camera.js`'s `between()`. A glide is the
+ * are the screen's (`glide_ms`); the steps between are `camera.js`'s `between()`, unless the page gives its own
+ * (`between`, the building view's interpolation about its stack's axis — card#13033). A glide is the
  * viewer's and not the fleet's, so it takes no § 6.2 row.
+ *
+ * ⛔ ARRIVAL IS A GLIDE THAT RAN ITS LENGTH, OR A CUT. `onArrive(to)` is called once after the step that applied `to`
+ * (t ≥ 1), and once after a cut's `show(to)`; a glide that is interrupted never arrives. `gliding()` answers whether a
+ * glide is in flight. The floor and the lobby pass no options and read neither.
  *
  * ⛔ AN INTERRUPTED GLIDE STOPS WHERE IT IS: whatever interrupts it — a wheel the camera takes, a pinch, a
  * drag, a resize, another glide — shows its own camera from there. ⚠ Until card#12113 a glide could be
@@ -20,15 +25,19 @@
  * It is driven under `node` with a stubbed frame clock by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
  */
 
-import { between } from './camera.js';
+import { between as cameraBetween } from './camera.js';
 
 /**
  * @param {function(object): void} apply puts one camera on the drawing — the page's `viewBox` or transform
+ * @param {{between?: function(object, object, number): object, onArrive?: function(object): void}} [options]
+ *        `between` the step from `from` to `to` at `t` in [0, 1] (`camera.js`'s `between()` by default); `onArrive`
+ *        told the destination when a glide or a cut reaches it
  * @returns {{show: function(object): void,
  *            glideTo: function(object, object, number): void,
- *            current: function(object): object}}
+ *            current: function(object): object,
+ *            gliding: function(): boolean}}
  */
-export function cameraView(apply) {
+export function cameraView(apply, { between = cameraBetween, onArrive = () => {} } = {}) {
     let shown = null;
 
     /** The glide in flight — its frame request — or `null`. */
@@ -55,6 +64,7 @@ export function cameraView(apply) {
 
         if (ms === 0) {
             show(to);
+            onArrive(to);
 
             return;
         }
@@ -73,6 +83,7 @@ export function cameraView(apply) {
             }
 
             glide = null;
+            onArrive(to);
         };
 
         glide = { frame: requestAnimationFrame(step) };
@@ -88,5 +99,10 @@ export function cameraView(apply) {
         return shown;
     }
 
-    return { show, glideTo, current };
+    /** Whether a glide is in flight. */
+    function gliding() {
+        return glide !== null;
+    }
+
+    return { show, glideTo, current, gliding };
 }

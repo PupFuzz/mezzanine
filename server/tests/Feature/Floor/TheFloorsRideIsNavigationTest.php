@@ -722,7 +722,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         // attached for the page's own floor at every stop.
         $dir = $this->mutatedModules([$screen, "        if (answer !== null) {\n            this.#doorViews.prefetch();\n        }\n", '']);
         $this->assertNotSame([], $this->pressFetchDefects(...$this->withAndWithoutRide(self::RIDES, $dir)), 'RED (the press fetching nothing) did not bite');
-        $dir = $this->mutatedModules(['../floor/door-views.js', "    prefetch() {\n", "    prefetch() {\n        this.#building.fetchLayout();\n"]);
+        $dir = $this->mutatedModules(['../floor/floor-data.js', "    prefetch() {\n        const steps", "    prefetch() {\n        this.#building.fetchLayout();\n        const steps"]);
         // The refetch is a request the run scripts no answer for, so this control's runs admit an unscripted one.
         $floor = $this->fixture(self::RIDES)['floor'];
         $this->assertNotSame([], $this->pressFetchDefects($this->replay(self::RIDES, $dir, [], true), $this->replay(self::RIDES, $dir, ['floor' => ['ride' => []] + $floor], true)),
