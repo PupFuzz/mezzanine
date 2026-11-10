@@ -3,7 +3,8 @@
  * `tokenNames()` finds every token the painter's style reads, in both forms, and `pictureSvg()` writes each resolved one
  * once on the picture's root, leaves an empty one out, and sizes the root in place of the painter's percentages.
  * Driven by `Tests\Feature\Building\TheBuildingViewStacksTheFloorsTest` over the shipped tree or a mutated copy
- * (argv[2], the module tree's `building/` directory); prints `{ legs: { picture: [defects] }, printed }`.
+ * (argv[2], the module tree's `building/` directory); prints `{ legs: { picture: [defects], interval: [defects] }, printed }`
+ * — `interval` the per-floor minimum interval's gate (`pictureGate()`), under a stub clock.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: that the browser draws the picture with the palette it carries — the browser leg reads the
  * page's own canvas for that (`tools/design/building-view.browser.mjs`).
@@ -57,4 +58,42 @@ check(`pictureSvg()'s root does not carry each token once: ${root}`, (root.match
 check(`pictureSvg() writes an empty token: ${root}`, !root.includes('--gone'));
 check('pictureSvg() changed the drawing under its root', out.endsWith('<rect class="chip" width="100%"/></svg>'));
 
-process.stdout.write(JSON.stringify({ legs: { picture: defects }, printed: { painter_tokens: style.length, fallback_form: style.filter((t) => t.hasFallback).length } }));
+// The per-floor minimum interval (the seat's ruling of 2026-11-10): renders every 100 ms over a window, under a stub
+// clock, paint each floor at most once per interval — and a render inside an interval leaves the floor due when it ends.
+const interval = [];
+const WINDOW_MS = 10000;
+const gate = P.pictureGate();
+const paints = new Map([['f0', 0], ['f1', 0]]);
+
+for (let t = 0; t <= WINDOW_MS; t += 100) {
+    for (const key of paints.keys()) {
+        if (gate.due(key, t)) {
+            gate.painted(key, t);
+            paints.set(key, paints.get(key) + 1);
+        }
+    }
+}
+
+const allowed = Math.floor(WINDOW_MS / P.PICTURE_MIN_INTERVAL_MS) + 1;
+
+for (const [key, n] of paints) {
+    if (n > allowed) {
+        interval.push(`${key} painted ${n} times in a ${WINDOW_MS}-ms window of renders every 100 ms — more than the ${P.PICTURE_MIN_INTERVAL_MS}-ms interval allows (${allowed})`);
+    } else if (n < 2) {
+        interval.push(`CONTROL — ${key} painted ${n} time(s) in the window, so the count measured no interval`);
+    }
+}
+
+const later = P.pictureGate();
+
+later.painted('f0', 0);
+
+if (later.due('f0', 500)) {
+    interval.push('a render 500 ms after a paint repainted the floor inside its interval');
+}
+
+if (later.next('f0') !== P.PICTURE_MIN_INTERVAL_MS || !later.due('f0', later.next('f0'))) {
+    interval.push(`a render inside the interval leaves the floor due at ${later.next('f0')}, and due there: ${later.due('f0', later.next('f0'))} — its latest state would never be painted`);
+}
+
+process.stdout.write(JSON.stringify({ legs: { picture: defects, interval }, printed: { painter_tokens: style.length, fallback_form: style.filter((t) => t.hasFallback).length, paints: Object.fromEntries(paints) } }));

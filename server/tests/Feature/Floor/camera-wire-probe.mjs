@@ -24,7 +24,9 @@
  *    that they consumed the event, as a framed camera's do off the edge; with `"pan_consumed": false`
  *    the pan answers that it did not, as at an edge (card#11045 Q3); with `"pan_point": true` the pan's show also
  *    carries its second argument as `point` (card#13033: the wheel's cursor), and without it the pan records its
- *    deltas alone, as a 2-D screen's pan reads them; with `"scroller": {scrollTop, clientHeight,
+ *    deltas alone, as a 2-D screen's pan reads them; with `"event_time": true` the pan's, the zoom's and the
+ *    pinch's shows also carry their last argument as `at` (card#13033: the input event's own `timeStamp`, which an
+ *    event spec sets with its `timeStamp` member); with `"scroller": {scrollTop, clientHeight,
  *    scrollHeight}` a stand-in element inside the drawing that declares it scrolls, the target of every event
  *    spec carrying `"over": "scroller"`, its `scrollTop` logged after each event (card#12113) — and a camera
  *    that frames a scene — or, with
@@ -201,9 +203,9 @@ if (payload.view !== undefined) {
     element.contains = (node) => node === scroller;
 
     const acts = {
-        pan: (delta, point) => ({ camera: { act: 'pan', delta, ...(payload.pan_point === true ? { point } : {}) }, consumed: payload.pan_consumed !== false }),
-        zoom: (point, delta) => ({ camera: { act: 'zoom', point, delta }, consumed: true }),
-        pinch: (from, to, factor) => ({ act: 'pinch', from, to, factor }),
+        pan: (delta, point, at) => ({ camera: { act: 'pan', delta, ...(payload.pan_point === true ? { point } : {}), ...(payload.event_time === true ? { at } : {}) }, consumed: payload.pan_consumed !== false }),
+        zoom: (point, delta, at) => ({ camera: { act: 'zoom', point, delta, ...(payload.event_time === true ? { at } : {}) }, consumed: true }),
+        pinch: (from, to, factor, at) => ({ act: 'pinch', from, to, factor, ...(payload.event_time === true ? { at } : {}) }),
         zoomStep: (notches) => ({ act: 'zoomStep', notches }),
         drag: (dx, dy) => ({ act: 'drag', dx, dy }),
     };
@@ -219,7 +221,7 @@ if (payload.view !== undefined) {
     }
 
     for (const spec of payload.gestures ?? payload.keys) {
-        const { type, on = 'drawing', over = null, ...members } = spec;
+        const { type, on = 'drawing', over = null, timeStamp = null, ...members } = spec;
 
         if (type === 'reframe') {
             bounds = members.framed ? scene : null;
@@ -228,6 +230,11 @@ if (payload.view !== undefined) {
             continue;
         }
         const event = Object.assign(new Event(type, { cancelable: true }), members);
+
+        // The input's own time, as the platform stamps it — a getter on the event, so it is defined, not assigned.
+        if (timeStamp !== null) {
+            Object.defineProperty(event, 'timeStamp', { value: timeStamp });
+        }
 
         // An event begun over the scroller has it as its target, as a browser's would.
         if (over === 'scroller') {

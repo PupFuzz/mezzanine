@@ -5,9 +5,15 @@
  * slice 3; `docs/design/plan-13033-3d-view.md` § 3.3).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ IT IS A MODEL: no document and no timer. The clock is handed in (`now`, the page's `performance.now`), and so is
- * whether a glide is in flight (`gliding`, the view's `gliding()`), so `node` drives it under a stub clock
+ * ⛔ IT IS A MODEL: no document, no timer and no clock. A gesture's time is its INPUT EVENT's own `timeStamp`, which the
+ * wire hands every wheel, Ctrl+wheel and pinch act (`wire/camera-gestures.js`), and whether a glide is in flight is handed
+ * in (`gliding`, the view's `gliding()`), so `node` drives it under a stub clock
  * (`tests/Feature/Building/building-acts-probe.mjs`).
+ *
+ * ⛔ THE GAP IS THE INPUT's, NEVER THE HANDLER's (the seat's ruling of 2026-11-10, card#13033; plan § 3.3 item 3): a long
+ * task on the page — a render of every floor's picture — delays the handler and never the user's input, which the
+ * platform queues with its own timestamps. A gap read when the handler runs would see the long task as the user pausing
+ * and re-arm a stream mid-gesture; read off the events, `GESTURE_GAP_MS` is a property of the input stream alone.
  *
  * ⛔ ONE GESTURE, ONE SNAP. A wheel's pixel-mode scroll, a Ctrl+wheel's (× `PINCH_GAIN`) and a pinch's `log(factor)`
  * fill a bucket, and at one notch the bucket fires the snap's *in* or *out* and empties. A line- or page-mode wheel event
@@ -79,11 +85,11 @@ export function pinchBucket(bucket, factor) {
 /**
  * The act set, over the page's live stack and stage.
  *
- * @param {{stack: function(): (object|null), now: function(): number, gliding: function(): boolean}} page `stack` the
+ * @param {{stack: function(): (object|null), gliding: function(): boolean}} page `stack` the
  *        stack as it stands — `null` before any floor has an extent or while the stage has no size — whose `surface` is
- *        the stage every act reads; `now` the page's clock; `gliding` whether a glide is in flight
+ *        the stage every act reads; `gliding` whether a glide is in flight
  */
-export function buildingActs({ stack, now, gliding }) {
+export function buildingActs({ stack, gliding }) {
     let resting = HOME_VIEW;
     let wheel = 0;
     let pinched = 0;
@@ -98,11 +104,11 @@ export function buildingActs({ stack, now, gliding }) {
     };
 
     /**
-     * One wheel, Ctrl+wheel or pinch step: the gap, the mute, then `step()`'s firing (`'in'`, `'out'` or `null`) as the
-     * snap's intent — in over `point` — answering the view to show.
+     * One wheel, Ctrl+wheel or pinch step at its input event's time `at`: the gap, the mute, then `step()`'s firing
+     * (`'in'`, `'out'` or `null`) as the snap's intent — in over `point` — answering the view to show.
      */
-    const gesture = (step, point) => {
-        const t = now();
+    const gesture = (step, point, at) => {
+        const t = at;
 
         if (t - last >= GESTURE_GAP_MS) {
             muted = false;
@@ -128,7 +134,7 @@ export function buildingActs({ stack, now, gliding }) {
     };
 
     /** A wheel's deltas: a pixel-mode scroll through the bucket, a line- or page-mode event a notch of its own. */
-    const wheelAct = (point, deltaY, deltaMode, gain) => ({
+    const wheelAct = (point, deltaY, deltaMode, gain, at) => ({
         camera: gesture(() => {
             if (deltaMode === 1 || deltaMode === 2) {
                 return deltaY < 0 ? 'in' : deltaY > 0 ? 'out' : null;
@@ -139,30 +145,33 @@ export function buildingActs({ stack, now, gliding }) {
             wheel = next.bucket;
 
             return next.fire;
-        }, point),
+        }, point, at),
         consumed: true,
     });
 
     return {
-        /** A plain wheel event, with the point under it: always consumed — the wheel over the stage never scrolls the page. */
-        pan({ deltaY = 0, deltaMode = 0 }, point) {
-            return wheelAct(point, deltaY, deltaMode, 1);
+        /**
+         * A plain wheel event, with the point under it and the event's `timeStamp`: always consumed — the wheel over the
+         * stage never scrolls the page.
+         */
+        pan({ deltaY = 0, deltaMode = 0 }, point, at) {
+            return wheelAct(point, deltaY, deltaMode, 1, at);
         },
 
-        /** A Ctrl+wheel — a Chromium trackpad's pinch: the same bucket, the scroll × `PINCH_GAIN`. */
-        zoom(point, { deltaY, deltaMode = 0 }) {
-            return wheelAct(point, deltaY, deltaMode, PINCH_GAIN);
+        /** A Ctrl+wheel — a Chromium trackpad's pinch: the same bucket, the scroll × `PINCH_GAIN`, at the event's `timeStamp`. */
+        zoom(point, { deltaY, deltaMode = 0 }, at) {
+            return wheelAct(point, deltaY, deltaMode, PINCH_GAIN, at);
         },
 
-        /** A touch pinch's or Safari's gesture's step: the pinch bucket, in over the fingers' midpoint `to`. */
-        pinch(from, to, factor) {
+        /** A touch pinch's or Safari's gesture's step at its event's `timeStamp`: the pinch bucket, in over the fingers' midpoint `to`. */
+        pinch(from, to, factor, at) {
             return gesture(() => {
                 const next = pinchBucket(pinched, factor);
 
                 pinched = next.bucket;
 
                 return next.fire;
-            }, to);
+            }, to, at);
         },
 
         /**

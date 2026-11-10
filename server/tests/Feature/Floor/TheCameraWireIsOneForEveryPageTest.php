@@ -159,7 +159,7 @@ class TheCameraWireIsOneForEveryPageTest extends TestCase
 
     public function test_red_a_plain_wheel_that_hands_pan_no_point(): void
     {
-        $dir = $this->mutatedModules(['camera-gestures.js', 'deltaMode: event.deltaMode }, local(event.clientX, event.clientY));', 'deltaMode: event.deltaMode });']);
+        $dir = $this->mutatedModules(['camera-gestures.js', 'deltaMode: event.deltaMode }, local(event.clientX, event.clientY), event.timeStamp);', 'deltaMode: event.deltaMode });']);
 
         $this->assertNotSame([], $this->panPointDefects($dir), 'CONTROL (the point dropped) did not bite');
     }
@@ -211,6 +211,40 @@ class TheCameraWireIsOneForEveryPageTest extends TestCase
         return $this->logDefects($log, $want, 'pan point');
     }
 
+    /**
+     * card#13033 (the seat's ruling of 2026-11-10): the wheel's two acts and Safari's pinch are each handed the input
+     * event's own `timeStamp` as their last argument — the time the building view's acts read their gesture gap from.
+     */
+    public function test_green_each_wheel_and_pinch_act_is_handed_its_events_time(): void
+    {
+        $this->assertSame([], $this->eventTimeDefects());
+    }
+
+    public function test_red_acts_handed_no_event_time(): void
+    {
+        foreach ([
+            'the wheel' => ['deltaMode: event.deltaMode }, local(event.clientX, event.clientY), event.timeStamp);', 'deltaMode: event.deltaMode }, local(event.clientX, event.clientY));'],
+            'the zoom' => ['{ deltaY: event.deltaY, deltaMode: event.deltaMode }, event.timeStamp)', '{ deltaY: event.deltaY, deltaMode: event.deltaMode })'],
+            'Safari\'s pinch' => ['show(acts.pinch(was.at, at, event.scale / was.scale, event.timeStamp));', 'show(acts.pinch(was.at, at, event.scale / was.scale));'],
+        ] as $what => [$from, $to]) {
+            $this->assertNotSame([], $this->eventTimeDefects($this->mutatedModules(['camera-gestures.js', $from, $to])), "CONTROL ({$what} handed no event time) did not bite");
+        }
+    }
+
+    /** @return list<string> */
+    private function eventTimeDefects(?string $dir = null): array
+    {
+        $log = $this->probe(['gestures' => [
+            ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => 0, 'deltaY' => -40, 'deltaMode' => 0, 'ctrlKey' => false, 'timeStamp' => 1001],
+            ['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => 0, 'deltaY' => -40, 'deltaMode' => 0, 'ctrlKey' => true, 'timeStamp' => 1002],
+            ['type' => 'gesturestart', 'scale' => 1, 'clientX' => 110, 'clientY' => 220, 'timeStamp' => 1003],
+            ['type' => 'gesturechange', 'scale' => 2, 'clientX' => 110, 'clientY' => 220, 'timeStamp' => 1004],
+        ], 'event_time' => true], $dir)['log'];
+        $times = array_values(array_map(static fn (array $e) => ($e['show']['at'] ?? null), array_filter($log, static fn (array $e): bool => isset($e['show']))));
+
+        return $times === [1001, 1002, 1004] ? [] : ['the acts were handed '.json_encode($times).' as their events\' times, not [1001, 1002, 1004]'];
+    }
+
     /** @return list<string> */
     private function shortcutDefects(?string $dir = null): array
     {
@@ -250,7 +284,7 @@ class TheCameraWireIsOneForEveryPageTest extends TestCase
             'a Ctrl+wheel (a trackpad pinch) that pans' => ['camera-gestures.js', 'const { camera, consumed } = event.ctrlKey', 'const { camera, consumed } = false'],
             'a pan whose deltaX never reaches the camera' => ['camera-gestures.js', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode },', 'acts.pan({ deltaY: event.deltaY, deltaMode: event.deltaMode },'],
             'a pan whose deltaMode never reaches the camera' => ['camera-gestures.js', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode },', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY },'],
-            'a zoom whose deltaMode never reaches the camera' => ['camera-gestures.js', 'acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY, deltaMode: event.deltaMode })', 'acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY })'],
+            'a zoom whose deltaMode never reaches the camera' => ['camera-gestures.js', 'acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY, deltaMode: event.deltaMode }, event.timeStamp)', 'acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY }, event.timeStamp)'],
             'a zoom about the page, not the drawing' => ['camera-gestures.js', 'acts.zoom(local(event.clientX, event.clientY)', 'acts.zoom({ x: event.clientX, y: event.clientY }'],
             'a wheel that also scrolls the page' => ['camera-gestures.js', "        event.preventDefault();\n        show(camera);", '        show(camera);'],
             // card#11045: the touch pinch.

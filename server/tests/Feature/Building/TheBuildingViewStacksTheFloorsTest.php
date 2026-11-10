@@ -164,6 +164,12 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['picture']);
     }
 
+    /** The seat's ruling of 2026-11-10 on plan § 10: a floor's picture repainted at most once per `PICTURE_MIN_INTERVAL_MS`. */
+    public function test_green_each_floor_is_repainted_at_most_once_an_interval(): void
+    {
+        $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['interval']);
+    }
+
     /** Plan § 8 item 3: the acts, under stand-in gestures and a stub clock, and the mute over a stream that outlives the glide. */
     public function test_green_the_acts_snap_once_per_gesture(): void
     {
@@ -312,6 +318,24 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $dir = $this->mutatedModules([self::SCREEN, "        this.#surface = surface;\n\n        return this.#stack();", '        return this.#stack();']);
 
         $this->assertNotSame([], $this->resizeDefects($this->resized($dir)), 'the RED (a resize the acts never see) did not bite');
+    }
+
+    /** The interval removed: every render repaints every floor (the seat's ruling of 2026-11-10's plant). */
+    public function test_red_the_interval_removed(): void
+    {
+        $dir = $this->mutatedModules(['../building/floor-picture.js', '        due: (key, t) => !last.has(key) || t - last.get(key) >= PICTURE_MIN_INTERVAL_MS,', '        due: () => true,']);
+        $defects = $this->pictureProbe($this->buildingDir(dirname($dir)))['legs']['interval'];
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'more than the')), 'the RED (the interval removed) did not bite for its reason: '.json_encode($defects));
+    }
+
+    /** The gap read from the handler's clock (`performance.now()`), which a long task moves, in place of the event's time. */
+    public function test_red_the_gap_read_from_the_handlers_clock(): void
+    {
+        $dir = $this->mutatedModules([self::ACTS, '        const t = at;', '        const t = performance.now();']);
+        $defects = $this->actsProbe($this->buildingDir(dirname($dir)))['legs']['mute'];
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'handler stalled')), 'the RED (the gap read from the handler\'s clock) did not bite for its reason: '.json_encode($defects));
     }
 
     /** The keyboard's focus on another floor's label is the snap table's click on its slab (plan § 3.4): planted to stay. */

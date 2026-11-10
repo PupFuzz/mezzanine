@@ -46,6 +46,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const NO_WEBGL = /^export const NO_WEBGL = '([^']+)';$/m.exec(readFileSync(join(JS, 'building', 'building-screen.js'), 'utf8'))[1];
 const ART_FAILED = /^export const ART_FAILED = '([^']+)';$/m.exec(readFileSync(join(JS, 'floor', 'status-strip.js'), 'utf8'))[1];
 const DRAG_SLOP_PX = Number(/^export const DRAG_SLOP_PX = (\d+);$/m.exec(readFileSync(join(JS, 'wire', 'camera-gestures.js'), 'utf8'))[1]);
+/** The stream: a small pixel-mode wheel step every 16 ms of wall-clock time, run until the view has rested this long. */
+const WHEEL_STEP_PX = 8;
+const WHEEL_PACE_MS = 16;
+const STREAM_REST_MS = 1500;
+/** A floor's picture lags its slab by up to this (the seat's ruling of 2026-11-10): a settled page has been still longer. */
+const PICTURE_MIN_INTERVAL_MS = Number(/^export const PICTURE_MIN_INTERVAL_MS = (\d+);$/m.exec(readFileSync(join(JS, 'building', 'floor-picture.js'), 'utf8'))[1]);
 const GESTURE_GAP_MS = Number(/^export const GESTURE_GAP_MS = (\d+);$/m.exec(readFileSync(join(JS, 'building', 'building-acts.js'), 'utf8'))[1]);
 
 /** The floors the run composes: those whose room's map request answers 200 — a picture each. */
@@ -75,10 +81,11 @@ async function open(chrome, c, viewport = { w: 1280, h: 800 }) {
     if (Date.now() > end) break;
     await sleep(50);
   }
-  // Settled: the pictures unchanged for a second — the run's `room.map` re-draws a floor after its stream is spent.
+  // Settled: the pictures unchanged for longer than a floor's repaint interval — the run's `room.map` re-draws a floor
+  // after its stream is spent, and its picture follows its slab by up to that interval.
   const signature = "JSON.stringify([...document.querySelectorAll('#building-pictures canvas[data-floor]')].map((c) => [c.dataset.floor, c.width, c.height, c.hidden]))";
   let last = null;
-  for (let since = Date.now(); Date.now() < end && Date.now() - since < 1000; await sleep(100)) {
+  for (let since = Date.now(); Date.now() < end + PICTURE_MIN_INTERVAL_MS && Date.now() - since < PICTURE_MIN_INTERVAL_MS + 500; await sleep(100)) {
     const now = await b.evaluate(signature).catch(() => null);
     if (now !== last) { last = now; since = Date.now(); }
   }
@@ -341,7 +348,7 @@ const ROWS = {
     } finally { s.close(); }
   }),
 
-  stream: row('a stream of wheel events, one per animation frame with motion on, glides once, arrives once, and snaps no more however long it outlives the glide', [
+  stream: row('a stream of wheel events at a device\'s fixed pace, with motion on, glides once, arrives once, and snaps no more however long it outlives the glide', [
     ['the page\'s show ungated', { plant: [{ file: MAIN, from: '    if (view.gliding() || live.stack === null) {\n        return;\n    }\n\n    const from = resting();', to: '    if (live.stack === null) {\n        return;\n    }\n\n    const from = resting();' }] }],
     ['the acts\' mute dropped', { plant: [{ file: 'js/building/building-acts.js', from: '        muted = true;\n\n        return snapped(', to: '        return snapped(' }] }],
   ], async (chrome, c) => {
@@ -372,28 +379,48 @@ const ROWS = {
     const { s, r, p, floor } = found;
     try {
       const d = [];
-      const sample = await s.ev(`new Promise((done) => {
+      // The page samples itself on every animation frame — passively: it dispatches nothing — while the wheel events come
+      // from OUTSIDE it, through the protocol, at a fixed wall-clock pace with their own timestamps, as a device delivers
+      // them. A long task on the page stalls its frames and its handlers, never this pace (the seat's ruling of 2026-11-10).
+      await s.ev(`(() => {
         const stage = document.getElementById('building-stage');
         const status = document.getElementById('building-view-status');
         const head = () => document.querySelector('#building-floors .building-floor-head')?.style.transform ?? '';
-        const box = stage.getBoundingClientRect();
-        let writes = 0;
-        new MutationObserver(() => { writes++; }).observe(status, { childList: true, characterData: true, subtree: true });
-        const frames = [];
-        let resting = 0, glided = false;
+        const S = window.__stream = { frames: [], writes: 0, stop: false, wheels: [] };
+        // Each wheel the stage receives: its own time, when it was handled, its delta — what a red below is read against.
+        stage.addEventListener('wheel', (e) => { S.wheels.push([Math.round(e.timeStamp), Math.round(performance.now()), e.deltaY]); }, { capture: true });
+        new MutationObserver(() => { S.writes++; }).observe(status, { childList: true, characterData: true, subtree: true });
         const step = () => {
-          stage.dispatchEvent(new WheelEvent('wheel', { deltaY: -8, deltaMode: 0, clientX: box.x + ${p.x}, clientY: box.y + ${p.y}, bubbles: true, cancelable: true }));
-          frames.push({ t: Math.round(performance.now()), gliding: stage.dataset.gliding, view: stage.dataset.view, head: head() });
-          glided ||= stage.dataset.gliding === 'true';
-          resting = glided && stage.dataset.gliding === 'false' ? resting + 1 : 0;
-          if (resting >= 60 || frames.length >= 900) {
-            setTimeout(() => done({ frames, writes, status: status.textContent }), 0);
-            return;
-          }
-          requestAnimationFrame(step);
+          S.frames.push({ t: Math.round(performance.now()), gliding: stage.dataset.gliding, view: stage.dataset.view, head: head() });
+          if (!S.stop) requestAnimationFrame(step);
         };
         requestAnimationFrame(step);
-      })`);
+        return true;
+      })()`);
+      const at = { x: r.stage.x + p.x, y: r.stage.y + p.y };
+      let sent = 0;
+      const inFlight = [];
+      const pace = setInterval(() => {
+        sent++;
+        inFlight.push(s.b.page('Input.dispatchMouseEvent', { type: 'mouseWheel', x: at.x, y: at.y, deltaX: 0, deltaY: -WHEEL_STEP_PX, timestamp: Date.now() / 1000 }).catch(() => {}));
+      }, WHEEL_PACE_MS);
+      // Until the glide has been over for a quiet stretch of wall-clock time far past the gesture gap, or a cap.
+      let glided = false;
+      let restingSince = null;
+      for (const end = Date.now() + 20000; Date.now() < end;) {
+        await sleep(100);
+        const state = await s.ev("document.getElementById('building-stage').dataset.gliding");
+        glided ||= state === 'true';
+        restingSince = glided && state === 'false' ? restingSince ?? Date.now() : null;
+        if (restingSince !== null && Date.now() - restingSince >= STREAM_REST_MS) break;
+      }
+      clearInterval(pace);
+      // Every event sent has been handled — a busy page queues them, and a queued wheel is coalesced with the next, so
+      // the wheel out below must not be summed with the stream's tail.
+      await Promise.all(inFlight);
+      await sleep(GESTURE_GAP_MS + 100);
+      const sample = await s.ev('(window.__stream.stop = true, { frames: window.__stream.frames, writes: window.__stream.writes, status: document.getElementById(\'building-view-status\').textContent })');
+      sample.sent = sent;
       const views = sample.frames.map((f) => f.view).filter((v, i, a) => i === 0 || v !== a[i - 1]);
       const changes = views.length - 1;
       const gliding = sample.frames.map((f, i) => [f, sample.frames[i + 1]]).filter(([a, b]) => b !== undefined && a.gliding === 'true' && b.gliding === 'true');
@@ -405,12 +432,16 @@ const ROWS = {
       for (const f of after.floors) for (const k of f.desks) if ((f.floor === floor) === k.culled) d.push(`${k.key} is ${k.culled ? 'culled' : 'drawn'} at ${floor}'s pose`);
       // A wheel out, once the gesture has gone quiet: back to the overview, every name culled.
       await sleep(GESTURE_GAP_MS + 100);
-      await s.b.page('Input.dispatchMouseEvent', { type: 'mouseWheel', x: r.stage.x + p.x, y: r.stage.y + p.y, deltaX: 0, deltaY: 120 });
-      await s.ev("new Promise((r) => { const t = () => document.getElementById('building-stage').dataset.gliding === 'false' ? setTimeout(() => r(true), 50) : requestAnimationFrame(t); setTimeout(t, 50); })");
+      // Stamped as the stream's events were, so the two are times on one clock.
+      await s.b.page('Input.dispatchMouseEvent', { type: 'mouseWheel', x: r.stage.x + p.x, y: r.stage.y + p.y, deltaX: 0, deltaY: 120, timestamp: Date.now() / 1000 });
+      // Until the page has HANDLED the wheel out — a busy page handles its input late, so the view is read only once the
+      // event has landed — and its glide has arrived; or a cap, past which a glide that never arrives is read below as the
+      // defect it is.
+      await s.ev("new Promise((r) => { const cap = performance.now() + 15000; const S = window.__stream; const t = () => (S.wheels.some((w) => w[2] > 0) && document.getElementById('building-stage').dataset.gliding === 'false') || performance.now() > cap ? setTimeout(() => r(true), 50) : requestAnimationFrame(t); setTimeout(t, 50); })");
       const out = await s.ev(READ);
-      if (out.view !== 'overview') d.push(`a wheel out left the view at ${out.view}`);
+      if (out.view !== 'overview') d.push(`a wheel out left the view at ${out.view} — the last wheels [timeStamp, handled, deltaY]: ${JSON.stringify((await s.ev('window.__stream.wheels')).slice(-4))}`);
       if (out.floors.some((f) => f.desks.some((k) => !k.culled))) d.push('a name is drawn at the overview after a wheel out');
-      return { defects: d, facts: { viewport: found.viewport, point: p, floor, other: found.other, frames: sample.frames.length, views, gaps: sample.frames.map((f, i) => i === 0 ? 0 : f.t - sample.frames[i - 1].t).filter((g) => g > 50), changesAt: sample.frames.map((f, i) => i > 0 && f.view !== sample.frames[i - 1].view ? [i, f.t] : null).filter(Boolean) } };
+      return { defects: d, facts: { viewport: found.viewport, point: p, floor, other: found.other, sent: sample.sent, frames: sample.frames.length, views, gaps: sample.frames.map((f, i) => i === 0 ? 0 : f.t - sample.frames[i - 1].t).filter((g) => g > 50), changesAt: sample.frames.map((f, i) => i > 0 && f.view !== sample.frames[i - 1].view ? [i, f.t] : null).filter(Boolean) } };
     } finally { s.close(); }
   }),
 };

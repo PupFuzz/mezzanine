@@ -113,10 +113,14 @@ fixture, where the floor it snaps to carries no desk (the *labels at arrival* ha
 `no-webgl` rows are in `browser-smoke`; the timed rows run by hand. It does NOT print per-floor paint and rasterise times.
 ⚠ **§ 10's paint-time trigger has fired**: on the seat's headless shell a render of `building_stack`'s two pictured floors
 held the main thread for 300–1,800 ms (long tasks read by a `PerformanceObserver`, 2026-11-10), past the acts' 300-ms
-gesture gap, so the `stream` row's wheel events, paced by animation frames, re-arm after the first snap and snap again.
-The per-floor minimum interval § 10 names is a seat ruling and is not built here; the record is on the card. While the
-`stream` row reds unplanted its two plants (the mute dropped, the page's `show` ungated) are unmeasured in the browser;
-the mute's node plant (§ 8 item 3) is held.
+gesture gap, so the `stream` row's wheel events, paced by animation frames, re-armed after the first snap and snapped
+again. **The seat's ruling of 2026-11-10 (card#13033)** read the cause as the gap measured in HANDLER time, which a long
+task moves while the user's input, queued by the platform with its own timestamps, does not — the row's frame-paced
+events manufactured the gap — and decided three parts, built with this slice: (1) the acts read the gap from each input
+event's own `timeStamp`, which the gesture wire hands them, and hold no clock (§ 3.3 item 3); (2) the `stream` row
+dispatches its wheel events from outside the page, through the protocol, at a fixed wall-clock pace with their own
+timestamps, as a device delivers them — it passes unplanted on the same shell, its long tasks still there, and its two
+plants (the mute dropped, the page's `show` ungated) each red; (3) a per-floor minimum interval for repaints (§ 10).
 
 **Design approval.** The operator's request of 2026-11-09, recorded on card#13033: offered a building view, a
 floor view, or both, the operator chose *"Both"*, building view first. The card's technical notes fix the library
@@ -422,7 +426,8 @@ So the pipeline, in `building/floor-picture.js` (DOM; its two string functions a
    2.296 (4,096 × 1,984) — `snap5.py`. A focus change re-rasterises the newly focused slab at its scale and the
    previously focused one back at 1, and the string compare below keys on the pair (SVG, scale). The largest
    picture holds 32.5 MB of canvas and about 43 MB of texture with mipmaps (§ 10 — 4,096 × 1,984 × 4 B, and
-   × 4/3), and its paint time is UNMEASURED: the browser leg prints it, and § 10's 100 ms trigger stands. The claim
+   × 4/3), and its paint time per floor is not printed (a whole render's long tasks were measured, revision 10), and every
+   floor's repaint is bounded by § 10's per-floor minimum interval, the seat's ruling of 2026-11-10. The claim
    this buys, per configuration: at the focus pose no texel is coarser than a device px, up to the cap; past the
    cap (a stage over about 2,400 px wide at DPR 2) the picture is magnified by the remainder, and the names are
    labels regardless.
@@ -611,11 +616,14 @@ places, each named:
    which arrives.
 3. **The acts' mute — until the gesture goes quiet, not until arrival** (round 5's minor 4: a stream that outlives
    the glide, or any stream under reduced motion where the glide is a cut, would snap again from the new pose — on
-   a 390 × 700 stage a swipe aimed at the fourth floor lands on the fifth). `building-acts.js` is given a clock
-   (`{ now }`, the page's `performance.now`; the probe's stub) and `gliding` (`() => view.gliding()`). On every
-   wheel, Ctrl+wheel and pinch step: if `now − last ≥ GESTURE_GAP_MS` (**300** ms, a seat ruling: longer than a
+   a 390 × 700 stage a swipe aimed at the fourth floor lands on the fifth). `building-acts.js` is given `gliding`
+   (`() => view.gliding()`) and NO clock: every wheel, Ctrl+wheel and pinch step is handed its input event's own
+   `timeStamp` by the gesture wire as its last argument, and that is its time `t` — never when the handler runs, which a
+   long task on the page delays while the platform queues the user's input with its own timestamps (the seat's ruling of
+   2026-11-10, card#13033: read in handler time, a render longer than the gap re-armed a stream mid-gesture). On every
+   step: if `t − last ≥ GESTURE_GAP_MS` (**300** ms, a seat ruling: longer than a
    trackpad stream's gaps between events, shorter than a deliberate second gesture) the gesture is new — `muted`
-   false, both buckets `0`; `last = now`; if `gliding()` or `muted`, the resting view is answered and nothing else
+   false, both buckets `0`; `last = t`; if `gliding()` or `muted`, the resting view is answered and nothing else
    changes; else a PIXEL-mode scroll is added to the bucket and, at a notch, the intent fires, `muted` true, the
    bucket `0`. **A wheel event in line or page mode (`deltaMode` 1 or 2) is a DISCRETE NOTCH and fires alone** —
    a mouse's click of the wheel in Firefox is three lines, under `NOTCH_PX` once normalised, and a bucket the gap
@@ -834,7 +842,7 @@ WebGL. New files under `server/public/js/`:
 | `floor/floor-compose.js` (hoist) | none | `composeFloor(floor, building, seatsByRoom)`, `artInputs()`, `roomMaps()`, `sceneInput()`, `SCENE_INPUT_KEYS` — § 2 item 1 | every existing floor test (control); `TheFloorCompositionIsOneForBothScreensTest`: `floor-screen.js` imports it and holds no second `placeRooms()`/`assignSlots()` call site |
 | `floor/floor-data.js` (hoist) | none (`fetch` injected) | `FloorData` — § 2 item 2 | `TheElevatorIsAControlOnTheDrawingTest`'s door-view leg (control), the building screen's probe |
 | `building/stack-model.js` | none | `stackModel()`, `storeySpacing()`, `fitDistance()`, `overviewPose()`, `focusPose()`, `betweenPoses()`, `snap()`, `aim()`, `nearestToCentre()`, `labelCorner()`, `labelsShown()`, `cullOverlaps()`, `readingOrder()`, `labelBoxes()`, `projectPoint()`, `rayThrough()`, `scaleAt()`, `legibility()`, `readFloorLink()`, `focusScale()`, `textureSize()`, `textureScale()`, `worldOf()`, `segmentClears()`, `poseCamera()`, `liveView()` (§ 12 item 10's dropped floor), `samePose()`, `storeyNeed()` (§ 3.1's `g(s)`, which the probe reads), `focusInset()`, the unit, storey, tilt, margin and snap constants — §§ 3.1, 3.3, 3.4 | `stack-model-probe.mjs` under `TheBuildingViewStacksTheFloorsTest` (AT-D3-37) |
-| `building/building-acts.js` | none | the 3-D act set the house wires are given (§ 3.3): `pan()`, `zoom()`, `pinch()`, `drag()`, `zoomStep()`, `camera()`, `arrived()`, each over `snap()` and the two buckets (`wheelBucket()`, `pinchBucket()` — pure over an explicit bucket; the acts hold the buckets, the resting view — set by `drag()` on a turn and by `arrived()` — the mute and the last event's time); a line- or page-mode wheel event a discrete notch; given a clock (`{ now }`) and a `gliding` predicate; `GESTURE_GAP_MS` | `building-acts-probe.mjs` under node with a stub clock, `camera-wire-probe.mjs`'s shape (§ 8 item 3) |
+| `building/building-acts.js` | none | the 3-D act set the house wires are given (§ 3.3): `pan()`, `zoom()`, `pinch()`, `drag()`, `zoomStep()`, `camera()`, `arrived()`, each over `snap()` and the two buckets (`wheelBucket()`, `pinchBucket()` — pure over an explicit bucket; the acts hold the buckets, the resting view — set by `drag()` on a turn and by `arrived()` — the mute and the last event's time); a line- or page-mode wheel event a discrete notch; given each wheel and pinch event's own `timeStamp` (no clock) and a `gliding` predicate; `GESTURE_GAP_MS` | `building-acts-probe.mjs` under node with a stub clock, `camera-wire-probe.mjs`'s shape (§ 8 item 3) |
 | `building/building-screen.js` | none | `BuildingScreen`: drains the journal once (`LobbyScreen#render()`'s shape, L162–186: `building.layout` applied, the layout fetched once after the first applied snapshot), runs ONE `DeskFloor` over every held seat with `reduce: true`, holds one `FloorData` and prefetches every row on entry and on each layout change; **applies `room.map`** through `Building#applyRoomMap(entry, rendered)` with `rendered` = every room of every `plates()` row (D2 § 8.7's *a client applies a `room.map` only for a room it renders* — this screen renders every room), records the apply's line in the client's record as the floor screen does (`floor-screen.js` L657–667) and then loads **the applied room's tilesets alone** — `FloorData#roomTilesets(installId)`, one row of the press sequence's tileset step (`door-views.js` L74's call for one id) — never `prefetch()` again, which re-enters every room and re-requests every room whose last request failed (`wire/building.js` L234–247: *a room whose last request failed is fetched again whatever it holds*), so a `room.map` for one floor would have re-fetched another floor's failed map, which the fixture scripts one answer for (review round 3, minor 4); **the interface change**: `BuildingScreen#render()` is `applyRoomMap()`'s second screen caller (the floor screen's `#layoutActs()` is the first; the lobby applies none, `lobby-screen.js` L23) and the first whose `rendered` set is the whole building, so a re-saved or recovered map refreshes its slab on the next render; and per `plates()` row: `composeFloor()` → the frame → `buildScene(frame, sceneInput(art, docs))` with `effects: []`, `previous` empty, the in-flight members empty, `maps` from `roomMaps()`, `hallway` the row's, `tilesets` the `FloorData`'s, `failed` this screen's set — fed by every floor's painter through its `failed` callback, so a theme or character a slab could not draw is among that floor's scene's failed assets and on the building's strip, as it is on the floor page's — then `deskLabels(scene, row)` (§ 3.4) → `{ row, frame, scene, labels, notices }`, the frame exactly the members `buildScene()` reads and `notices` the floor page's for that floor; returns `{ floors, stack: stackModel(…), strip, failure, statement, layout }` (slice 3: the first draft's top-level `notices` had no writer and was dropped), and takes the stage (`surface`, `resize()`), which the storey is derived from. No camera (the view is the page's and holds no state the screen reads), no ride, no panel | `fleet-client-probe.mjs` gains a `building` entry beside `floor` and `lobby` (one renderer per scenario, L519's rule), which injects one rejected theme as the `floor` entry does (L669); AT-D3-37 |
 | `building/floor-picture.js` | DOM (hidden hosts, canvas, `<img>`); `tokenNames()` and `pictureSvg()` pure | one painter per floor over a hidden `<div>` in `#building-pictures`, each **`createPainter({ host, omit: new Set(['nameplate']), characters, themes, failed, select: () => {}, house, clock })`** — every member `floor/main.js` L411–423 hands its own painter but `ride` (defaulted) and `select` (required at L249, a no-op here: the building view opens no panel), from `artInputs()`'s art; round 4's minor 8: the short form in revision 4 would have thrown at `characters.poseFrames` (`painter.js` L368); the rasterisation of § 3.2 at `textureScale()`'s scale — the focused slab at `focusScale()`, the rest at 1 — each canvas kept in `#building-pictures` with `data-floor` (it is its texture's `image`, and the browser leg reads the page's own pixels there, § 8 item 5); the compare that skips an unchanged (SVG, scale) pair | `picture-probe.mjs` for the two pure functions; the browser leg for the rest |
 | `building/stack-paint.js` | **Three.js** | the renderer over `#building-canvas`, the slab meshes (`BoxGeometry`, a `MeshBasicMaterial` per face — the top face the floor's `CanvasTexture`, the others the sheet's slab token), the ground slab, lights (none: unlit materials, the drawings carry their own light), the camera applied from a pose (`position.set()`, `lookAt()`) on every `apply`, `setPixelRatio(devicePixelRatio)`, `resize()`, and the projector (`Vector3.project`) the labels module docks with — no unproject: a click aims through the model's `rayThrough()` inside `snap()` (§ 3.3) **No OrbitControls** (§ 3.3) | the browser leg |
@@ -1248,9 +1256,11 @@ Node, through the house rig (`DrivesAShippedClientModule`, `DrivesTheFleetClient
      `href` `/floor/<key>`, and a Tab onto a culled label of the floor un-culls it; on both stages no two un-culled
      labels' `getBoundingClientRect()`s intersect and every one lies inside the stage. Plants: the cull keeping every
      label → two boxes intersect on the derived stage; the link's predicate inverted → shown where nothing is culled.
-   - **The stream, one event per animation frame, with motion ON** (this run drops the shell's reduced-motion
+   - **The stream, at a device's fixed pace, with motion ON** (this run drops the shell's reduced-motion
      emulation). Property: `wheel` events of a small negative `deltaY` dispatched over a floor's projected centre
-     from a `requestAnimationFrame` loop make `data-gliding` `true` (its one writer is the page's `show`, § 3.3) and
+     from OUTSIDE the page — the protocol's `Input.dispatchMouseEvent`, at a fixed wall-clock pace with their own
+     timestamps, which a long task on the page cannot stall (the seat's ruling of 2026-11-10; a
+     `requestAnimationFrame` loop, the first form, stalled with the page and so manufactured the gap) — make `data-gliding` `true` (its one writer is the page's `show`, § 3.3) and
      keep it so across consecutive frames until arrival, the floor entries' `transform`s changing between those
      frames; exactly one `data-view` change (`overview` → `focus:<key>`) and one write of `#building-view-status`
      with that floor's name; that floor's desk labels un-culled at arrival and no other's; **the stream continued
@@ -1329,8 +1339,13 @@ records that run** — a leg whose plant has not been seen red is not done.
   renders a second. `requestRender()`'s coalescing (`live-page.js`) bounds renders to one at a time; nothing else
   does until measured — and a figure over 100 ms per floor on the pinned shell is the trigger to add a per-floor
   minimum interval (a seat ruling then). **Measured at slice 4 (revision 10): a render of two pictured floors held the
-  seat's headless shell's main thread for 300–1,800 ms — the trigger has fired**; the browser leg's `stream` row reds
-  on it, and the ruling is the seat's.
+  seat's headless shell's main thread for 300–1,800 ms — the trigger fired.** **Per-floor minimum interval 2000 ms,
+  seat ruling 2026-11-10, card#13033**: `floor-picture.js`'s `PICTURE_MIN_INTERVAL_MS`, decided by its `pictureGate()`
+  — a floor's picture is repainted and re-rasterised at most once per interval; a render inside it keeps the floor's
+  last texture and asks for a render when the interval ends, so nothing is dropped and every floor ends on its current
+  state. One interval for every floor and every cause, a focus change's scale included. An age or a state reaches the
+  3-D view up to 2 s late; the floor page is the live view. The probe counts each floor's paints over a window of
+  renders under a stub clock and reds with the interval removed.
 - **The stack moves under the viewer.** `s` is re-derived when a slab's extent changes (§ 3.1) — a seat overflowing
   onto the strip makes its floor's slab deeper and can move every storey — so the stack re-lays out while a viewer
   looks at it. § 3.3's resize rule re-applies the resting pose at once; what is not defended is the jump itself,

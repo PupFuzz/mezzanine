@@ -115,7 +115,7 @@ let leader = null;
 
 const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
 
-const acts = buildingActs({ stack: () => live.stack, now: () => performance.now(), gliding: () => view.gliding() });
+const acts = buildingActs({ stack: () => live.stack, gliding: () => view.gliding() });
 
 /** The resting view the acts hold, as a view (`{ pose, azimuth }`), read through the stack's live floors. */
 function resting() {
@@ -389,6 +389,7 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
                 screen.assetsFailed(ids);
                 requestRender();
             },
+            wake: requestRender,
         });
     }
 

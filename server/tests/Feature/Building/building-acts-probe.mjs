@@ -9,6 +9,11 @@
  * the glides started: a pose change. The building page (slice 4) wires the real `wire/camera-view.js`; this stand-in is
  * how the acts' own rules are observable without one.
  *
+ * ⛔ TWO CLOCKS (the seat's ruling of 2026-11-10 on plan § 10): the stub's `t` is the INPUT's time — every wheel, Ctrl+wheel
+ * and pinch act is handed it as its event's `timeStamp` — and the HANDLER's time is `performance.now()`, stubbed here to
+ * `t` unless a leg stalls it (`stall()`): a long task on the page delays the handler and never the input, so the
+ * gesture gap must be read from the first and never the second.
+ *
  * ⛔ A STREAM's LENGTH AND SPACING ARE CHOSEN BY RUNNING IT, AND EACH IS CHECKED HERE RATHER THAN TAKEN ON TRUST: a stream
  * that is to outlive the glide is asserted to have events after the arrival, and the point a stream is aimed at is
  * DERIVED — one `aim()` names as one floor at the overview and as another at that floor's pose — or the leg fails as a
@@ -30,6 +35,11 @@ const M = await import(pathToFileURL(join(dir, 'stack-model.js')).href);
 const { GLIDE_MS, NOTCH_PX, PINCH_GAIN } = await import(pathToFileURL(join(dir, '..', 'wire', 'camera.js')).href);
 
 const DEFAULT = { x: 0, y: -160, w: 1784, h: 864 };
+
+/** The handler's clock — what a page's long task moves and the input's time does not — set before each act is called. */
+let handlerTime = 0;
+
+Object.defineProperty(performance, 'now', { value: () => handlerTime, configurable: true });
 const legs = {};
 const printed = {};
 const leg = (key) => (legs[key] ??= []);
@@ -43,11 +53,24 @@ function stackOf(n, surface) {
 /** The acts over a stack, behind the stand-in page, on a stub clock. */
 function rig(stack, surface, { glideMs = GLIDE_MS } = {}) {
     let t = 0;
+    let stalled = 0;
     let glide = null;
     let resting = A.HOME_VIEW;
     const changes = [];
     let current = stack;
-    const acts = A.buildingActs({ stack: () => current, now: () => t, gliding: () => glide !== null });
+    const raw = A.buildingActs({ stack: () => current, gliding: () => glide !== null });
+    /** Each act called as the wire calls it: the handler's clock where the page's is, the input's time as the event's. */
+    const handled = (call) => (...args) => {
+        handlerTime = t + stalled;
+
+        return call(...args);
+    };
+    const acts = {
+        ...raw,
+        pan: handled((deltas, point) => raw.pan(deltas, point, t)),
+        zoom: handled((point, deltas) => raw.zoom(point, deltas, t)),
+        pinch: handled((from, to, factor) => raw.pinch(from, to, factor, t)),
+    };
     const settle = () => {
         if (glide !== null && t >= glide.end) {
             resting = glide.to;
@@ -81,6 +104,10 @@ function rig(stack, surface, { glideMs = GLIDE_MS } = {}) {
         at(ms) {
             t = ms;
             settle();
+        },
+        /** A long task: from here the handler runs `ms` later than the input it handles. */
+        stall(ms) {
+            stalled += ms;
         },
         get now() {
             return t;
@@ -244,6 +271,28 @@ function stream(r, point, count, { gap = STREAM_GAP, step = STREAM_STEP, start =
 
         if (cut.changes.length !== 1) {
             leg('mute').push(`under a cut, the stream made ${cut.changes.length} pose changes`);
+        }
+
+        // A stream whose HANDLER stalls: events 16 ms apart in input time, handled after a long task that moves the page's
+        // clock 1,800 ms — the measured render (plan § 10) — once the first snap has fired. One gesture, one snap.
+        const busy = rig(st, stage);
+        let stalledAt = null;
+
+        for (let i = 0; i < count; i++) {
+            busy.at(i * STREAM_GAP);
+
+            if (busy.changes.length === 1 && stalledAt === null) {
+                busy.stall(1800);
+                stalledAt = busy.now;
+            }
+
+            busy.page.show(busy.acts.pan({ deltaY: -STREAM_STEP, deltaMode: 0 }, point).camera);
+        }
+
+        if (stalledAt === null) {
+            leg('mute').push('CONTROL — the stalled stream never fired, so the stall was never applied');
+        } else if (busy.changes.length !== 1) {
+            leg('mute').push(`a stream whose handler stalled 1800 ms between two events ${STREAM_GAP} ms apart made ${busy.changes.length} pose changes — the gap is read from the handler's clock, not the event's time`);
         }
 
         // A slow stream — every event inside the gap of the last — stays one gesture for its whole length.
@@ -418,13 +467,13 @@ for (const deltaMode of [1, 2]) {
 // ── no stack, no bounds ───────────────────────────────────────────────────────────────────────
 
 {
-    const acts = A.buildingActs({ stack: () => null, now: () => 0, gliding: () => false });
+    const acts = A.buildingActs({ stack: () => null, gliding: () => false });
 
     if (acts.camera().bounds !== null) {
         leg('acts').push('camera() before any extent has bounds');
     }
 
-    if (acts.camera().pose !== 'overview' || stackOf(1, surface) === null || A.buildingActs({ stack: () => stack, now: () => 0, gliding: () => false }).camera().bounds === null) {
+    if (acts.camera().pose !== 'overview' || stackOf(1, surface) === null || A.buildingActs({ stack: () => stack, gliding: () => false }).camera().bounds === null) {
         leg('acts').push('CONTROL — camera() over a drawn stack has no bounds');
     }
 }
