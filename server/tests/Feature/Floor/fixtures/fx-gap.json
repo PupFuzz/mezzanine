@@ -379,7 +379,7 @@
             "delay_ms": 0
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -2139,7 +2139,7 @@
             "delay_ms": 0
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -3098,7 +3098,7 @@
             "delay_ms": 3000
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -4032,7 +4032,7 @@
             "delay_ms": 0
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 503,
             "body": {

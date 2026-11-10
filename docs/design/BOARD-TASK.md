@@ -322,10 +322,13 @@ still; what the pass writes is a fact two parties stated, the seat and the board
 checker between them, not an inference. The command:
 
 ```
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id>
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --refuse      # card#12447
+php artisan mezzanine:seat-board-user --seat=<seat_id> --board-user=<id>
+php artisan mezzanine:seat-board-user --seat=<seat_id> --clear
+php artisan mezzanine:seat-board-user --seat=<seat_id> --refuse      # card#12447
 ```
+
+⭐ `--seat` takes the seat id alone since card#13117, which made a seat known by its `seat_id` across the
+site; the pre-13117 `<install>/<seat>` spelling is refused by name, naming the new form.
 
 ⛔ **ANY write of the column — `--clear` or `--board-user` — deletes that seat's `seat_board_task`
 row IN THE SAME TRANSACTION.** Two writes, one act. For `--clear` the reason is that a cleared mapping

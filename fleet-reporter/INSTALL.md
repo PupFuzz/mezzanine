@@ -149,7 +149,8 @@ For a seat with no browser download, `issue-file --out <path>` writes a **v1** f
 one line, and prints the prefix alone:
 
 - **From the issue command**, on the Mezzanine host:
-  `php artisan mezzanine:ingest-token:issue <install_id> <seat_id> --by=<who> | node install.js issue-file --out <path>`.
+  `php artisan mezzanine:ingest-token:issue <seat_id> --by=<who> | node install.js issue-file --out <path>`
+  (the seat id alone since card#13117).
   The input must hold **exactly one** line matching `^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*$`; every other
   line is echoed with every token-shaped substring `<redacted>`, so the prefix line stays on screen. Zero
   token lines refuse, and **two refuse too, which is new with `install.js`**: the runbook's writer took the
@@ -642,7 +643,7 @@ site's token after the restart.
    prefix `<mzn_xxxxxxxx>` on `<host>`'s Seat tokens page* — before anything is removed, so a run that fails at a
    later step has still shown them; and the crontab is read (Linux), so a crontab it cannot read refuses before
    anything is removed. The prefix is not secret. Revoking is the operator's act; to take the desk off the floor
-   too, the site's operator runs `php artisan mezzanine:retire --seat=<install_id>/<seat_id> --by=<operator>
+   too, the site's operator runs `php artisan mezzanine:retire --seat=<seat_id> --by=<operator>
    --reason=<why>` (FLEET-STATE § 4.10).
 2. **The hooks, removed structurally**: every entry whose command parses as the reporter's for this artifact, the
    `statusLine` deleted when it is the reporter's and the config's `wrapped_statusline` is `null`, or set back to

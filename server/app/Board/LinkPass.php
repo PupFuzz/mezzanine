@@ -361,15 +361,15 @@ final class LinkPass
     {
         Counters::seat($seatRef, self::CONFLICT);
         Log::warning(sprintf('board link conflict: user %d declared by %s, %s %s',
-            $user, self::name($seatRef), $held ? 'held by' : 'and declared by', self::name($other)));
+            $user, self::label($seatRef), $held ? 'held by' : 'and declared by', self::label($other)));
     }
 
-    private static function name(int $seatRef): string
+    /** A seat as the log names it: its `seat_id`, which alone identifies it since card#13117. */
+    public static function label(int $seatRef): string
     {
-        $r = DB::table('seats')->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('seats.id', $seatRef)->first(['installs.install_id', 'seats.seat_id']);
+        $seatId = DB::table('seats')->where('id', $seatRef)->value('seat_id');
 
-        return $r === null ? 'seat '.$seatRef : $r->install_id.'/'.$r->seat_id;
+        return $seatId === null ? 'seat '.$seatRef : (string) $seatId;
     }
 
     /**

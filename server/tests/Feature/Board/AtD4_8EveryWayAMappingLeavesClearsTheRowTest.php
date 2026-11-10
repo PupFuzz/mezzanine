@@ -34,7 +34,7 @@ class AtD4_8EveryWayAMappingLeavesClearsTheRowTest extends BoardTaskTestCase
 
     private function seatBoardUser(array $args): int
     {
-        return $this->artisan('mezzanine:seat-board-user', ['--seat' => self::INSTALL.'/'.self::SEAT] + $args)->run();
+        return $this->artisan('mezzanine:seat-board-user', ['--seat' => self::SEAT] + $args)->run();
     }
 
     public function test_clear_nulls_the_column_and_deletes_the_row_and_the_next_recompute_renders_tier_3(): void
@@ -83,7 +83,7 @@ class AtD4_8EveryWayAMappingLeavesClearsTheRowTest extends BoardTaskTestCase
         $this->assertNull($this->boardRow());
 
         $this->issueToken(self::INSTALL, 'aimla-pm-2');
-        $this->artisan('mezzanine:seat-board-user', ['--seat' => self::INSTALL.'/aimla-pm-2', '--board-user' => (string) self::USER])
+        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'aimla-pm-2', '--board-user' => (string) self::USER])
             ->assertSuccessful();
     }
 
@@ -93,8 +93,8 @@ class AtD4_8EveryWayAMappingLeavesClearsTheRowTest extends BoardTaskTestCase
         $this->issueToken(self::INSTALL, 'aimla-impl');
         $before = $this->boardRow();
 
-        $this->artisan('mezzanine:seat-board-user', ['--seat' => self::INSTALL.'/aimla-impl', '--board-user' => (string) self::USER])
-            ->expectsOutputToContain('already mapped to aimla/aimla-pm')
+        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'aimla-impl', '--board-user' => (string) self::USER])
+            ->expectsOutputToContain('already mapped to aimla-pm')
             ->assertFailed();
 
         $this->assertSame($before, $this->boardRow(), 'the refused act touched the holder\'s row');
@@ -106,7 +106,7 @@ class AtD4_8EveryWayAMappingLeavesClearsTheRowTest extends BoardTaskTestCase
         $this->boardTitledSeat();
         $before = [$this->boardRow(), DB::table('seats')->where('id', $this->seatRef)->value('board_user_id')];
 
-        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'aimla/nobody', '--board-user' => '15'])->assertFailed();
+        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'nobody', '--board-user' => '15'])->assertFailed();
 
         foreach (['0', '-3', '15x', '1.5', ' 15', '4294967296', ''] as $bad) {
             $this->assertNotSame(0, $this->seatBoardUser(['--board-user' => $bad]), 'accepted --board-user='.var_export($bad, true));

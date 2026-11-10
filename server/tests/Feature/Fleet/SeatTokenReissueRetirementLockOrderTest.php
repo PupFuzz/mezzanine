@@ -60,7 +60,7 @@ class SeatTokenReissueRetirementLockOrderTest extends CommittedSeatTestCase
         };
 
         $outcome = $this->on(self::WRITER_2, fn () => app(SeatRetirement::class)->retire(
-            $this->install(), $this->seat(), 'operator@example.com', 'lock order',
+            $this->seat(), 'operator@example.com', 'lock order',
         ));
 
         $this->assertNotNull($child, 'the seam after $before never ran, so nothing raced the retirement');
@@ -109,7 +109,7 @@ class SeatTokenReissueRetirementLockOrderTest extends CommittedSeatTestCase
 
         // The plaintext token goes to stdout on success; it is discarded unread.
         $process = proc_open(
-            [PHP_BINARY, base_path('artisan'), 'mezzanine:ingest-token:issue', $this->install(), $this->seat(), '--by=suite'],
+            [PHP_BINARY, base_path('artisan'), 'mezzanine:ingest-token:issue', $this->seat(), '--by=suite'],
             [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             base_path(),

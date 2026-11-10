@@ -523,7 +523,8 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
      */
     private function insertedRole(array $fixture, string $install, string $seat): ?string
     {
-        foreach ($fixture['http']["/api/fleet/seats/{$install}/{$seat}"] ?? [] as $response) {
+        // The client reads a seat by its id alone since card#13117.
+        foreach ($fixture['http']["/api/fleet/seats/{$seat}"] ?? [] as $response) {
             if ($response['status'] === 200) {
                 return $response['body']['protocol_agent_role'];
             }

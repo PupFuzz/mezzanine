@@ -83,7 +83,7 @@ class CounterBadgesAreWindowedTest extends FoldTestCase
         $this->sweepAt($this->nowMs() + Badges::COUNTER_WINDOW_MS + 1000);
         $this->assertNotContains('epoch_reset', $this->serverBadges());
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT])->assertSuccessful();
 
         $this->assertNotContains('epoch_reset', $this->serverBadges());
     }

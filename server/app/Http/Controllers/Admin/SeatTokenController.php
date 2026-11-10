@@ -48,8 +48,8 @@ use Illuminate\Support\Facades\Validator;
  *
  * ⚠ AUTHORIZATION is the route group's: `auth` + `mfa` + `can:operate` from `routes/web.php`, plus
  * `password.confirm` on this module's routes (`routes/admin.php`). An operator may issue for any
- * install, including one that does not exist yet — there is no per-install ownership in this
- * application, and every console write is for every install.
+ * seat id, including one that does not exist yet — there is no per-room ownership in this
+ * application, and every console write is for every seat.
  */
 class SeatTokenController extends Controller
 {
@@ -75,11 +75,9 @@ class SeatTokenController extends Controller
 
         // The form's rule, so the error lands on the field; the act's own slug check below still
         // runs and is the guard.
-        $validator = Validator::make($request->only('install_id', 'seat_id'), [
-            'install_id' => ['required', 'string', 'regex:'.Anchored::pattern(Slug::INSTALL_ID)],
+        $validator = Validator::make($request->only('seat_id'), [
             'seat_id' => ['required', 'string', 'regex:'.Anchored::pattern(Slug::SEAT_ID)],
         ], [
-            'install_id.regex' => 'The install id must match '.Anchored::pattern(Slug::INSTALL_ID).' (D1 § 3.1).',
             'seat_id.regex' => 'The seat id must match '.Anchored::pattern(Slug::SEAT_ID).' (D1 § 3.1).',
         ]);
 
@@ -87,11 +85,7 @@ class SeatTokenController extends Controller
             return $this->back($request)->withErrors($validator);
         }
 
-        $result = SeatTokens::issue(
-            (string) $request->input('install_id'),
-            (string) $request->input('seat_id'),
-            (string) $request->user()->email,
-        );
+        $result = SeatTokens::issue((string) $request->input('seat_id'), (string) $request->user()->email);
 
         if ($result instanceof SeatTokenRefusal) {
             if ($result->reason === SeatTokenRefusal::SEAT_RETIRED) {
@@ -99,11 +93,11 @@ class SeatTokenController extends Controller
                 // retirement record is rendered from `refusedRetired` with `<x-utc-time>`.
                 return $this->back($request)
                     ->withErrors([$result->field => sprintf(
-                        'Refused: %s/%s is retired, and there is no un-retire — a replacement seat takes a new seat id. Nothing was issued.',
-                        $request->input('install_id'), $request->input('seat_id'),
+                        'Refused: %s is retired, and there is no un-retire — a replacement seat takes a new seat id. Nothing was issued.',
+                        $request->input('seat_id'),
                     )])
                     ->with('refusedRetired', [
-                        'seat' => $request->input('install_id').'/'.$request->input('seat_id'),
+                        'seat' => $request->input('seat_id'),
                         'at' => $result->retiredAt,
                         'by' => $result->retiredBy,
                         'reason' => $result->retiredReason,
@@ -130,8 +124,8 @@ class SeatTokenController extends Controller
             SeatTokenRevocation::ALREADY_REVOKED => $back->with('status',
                 'Token '.$prefix.' is already revoked. Nothing changed; the first revocation\'s record is kept, below.'),
             default => $back->with('status', collect($result->revoked)
-                ->map(fn (array $row) => 'Revoked '.$prefix.' — '.$row['installId'].' / '.$row['seatId'].'.'
-                    .($row['remaining'] === 0 ? ' '.SeatTokenRevocation::darkSeatWarning($row['installId'], $row['seatId']) : ''))
+                ->map(fn (array $row) => 'Revoked '.$prefix.' — '.$row['seatId'].'.'
+                    .($row['remaining'] === 0 ? ' '.SeatTokenRevocation::darkSeatWarning($row['seatId']) : ''))
                 ->implode(' ')),
         };
     }
@@ -165,11 +159,10 @@ class SeatTokenController extends Controller
             'tokenFileIngestUrl' => $issued === null ? null : self::tokenFileIngestUrl(),
             'issueKey' => SeatTokenIssueKey::mint($request->user()),
             'tokens' => SeatTokens::listing(),
-            // Typing aids, not an authorization: any slug may be typed, which is how a NEW install
-            // or seat is provisioned (card#7336's install needs exactly that).
-            'installs' => DB::table('installs')->orderBy('install_id')->pluck('install_id'),
-            'seats' => DB::table('seats')->whereNull('retired_at')->orderBy('seat_id')->distinct()->pluck('seat_id'),
-            'installPattern' => Slug::INSTALL_ID,
+            // A typing aid, not an authorization: any slug may be typed, which is how a NEW seat is
+            // provisioned. The live seats are listed so an id that is already live — which issuing
+            // would RE-ISSUE for that seat, rotating its token (card#13117) — is seen before it is sent.
+            'seats' => DB::table('seats')->whereNull('retired_at')->orderBy('seat_id')->pluck('seat_id'),
             'seatPattern' => Slug::SEAT_ID,
         ]);
 
@@ -178,9 +171,9 @@ class SeatTokenController extends Controller
         return $response;
     }
 
-    /** Back to the page with the two ids — and never the spent `issue_key` — flashed for the form. */
+    /** Back to the page with the seat id — and never the spent `issue_key` — flashed for the form. */
     private function back(Request $request): RedirectResponse
     {
-        return redirect()->route('admin.tokens.index')->withInput($request->only('install_id', 'seat_id'));
+        return redirect()->route('admin.tokens.index')->withInput($request->only('seat_id'));
     }
 }

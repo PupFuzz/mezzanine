@@ -2,12 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Console\SeatOption;
 use App\Fold\Clock;
 use App\Fold\FoldEvent;
 use App\Fold\Projector;
 use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
 use App\Ingest\Counters;
+use App\Read\SeatIdentity;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -26,7 +28,7 @@ use Illuminate\Support\Facades\DB;
 class RebuildCommand extends Command
 {
     protected $signature = 'mezzanine:rebuild
-        {--seat= : <install>/<seat>}
+        {--seat= : the seat id}
         {--since= : replay only events received at or after this timestamp}';
 
     protected $description = 'Replay a seat\'s events through the fold (docs/design/FLEET-STATE.md § 6.6)';
@@ -70,19 +72,14 @@ class RebuildCommand extends Command
 
         $seat = (string) $this->option('seat');
 
-        if (! str_contains($seat, '/')) {
-            $this->error('--seat=<install>/<seat> is required');
+        if (($refusal = SeatOption::refusal($seat)) !== null) {
+            $this->error($refusal);
 
             return self::INVALID;
         }
 
-        [$installId, $seatId] = explode('/', $seat, 2);
-
-        $seatRef = DB::table('seats')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('installs.install_id', $installId)
-            ->where('seats.seat_id', $seatId)
-            ->value('seats.id');
+        // The live seat of the id, else its latest retired one: a rebuild replays whatever history is kept.
+        $seatRef = SeatIdentity::latest($seat)?->seat_ref;
 
         if ($seatRef === null) {
             $this->error('no such seat: '.$seat);

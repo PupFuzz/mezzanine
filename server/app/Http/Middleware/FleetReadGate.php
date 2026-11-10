@@ -82,11 +82,16 @@ class FleetReadGate
     public const FAILED_AUTH_RETRY_AFTER_S = TokenResolver::FAILED_AUTH_RETRY_AFTER_S;
 
     /**
-     * The routes behind this gate that a `mzr_` token may not read: § 8.2's timeline, and § 8.7's
-     * building surface, which § 9 makes "browser-only, like the timeline: an `mzr_` token presented to
-     * it is refused `401` exactly as the timeline refuses one".
+     * The routes behind this gate that a `mzr_` token may not read: § 8.2's timeline — BOTH of its
+     * routes, the seat's own and the kept two-segment one (card#13117) — and § 8.7's building surface,
+     * which § 9 makes "browser-only, like the timeline: an `mzr_` token presented to it is refused
+     * `401` exactly as the timeline refuses one".
+     *
+     * ⚠ A NAME LIST, SO A NEW ROUTE IS OPEN TO A TOKEN UNTIL IT IS ADDED HERE.
+     * `TheSeatRoutesAddressASeatByItsIdTest` selects the timeline routes by their ACTION and presents
+     * each one a token, so a timeline route missing from this list reds there.
      */
-    public const SESSION_ONLY_ROUTES = ['fleet.timeline', 'building', 'building.room_map'];
+    public const SESSION_ONLY_ROUTES = ['fleet.timeline', 'fleet.seat_timeline', 'building', 'building.room_map'];
 
     /** § 7.2: the counter pair is snapshot-scoped — "a REST snapshot was served / refused". */
     public const COUNTED_ROUTE = 'fleet.snapshot';

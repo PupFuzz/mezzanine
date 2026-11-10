@@ -67,16 +67,29 @@ Route::middleware(['web', 'fleet.read'])->group(function () {
     Route::get('/api/fleet/health', [FleetController::class, 'health'])
         ->name('fleet.health');
 
-    // § 8.2's table orders the seat routes with the TIMELINE declared after the seat detail; the
-    // registration order below is the reverse, and it has to be: `/{seat}/timeline` and
-    // `/{seat}` are both matched by a router that takes the first hit, and `{seat_id}` would
-    // otherwise swallow a request for the timeline of a seat literally named `timeline`. Stating
-    // it because the two lines look interchangeable and are not.
+    // ⭐ A SEAT IS ADDRESSED BY ITS `seat_id` ALONE (card#13117, plan-13117-seat-identity.md § 3.3).
+    // The two-segment routes are KEPT, additively under `api_version` 1, for the bridge's reader, with
+    // `{install_id}` ignored (any value); their removal waits on that owner's word (§ 7). Every route
+    // that serves a timeline is session-only — `FleetReadGate::SESSION_ONLY_ROUTES` names both.
+    //
+    // ⚠ THE REGISTRATION ORDER IS LOAD-BEARING. The router takes the first hit, and
+    // `/api/fleet/seats/x/timeline` matches both `/{seat_id}/timeline` and `/{install_id}/{seat_id}`:
+    // the seat's timeline is registered first, so it wins — a seat literally named `timeline` reaches
+    // its own timeline at `/api/fleet/seats/timeline/timeline` by the same order. Likewise each
+    // `…/timeline` route precedes the seat route of the same depth.
+    Route::get('/api/fleet/seats/{seat_id}/timeline', [FleetController::class, 'timeline'])
+        ->where('seat_id', Slug::SEAT_ID)
+        ->name('fleet.seat_timeline');
+
     Route::get('/api/fleet/seats/{install_id}/{seat_id}/timeline', [FleetController::class, 'timeline'])
         ->name('fleet.timeline');
 
     Route::get('/api/fleet/seats/{install_id}/{seat_id}', [FleetController::class, 'seat'])
         ->name('fleet.seat');
+
+    Route::get('/api/fleet/seats/{seat_id}', [FleetController::class, 'seat'])
+        ->where('seat_id', Slug::SEAT_ID)
+        ->name('fleet.seat_by_id');
 });
 
 /*

@@ -207,8 +207,11 @@ seat_id = ?` decides:
 
 **Backstop in the store.** `uq_seat (install_ref, seat_id)` goes — with `install_ref` nullable it would admit two
 unassigned seats of one id, since MariaDB treats NULLs as distinct in a unique key — replaced by a generated column
-`live_seat_id VARCHAR(48) AS (IF(retired_at IS NULL, seat_id, NULL)) VIRTUAL` with `UNIQUE KEY uq_live_seat
-(live_seat_id)`. MariaDB indexes a `VIRTUAL` generated column and names a unique index over one its *"poor man's
+`live_seat_id VARCHAR(48) AS (IF(retired_at IS NULL, seat_id, NULL)) STORED` with `UNIQUE KEY uq_live_seat
+(live_seat_id)` (⭐ **STORED, corrected at S1's build**: this paragraph said VIRTUAL, and a VIRTUAL column on
+`seats` makes MariaDB 11.8.6 refuse every later `ADD COLUMN … ALGORITHM=INSTANT` on the table — `ERROR 1846`,
+which this repository's own board-link migration spells, and which its test replays over the current schema;
+a STORED column admits it, and `coord_hooks.active_key` is STORED for its key already). MariaDB indexes a `VIRTUAL` generated column and names a unique index over one its *"poor man's
 partial index"* (`mariadb.com/kb/en/generated-columns/`, read 2026-11-10); `IF()` is deterministic, which an indexed
 virtual column requires; and this is a generated **column**, not the expression index D2 § 6.1 says the engine
 lacks. The reviewer measured the key on a scratch 11.8.6 (round 1, *verified sound*). Reachable route for the
@@ -1043,6 +1046,19 @@ owning document at the slice. *Both composers* means `Building::compose()` and `
 | T21 | one seat-identity primitive (§ 3.6): an unassigned seat is found by every surface a placed one is | behavioural leg: an unassigned seat `u` with a token — revoke its prefix; move it (delta); `mezzanine:retire --seat=u`; a species allocation after it; the tokens listing; `mezzanine:rebuild --seat=u`; `mezzanine:seat-board-user --seat=u`; `LinkPass`'s label. Grep leg: the pattern the coder writes for an inner join from `seats` to `installs` outside `SeatIdentity`, **run on the unmigrated tree first** | revoked; one `seat.delta`; retired; `u`'s species counted in the live population; `u` listed; rebuilt; linked; the label `u`; the grep leg red on the unmigrated tree (the plant) and green after S1 — a site left over reds the leg, and the behavioural leg reds on the act that site serves |
 | T22 | `amend()` and the compare-and-swap (§ 5.5) | two console actions on one base, the second blocked on the lock; a textarea save with a stale `base_layout_version` | the second action reads the first's result and either applies cleanly or is refused naming the floor; the stale textarea save refused naming both revisions, the store unchanged |
 | T23 | the key primitive is the only place a key is built or split (§ 3.4), and it carries the room for a fleet-scope post | behavioural leg: `coord-model.js edgesOf()` over a fleet-scope round whose origin and traveller seats sit in two rooms, keyed by `seat_id`. Grep leg: the pattern the coder writes for a key joined from `install_id` and `seat_id`, split on `/`, or a `splitKey` import, over **every module the pages load** — the import graph walked from each page's module script (`floor.blade.php`, `dashboard.blade.php`, the building view), the precedent being `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s root walk — which today spans `server/public/js` and `resources/`, less `wire/seat-key.js`; **run on the unmigrated tree first** | A22 edges carry each seat's held `install_id` as its room (a build that splits the key on `/` yields the whole seat id as the room — the RED); the grep leg red on the unmigrated tree (the plant) and green after S2 — a site left over reds it |
+
+**Build notes, S1 (2026-11-10) — where the build read this section differently, and why.** (1) The plants'
+one-letter seat ids (`x`, `y`, `z`, `q`, `w`, `u`) are placeholders: D1 § 3.1's seat slug needs two characters, so
+the tests use `seat-x`, `seat-y` and the like. (2) T21's *move it (delta)* has no act to drive in S1 — the move is
+S3's (§ 4.2) — so S1's behavioural leg reads the delta a roomless seat's **retirement** publishes (`seat.delta`
+and `seat.retired`, both on the `unassigned` tenancy); the move's delta is T8's, at S3. (3) T20's *test that
+planted a seat in two rooms* did not exist: the notice was never under a test, so the slice deletes the branch
+and its D3 § 4.4 wording, and adds no test for a state `uq_live_seat` makes unreachable. (4) A new seat's
+species preference key in S1 is `unassigned/<seat_id>` — the room it is drawn in, in the pair shape the client's
+draw (`seed.js`) still computes until S2 re-keys all three copies together (§ 3.4). (5) § 6.2's *an `installs`
+row for every room key the current layout places* mints only keys that are D1's install slug; a layout key that
+is not cannot be a room. `down()` leaves the minted rows in place: under the pre-S1 code an install with no seat
+is drawn nowhere, so they are inert, and the next `up()` finds them present.
 
 ## 10. The slice plan, for the coder
 

@@ -34,12 +34,12 @@ trait DrivesTheSeatTokensPage
     }
 
     /** GET the page, then POST the issue form with the key that page rendered. */
-    protected function issueOnPage(string $installId, string $seatId): TestResponse
+    protected function issueOnPage(string $seatId): TestResponse
     {
         $key = $this->issueKeyIn($this->get(route('admin.tokens.index'))->assertOk());
 
         return $this->post(route('admin.tokens.issue'), [
-            'issue_key' => $key, 'install_id' => $installId, 'seat_id' => $seatId,
+            'issue_key' => $key, 'seat_id' => $seatId,
         ]);
     }
 

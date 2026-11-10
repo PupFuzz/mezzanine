@@ -48,7 +48,7 @@ class RebuildBlocksOnSeatStateTest extends CommittedSeatTestCase
 
             try {
                 $this->on(self::WRITER_2, fn () => Artisan::call('mezzanine:rebuild', [
-                    '--seat' => $this->install().'/'.$this->seat(),
+                    '--seat' => $this->seat(),
                 ]));
             } catch (QueryException $e) {
                 $blockedOn = $e->getSql();

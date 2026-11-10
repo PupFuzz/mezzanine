@@ -67,7 +67,7 @@ class TheDrillDownReadsItsAgesFromTheServerClockTest extends TestCase
     private function defects(array $result): array
     {
         $fixture = $this->fixture(self::RUN);
-        $body = $fixture['http']['/api/fleet/seats/aimla/aimla-pm'][0]['body'];
+        $body = $fixture['http']['/api/fleet/seats/aimla-pm'][0]['body'];
         $panel = $this->openPanel($result, 'aimla-pm');
         $stamp = $this->ms($body['server_time']);
         $receipt = $this->ms($body['delivery']['last_receipt_at']);

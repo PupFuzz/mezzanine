@@ -46,7 +46,7 @@ class SeatRetirementLockOrderTest extends CommittedSeatTestCase
         };
 
         $outcome = $this->on(self::WRITER_2, fn () => app(SeatRetirement::class)->retire(
-            $this->install(), $this->seat(), 'operator@example.com', 'lock order',
+            $this->seat(), 'operator@example.com', 'lock order',
         ));
 
         $this->assertNotNull($timedOut, 'the seam after $before never ran');

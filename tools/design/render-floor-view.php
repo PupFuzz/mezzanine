@@ -62,7 +62,8 @@ echo match ($which) {
 
         return view('console.tokens.index', [
             'active' => 'tokens',
-            'issued' => new SeatTokenIssued($fixture, substr($fixture, 0, 12), 'aimla', 'aimla-pm', 1, '2026-10-29T00:00:00Z', []),
+            // A new seat, so in no room (card#13117): its token file's `install_id` line is `unassigned`.
+            'issued' => new SeatTokenIssued($fixture, substr($fixture, 0, 12), 'unassigned', 'aimla-pm', 1, '2026-10-29T00:00:00Z', [], false, null),
             'tokenFileIngestUrl' => SeatTokenController::tokenFileIngestUrl(),
             'issueKey' => 'fixture-issue-key',
             'tokens' => collect(),

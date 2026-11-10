@@ -306,7 +306,7 @@ runs['no-route'] = run({ note: `idle-trip (${i2note}) over \`fixtures/maps/snack
 runs['reload-mid-trip'] = run({ note: `idle-trip (${i2note}), then at 46 s — thirty seconds or more into the dwell — a delta two versions ahead for \`aimla-impl-2\`, whose resync fetch returns the seat still idle: a non-delta entry, so the trip is re-derived from it and continues at its phase.`,
     at_s: i2.s - LEAD, until_ms: 90000,
     deltas: [{ at_ms: 46000, seat: 'aimla-impl-2', v: V2 + 2, patch: { activity_state: 'idle' } }],
-    extra_http: { '/api/fleet/seats/aimla/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, 46000, i2.s - LEAD) }] } });
+    extra_http: { '/api/fleet/seats/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, 46000, i2.s - LEAD) }] } });
 
 runs['reload-mid-trip-viewer'] = run({ note: `reload-mid-trip's SECOND VIEWER: a page whose clock 0 is one loop frame after reload-mid-trip's resync instant (${i2note}, so clock 0 here is ${LEAD + 41}.25 s after reload-mid-trip's clock 0): it enters the trip at its phase.`,
     at_s: i2.s + 41.25, until_ms: 40000, beats: [0, 15000, 30000] });
@@ -326,7 +326,7 @@ runs['map-moves-table'] = run({ note: `idle-trip (${i2note}), then at 35 s, duri
 runs['stilled-mid-trip'] = run({ note: `idle-trip (${i2note}), then at 35 s, during the dwell, a delta two versions ahead for \`aimla-impl-1\` whose resync fetch answers 401: the floor stilled (§ 9 F6), the trip ends and the sleeper is at its desk.`,
     at_s: i2.s - LEAD, until_ms: 60000,
     deltas: [{ at_ms: 35000, seat: 'aimla-impl-1', v: SEATS['aimla-impl-1'].state_version + 2, patch: { activity_state: 'working' } }],
-    extra_http: { '/api/fleet/seats/aimla/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso((i2.s - LEAD) * 1000 + 35000), error: 'token_revoked' } }] } });
+    extra_http: { '/api/fleet/seats/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso((i2.s - LEAD) * 1000 + 35000), error: 'token_revoked' } }] } });
 
 // ─── stage 2: card#12785's chained breaks ───────────────────────────────────────────────────────────────────────
 // card#12785 re-derived every run from stage 1's: each timeline moved by ONE constant (every ISO instant in it), so a
@@ -752,7 +752,7 @@ function restroomRuns() {
                 { at_ms: 5000, seat: 'aimla-pm', v: pm.state_version + 1, patch: NONE },
                 { at_ms: 13000, seat: 'aimla-pm', v: pm.state_version + 3, patch: { open_calls: 0 } },
             ],
-            extra_http: { '/api/fleet/seats/aimla/aimla-pm': [{ status: 200, body: resync }] } });
+            extra_http: { '/api/fleet/seats/aimla-pm': [{ status: 200, body: resync }] } });
         notes['intern-leave-resync'] = `\`aimla-pm\`'s intern \`${PM_CALL}\` seated \`working\` from the snapshot, lost at 5000 ms (\`subagents_open\` 1 → 0), and at 13000 ms, while its walk out is in flight, a delta two versions ahead for \`aimla-pm\` whose resync fetch returns the seat without it: a non-delta entry for the seat, which leaves the intern walking out to the elevator. No break of either chain falls near. ${clock(Q)}.`;
     }
 
@@ -767,7 +767,7 @@ function restroomRuns() {
     notes['leave-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, \`idle → stale\`: the leaf opens and one A2 walks from the threshold.`;
     runs['reload-inside'] = make({ at_s: A, until_ms: aUntil,
         deltas: [{ at_ms: thirtyIn, seat: 'aimla-impl-2', v: V2 + 2, patch: { activity_state: 'idle' } }],
-        extra_http: { '/api/fleet/seats/aimla/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, thirtyIn, A) }] } });
+        extra_http: { '/api/fleet/seats/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, thirtyIn, A) }] } });
     notes['reload-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms — thirty seconds into the dwell — a delta two versions ahead for \`aimla-impl-2\`, whose resync fetch returns the seat still idle: a non-delta entry, so the visit is re-derived from it and continues at its phase, inside.`;
     runs['reload-inside-viewer'] = make({ at_s: A + thirtyIn / 1000 + 0.25, until_ms: aUntil - thirtyIn, beats: range(0, aUntil - thirtyIn, 15000) });
     notes['reload-inside-viewer'] = `reload-inside's SECOND VIEWER: a page whose clock 0 is one loop frame after reload-inside's resync instant (${aNote}, so clock 0 here is ${thirtyIn / 1000 + 0.25} s after idle-visit's): its first render draws the leaf closed and the field occupied, no walker on the floor.`;
@@ -786,7 +786,7 @@ function restroomRuns() {
     notes['map-removes-door'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, a \`room.map\` revision — \`fixtures/maps/restroom-none.json\` as map version 5: the lattice key moved, so the visit ends, the sleeper is at its desk and the door is gone.`;
     runs['stilled-inside'] = make({ at_s: A, until_ms: thirtyIn + 20000,
         deltas: [{ at_ms: thirtyIn, seat: 'aimla-impl-1', v: SEATS['aimla-impl-1'].state_version + 2, patch: { activity_state: 'working' } }],
-        extra_http: { '/api/fleet/seats/aimla/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso(A + thirtyIn / 1000), error: 'token_revoked' } }] } });
+        extra_http: { '/api/fleet/seats/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso(A + thirtyIn / 1000), error: 'token_revoked' } }] } });
     notes['stilled-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, a delta two versions ahead for \`aimla-impl-1\` whose resync fetch answers 401: the floor stilled (§ 9 F6), the visit ends, the door closed and vacant, the sleeper at its desk.`;
 
     // ── two-at-the-door: impl-2 at + 5, impl-1 2–10 s after it, both idle. ─────────────────────────────────────────────────

@@ -12,7 +12,7 @@ namespace App\Fleet;
  */
 final readonly class SeatRetirementOutcome
 {
-    /** No seat with that `<install>/<seat>` exists. Nothing was written. */
+    /** No seat carries that `seat_id`. Nothing was written. */
     public const NO_SUCH_SEAT = 'no_such_seat';
 
     /** `docs/design/FLEET-STATE.md § 2.1`: re-running on an already-retired seat is a NO-OP. */

@@ -167,8 +167,8 @@ checked deploy requirement** rather than a sizing note.
 | **feed reload** | deploy command (`mezzanine:feed-reload`), run by `bin/deploy.sh` **immediately before** the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot (the pool's master is root's, `docs/PLAN.md § 5`) | per deploy | write one `fleet.reload` row to `feed_outbox` carrying the release's `feed_version`, **then wait lag + tick + margin (3 s)**: a row is invisible to every handler for [§ 8.3](#83-the-websocket-delta-feed)'s 2 s visibility lag and is delivered on the tick after that — and, the read being a prefix, after every lower id has left the lag too, which under [§ 8.3](#83-the-websocket-delta-feed)'s condition (a) is at most one `INSERT` round trip later and inside the margin — so when the command returns every stream that is draining has read it and ended with `feed.close{reason:"reload"}` ([§ 8.3](#83-the-websocket-delta-feed)) — which is what takes it off the previous release's code, since opcache revalidation reaches new requests only and the client's reconnect is a new request. ⭐ **What ends the streams that did NOT read it is DECIDED ([§ 14](#14-open-questions-for-the-review-loop) item 17, closed by measurement on card#9300):** `bin/deploy.sh` then reads the **stream pool's** full status over its `pm.status_listen` ([§ 8.3](#83-the-websocket-delta-feed) R2) and waits, up to a **30 s ceiling** (`MEZZ_FEED_DRAIN_CEILING_S`), for every request that **started before the row was written** to finish; at the ceiling it sends those workers **SIGTERM**, and the pool's master starts fresh ones in their place. ⚠ **The ceiling's default has a consumer at the CLIENT:** [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)'s reload grace — the span in which a browser re-opens silently instead of rendering a failure over a routine deploy — is derived at [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from) from this ceiling among other figures, so a host that raises `MEZZ_FEED_DRAIN_CEILING_S` beyond this default **can** hold the maintenance window past that grace — it does so on a deploy where a stream missed `fleet.reload`, since the drain returns as soon as no previous-release stream remains. No client can read the setting, and those two sections own what its viewer sees then. A stream is picked by **when its request started, never by its URI** — behind the front controller every request in the listing reads `/index.php` (measured) — and that is exact only because the pool is **dedicated** (R2): the only other requests the maintenance window lets into it are `503`s, milliseconds long. The signal needs no root because the pool runs as the deploy user, which the deploy's A14 refuses a host without. A residual the signal does not end, or a status that stops answering, is **logged and does not fail the window** — a deploy must not block, or stay down, on one wedged stream. ⚠ The poll and the signal are `bin/deploy.sh`'s and not this command's, which an earlier revision of this row gave the poll to: they read the host's FPM pool, which the deploy's one FPM reader already resolves (card#9300: never a second reader), and the command then runs the same on a host with no FPM at all | the deploy's window fails on it, like any other step of phase B. Were it skipped, streams would keep serving the previous release's code until each ended on its own clock — for a healthy client, not before its session expires ([§ 9](#9-read-side-authentication)) — and each client would learn of the deploy only when it next reconnected, from the first envelope whose `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
 | **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | **first the link pass** (card#12447 — `BOARD-TASK.md § 4.4`): for every unretired seat whose `board_user_source` is neither `operator` nor `refused`, read the board user its last heartbeat declares; a declaration the board confirms — fingerprint equal to this site's `BOARD_API_BASE`, user a member of a configured board and not disabled — is written to `seats.board_user_id` with `board_user_source = declared`, counting `board_link_mapped`; a user another seat holds, or one that two declaring seats contend for in the same pass (then neither is written), is refused counting `board_link_conflict` on each refused seat; a user no configured board lists, or lists disabled, is refused counting `board_link_unknown_user`; no account type is read (seat ruling on card#12447: agent logins measure `human`, and the operator's pin or `--refuse` is the control against a wrong declaration); a fingerprint of another kanban is refused counting `board_link_site_mismatch`; a `declared` mapping whose seat now declares none, or declares a user the pass refused, is cleared in the same transaction counting `board_link_cleared` — the *declares none* leg only for a seat whose last batch's `reporter_version` is at least the build that sends the members; a degraded members read closes the pass for that poll and counts `board_link_failed` on the fleet while the card read below still runs. Every `seats` row the pass writes is locked `FOR UPDATE` first, in `id` order, and a UNIQUE refusal at the write is a conflict counted, never an error raised; then read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
-| **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id> \| --refuse \| --clear`) | on demand | the operator's **pin** on `seats.board_user_id` — since card#12447 one of its TWO writers, the other being the board poll's link pass above: `--board-user` writes the column with `board_user_source = operator`, which the link pass never overrides; `--refuse` writes `NULL` with `board_user_source = refused`, which the pass also never overrides, so a seat whose declaration must not be honoured — a human's account, another install's seat on this site's board — stays unlinked by the operator's word; and `--clear` writes `NULL` to both and so returns the seat to automatic linking at the next poll — and **any** write of that column, by either writer, setting it or clearing it, deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
-| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, publish the `seat.retired` message and the delta, and **clear the seat's board-user mapping** — `board_user_id` back to `NULL` and the seat's `seat_board_task` row deleted ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.7](#67-retention-and-purge)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
+| **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<seat_id> --board-user=<id> \| --refuse \| --clear`) | on demand | the operator's **pin** on `seats.board_user_id` — since card#12447 one of its TWO writers, the other being the board poll's link pass above: `--board-user` writes the column with `board_user_source = operator`, which the link pass never overrides; `--refuse` writes `NULL` with `board_user_source = refused`, which the pass also never overrides, so a seat whose declaration must not be honoured — a human's account, another install's seat on this site's board — stays unlinked by the operator's word; and `--clear` writes `NULL` to both and so returns the seat to automatic linking at the next poll — and **any** write of that column, by either writer, setting it or clearing it, deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
+| **retire** | operator command (`mezzanine:retire --seat=<seat_id> --by= --reason=`; the seat id alone since card#13117), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, publish the `seat.retired` message and the delta, and **clear the seat's board-user mapping** — `board_user_id` back to `NULL` and the seat's `seat_board_task` row deleted ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.7](#67-retention-and-purge)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
 | **coordination receipt** | HTTP request (PHP-FPM) — `POST /api/ingest/github/{hook}` ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)), card#12239 | per delivery | validate in D1 § 18.8's order, derive the `coord.round`(s) per [D1 § 18.7](EVENT-SCHEMA.md#187-coordround), and write the `coord_deliveries` digest row and the `coord.round` outbox rows in **one** transaction ([§ 6.12](#612-the-coordination-store)) — the digest committed with the derivation or not at all — then return `202`. No thread and no post is stored: the floor holds no coordination state (operator, 2026-10-23). No seat lock, no fold, no daemon: a delivery is not a seat event ([D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)) and its derivation is one pure function over one JSON object | GitHub **does not retry** and records the failure (DOCS-CITED, `docs/design/COORD-STORE.md § 2.3`); the operator's Redeliver — reaching **3 days** back — is the retry, and it derives only because a failed receipt committed no digest. A lost post is one animation that never fired, and nothing later re-fires it |
 
 **15 s sweep cadence, derived.** The tightest deadline any time-derived transition has is the `stale`
@@ -1517,7 +1517,7 @@ Sketches, not migrations: they state every column, its type, its nullability and
 what an implementer needs. Names are final; a builder may reorder columns and add nothing.
 
 ```sql
-CREATE TABLE installs (
+CREATE TABLE installs (                     -- the ROOM (card#9267; created in the console since card#13117)
   id            SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   install_id    VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   display_name  VARCHAR(64)  NULL,
@@ -1528,8 +1528,16 @@ CREATE TABLE installs (
 
 CREATE TABLE seats (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  install_ref   SMALLINT UNSIGNED NOT NULL,
+  install_ref   SMALLINT UNSIGNED NULL,     -- the seat's ROOM; NULL = in no room (card#13117): a seat
+                                            -- is issued in none and the console places it
   seat_id       VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  live_seat_id  VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin
+                AS (IF(retired_at IS NULL, seat_id, NULL)) STORED,
+                                            -- card#13117: the key's spelling of "a live seat's id";
+                                            -- a retired row carries NULL, which a unique key admits
+                                            -- any number of. STORED, as `coord_hooks.active_key`:
+                                            -- a VIRTUAL column makes MariaDB refuse every later
+                                            -- `ADD COLUMN … ALGORITHM=INSTANT` on the table
   species       VARCHAR(16)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,  -- the CHARACTER (§ 6.13)
   species_drawn_at DATETIME(3) NULL,        -- set by the card#12443 migration only (§ 6.13)
   board_user_id INT UNSIGNED NULL,          -- § 4.9 tier 1's join. Two writers since card#12447:
@@ -1545,11 +1553,19 @@ CREATE TABLE seats (
                                             -- one writer is named in § 2.1 / § 4.10
   retired_by    VARCHAR(64)  NULL,
   retired_reason VARCHAR(255) NULL,
-  UNIQUE KEY uq_seat (install_ref, seat_id),
+  UNIQUE KEY uq_live_seat (live_seat_id),  -- card#13117: at most one LIVE seat per seat_id, site-wide
   UNIQUE KEY uq_seat_board_user (board_user_id),
+  KEY ix_seat_install (install_ref),
   CONSTRAINT fk_seat_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
--- A seat row is created at seat-token issue time (CLI or console; D1 § 3.3), which is why the row can exist
+-- ⭐ A SEAT IS KNOWN BY ITS `seat_id` ALONE (card#13117). `uq_seat (install_ref, seat_id)` — uniqueness
+-- per install — is gone, replaced by the LIVE-only `uq_live_seat`: a `UNIQUE (seat_id)` over every row
+-- is false of a store that held one id retired under two installs, which the per-install namespace let
+-- through, and renaming those rows would back-edit a retirement record. That a retired id is never
+-- issued again is `SeatTokens::issue()`'s rule, under the species mutex
+-- (`plan-13117-seat-identity.md § 3.1`). Every read of a seat's room goes through one primitive,
+-- `App\Read\SeatIdentity`, which LEFT-joins `installs` and names a seat in no room `unassigned`.
+-- A seat row is created at seat-token issue time (CLI or console; D1 § 3.3), in no room, which is why the row can exist
 -- before any event arrives: a provisioned-but-silent seat renders `offline`/`no_data_yet`
 -- rather than being invisible. The token rows themselves live in the ingest's own table
 -- (card #7338, D1 § 3.3) and are never read by anything in this document.
@@ -2100,8 +2116,9 @@ CREATE TABLE feed_outbox (
                                                 -- and a row carrying it would be fanned out to every open
                                                 -- stream — the loop has no `return` on it — telling every
                                                 -- client the server ended a stream that is still running
-  install_id  VARCHAR(32) NULL,                 -- the message's install where it has one (seat.*, coord.*,
-                                                -- room.map); NULL on a fleet-wide message. § 9's filter key
+  install_id  VARCHAR(32) NULL,                 -- the message's ROOM where it has one (seat.*, coord.*,
+                                                -- room.map) — `unassigned` for a seat in no room since
+                                                -- card#13117; NULL on a fleet-wide message. § 9's filter key
   message     JSON NOT NULL CHECK (LENGTH(message) <= 8192),   -- the § 8.3 envelope, serialized ONCE by
                                                 -- the writer; § 8.3's 8 KiB bound, enforced at the write
   KEY ix_created (created_at)                   -- the purge's range scan (§ 6.7), and the MIN(id) over one
@@ -2122,9 +2139,10 @@ CREATE TABLE coord_hooks (
   hook_id       CHAR(26)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `mzh_` + 22 base64url chars: the PUBLIC selector in the
                                             -- route's path (D1 § 18.8). Never a secret, never evidence
-  scope         ENUM('install','fleet') NOT NULL,
+  scope         ENUM('room','fleet') NOT NULL,
                                             -- set by the operator at issue (COORD-STORE.md § 3.1):
-                                            -- `install` names one install below; `fleet` names none —
+                                            -- `room` names one room below (`install` until card#13117,
+                                            -- migrated in place); `fleet` names none —
                                             -- the cross-install repository whose threads span rooms.
                                             -- An ENUM by § 6.3: the issue command is the only writer
                                             -- and produces exactly these two
@@ -2860,7 +2878,7 @@ drain.
 
 ### 6.6 Rebuild from the log
 
-`php artisan mezzanine:rebuild --seat=<install>/<seat> [--since=<datetime>]` truncates that seat's
+`php artisan mezzanine:rebuild --seat=<seat_id> [--since=<datetime>]` truncates that seat's
 projections, resets its cursor — `fold_cursor_event_id` to `0` and `fold_cursor_received_at` to the
 `received_at` of the oldest event it is about to replay, never to `NULL`, so
 [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s lag stays computable and honest for the
@@ -3316,7 +3334,12 @@ total:**
    `App\Read\RetirementFilter::live()`, the one predicate every read surface uses — so a retired seat's
    species is free from `retired_at` on, and **nothing is written to free it**: rule 5 is this read
    filter, not a writer. While this rule answers, **the layout is not read at all** (rule 2).
-2. **Else, a species no live seat on its FLOOR holds.** A seat's floor is
+2. **Else, a species no live seat on its FLOOR holds — the seat's floor, or nothing while it has none.**
+   ⭐ **Since card#13117 a new seat is created in no room, so at issue it is on no floor and this rule is
+   skipped** — rule 3 then ranks by the fleet alone (operator ruling 2026-11-10, Q6 (a); a body that
+   repeats a floor-mate's after the console places the seat is accepted, and reachable only past rule 1).
+   What follows is the rule over a seat that has a floor, which the migration below still reads for the
+   rows it backfills. A seat's floor is
    [FLOOR.md § 3.1](FLOOR.md#31-the-keys-and-why-they-are-the-only-ones)'s: the floor the current
    building layout places its `install_id` on — `BuildingLayout::floorOf($installId)` over
    `App\Building\Layouts::read()` ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)),
@@ -3783,6 +3806,21 @@ no second copy of a number the wire already carries.
 | **SSE** `GET /api/fleet/stream` ([§ 8.3](#83-the-websocket-delta-feed)) | the browser only | **together** — the client JavaScript is served by the same deploy that serves the feed | carries `feed_version` for detection, but **no support window and no N/N-1 obligation**: there is never a client in the wild older than the server. A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — it does not attempt a compatibility dance it cannot win |
 | **REST** `GET /api/building/*` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the browser only | **together** — the same deploy serves the client that fetches it | carries `api_version` for detection and takes **the stream row's posture, not the fleet REST row's**: no support window and no N/N-1 obligation, because its one consumer ships with the server. It is a REST surface because a map is fetched once and cached by version rather than streamed; it is outside `/api/fleet/*` because an authored document is not a fleet fact ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)). The property that would move it to the first row is checkable: a machine consumer of its own that upgrades on its own schedule |
 
+⭐ **card#13117 changed the first row's surface under `api_version` 1, additively, and declared the
+meaning drift to its machine consumer's owner** rather than bumping the version, because that consumer —
+the bridge's idle nudge (`agent-webhook-bridge`'s `FleetSnapshotReader`) — refuses every body whose
+`api_version` is not `1`, so a bump would turn every nudge *unmeasured* from the deploy on. What changed:
+the snapshot's `installs[].install_id` is the **room** the console placed the seat in (a key that never
+changes, on a room that can be retired, holding seats that can be moved), no longer the install the token
+was issued under; a group `unassigned` appears whenever a live seat is in no room; `seat_id` is unique
+across the site; `GET /api/fleet/seats/{seat_id}` and `…/{seat_id}/timeline` were added beside the
+two-segment routes, which are kept and ignore their `{install_id}`. **The declaration, as posted to the
+bridge's owner before the change merged**, is
+[`plan-13117-seat-identity.md § 7`](plan-13117-seat-identity.md)'s second row, and it is quoted in the
+release note's *Upgrade warnings*. **The bump to `api_version` 2 and the removal of the two-segment routes
+are gated on that owner's word that its reader has moved — a gate, not a clock** (D1 § 3.3's overlap
+rule); until then this document plans neither.
+
 **Stating the second row is the point.** Inheriting D1's wire-compatibility discipline for a channel
 whose two ends ship in one act would cost a support window, a version negotiation and a set of rules
 nobody can ever exercise — and an obligation nobody can exercise is one nobody maintains. The asymmetry
@@ -3796,9 +3834,9 @@ are `application/json; charset=utf-8` and carry `server_time`.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/fleet/snapshot` | session+MFA **or** `mzr_` token | the whole fleet: every install, every seat, current state. The snapshot half of snapshot-then-deltas, and the watchdog's entire interface |
-| `GET` | `/api/fleet/seats/{install_id}/{seat_id}?resync_from=<state_version>` | session+MFA **or** `mzr_` token | one seat: its state object plus the drill-down extras (counters, predicates, open calls, session). `resync_from` is **optional** and is the client's last applied `state_version`: when it is present and the seat's current version exceeds it by more than 1, the server increments `feed_gap_detected` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). It changes nothing about the response |
-| `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
+| `GET` | `/api/fleet/snapshot` | session+MFA **or** `mzr_` token | the whole fleet: every room, every seat, current state — grouped under `installs[]` by the seat's room, a seat in no room under the group `unassigned` (card#13117). The snapshot half of snapshot-then-deltas, and the watchdog's entire interface |
+| `GET` | `/api/fleet/seats/{seat_id}?resync_from=<state_version>` — and, kept for the bridge's reader until [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s gate opens, `/api/fleet/seats/{install_id}/{seat_id}`, whose `{install_id}` is ignored (card#13117) | session+MFA **or** `mzr_` token | one seat: its state object plus the drill-down extras (counters, predicates, open calls, session). `resync_from` is **optional** and is the client's last applied `state_version`: when it is present and the seat's current version exceeds it by more than 1, the server increments `feed_gap_detected` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). It changes nothing about the response |
+| `GET` | `/api/fleet/seats/{seat_id}/timeline?limit=&before=` — and the kept `/api/fleet/seats/{install_id}/{seat_id}/timeline` (card#13117) | session+MFA — **both routes** ([§ 9](#9-read-side-authentication)) | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
 | `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
 **There is no fifth FLEET endpoint, and the fleet plane still serves no floor map — but a map IS
 served, on a surface of its own, and the sentence that stood here until 2026-09-12 is REVERSED.**
@@ -3961,12 +3999,21 @@ that neither end has to guess:
   owes is the **key it is computed from**. That is why declaring the binding costs this contract no wire
   member: the members already exist, and what was missing was the statement that they are load-bearing
   for something other than naming a seat.
-- **Changing either member re-identifies the desk; it is not a rename.** The pair *is* the identity, so
-  a seat whose config file changes one of them arrives as a new seat at a new desk and the old seat is
-  one that stopped reporting. That is D1's rule and D1's cost, cited rather than re-decided here.
-- **Uniqueness is per install, not global** — `UNIQUE KEY uq_seat (install_ref, seat_id)`
-  ([§ 6.4](#64-ddl)). A consumer ordering seats within a floor may rely on `seat_id` being total there
-  and nowhere else.
+- ⭐ **Since card#13117 the identity is `seat_id` alone, and `install_id` is the ROOM the seat is drawn
+  in** — a console fact, `unassigned` for a seat the console has placed in no room, and no longer
+  anything in the seat's config ([D1 § 3.3](EVENT-SCHEMA.md#33-authentication-and-the-identity-binding-rule),
+  [`plan-13117-seat-identity.md § 3.3`](plan-13117-seat-identity.md)). The wire is unchanged: both
+  members still ride every seat object and message, and `install_id` keeps its name. Until the slice
+  that re-keys the client (plan § 3.4, S2) the browser's desk key and slot hash still read the pair;
+  no act can change a seat's room before the console's move (plan § 4.2, S3), which lands after it.
+- **Changing `seat_id` re-identifies the desk; it is not a rename** — a seat that reports under another
+  id arrives as a new seat at a new desk and the old seat is one that stopped reporting. That is D1's
+  rule and D1's cost, cited rather than re-decided here.
+- **Uniqueness is site-wide among LIVE seats** — `UNIQUE KEY uq_live_seat (live_seat_id)`
+  ([§ 6.4](#64-ddl)), card#13117; until that card it was per install, `uq_seat (install_ref, seat_id)`.
+  A consumer may select a seat by `seat_id` alone. A retired id is never issued again, but two retired
+  rows of one id can exist on a store that predates the card, and no read surface resolves a retired
+  seat by id alone.
 
 **`protocol_agent_name` is the seat→agent DECLARATION, and publishing it here is the whole of what
 this plane does with it.** ⭐ **`card#7957`'s ruling *(d)*, built on the server's side on `card#9296`,
@@ -5091,7 +5138,7 @@ renders none of its members.
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
 | `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"synthetic-org/coordination-fixture#900742"` |
-| `coord_thread.scope` | slug | no | ≤ 16 B — `install` or `fleet`, the binding's scope ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread), card#12239). It selects which declaration a consumer joins the object's names through (rule 1 below) and whether the object has a room at all | `"install"` |
+| `coord_thread.scope` | slug | no | ≤ 16 B — `room` (`install` until card#13117) or `fleet`, the binding's scope ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread), card#12239). It selects which declaration a consumer joins the object's names through (rule 1 below) and whether the object has a room at all | `"room"` |
 | `coord_thread.install_id` | slug | **yes** | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it is the outbox row's filter key ([§ 8.3](#83-the-websocket-delta-feed)). `null` **iff** `scope` is `fleet` — the object belongs to no room, and the outbox row carries the `NULL` [§ 6.4](#64-ddl) reserves for a fleet-wide message | `"aimla"` |
 | `coord_thread.lifecycle` | slug | no | ≤ 32 B — `opened` · `closed` · `reopened`, the three actions D1 § 18.8 step 8 admits, verbatim. A closed thread can reopen, so a consumer must not treat `closed` as terminal | `"closed"` |
 | `coord_thread.carrier` | slug | **yes** | ≤ 16 B — the title's leading bracketed token, lowercased and slug-validated with **no set consulted** ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)); `null` when the title leads with none, or when the token fails validation | `"announce"` |
@@ -5148,11 +5195,14 @@ argument is untouched by a join existing. A consumer resolves against the seat p
 holds; this plane asserts no endpoint for it. Three rules, and the third is the one an implementer
 gets wrong:
 
-1. **The join has two arms, and the object's `scope` selects one.** For an **`install`-scope** object
-   it is `(install_id, protocol_agent_name)` → the ONE seat of that install declaring that name, and it
-   resolves to 0 or 1 desks — never to a set. Scoped to the install because such an object carries the
-   `install_id` of its hook binding and *"a broadcast's reach equals the install's"*; a name declared in
-   another install is another install's fact. For a **`fleet`-scope** object (card#12239, operator
+1. **The join has two arms, and the object's `scope` selects one.** For a **`room`-scope** object
+   (`install` until card#13117) it is `(room, protocol_agent_name)` → the ONE live seat **currently in
+   that room** declaring that name, and it resolves to 0 or 1 desks — never to a set. Scoped to the room
+   because such an object carries the room key (`install_id`) of its hook binding and *"a broadcast's
+   reach equals the install's"*; a name declared in another room is another room's fact. ⭐ **The room
+   is a console placement since card#13117**, so which seat a team repository's post resolves to is a
+   function of where the operator placed the seats, and a seat moved between rooms moves its scope with
+   it ([`plan-13117-seat-identity.md § 4.3`](plan-13117-seat-identity.md)). For a **`fleet`-scope** object (card#12239, operator
    2026-10-23) it is `roundtable_agent_name` over **every seat of every install the client holds** → the
    ONE seat declaring that roundtable name, 0 or 1 desks, never a set: a roundtable identity is unique
    across the fleet by that repository's own construction, so the duplicate arm below spans installs for
@@ -5318,7 +5368,7 @@ receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-del
   "coord_round": {
     "post_ref": "synthetic-org/coordination-fixture#900742",
     "thread_ref": "synthetic-org/coordination-fixture#900742",
-    "scope": "install",
+    "scope": "room",
     "install_id": "aimla",
     "from": "pm",
     "attribution": "resolved",
@@ -5343,7 +5393,7 @@ The close of that same thread, which names nobody — `opened_by` is `null` and 
   "server_time": "2026-08-27T16:02:11.802Z",
   "coord_thread": {
     "thread_ref": "synthetic-org/coordination-fixture#900742",
-    "scope": "install",
+    "scope": "room",
     "install_id": "aimla",
     "lifecycle": "closed",
     "carrier": "announce",
@@ -5745,6 +5795,7 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 | the floor, the drill-down, the stream, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the feed **and** the REST snapshot — and on the stream the gate is re-applied every **15 s** for as long as it is open, below |
 | REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
 | the stream, from a machine consumer | **not supported** | refused by operator ruling, 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 15); the reason it was first refused is gone — see below |
+| the seat timeline — **every route that serves one**: `GET /api/fleet/seats/{seat_id}/timeline` and the kept `GET /api/fleet/seats/{install_id}/{seat_id}/timeline` ([§ 8.2](#82-rest)) | **Laravel session + MFA only** | an `mzr_` token presented to either is refused `401`. ⚠ The rule is enforced **by route name** (`App\Http\Middleware\FleetReadGate::SESSION_ONLY_ROUTES`), so a timeline route under a new name is open to a machine token until it is listed — card#13117's seat-id timeline route is, and `TheSeatRoutesAddressASeatByItsIdTest` presents a token to every route whose action is the timeline, selected from the route table rather than by name. Closing routes by default — an attribute the gate reads instead of a list — is a hardening named here and not built |
 | the building surface — `GET /api/building` and `GET /api/building/rooms/{install_id}/map` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | **Laravel session + MFA only** | browser-only, like the timeline: an `mzr_` token presented to it is refused `401` exactly as the timeline refuses one, and it is **not** `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session. The map is furniture and would be harmless in a machine's hands; what refusing buys is one fewer surface with a compatibility window, which is [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s reason for its posture |
 
 **The stream re-checks its own authorization every 15 s, so revocation on an open connection is a
@@ -5920,7 +5971,11 @@ sub-second fleet state gets polling latency, and that need is what reopens item 
 install, and any `fleet_read` token does too. That is stated rather than assumed, because the moment a
 second organisation's install reports into one Mezzanine it is wrong. Every outbox row carries its
 `install_id` and the stream handler filters per subscriber ([§ 8.3](#83-the-websocket-delta-feed)), and
-the endpoint shapes are per-install, so a future ACL has somewhere to attach. Whether one is needed was
+the endpoint shapes are per-install, so a future ACL has somewhere to attach. ⭐ **Since card#13117 that
+attachment point is the ROOM**: a seat-scoped row's `install_id` is the room the seat is in at the write,
+`unassigned` for a seat in no room, and `NULL` on a fleet-wide row as before — so a seat the console moves
+carries its new room's tenancy from the delta that announces the move. Nothing is built: the filter stays
+all-or-nothing under the ruling below. Whether one is needed was
 an operator question, not a design one, and the operator ruled on 2026-09-13 that none is, for now:
 [§ 14](#14-open-questions-for-the-review-loop) item 7 records the ruling, and it reopens before a second
 organisation's install reports in.
@@ -6876,7 +6931,7 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
 
 - **GREEN:** the spec holds **two** synthetic repositories, one per binding (one unrevoked binding per
   repository, card#12239 r4 MINOR-2); post one synthetic delivery from the spec's fleet repository to its
-  `fleet`-scope binding and a **distinct** body from the spec's install repository to an `install`-scope
+  `fleet`-scope binding and a **distinct** body from the spec's install repository to a `room`-scope
   binding for install `aimla`; open [§ 8.3](#83-the-websocket-delta-feed)'s stream with a session whose
   snapshot holds **no** install, read the two `coord.round` frames off it, and assert on the frames (not
   on the store): the first carries `scope: "fleet"`, `install_id: null` and `targets` equal to its `to`
@@ -7508,8 +7563,9 @@ operator ruling.
    ([§ 8.3](#83-the-websocket-delta-feed)) keeps admitting everything and no ACL is built.
    **Reopens:** before a second organisation's install reports in. The price of the ACL that reopening
    would buy stays here so it is not re-derived, as three edits. First, the handler's one
-   per-subscriber filter becomes a predicate over `feed_outbox.install_id` (card#9287 moved the
-   attachment point there from a channel per install), and that predicate is also the filter
+   per-subscriber filter becomes a predicate over `feed_outbox.install_id` — the **room** key since
+   card#13117, `unassigned` for a roomless seat's rows (card#9287 moved the attachment point there from
+   a channel per install), and that predicate is also the filter
    [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s
    `room.map` needs, because it carries another install's `install_id`. Second, a product answer for
    the fleet-wide `fleet{}` that `feed.heartbeat` and `fleet.health` carry (the `NULL`-`install_id`

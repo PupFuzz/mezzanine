@@ -4,7 +4,9 @@ namespace App\Floor;
 
 use App\Building\Building;
 use App\Building\Layouts;
+use App\Read\SeatIdentity;
 use App\Read\Snapshot;
+use Illuminate\Support\Collection;
 
 /**
  * What the floors module SHOWS: every floor this deploy has, the map it was given, the two
@@ -49,7 +51,7 @@ final class FloorInventory
      */
     public static function rows(): array
     {
-        $seats = Snapshot::seats()->groupBy('install_id');
+        $seats = self::roomSeats()->groupBy('install_id');
         $floors = Floors::all();
         $validatedAgainst = Floors::validatedAgainst();
 
@@ -159,13 +161,24 @@ final class FloorInventory
      */
     public static function renderedInstalls(): array
     {
-        return Snapshot::seats()
+        return self::roomSeats()
             ->pluck('install_id')
             ->unique()
             ->sort()
             ->values()
             ->map(fn ($id) => (string) $id)
             ->all();
+    }
+
+    /**
+     * The rendered seats that are in a ROOM. ⛔ The snapshot groups the seats in no room under the virtual
+     * install `unassigned` (card#13117, plan-13117-seat-identity.md § 4.4), which is not a room: no map
+     * may be authored for it and no console row offers it as one, so its seats are left out here — the
+     * one population both the rows and the write-side guard above read.
+     */
+    private static function roomSeats(): Collection
+    {
+        return Snapshot::seats()->where('install_id', '!==', SeatIdentity::UNASSIGNED)->values();
     }
 
     /** @return list<string> the rendered installs with no map yet — what "add a floor" offers */

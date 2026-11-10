@@ -8,14 +8,32 @@
     --}}
     @if ($issued !== null)
         <section aria-labelledby="issued-heading">
-            <h2 id="issued-heading">Token issued for {{ $issued->installId }} / {{ $issued->seatId }}</h2>
+            <h2 id="issued-heading">Token issued for {{ $issued->seatId }}</h2>
+            @if ($issued->reissue)
+                {{-- card#13117: a seat id is one namespace for the whole site, so an id that is already live
+                     is a re-issue for that seat — named with its room and last receipt, so a typo that
+                     rotated a stranger's token is seen. --}}
+                <p>
+                    This is a <strong>re-issue for an existing seat</strong>, in room <code>{{ $issued->installId }}</code>,
+                    @if ($issued->lastReceiptAt === null)
+                        which has never reported.
+                    @else
+                        last heard from <x-utc-time :at="$issued->lastReceiptAt" />.
+                    @endif
+                </p>
+            @else
+                <p>A new seat, in no room: it is listed under <code>{{ $issued->installId }}</code> until the console places it.</p>
+            @endif
             <p><strong>{{ $tokenFileIngestUrl !== null ? 'Save it now.' : 'Copy it now.' }} It is shown once</strong>, on this page only, and cannot be shown again: only its SHA-256 is stored.</p>
             <p>Prefix <code>{{ $issued->prefix }}</code></p>
             <p><code id="seat-token-plaintext" data-seat-token>{{ $issued->plaintext }}</code></p>
             @if ($tokenFileIngestUrl !== null)
                 {{-- card#12571, D6 § 4.2: `seat-token.js` builds the file in the browser from this button's
                      attributes and the token element's text; no request carries it. The button holds no
-                     copy of the token, and the script removes it on a back/forward-cache restore. --}}
+                     copy of the token, and the script removes it on a back/forward-cache restore.
+                     `data-install-id` is the seat's room, `unassigned` for none (card#13117): the v2 file's
+                     `install_id` line, which this server never reads and an installer before the v3 file
+                     still requires (plan-13117-seat-identity.md § 8.1). --}}
                 <p>
                     <button type="button" data-seat-token-save data-ingest-url="{{ $tokenFileIngestUrl }}"
                             data-install-id="{{ $issued->installId }}" data-seat-id="{{ $issued->seatId }}">Save token file</button>
@@ -44,25 +62,16 @@
 
     <h2>Issue a token</h2>
     <p>
-        Issuing a token for a new install or seat creates it: the seat is on the floor from this moment, as
-        <em>no data yet</em>, until its reporter sends its first batch. A seat that already holds a token gets
-        a second one beside it — that is a rotation, and nothing is revoked.
+        A seat is known by its seat id alone, across the whole site. Issuing a token for a new seat id creates
+        the seat, in no room: it is on the floor from this moment, under <em>unassigned</em>, as <em>no data
+        yet</em>, until its reporter sends its first batch. An id that is already live is that seat: it gets a
+        second token beside its first — a rotation, and nothing is revoked. A retired id is never issued again.
     </p>
     <form method="POST" action="{{ route('admin.tokens.issue') }}">
         @csrf
         {{-- ⛔ ALWAYS THE FRESHLY MINTED KEY, NEVER `old('issue_key')`: a validation failure flashes the
              input, and re-rendering the spent key would refuse every retry. --}}
         <input type="hidden" name="issue_key" value="{{ $issueKey }}">
-
-        <label for="install_id">Install id</label>
-        <input id="install_id" name="install_id" type="text" required list="known-installs"
-               pattern="{{ str_replace('-]', '\-]', $installPattern) }}" value="{{ old('install_id') }}"
-               autocomplete="off" spellcheck="false">
-        <datalist id="known-installs">
-            @foreach ($installs as $install)
-                <option value="{{ $install }}"></option>
-            @endforeach
-        </datalist>
 
         <label for="seat_id">Seat id</label>
         <input id="seat_id" name="seat_id" type="text" required list="known-seats"
@@ -82,10 +91,11 @@
     <table>
         <thead>
             <tr>
-                <th>Install / seat</th><th>Prefix</th><th>Issued</th><th>By</th><th>Last used</th><th>Revoked</th><th></th>
+                <th>Seat (room)</th><th>Prefix</th><th>Issued</th><th>By</th><th>Last used</th><th>Revoked</th><th></th>
             </tr>
         </thead>
-        @forelse ($tokens->groupBy(fn ($t) => $t->install_id.' / '.$t->seat_id) as $seat => $rows)
+        @forelse ($tokens->groupBy(fn ($t) => $t->seat_ref) as $rows)
+            @php($seat = $rows->first()->seat_id.' ('.$rows->first()->install_id.')')
             <tbody>
                 @foreach ($rows as $token)
                     <tr>

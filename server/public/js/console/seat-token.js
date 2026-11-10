@@ -6,7 +6,7 @@
 //
 // card#12571 — the *Save token file* button (D6 § 4.2, `docs/design/REPORTER-INSTALL.md`). The server renders
 // it on an `https:` site's issue response only, with the ingest URL (from `app.url`, never the request) and the
-// seat's ids as attributes. The click builds the v2 token file here, from those attributes and the token
+// seat's ids as attributes — the `install_id` the seat's room, `unassigned` for none, since card#13117. The click builds the v2 token file here, from those attributes and the token
 // element's own text, and downloads it as `mezzanine-reporter-token`: no request, URL, session row or log line
 // carries the plaintext. A restore removes the button with the token, so a restored page can neither show nor
 // save it.

@@ -183,7 +183,7 @@ class EventFieldByteBoundsTest extends TestCase
                 coercedEnumValues: 0,
                 formatRefused: [],
             ),
-            new TokenBinding(1, 'mzn_abcdefgh', 1, 'aimla', 'aimla-pm'),
+            new TokenBinding(1, 'mzn_abcdefgh', 1, 'aimla-pm'),
         );
     }
 

@@ -34,7 +34,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
         $fixture = $this->fixture('leg_a');
         $result = $this->replay('leg_a');
 
-        $this->assertSame(['/api/fleet/seats/aimla/aimla-impl-3'], $this->seatRequests($result),
+        $this->assertSame(['/api/fleet/seats/aimla-impl-3'], $this->seatRequests($result),
             'the insert fetch was not issued exactly once');
 
         $this->assertSame($fixture['final'], $this->finalSeats($result),

@@ -125,7 +125,7 @@ class SeatRetirementBoundedRetryTest extends CommittedSeatTestCase
     {
         try {
             return [$this->on(self::WRITER_2, fn () => app(SeatRetirement::class)->retire(
-                $this->install(), $this->seat(), 'operator@example.com', 'bounded retry',
+                $this->seat(), 'operator@example.com', 'bounded retry',
             )), null];
         } catch (QueryException $e) {
             return [null, $e];

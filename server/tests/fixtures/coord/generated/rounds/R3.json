@@ -5,7 +5,7 @@
   "coord_round": {
     "post_ref": "synthetic-org/coordination-fixture#900020-c9000000000031",
     "thread_ref": "synthetic-org/coordination-fixture#900020",
-    "scope": "install",
+    "scope": "room",
     "install_id": "one",
     "from": "coder",
     "attribution": "resolved",

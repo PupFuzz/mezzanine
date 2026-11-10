@@ -133,7 +133,7 @@ trait DrivesTheCoordClient
             'server_time' => '2026-08-27T16:02:11.802Z',
             'coord_thread' => array_merge([
                 'thread_ref' => 'synthetic-org/coordination-fixture#900742',
-                'scope' => 'install',
+                'scope' => 'room',
                 'install_id' => 'aimla',
                 'lifecycle' => 'closed',
                 'carrier' => 'announce',
@@ -164,7 +164,7 @@ trait DrivesTheCoordClient
             'coord_round' => array_merge([
                 'post_ref' => 'synthetic-org/coordination-fixture#900742',
                 'thread_ref' => 'synthetic-org/coordination-fixture#900742',
-                'scope' => 'install',
+                'scope' => 'room',
                 'install_id' => 'aimla',
                 'from' => 'pm',
                 'attribution' => 'resolved',

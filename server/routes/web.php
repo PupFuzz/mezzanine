@@ -173,10 +173,11 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // admits an `mzr_` machine token, which carries no account and so can never be an operator, and
     // D2 § 8.2's REST surface is `GET`-only by contract. In `web`, so the group's CSRF check applies.
     // `can:operate` refuses an observer `403`; `throttle:compose` is per account
-    // (`App\Providers\AppServiceProvider`). The segments are D1 § 3.1's slugs, so a malformed one is
-    // the router's `404` and reaches no gate and no store.
-    Route::post('/desk/{install_id}/{seat_id}/compose', [DeskComposeController::class, 'store'])
-        ->where(['install_id' => Slug::INSTALL_ID, 'seat_id' => Slug::SEAT_ID])
+    // (`App\Providers\AppServiceProvider`). The segment is D1 § 3.1's seat slug, so a malformed one is
+    // the router's `404` and reaches no gate and no store. A seat is addressed by its `seat_id` alone
+    // since card#13117 (plan-13117-seat-identity.md § 3.3) — browser-only, so no window was kept.
+    Route::post('/desk/{seat_id}/compose', [DeskComposeController::class, 'store'])
+        ->where('seat_id', Slug::SEAT_ID)
         ->middleware(['can:operate', 'throttle:compose'])
         ->name('desk.compose');
 

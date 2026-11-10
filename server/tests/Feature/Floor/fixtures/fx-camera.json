@@ -794,7 +794,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -1952,7 +1952,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -8262,7 +8262,7 @@
         "/art/floor/tiles/floor-plane.tsx": [
           { "status": 200, "text": "@text:resources/floor/tiles/floor-plane.tsx" }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -8330,7 +8330,7 @@
             "clocked": true
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {

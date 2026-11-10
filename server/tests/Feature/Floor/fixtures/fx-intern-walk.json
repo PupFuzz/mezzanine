@@ -7097,7 +7097,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-1": [
+        "/api/fleet/seats/aimla-impl-1": [
           {
             "status": 503,
             "body": {
@@ -7593,7 +7593,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-1": [
+        "/api/fleet/seats/aimla-impl-1": [
           {
             "status": 503,
             "body": {
@@ -9749,7 +9749,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-mac-1": [
           {
             "status": 200,
             "body": {

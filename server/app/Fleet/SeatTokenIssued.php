@@ -16,6 +16,13 @@ namespace App\Fleet;
  * `priorActive` is the seat's OTHER active prefixes at issue time, read in the issue transaction,
  * so both callers can say "this is a rotation — revoke the old one after the seat holds this one"
  * (D1 § 3.3's order).
+ *
+ * `reissue` is whether the seat existed before this act, and `installId` / `lastReceiptAt` name the
+ * room it is in (`unassigned` for none) and its last receipt: since card#13117 a seat id is one
+ * namespace for the whole site, so issuing an id that is already live is a re-issue for that seat,
+ * and both callers say so with the room and the receipt before an operator rotates a stranger's
+ * token (`docs/design/plan-13117-seat-identity.md § 3.1`). `installId` is also what the token file
+ * the console saves still carries until the installer stops reading it (plan § 8.1).
  */
 final readonly class SeatTokenIssued
 {
@@ -30,5 +37,7 @@ final readonly class SeatTokenIssued
         public int $seatRef,
         public string $createdAt,
         public array $priorActive,
+        public bool $reissue,
+        public ?string $lastReceiptAt,
     ) {}
 }

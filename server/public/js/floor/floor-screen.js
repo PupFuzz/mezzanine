@@ -1068,13 +1068,12 @@ export class FloorScreen {
      * The drill-down half of a frame: the route's `{seat_id}` resolved to a desk on this floor and
      * opened, a panel a removal closed taken off the route, and the panel's model.
      *
-     * ⚠ A `seat_id` IS RESOLVED ACROSS EVERY ROOM ON THE FLOOR, AND ONE THAT NAMES DESKS IN TWO ROOMS
-     * OPENS NEITHER. § 4.4 reads the seat segment "against the room's `install_id`", and the floor key
-     * is the least room's; but the redirect from `/floor/{room}/{seat_id}` keeps the seat and drops the
-     * room, so on a floor of several rooms the segment alone can name a desk in a room that is not the
-     * key's. Opening the key's room's desk of that name — or the first match — would open a desk the
-     * link did not mean; the notice says the segment is ambiguous instead. The resolution is stated at
-     * FLOOR § 4.4 (Appendix B step 10).
+     * A `seat_id` IS RESOLVED ACROSS EVERY ROOM ON THE FLOOR. The redirect from `/floor/{room}/{seat_id}`
+     * keeps the seat and drops the room, so on a floor of several rooms the segment alone names the desk,
+     * in whichever room it is. ⭐ It names ONE desk: since card#13117 at most one live seat carries an id
+     * (`uq_live_seat`), so among rendered seats a match is unique. The *names a desk in more than one
+     * room* notice this used to carry guarded a state that is no longer reachable and is deleted (FLOOR
+     * § 4.4, Appendix B step 10).
      */
     #drillDown(frame) {
         const notices = [...frame.notices];
@@ -1087,20 +1086,16 @@ export class FloorScreen {
                 this.#seatOpened = false;
             } else if (frame.floor !== null && this.#client.feed.applied) {
                 const rooms = new Set(frame.rooms.map((room) => room.install_id));
-                const matches = [...this.#client.seats.values()]
-                    .filter((seat) => rooms.has(seat.install_id) && seat.seat_id === this.#seatSegment);
+                const match = [...this.#client.seats.values()]
+                    .find((seat) => rooms.has(seat.install_id) && seat.seat_id === this.#seatSegment);
 
-                if (matches.length === 1) {
+                if (match !== undefined) {
                     this.#seatOpened = true;
-                    this.#panel.open(matches[0].install_id, matches[0].seat_id);
-                } else if (matches.length === 0) {
-                    // § 4.4's two seat-segment notices — this one and the one below — in the
-                    // wording the operator ratified (card#7342, 2026-09-25): an ambiguous segment
-                    // opens neither desk "and says so, naming the rooms".
-                    notices.push(`no desk ${this.#seatSegment} on this floor`);
+                    this.#panel.open(match.install_id, match.seat_id);
                 } else {
-                    notices.push(`the seat ${this.#seatSegment} names a desk in more than one room on this floor — `
-                        + `${matches.map((seat) => seat.install_id).sort().join(', ')}`);
+                    // § 4.4's seat-segment notice, in the wording the operator ratified (card#7342,
+                    // 2026-09-25).
+                    notices.push(`no desk ${this.#seatSegment} on this floor`);
                 }
             }
         }

@@ -1012,7 +1012,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -1166,7 +1166,7 @@
             "clocked": true
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -2296,7 +2296,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -2450,7 +2450,7 @@
             "clocked": true
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -3649,7 +3649,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -3802,7 +3802,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -4846,7 +4846,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -4999,7 +4999,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -5858,7 +5858,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/nulls-a": [
+        "/api/fleet/seats/nulls-a": [
           {
             "status": 200,
             "body": {
@@ -5935,7 +5935,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/nulls-a/timeline": [
+        "/api/fleet/seats/nulls-a/timeline": [
           {
             "status": 200,
             "body": {
@@ -5950,7 +5950,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/nulls-b": [
+        "/api/fleet/seats/nulls-b": [
           {
             "status": 200,
             "body": {
@@ -6093,7 +6093,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/nulls-b/timeline": [
+        "/api/fleet/seats/nulls-b/timeline": [
           {
             "status": 200,
             "body": {
@@ -6849,7 +6849,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/real-zero": [
+        "/api/fleet/seats/real-zero": [
           {
             "status": 200,
             "body": {
@@ -6945,7 +6945,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/real-zero/timeline": [
+        "/api/fleet/seats/real-zero/timeline": [
           {
             "status": 200,
             "body": {
@@ -7712,7 +7712,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-interns": [
+        "/api/fleet/seats/aimla-interns": [
           {
             "status": 200,
             "body": {
@@ -8008,7 +8008,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-interns/timeline": [
+        "/api/fleet/seats/aimla-interns/timeline": [
           {
             "status": 200,
             "body": {
@@ -9434,7 +9434,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review": [
+        "/api/fleet/seats/aimla-review": [
           {
             "status": 200,
             "body": {
@@ -9530,7 +9530,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review/timeline": [
+        "/api/fleet/seats/aimla-review/timeline": [
           {
             "status": 200,
             "body": {
@@ -10916,7 +10916,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review": [
+        "/api/fleet/seats/aimla-review": [
           {
             "status": 200,
             "body": {
@@ -11012,7 +11012,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review/timeline": [
+        "/api/fleet/seats/aimla-review/timeline": [
           {
             "status": 200,
             "body": {
@@ -12100,7 +12100,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-mac-1": [
           {
             "status": 200,
             "body": {
@@ -13527,7 +13527,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {

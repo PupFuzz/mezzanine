@@ -85,7 +85,7 @@ class AtC1ToC4ComposeGateAndWriteTest extends ComposeTestCase
         $this->assertSame('POST', $sent[count($sent) - 1]->method());
 
         $line = collect($this->logged)->first(fn (string $l) => str_contains($l, 'compose posted'));
-        $this->assertSame('info compose posted seat=aimla/aimla-pm card=9234 comment=117 user='.$operator->id.' []', $line);
+        $this->assertSame('info compose posted seat=aimla-pm card=9234 comment=117 user='.$operator->id.' []', $line);
     }
 
     // ── AT-C3 ─────────────────────────────────────────────────────────────────────────────────

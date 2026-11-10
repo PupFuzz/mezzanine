@@ -63,7 +63,7 @@ class SeatTokenNeverSurfacesTest extends TestCase
     {
         $this->confirmedOperator();
 
-        $token = $this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')->assertOk());
+        $token = $this->plaintextIn($this->issueOnPage('aimla-pm')->assertOk());
         $this->assertNotNull($token, 'the control: a token was shown');
 
         $this->assertStringNotContainsString(substr($token, 4), $this->log());
@@ -87,7 +87,7 @@ class SeatTokenNeverSurfacesTest extends TestCase
 
         $this->confirmedOperator();
 
-        $token = $this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')->assertOk());
+        $token = $this->plaintextIn($this->issueOnPage('aimla-pm')->assertOk());
         $this->assertNotNull($token);
 
         // Read RIGHT AFTER the issue POST and again after the next GET: a flash lives in the store
@@ -142,7 +142,7 @@ class SeatTokenNeverSurfacesTest extends TestCase
 
             $this->confirmedOperator();
 
-            $this->issueOnPage('aimla', 'aimla-pm')->assertStatus(500);
+            $this->issueOnPage('aimla-pm')->assertStatus(500);
 
             $prefix = (string) DB::table('ingest_tokens')->value('prefix');
             $this->assertSame(12, strlen($prefix), 'the control: the insert happened before the failure');

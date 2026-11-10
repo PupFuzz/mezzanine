@@ -113,7 +113,7 @@ class RetirementClearsTheBoardUserMappingTest extends SweepTestCase
             ->where('seats.id', $seatRef)->first(['installs.install_id', 'seats.seat_id']);
 
         $code = $this->artisan('mezzanine:seat-board-user', [
-            '--seat' => $seat->install_id.'/'.$seat->seat_id, '--board-user' => (string) $boardUser,
+            '--seat' => $seat->seat_id, '--board-user' => (string) $boardUser,
         ])->run();
 
         if ($code !== 0) {

@@ -98,10 +98,9 @@ class FloorController extends Controller
                 'map' => ['required', 'string', new TiledMap],
             ],
             [
-                'install_id.in' => 'No floor with that install id renders on this deploy. A floor '
-                    .'is an install, and an install exists once a seat is provisioned for it — '
-                    .'issue the seat a token on the Seat tokens page (or with '
-                    .'`php artisan mezzanine:ingest-token:issue`), then give its floor a map here '
+                'install_id.in' => 'No room with that install id renders on this deploy. A map is '
+                    .'authored for a room a seat is drawn in, and since card#13117 a new seat is in no '
+                    .'room until it is placed in one; `unassigned` is never a room '
                     .'(docs/design/FLOOR.md § 3.1, § 3.4).',
             ],
         );

@@ -12,7 +12,8 @@ namespace App\Support;
  * itself and takes no delimiters, while `preg_match()` needs both — so `Anchored::pattern()`
  * builds the second spelling from the first rather than a caller keeping a copy of it.
  *
- * Callers: `mezzanine:ingest-token:issue` (where an install and a seat are minted),
+ * Callers: `mezzanine:ingest-token:issue` (where a seat is minted — no install since card#13117), the
+ * seat routes and the `--seat` option (`App\Console\SeatOption`),
  * `GET /api/building/rooms/{install_id}/map` (`docs/design/FLEET-STATE.md § 8.7`: "The surface
  * answers for any `install_id` that matches D1 § 3.1's slug; one that does not is `404`"), and
  * `App\Floor\FloorMap`'s `reserved_for` (`AGENT_NAME`).

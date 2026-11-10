@@ -147,12 +147,15 @@ class AtD2_29ABindingHoldsAtMostTwoSecretsTest extends CoordTestCase
         $this->assertFileDoesNotExist("{$this->dir}/nogit.secret");
     }
 
-    public function test_the_scope_and_install_rules(): void
+    public function test_the_scope_and_room_rules(): void
     {
-        $this->issue(['repository' => 'synthetic-org/another-fixture', '--scope' => 'fleet', '--install' => 'one', '--shared-identity' => 'true'], 'a')
-            ->expectsOutputToContain('names no install')->assertFailed();
-        $this->issue(['repository' => 'synthetic-org/another-fixture', '--scope' => 'install', '--shared-identity' => 'true'], 'b')
-            ->expectsOutputToContain('needs --install')->assertFailed();
+        $this->issue(['repository' => 'synthetic-org/another-fixture', '--scope' => 'fleet', '--room' => 'one', '--shared-identity' => 'true'], 'a')
+            ->expectsOutputToContain('names no room')->assertFailed();
+        $this->issue(['repository' => 'synthetic-org/another-fixture', '--scope' => 'room', '--shared-identity' => 'true'], 'b')
+            ->expectsOutputToContain('needs --room')->assertFailed();
+        // The pre-card#13117 spelling is a value the scope no longer takes, refused by name.
+        $this->issue(['repository' => 'synthetic-org/another-fixture', '--scope' => 'install', '--room' => 'one', '--shared-identity' => 'true'], 'e')
+            ->expectsOutputToContain('--scope must be `room` or `fleet`, not "install"')->assertFailed();
         $this->issue(['repository' => 'synthetic-org/another-fixture', '--scope' => 'fleet', '--shared-identity' => 'maybe'], 'c')
             ->expectsOutputToContain('--shared-identity must be')->assertFailed();
         $this->issue(['repository' => 'not a repository', '--scope' => 'fleet', '--shared-identity' => 'true'], 'd')

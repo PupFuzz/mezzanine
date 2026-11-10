@@ -3230,7 +3230,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-1": [
+        "/api/fleet/seats/aimla-impl-1": [
           {
             "status": 200,
             "body": {
@@ -5223,7 +5223,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-mac-1": [
           {
             "status": 200,
             "body": {
@@ -5793,7 +5793,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-mac-1": [
           {
             "status": 200,
             "body": {
@@ -7637,7 +7637,7 @@
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -7667,7 +7667,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -7691,7 +7691,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R2",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "helper",
               "attribution": "resolved",
@@ -8163,7 +8163,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-2": [
+        "/api/fleet/seats/aimla-impl-2": [
           {
             "status": 401,
             "body": {
@@ -8648,7 +8648,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-1": [
+        "/api/fleet/seats/aimla-impl-1": [
           {
             "status": 503,
             "body": {
@@ -10634,7 +10634,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-1": [
+        "/api/fleet/seats/aimla-impl-1": [
           {
             "status": 503,
             "body": {

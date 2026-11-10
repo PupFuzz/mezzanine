@@ -7,6 +7,7 @@ use App\Fleet\SeatTokens;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Tests\Support\Rooms;
 use Tests\TestCase;
 
 /**
@@ -60,7 +61,8 @@ class AtD4_13TheMigrationPinsEveryMappingThatExistsTest extends TestCase
     private function migrateOver(array $mapped): void
     {
         foreach (array_keys($mapped) as $seatId) {
-            SeatTokens::issue(self::INSTALL, $seatId, 'suite');
+            SeatTokens::issue($seatId, 'suite');
+            Rooms::place($seatId, self::INSTALL);
         }
 
         $migration = $this->migration();

@@ -129,7 +129,7 @@ class At9FoldIdempotenceTest extends FoldTestCase
         $this->assertSame(1, DB::table('events')->where('seat_ref', $this->seatRef)
             ->where('kind', 'tool.end')->count());
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla-pm'])->assertSuccessful();
 
         $this->assertSame('idle', $this->state()->activity_state);
         $this->assertSame(0, (int) $this->state()->fold_errors, 'the rebuild did not clear the badge');

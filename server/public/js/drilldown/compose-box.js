@@ -97,7 +97,7 @@ export class ComposeBox {
 
         try {
             const res = await this.#fetch(
-                `/desk/${encodeURIComponent(seat.install_id)}/${encodeURIComponent(seat.seat_id)}/compose`,
+                `/desk/${encodeURIComponent(seat.seat_id)}/compose`,
                 {
                     method: 'POST',
                     redirect: 'manual',

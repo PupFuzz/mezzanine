@@ -93,7 +93,7 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
             'the discovery is not ONE fetch: the connect read plus the discovery is two, and any '
             .'more is the scoped re-read this design removed');
 
-        $this->assertSame(['/api/fleet/seats/aimla-win/win-1'], $this->seatRequests($result),
+        $this->assertSame(['/api/fleet/seats/win-1'], $this->seatRequests($result),
             'the delta for the unheld seat did not take its own insert fetch');
 
         // THE BUFFER HELD IT AND THE DRAIN APPLIED IT — asserted in the MIDDLE of the run, not only
@@ -211,13 +211,13 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
         // the wrong surface. The same holds for P2b below.
         $lt = $this->replay('watermark', $this->plantedClient(FleetClientPlants::LT[0]), [], true);
 
-        $this->assertSame(['/api/fleet/seats/aimla/aimla-pm?resync_from=48219'], $this->seatRequests($lt),
+        $this->assertSame(['/api/fleet/seats/aimla-pm?resync_from=48219'], $this->seatRequests($lt),
             'P2 did not bite: the boundary was moved and the at-watermark delta was still discarded');
 
         // P2b — the delta BELOW the watermark is taken as a gap.
         $eqonly = $this->replay('watermark', $this->plantedClient(FleetClientPlants::EQONLY[0]), [], true);
 
-        $this->assertSame(['/api/fleet/seats/aimla/aimla-pm?resync_from=48219'], $this->seatRequests($eqonly),
+        $this->assertSame(['/api/fleet/seats/aimla-pm?resync_from=48219'], $this->seatRequests($eqonly),
             'P2b did not bite: only equality was discarded and the below-watermark delta still did '
             .'not resync');
 

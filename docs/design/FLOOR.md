@@ -1760,20 +1760,23 @@ B](#appendix-b--what-an-implementer-builds-from-this) row 10: the same floor pag
 handed over as data, the panel opened over the floor and closed back to it with no second stream.
 **The seat segment is resolved against every room on the floor**, because the redirect from
 `/floor/{room}/{seat_id}` keeps the seat and drops the room, so on a floor of several rooms the floor
-key's own room need not be the seat's: a `seat_id` naming one desk on the floor opens it, and one
-naming desks in two rooms opens neither and says so, naming the rooms, rather than opening a desk the
-link may not have meant.
+key's own room need not be the seat's: a `seat_id` naming a desk on the floor opens it. ⭐ It names at
+most one: since card#13117 a seat is known by its `seat_id` alone and at most one live seat carries an id
+([D2 § 6.4](FLEET-STATE.md#64-ddl)'s `uq_live_seat`), so the notice this paragraph used to carry for a
+`seat_id` naming desks in two rooms guarded a state no rendered seat can reach, and is deleted with its
+branch.
 
 Deep-linking to a floor or a desk on a cold start runs the whole of
 [§ 2.2](#22-connect-snapshot-deltas) first — the snapshot is the client's only complete population, and
 a route that fetched one seat and rendered a floor around it would be rendering a floor whose other
 desks it had not asked about.
 
-**The seat segment's two notices**, each the facts in order and nothing else (ratified by the operator
-on card#7342, 2026-09-25): a `seat_id` naming no desk on the floor reads ***no desk `seat_id` on this
-floor***, and one naming desks in more than one room reads ***the seat `seat_id` names a desk in more
-than one room on this floor — `install_id`, `install_id`***, the rooms in key order. Neither opens a
-panel.
+**The seat segment's notice**, the facts in order and nothing else (ratified by the operator on
+card#7342, 2026-09-25): a `seat_id` naming no desk on the floor reads ***no desk `seat_id` on this
+floor***, and opens no panel. ⚠ Its sibling for a `seat_id` naming desks in more than one room is
+**deleted** (card#13117, above). A drill-down link redirects on its floor segment alone: a link whose
+floor segment now names another floor opens that floor and reads this notice (operator ruling
+2026-11-10, `plan-13117-seat-identity.md § 13` Q7 (b) — *if a desk moves, use the new link*).
 
 ### 4.5 The viewport rule and the camera
 
