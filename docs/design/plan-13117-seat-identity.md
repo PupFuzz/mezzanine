@@ -50,6 +50,14 @@ today's `readableRequest()` (M-3, T17). The minors are folded where they stand, 
 hand lists — the installer's token-file branches, the route population, the client roots — to a property and a
 check each (§ 8.1, § 3.3, § 3.4). Q6 and Q7 stay open.
 
+**Revision 5 (2026-11-10)** folds the narrow verification of revision 4 (`design-verify-r4.md`): the legacy
+`unassigned` install row is **never deleted** — `up()` refuses first, by name, an unrevoked hook or a current map
+keyed to it, then re-homes its seats and leaves the row inert for `down()` to reuse; § 6.5 walks the sequence state
+by state (MAJOR-1). The minors: T16/T17 isolate their red from today's earlier refusals; T14 with an unplaced seat;
+the reporter's grep leg; the installer population as `readTokenFile(` call sites; a refused S1 precondition is a
+rollback too; T6 selects routes by action and T23 derives its roots from what the pages load. The S1-after-S6
+rollback residual is accepted in § 11 with its reason. Q6 and Q7 stay open.
+
 **Design approval: not yet given.** The operator's direction, verbatim from the card (`kbcard show --task 13117`):
 
 1. *"the install ID shouldn't be tied to a floor name. It should just be a short string of random letters"*
@@ -641,7 +649,11 @@ published as any save is.
 
 1. **Every refusable step comes first, and refuses by name with nothing written**: a live duplicate `seat_id`
    (§ 6.1, listing each id with its installs); a stored layout that **places** a room keyed `unassigned` (round 3's
-   m-K: the operator edits the layout first — an `installs` row of that key is not refused but **consumed**, § 6.5);
+   m-K: the operator edits the layout first); an **unrevoked coordination hook** bound to an `installs` row keyed
+   `unassigned` (revoke it first — `fk_hook_install` keeps every hook row, revoked ones included, pointing at the
+   install); a **current room map** keyed `unassigned` (a `floors` row: remove it first, else § 4.4's shipped-default
+   answer for the virtual room is false). An `installs` row of that key with neither is **not refused and never
+   deleted**: its seats are re-homed to `install_ref NULL` and the row stays, inert — the legacy row § 6.5 walks;
    and — S4's share — the migrated layout of § 6.3 built and validated in memory by the new reader, which also catches a
    `label` that slugs like a reported unplaced install's materialised name (a label `sola` on a floor while
    install `sola` is unplaced and reported — round 1's m5), refused naming both floors with the remedy printed. The
@@ -727,17 +739,37 @@ which is the one deploy an operator most needs to be able to undo — and **re-h
 `installs` row keyed `unassigned` and sets every `NULL` `install_ref` to it before restoring `NOT NULL` and `uq_seat`.
 Under the pre-S1 code `unassigned` is a legal install id, the snapshot groups those seats under it and both composers
 draw them on an implicit floor `unassigned` — **the very floor the viewer saw before the rollback**, so nothing moves
-on the screen. Its mirror in `up()` is why § 6.2 **consumes** rather than refuses an `installs` row of that key: the
-seats under it go back to `NULL` and the row is deleted — an install an operator literally named `unassigned` before
-this card means the same thing and is read the same way; only a **layout that places** `unassigned` is refused, since
-no rule can say which floor the operator meant. Both directions are idempotent and schema-guarded under § 6.2's
-property; T15's leg issues a seat after S1, runs `down()`, asserts the seat under the legacy row and the pre-S1
-schema, then `up()`, and asserts `install_ref NULL` and the row gone.
+on the screen. Its mirror in `up()` **re-homes the row's seats and never deletes the row** — revision 4 deleted it,
+and the verification pass found `fk_hook_install` (`2026_10_24_000100_create_the_coordination_store.php:44`) blocks
+that delete whenever a hook, revoked or not, was ever issued for the install: `ERROR 1451` on every re-run, a stuck
+migration. So the row is the **inert legacy row**: no live seat, placed by no layout, offered by no console surface
+(§ 4.4's reserved key), drawn nowhere by § 4.4's union, kept as the record it is and reused by the next `down()`.
+Only a **layout that places** `unassigned`, an **unrevoked hook** bound to the row, or a **current map** keyed to it is
+refused first, by name (§ 6.2). An install an operator literally named `unassigned` before this card is read the
+same way.
 
-**A refused S4 precondition is a rollback, not a retry** (round 2's m-6): the migration runs at deploy, so when it
-refuses, the S4 **code** is already on the host and its reader refuses the stored `label` document — F17 on every
-page. The remedy is the deploy's own rollback to the S3 build, then the rename the refusal named, then the redeploy;
-the release note's *Upgrade warnings* say so, and the precondition's message says so.
+**The sequence, state by state** (T15's rollback leg asserts each):
+
+| Step | `installs` row `unassigned` | the seat issued after S1 | what a viewer sees |
+|---|---|---|---|
+| S1 `up()` on today's store | absent | — | today's building |
+| a seat is issued | absent | `install_ref NULL`; the snapshot groups it under the virtual install | the implicit floor `unassigned` (S1) |
+| S1 `down()` | **created** (or reused if a legacy row exists) | `install_ref` → that row; `NOT NULL` and `uq_seat` restored | the same floor, now a real install's |
+| pre-S1 code runs | a legal install id | reports and renders under it; a token re-issue for it is a re-issue under that install | unchanged |
+| S1 `up()` again | **kept**, seats re-homed to `NULL`; refused first if a hook was issued for it meanwhile and not revoked, or a map authored for it | `install_ref NULL` again | the implicit floor `unassigned` again — the row itself draws nothing |
+| S1 `up()` re-run after a failure at any step | every step skipped or applied by its schema check; the row never deleted | as above | as above |
+
+Both directions are idempotent and schema-guarded under § 6.2's property. T15's leg issues a seat after S1, runs
+`down()`, asserts the row and the seat under it and the pre-S1 schema, runs `up()`, asserts `install_ref NULL` with
+the row present; and plants a hook-bound row (refused until revoked) and a map-bound row (refused until removed).
+
+**A refused precondition is a rollback, not a retry — for S1 as for S4** (round 2's m-6; the verification pass's
+MINOR-5): the migration runs at deploy, so when it refuses, the new **code** is already on the host over the old
+schema or document — S4's reader refusing the stored `label` document is F17 on every page; S1's code reading a
+`live_seat_id` or a nullable `install_ref` the schema lacks fails every seat read. The remedy is the deploy's own
+rollback to the previous build, then the act the refusal named (retire a duplicate, revoke a hook, remove a map,
+edit a layout, rename a label), then the redeploy; the release note's *Upgrade warnings* say so for both slices,
+and each precondition's message says so.
 
 **Rolling S4's code back over a new-shape layout** (round 1's m6): the pre-S4 reader refuses `name` and `aliases`
 as unknown members, which is D3 § 9 F17 on every page — the hazard D3 § 4.6's `theme` row already names for its
@@ -775,11 +807,14 @@ installs.
 **The installer's property:** every subcommand that reads a token file's identity reads a v3 file as it reads a v2
 file — the identity is `seat_id` alone, a v2 file's `install_id` is compared with nothing — and no subcommand falls
 through to the v1 branch on a v3 file (which would demand `--site` and `--seat-id` and, on a two-site config, rotate
-the **default** site with the file's token — round 1's M5). The population is **every subcommand that accepts
-`--token-file`**, read from the installer's own flag table (`VALUE_FLAGS`, `install.js:1933`) and usage at
-implementation, never from this document; `valuesFrom()`, the rotation and `add-site` are *examples*. **The check
-(T16):** each such subcommand driven with a v3 file, seen red on today's installer, where each tests
-`parsed.version === 2`. `--install-id` leaves the flags and the account-slug default goes with it.
+the **default** site with the file's token — round 1's M5). The population is **every call site of
+`readTokenFile(`** in `install.js`, derived by grep at implementation, never from this document — revision 4 derived
+it from the flag table and missed the `token-config` step, which reads the file from the config directory with no
+flag at all (`install.js:1946`); the install, the rotation, `add-site` and that step are *examples*. **The check
+(T16):** each call site driven with a v3 file — **red isolated from today's parser**: today `parseTokenFile()`
+refuses a v3 file first for its missing line (`install.js:244`), so the leg's plant is a build whose parser alone
+accepts v3 and whose branches still test `parsed.version === 2`, which falls to the v1 path. `--install-id` leaves
+the flags and the account-slug default goes with it.
 
 **The reporter's property** (round 3's M-3): **no reporter path requires `install_id`.** A config without it loads,
 spools, heartbeats, sends and persists; the envelope and every event carry `install_id` **when the config has one and
@@ -790,8 +825,14 @@ listed the lines that read the key and missed the one that mattered: `readableRe
 refuses a request without it — so every flusher restart on a v3 seat would discard the pending batch and reset the
 epoch. The population is every path that reads the key, found by the coder with the check, not by this list.
 **The check (T17):** a v3 config, one pending persisted request, a flusher restart — the batch is resent, the epoch
-unchanged; **red on today's validator**; plus the envelope/event presence leg per config, and the binding leg (an
-upgraded config's `identity_sha256` unchanged after upgrade). `selftest`'s identity line prints `seat_id · url`.
+unchanged — **red isolated from today's loader**: today `loadConfig()` refuses a config with no `install_id` outright
+(`fleet-reporter.js:399`), so a v3 config never reaches the flusher; the plant is a build whose loader alone makes the
+key optional, on which `readableRequest()` refuses the request and the epoch resets. Plus the envelope/event presence
+leg per config, the binding leg (an upgraded config's `identity_sha256` unchanged after upgrade), and a **grep leg**
+over `fleet-reporter.js` that goes red on any read of `install_id` that is not one of the permitted shapes — the
+loader's optional check, an emit guarded on presence, the binding hash — **red on today's tree**, because the
+behavioural legs reach no hook path (the hook gate `config.install_id && config.seat_id` at `:3302` runs in a hook
+process, which a flusher restart never starts). `selftest`'s identity line prints `seat_id · url`.
 
 **Existing configs are never rewritten**: a seat upgraded in place keeps `install_id` in its file and keeps sending
 it, which § 3.2 accepts. One written shape, two read shapes — the posture card#12180 set for `sites`.
@@ -981,7 +1022,7 @@ owning document at the slice. *Both composers* means `Building::compose()` and `
 | T3 | the store refuses a second live `y` from any writer | raw `INSERT seats (seat_id='y', retired_at NULL)` | `1062` on `uq_live_seat`; the same insert with `retired_at` set succeeds (the live-only key) |
 | T4 | the ingest reads no `install_id` (§ 3.2) | four batches for token-bound seat `y`: no `install_id`; `install_id: "aimla"`; `install_id: "zzz-not-a-room"`; `install_id: "Not A Slug"` — and each event in them carrying the same four | all four `200` with `accepted` = the events sent; a build that compares or bounds the field reds on the third or fourth |
 | T5 | `seat_id` still binds | batch for `y` claiming `seat_id: "z"` | `403 identity_mismatch`, body carries `expected_seat_id: "y"` and no `expected_install_id`; refusal counted on `y` |
-| T6 | REST by seat alone is additive, every timeline route is session-only, and no route pairs the segments (§ 3.3) | `GET /api/fleet/seats/y`, `/api/fleet/seats/anything/y`, `/api/fleet/seats/nope`, `/api/fleet/seats/y/timeline`, and a seat named `timeline` at `/api/fleet/seats/timeline/timeline` — each with a session; **the token leg**: an `mzr_` token presented to both timeline routes; **the route leg**: `route:list --json` scanned for a URI holding both parameters outside the kept pair, run on today's tree first | first two `200` with identical bodies and `api_version: 1`; third `404`; the fourth is `y`'s timeline; the fifth is seat `timeline`'s timeline (the route order); both timeline routes answer the token `401` as `fleet.timeline` does today — **red on a build whose new route name is absent from `FleetReadGate::SESSION_ONLY_ROUTES`**; the route leg red on today's tree (compose, retire) and green after S1 |
+| T6 | REST by seat alone is additive, every timeline route is session-only, and no route pairs the segments (§ 3.3) | `GET /api/fleet/seats/y`, `/api/fleet/seats/anything/y`, `/api/fleet/seats/nope`, `/api/fleet/seats/y/timeline`, and a seat named `timeline` at `/api/fleet/seats/timeline/timeline` — each with a session; **the token leg**: an `mzr_` token presented to both timeline routes; **the route leg**: `route:list --json` scanned for a URI holding both parameters outside the kept pair, run on today's tree first; the timeline routes for the token leg are **selected from `route:list` by action** (`FleetController@timeline`), never by name, so a route the gate's name list does not know is still presented the token | first two `200` with identical bodies and `api_version: 1`; third `404`; the fourth is `y`'s timeline; the fifth is seat `timeline`'s timeline (the route order); both timeline routes answer the token `401` as `fleet.timeline` does today — **red on a build whose new route name is absent from `FleetReadGate::SESSION_ONLY_ROUTES`**; the route leg red on today's tree (compose, retire) and green after S1 |
 | T7 | an unassigned seat rides the snapshot as a virtual install (§ 4.4) | issue `w` (no room) | the snapshot has an `installs[]` group `unassigned` holding `w` and `api_version: 1`; both composers, fed that snapshot and the current layout, produce (S1) an implicit floor `unassigned` by today's rule and (S4) the Unassigned floor; `GET /api/building/rooms/unassigned/map` is the shipped default; the room-map create form refuses `unassigned` (red on a build whose `renderedInstalls()` carries the snapshot's virtual install); after placing `w` neither composer produces the floor |
 | T8 | a room move is one delta and the client re-slots (§ 4.2) | place `w` in `aimla` | one `seat.delta` with `changed` ⊇ `['install_id']`, `patch.install_id = 'aimla'`, `state_version` +1 — a build without `install_id` in `versionBearing()` emits nothing (the RED); the headless desk model (`desk-floor.js`) holds one desk for `w`, in room `aimla`, and none in `unassigned`; mutate the client to key by the pair → it holds two desks |
 | T9 | the slot and the seed read `seat_id` alone (§ 3.4) | D3 § 3.2's worked `h` table re-published for `seat_id`; `verify-floor.py` G8 and `TheSpeciesListHasOneSourceTest` read it | both green on the new table; the Python copy mutated to hash `install/seat` → red |
@@ -989,16 +1030,16 @@ owning document at the slice. *Both composers* means `Building::compose()` and `
 | T11 | the slug function (§ 5.2) | the fixture table: `The Nook`/`the nook`/`Thé  Nook` → `the-nook`; `三階` → `''`; `--a--` → `a`; `Unassigned` → reserved | PHP and JS copies agree on every row; a row changed in one copy reds the lockstep test |
 | T12 | the reader's and the write's refusals (§ 5.1) | at load: documents with `label`; no `name`; two floors slugging alike; alias = another floor's slug; alias in two floors; name `unassigned`; room `unassigned`. At the write: a save and a restore placing a room retired since; a raw save naming B with the slug still in A's aliases | each refused with a message naming the member and the floors; `{"floors": []}` and a document with `name`+`aliases` accepted; the retired-room document is refused by the write and, planted into the store directly, is **loaded** (no load refusal exists for it — the plant that reds a reader guard with no route) |
 | T13 | rename redirects in one hop; a take-over moves the address in one revision; precedence; both races refused (§ 5.3) | rename `The Nook`→`The Den`→`The Burrow` via the console; create floor `The Nook`; name a floor `sola` while room `sola` sits on another floor; run the two mid-rename orders of § 5.3 with the second writer blocked on the lock | `aliases = ['the-nook','the-den']` on one entry; `/floor/the-nook` → the headless frame's `redirect` is `the-burrow`, `/floor/the-nook/aimla-pm` keeps the seat; after the create, **one** new revision, **one** outbox row, `the-nook` absent from The Burrow's aliases and current on the new floor, `/floor/the-nook` opens it; `/floor/sola` opens the floor named `sola`, not room `sola`'s floor; each race's second writer refused naming the first's floor, and the layout holds exactly the first's write |
-| T14 | the migration changes no floor's content, and changes the order as stated (§ 6.3) | a store seeded from § 0's readings **plus one seat issued after S1 and never placed**; run S4's `migrate` | both composers' output before vs after: the **same floor set** (five floors: the four placed plus `sola`; no `kanban`, no `mezzanine`), each floor's rooms, theme and name equal under `label`→`name`, the order **after** equal to the slug sort § 6.3 states and different from the order before; `aliases` exactly `{the-burrow: [solo-agents], the-treehouse: [treehouse], the-nook: [nook]}`; `installs` gained exactly `treehouse`, `nook`; every seat's `install_ref` unchanged; the snapshot's seat set and `install_id`s unchanged |
-| T15 | the migration's property (§ 6.2): refusable first, idempotent, schema-guarded, re-runnable after a failure at any step; `down()` re-homes (§ 6.5) | a copy of today's store shape — install-scope hooks, the two retired duplicate pairs, installs with zero live seats, an authored map, a layout placing rooms the store lacks, **and for S4 a seat issued after S1**; the migration run with a failure injected after **each** of its own named steps in turn, then re-run; **the rollback leg**: issue a seat after S1, run `down()`, then `up()`; and separately the preconditions planted: two live seats `q` under two installs; a layout **placing** `unassigned`; an `installs` row `unassigned` (consumed, not refused); a label `sola` beside a reported unplaced `sola` | every injection point reaches the **same** end state (§ 6.2's list, compared as `SHOW CREATE TABLE` plus row sets); the hazards § 6.2 names each red a naive sequence (the `UPDATE` before the enum is widened; `uq_seat` dropped before the FK has another index; a re-run meeting an already-applied step); each precondition refuses naming its subject with the schema unchanged; `down()` under the same injections reaches the pre-migration schema |
-| T16 | the token file v3, and v2 still installs; v3 takes v2's path (§ 8.1) | the page's blob through `parseTokenFile`; a v2 fixture; a v3 with a fourth key; a v3 file against a **two-site** config whose second site matches its URL, with `--token-file` and no `--site` | v3 parsed `{version: 3, seat_id}`; v2 parsed with `install_id` discarded by the writer (the written config has no `install_id`); the fourth key refused by name; the rotation writes the **matching** site's token and the default site's is byte-identical before and after (a build that routes v3 through the v1 branch reds here) |
-| T17 | no reporter path requires `install_id` (§ 8.1) | a v3 config with one pending persisted request, then a flusher restart — **run on today's build first**; two configs (with and without the key) sending; an upgraded config's binding before and after | the pending batch is resent after the restart and `seq_epoch` is unchanged — **red today**, where `readableRequest()` refuses the request and the epoch resets; the envelope and every event carry the key exactly when the config has it; `identity_sha256` unchanged for the upgraded config |
+| T14 | the migration changes no floor's content, and changes the order as stated (§ 6.3) | a store seeded from § 0's readings **plus one seat issued after S1 and never placed**; run S4's `migrate` | both composers' output before vs after: **six floors** — the four placed, `sola`, and the unplaced seat's floor, which is the implicit `unassigned` before and the *Unassigned* floor after (the one name that changes, and it sorts **last** by rule, not by slug); no `kanban`, no `mezzanine`; every other floor's rooms, theme and name equal under `label`→`name`, the order **after** equal to the slug sort § 6.3 states and different from the order before; `aliases` exactly `{the-burrow: [solo-agents], the-treehouse: [treehouse], the-nook: [nook]}`; `installs` gained exactly `treehouse`, `nook`; every seat's `install_ref` unchanged; the snapshot's seat set and `install_id`s unchanged |
+| T15 | the migration's property (§ 6.2): refusable first, idempotent, schema-guarded, re-runnable after a failure at any step; `down()` re-homes (§ 6.5) | a copy of today's store shape — install-scope hooks, the two retired duplicate pairs, installs with zero live seats, an authored map, a layout placing rooms the store lacks, **and for S4 a seat issued after S1**; the migration run with a failure injected after **each** of its own named steps in turn, then re-run; **the rollback leg**: issue a seat after S1, run `down()`, then `up()`, then `up()` again; and separately the preconditions planted: two live seats `q` under two installs; a layout **placing** `unassigned`; an `installs` row `unassigned` with **an unrevoked hook** bound to it; the same row with a **current map**; the same row with a revoked hook only (re-homed, kept); a label `sola` beside a reported unplaced `sola` | every injection point reaches the **same** end state (§ 6.2's list, compared as `SHOW CREATE TABLE` plus row sets); the hazards § 6.2 names each red a naive sequence (the `UPDATE` before the enum is widened; `uq_seat` dropped before the FK has another index; a re-run meeting an already-applied step); each precondition refuses naming its subject with the schema unchanged; `down()` under the same injections reaches the pre-migration schema; the rollback leg's states are § 6.5's table, and the `installs` row `unassigned` is **present** after every `up()` — a build that deletes it reds on the hook-bound plant (`1451`) |
+| T16 | the token file v3, and v2 still installs; v3 takes v2's path (§ 8.1) | the page's blob through `parseTokenFile`; a v2 fixture; a v3 with a fourth key; a v3 file against a **two-site** config whose second site matches its URL, with `--token-file` and no `--site` | v3 parsed `{version: 3, seat_id}`; v2 parsed with `install_id` discarded by the writer (the written config has no `install_id`); the fourth key refused by name; the rotation writes the **matching** site's token and the default site's is byte-identical before and after — the red isolated as § 8.1 says: a build whose parser alone accepts v3 routes it through the v1 branch and reds here; every `readTokenFile(` call site is driven, the `token-config` step included |
+| T17 | no reporter path requires `install_id` (§ 8.1) | a v3 config with one pending persisted request, then a flusher restart — on a build whose **loader alone** makes the key optional (today's `loadConfig()` refuses the config first); two configs (with and without the key) sending; an upgraded config's binding before and after; the grep leg over `fleet-reporter.js`, run on today's tree | the pending batch is resent after the restart and `seq_epoch` is unchanged — **red on the isolating build**, where `readableRequest()` refuses the request and the epoch resets; the envelope and every event carry the key exactly when the config has it; `identity_sha256` unchanged for the upgraded config; the grep leg red today (the hook gate at `:3302` among what it finds) and green after S6 |
 | T18 | `--config` selects the file and fails loud (§ 8.3) | hook with `--config /nope`; hook with `--config <seat b>`; hook with no flag; on `win32`, a quoted path with a space | first: `config_readable` fail, nothing spooled anywhere, no fall-back to the default spool (the RED: a build that falls back spools into the default); second spools into b's spool; third into the default; the quoted path parses and spools |
 | T19 | per-seat supervision's property (§ 8.4), and add/remove touches nothing of the others (§ 8.5–8.6) | on each supervised platform's fixture: an account with the default seat `a`; add seat `b` with `--claude-config-dir`; spool one line into each spool; run a hook with `--config <b>`; remove `b`; `uninstall --seat a` while `b` exists; an account with **no** seat and `CLAUDE_CONFIG_DIR=~/.claude-a` | `a`'s `config.json`, `~/.claude/settings.json`, spool and supervisor entry byte-identical after the add and after the remove; `<dir>/settings.json` holds hooks with `--config …/seats/b/config.json`; each seat's flusher drains its own spool and neither the other's (the plant: a cron line or a respawn carrying no selector drains the default spool for both); the hook's respawn owns `b`'s lock; a second add into the same dir for seat `c` refused; `uninstall --seat a` refused while `seats/` holds `b` (the plant: the recursive remove takes `b` with it); `uninstall --seat b` leaves the artifact directory in place while `a` remains (the plant: today's remove takes it); the seat-less account's first seat lands under `seats/<id>/` with a suffixed label and `~/.claude` untouched |
 | T20 | the two-rooms notice is gone (§ 3.3) | the test that planted a seat in two rooms | deleted with its fixture, and the drill-down resolves a seat over the floor's rooms to one desk |
 | T21 | one seat-identity primitive (§ 3.6): an unassigned seat is found by every surface a placed one is | behavioural leg: an unassigned seat `u` with a token — revoke its prefix; move it (delta); `mezzanine:retire --seat=u`; a species allocation after it; the tokens listing; `mezzanine:rebuild --seat=u`; `mezzanine:seat-board-user --seat=u`; `LinkPass`'s label. Grep leg: the pattern the coder writes for an inner join from `seats` to `installs` outside `SeatIdentity`, **run on the unmigrated tree first** | revoked; one `seat.delta`; retired; `u`'s species counted in the live population; `u` listed; rebuilt; linked; the label `u`; the grep leg red on the unmigrated tree (the plant) and green after S1 — a site left over reds the leg, and the behavioural leg reds on the act that site serves |
 | T22 | `amend()` and the compare-and-swap (§ 5.5) | two console actions on one base, the second blocked on the lock; a textarea save with a stale `base_layout_version` | the second action reads the first's result and either applies cleanly or is refused naming the floor; the stale textarea save refused naming both revisions, the store unchanged |
-| T23 | the key primitive is the only place a key is built or split (§ 3.4), and it carries the room for a fleet-scope post | behavioural leg: `coord-model.js edgesOf()` over a fleet-scope round whose origin and traveller seats sit in two rooms, keyed by `seat_id`. Grep leg: the pattern the coder writes for a key joined from `install_id` and `seat_id`, split on `/`, or a `splitKey` import, over `server/public/js` **and `resources/`** less `wire/seat-key.js`, **run on the unmigrated tree first** | A22 edges carry each seat's held `install_id` as its room (a build that splits the key on `/` yields the whole seat id as the room — the RED); the grep leg red on the unmigrated tree (the plant) and green after S2 — a site left over reds it |
+| T23 | the key primitive is the only place a key is built or split (§ 3.4), and it carries the room for a fleet-scope post | behavioural leg: `coord-model.js edgesOf()` over a fleet-scope round whose origin and traveller seats sit in two rooms, keyed by `seat_id`. Grep leg: the pattern the coder writes for a key joined from `install_id` and `seat_id`, split on `/`, or a `splitKey` import, over **every module the pages load** — the import graph walked from each page's module script (`floor.blade.php`, `dashboard.blade.php`, the building view), the precedent being `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`'s root walk — which today spans `server/public/js` and `resources/`, less `wire/seat-key.js`; **run on the unmigrated tree first** | A22 edges carry each seat's held `install_id` as its room (a build that splits the key on `/` yields the whole seat id as the room — the RED); the grep leg red on the unmigrated tree (the plant) and green after S2 — a site left over reds it |
 
 ## 10. The slice plan, for the coder
 
@@ -1049,6 +1090,15 @@ precedes S4 because the take-over and the materialisation write through `amend()
   console for the operator to retire: no floor is minted for them, as none is drawn for them today.
 - **A species allocated against no floor** (§ 13 Q6) can duplicate a floor-mate's body after placement — undecided,
   and named rather than built either way.
+- **Rolling S1 back after S6 has shipped — accepted.** A seat installed from a v3 token file after S6 has no
+  `install_id` in its config and sends none; a pre-S1 server compares the envelope's `install_id` with the token's
+  binding (step 7) and refuses the batch `403 identity_mismatch`, which is the reporter's auth stop — every such seat
+  is dark until S1 is redeployed or the seat is rotated by an installer against the rolled-back page. The cheap
+  closure — a v3 reporter sending `install_id: "unassigned"` when its config has none, the value `down()` would have
+  given its seat — was weighed and **declined**: it writes a wire value from an absence to serve one rollback path,
+  and it is wrong for a v3-rotated seat whose room is not that row. Accepted because S6 lands after S1 by § 10's
+  order, a rollback that crosses S1 after S6 is a rollback of two released slices, and the release note's *Upgrade
+  warnings* name it; the seats affected are exactly those issued after S1, which `selftest` names by the auth stop.
 
 ## 12. Seat rulings — reversible by the operator, each one rule
 
