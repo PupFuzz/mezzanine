@@ -179,6 +179,17 @@ export settings, and both fail the build if they are wrong.
 brought into the tree — and `bin/asset-provenance.selftest.py` keeps it as a control **and** two REDs of
 its own.
 
+## Third-party code under `server/public/js/vendor/`
+
+Code a page loads, not an asset, so it has no manifest row: the gate's trees are `resources/` alone.
+
+- **Three.js 0.187.0 (r187), MIT** — `server/public/js/vendor/three/three.module.js` and
+  `three.core.js`, from the npm package `three`. The licence notice MIT requires is the package's
+  own `LICENSE` beside them, and it is not copied here. Each file's header names its source, the
+  version and the upstream sha256, and `bin/vendor-pin-check.sh` pins each body and holds the
+  header's version equal to `server/package-lock.json`'s. The design is
+  [`plan-13033-3d-view.md § 5`](design/plan-13033-3d-view.md#5-threejs--where-it-comes-from-how-it-is-pinned-how-it-is-attributed).
+
 ## What a green gate does not mean
 
 Stated because a provenance check is exactly the kind of thing people over-read:

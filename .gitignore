@@ -2,6 +2,9 @@
 # the repo root, and no dependency directory is ever created there.
 vendor/
 node_modules/
+# The one `vendor/` that is source, not an install: the browser libraries the pages load,
+# committed and pinned by `bin/vendor-pin-check.sh` (docs/design/plan-13033-3d-view.md § 5).
+!/server/public/js/vendor/
 
 # THE LARAVEL APP'S RUNTIME PATHS ARE NOT LISTED HERE. They belong to `server/.gitignore`,
 # which Laravel ships and maintains, plus the per-directory `.gitignore` files under
