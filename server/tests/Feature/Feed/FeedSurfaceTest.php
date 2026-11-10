@@ -60,7 +60,7 @@ class FeedSurfaceTest extends FeedTestCase
         $this->assertContains(self::INSTALL, array_column($rows, 'install_id'), 'no install-scoped row was exercised');
     }
 
-    /** § 8.3's envelope: "every message: `{"feed_version":2,"t":…,"server_time":"…", …}`". */
+    /** § 8.3's envelope: "every message: `{"feed_version":3,"t":…,"server_time":"…", …}`". */
     public function test_every_message_carries_section_83s_envelope(): void
     {
         $this->deliver($this->cleanTurn());
@@ -729,7 +729,7 @@ class FeedSurfaceTest extends FeedTestCase
 
         // § 8.1: the REST surface carries `api_version`, and the feed carries `feed_version`.
         $this->assertSame(1, Snapshot::API_VERSION);
-        $this->assertSame(2, SeatDelta::FEED_VERSION);
+        $this->assertSame(3, SeatDelta::FEED_VERSION);
         $this->assertSame(SeatDelta::FEED_VERSION, FleetReload::FEED_VERSION);
     }
 

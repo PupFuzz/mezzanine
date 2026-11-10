@@ -195,14 +195,14 @@ final class SeatTokens
      * transaction opened with. A new seat is in no room, so it is on no floor: rule 2 has nothing to read
      * (operator ruling 2026-11-10, card#13117 § 13 Q6 (a) — *the seat's floor, or nothing while it has none*).
      *
-     * ⚠ The preference key keeps the `install_id/seat_id` shape the client's draw (`resources/characters/seed.js`)
-     * and the server's port still compute, with the room the seat is drawn in — `unassigned` — until the slice
-     * that re-keys all three copies together (plan § 3.4, S2).
+     * The preference key is the `seat_id` alone, the key the client's draw seeds the character from
+     * (`resources/characters/seed.js`'s `seatKey()`, FLOOR.md § 10.2): a seat's first preference is the body
+     * the browser would draw for it.
      */
     private static function allocate(string $seatId): string
     {
         return CharacterAllocation::choose(
-            SeatIdentity::UNASSIGNED.'/'.$seatId,
+            $seatId,
             CharacterAllocation::livePopulation(),
             static fn (): array => [],
             SpeciesList::current(),

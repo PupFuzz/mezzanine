@@ -909,7 +909,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -927,7 +927,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -953,7 +953,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.300Z",
             "install_id": "aimla",
@@ -991,7 +991,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2067,7 +2067,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2085,7 +2085,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -2111,7 +2111,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.300Z",
             "install_id": "aimla",
@@ -2149,7 +2149,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7318,7 +7318,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -7336,7 +7336,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": {
@@ -7354,7 +7354,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": {
@@ -7879,7 +7879,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -7897,7 +7897,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": {
@@ -7915,7 +7915,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": {
@@ -8365,7 +8365,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8374,7 +8374,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8383,7 +8383,7 @@
         {
           "at_ms": 9300,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:23.300Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -9403,11 +9403,11 @@
       "messages": [
         {
           "at_ms": 1500,
-          "envelope": { "feed_version": 2, "t": "building.layout", "server_time": "2026-08-23T14:23:16.000Z", "layout_version": 4, "revision_id": 901 }
+          "envelope": { "feed_version": 3, "t": "building.layout", "server_time": "2026-08-23T14:23:16.000Z", "layout_version": 4, "revision_id": 901 }
         },
         {
           "at_ms": 4500,
-          "envelope": { "feed_version": 2, "t": "building.layout", "server_time": "2026-08-23T14:23:19.000Z", "layout_version": 5, "revision_id": 902 }
+          "envelope": { "feed_version": 3, "t": "building.layout", "server_time": "2026-08-23T14:23:19.000Z", "layout_version": 5, "revision_id": 902 }
         }
       ],
       "until_ms": 6000,
@@ -9958,7 +9958,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -9967,7 +9967,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -9976,7 +9976,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -10237,7 +10237,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -10254,7 +10254,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 },
             "server_time": "2026-08-23T14:23:15.900Z"
@@ -10827,7 +10827,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -10845,7 +10845,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -10871,7 +10871,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",

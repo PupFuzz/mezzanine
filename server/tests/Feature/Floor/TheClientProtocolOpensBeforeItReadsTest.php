@@ -65,7 +65,7 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
 
         $this->assertSame($fixture['final'], $this->finalSeats($result),
             'a delta below the snapshot’s own version was merged into it');
-        $this->assertNotNull($this->finalSeats($result)['aimla/aimla-pm']['action'],
+        $this->assertNotNull($this->finalSeats($result)['aimla-pm']['action'],
             'the snapshot’s `action` was cleared by a delta older than the snapshot');
     }
 
@@ -99,14 +99,14 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
         // THE BUFFER HELD IT AND THE DRAIN APPLIED IT — asserted in the MIDDLE of the run, not only
         // at its end. At 5500 ms the discovery has just inserted win-1 at 7001 and the delta that
         // will carry it to 7002 is still buffered behind its own in-flight fetch.
-        $this->assertSame(7001, $this->recordAt($result, 5500)['seats']['aimla-win/win-1']['state_version'],
+        $this->assertSame(7001, $this->recordAt($result, 5500)['seats']['win-1']['state_version'],
             'win-1 was not at the discovery’s own version while its fetch was still in flight');
-        $this->assertSame(7002, $this->finalSeats($result)['aimla-win/win-1']['state_version']);
-        $this->assertSame(41.3, $this->finalSeats($result)['aimla-win/win-1']['context']['used_pct']);
+        $this->assertSame(7002, $this->finalSeats($result)['win-1']['state_version']);
+        $this->assertSame(41.3, $this->finalSeats($result)['win-1']['context']['used_pct']);
 
         // The discovery's `aimla-pm` row is STALE (48219) and the stream has already advanced the
         // seat to 48220. The version rule is what keeps it out.
-        $this->assertSame(48220, $this->finalSeats($result)['aimla/aimla-pm']['state_version'],
+        $this->assertSame(48220, $this->finalSeats($result)['aimla-pm']['state_version'],
             'a stale discovery row lowered a version the stream had already advanced');
 
         $this->assertSame($fixture['final_clock_offset_ms'], $result['final']['clock_offset_ms']);
@@ -144,7 +144,7 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
         $result = $this->replay('discovery_overwrite');
 
         $this->assertSame($fixture['final'], $this->finalSeats($result));
-        $this->assertSame(7002, $this->finalSeats($result)['aimla-win/win-1']['state_version'],
+        $this->assertSame(7002, $this->finalSeats($result)['win-1']['state_version'],
             'the discovery’s older row replaced the version the stream had already advanced');
         $this->assertCount(2, $this->snapshotRequests($result));
         $this->assertCount(1, $this->seatRequests($result));
@@ -197,7 +197,7 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
         // P1 — the order: fetch first, open the stream in the continuation. Every in-window delta
         // is dropped by a stream that did not exist when they were delivered.
         $order = $this->replay('watermark', $this->plantedClientWith(FleetClientPlants::ORDER));
-        $pm = $this->finalSeats($order)['aimla/aimla-pm'];
+        $pm = $this->finalSeats($order)['aimla-pm'];
 
         $this->assertSame(48219, $pm['state_version'],
             'P1 did not bite: the stream was opened after the fetch and the window’s deltas still '
@@ -224,9 +224,9 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
         // P3 — the drain merges without the comparison: the below-watermark clear lands.
         $nowm = $this->replay('no_watermark', $this->plantedClient(FleetClientPlants::NOWM[0]));
 
-        $this->assertNull($this->finalSeats($nowm)['aimla/aimla-pm']['action'],
+        $this->assertNull($this->finalSeats($nowm)['aimla-pm']['action'],
             'P3 did not bite: the comparison was removed and the stale clear still did not land');
-        $this->assertSame(48218, $this->finalSeats($nowm)['aimla/aimla-pm']['state_version']);
+        $this->assertSame(48218, $this->finalSeats($nowm)['aimla-pm']['state_version']);
 
         // P3′ — THE SAME PLANT CANNOT FAIL ON `watermark`, which is why `no_watermark` exists. Every
         // buffered delta there is above the snapshot's version, so merging without the comparison
@@ -249,20 +249,20 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
         // P9 — a delta for an unheld seat is dropped while a discovery is in flight.
         $dropunheld = $this->replay('leg_c', $this->plantedClient(FleetClientPlants::DROPUNHELD[0]));
 
-        $this->assertSame(7001, $this->finalSeats($dropunheld)['aimla-win/win-1']['state_version'],
+        $this->assertSame(7001, $this->finalSeats($dropunheld)['win-1']['state_version'],
             'P9 did not bite: the in-window delta was dropped and the seat still reached 7002');
         $this->assertSame([], $this->seatRequests($dropunheld));
 
         // P13 — the buffer is deleted rather than released.
         $nodrain = $this->replay('leg_c', $this->plantedClient(FleetClientPlants::NODRAIN[0]));
 
-        $this->assertSame(7001, $this->finalSeats($nodrain)['aimla-win/win-1']['state_version'],
+        $this->assertSame(7001, $this->finalSeats($nodrain)['win-1']['state_version'],
             'P13 did not bite on leg_c');
 
         // P10 — a snapshot row replaces unconditionally, so the discovery's stale row wins.
         $stale = $this->replay('leg_c', $this->plantedClient(FleetClientPlants::STALE[0]));
 
-        $this->assertSame(48219, $this->finalSeats($stale)['aimla/aimla-pm']['state_version'],
+        $this->assertSame(48219, $this->finalSeats($stale)['aimla-pm']['state_version'],
             'P10 did not bite: the version guard was removed and the stale row still lost');
 
         // P11 — the trigger never fires, so the install is never discovered.
@@ -270,13 +270,13 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
 
         $this->assertCount(1, $this->snapshotRequests($notrigger),
             'P11 did not bite: the discovery was removed and a second snapshot was still fetched');
-        $this->assertArrayNotHasKey('aimla-win/win-2', $this->finalSeats($notrigger));
+        $this->assertArrayNotHasKey('win-2', $this->finalSeats($notrigger));
 
         // P6b — G4's per-record assertion: patching into an empty object makes win-1 reach 7002 at
         // 5500 ms, where the correct client has the discovery's 7001 and a still-buffered delta.
         $empty = $this->replay('leg_c', $this->plantedClient(FleetClientPlants::EMPTY[0]));
 
-        $this->assertSame(7002, $this->recordAt($empty, 5500)['seats']['aimla-win/win-1']['state_version'],
+        $this->assertSame(7002, $this->recordAt($empty, 5500)['seats']['win-1']['state_version'],
             'P6b did not bite: the mid-run record is identical with the fetch removed, so the '
             .'per-record assertion is not measuring the buffer');
 
@@ -285,7 +285,7 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
 
         $this->assertCount(2, $this->snapshotRequests($spend),
             'P22 did not bite: the refund was removed and the disagreement was still re-checked');
-        $this->assertArrayNotHasKey('aimla-win/win-1', $this->finalSeats($spend));
+        $this->assertArrayNotHasKey('win-1', $this->finalSeats($spend));
 
         // P23 — the failure rule reads `ok` alone. ⚠ The defect IS an unhandled rejection.
         $okonly = $this->replay('discovery_non_object', $this->plantedClient(FleetClientPlants::OKONLY[0]), [], false, true);
@@ -307,16 +307,16 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
 
         $this->assertCount(2, $this->snapshotRequests($norecheck),
             'P25 did not bite: the re-check was removed and the third discovery still ran');
-        $this->assertArrayNotHasKey('aimla-win/win-2', $this->finalSeats($norecheck));
+        $this->assertArrayNotHasKey('win-2', $this->finalSeats($norecheck));
 
         // P26 / P26b — the discovery's rows bypass the guard, two ways: at the discovery's own
         // apply, and at the one shared guard every row takes.
         foreach ([FleetClientPlants::DISCOVERYUNGUARDED[0], FleetClientPlants::STALE[0]] as $plant) {
             $unguarded = $this->replay('discovery_overwrite', $this->plantedClient($plant));
 
-            $this->assertSame(7001, $this->finalSeats($unguarded)['aimla-win/win-1']['state_version'],
+            $this->assertSame(7001, $this->finalSeats($unguarded)['win-1']['state_version'],
                 'P26/P26b did not bite: the guard was removed and the older discovery row still lost');
-            $this->assertSame(40.2, $this->finalSeats($unguarded)['aimla-win/win-1']['context']['used_pct']);
+            $this->assertSame(40.2, $this->finalSeats($unguarded)['win-1']['context']['used_pct']);
         }
 
         // P18 — the wrong listener name: the client hears nothing and looks healthy doing it.
@@ -326,8 +326,8 @@ class TheClientProtocolOpensBeforeItReadsTest extends TestCase
             'P18 did not bite: the listener name was changed and the registration did not move');
 
         // P27–P30 — the pre-fix failure branch, on each of the four interleavings.
-        foreach ([['x1', 'aimla-win/win-1', 7001], ['x2', 'aimla-win/win-1', 7001],
-            ['x3', 'aimla/aimla-pm', 48220], ['x4', 'aimla-win/win-1', 7001]] as [$run, $key, $planted]) {
+        foreach ([['x1', 'win-1', 7001], ['x2', 'win-1', 7001],
+            ['x3', 'aimla-pm', 48220], ['x4', 'win-1', 7001]] as [$run, $key, $planted]) {
             $s7 = $this->replay($run, $this->plantedClient(FleetClientPlants::S7DISCARD[0]));
 
             $this->assertSame($planted, $this->finalSeats($s7)[$key]['state_version'],

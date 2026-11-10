@@ -10,7 +10,7 @@
  *   `{ "http":       { "<pathname>": [ {status, body|text, delay_ms} | {unreachable}, … ] },
  *      "messages":   [ { "at_ms": N, "envelope": <a `mezzanine` event's data> }, … ],
  *      "until_ms":   N,
- *      "status_keys":[ "<install/seat>", … ]   // keys to poll readStatus() for, held or not
+ *      "status_keys":[ "<seat_id>", … ]   // keys to poll readStatus() for, held or not
  *      "repeat":     N                          // run the same scenario N times IN ONE PROCESS
  *      "browser_clock_ms": N                    // the BROWSER's clock at scenario t=0 (default 0)
  *      "age_ticker": true                       // start `age-readout.js`'s 1 s ticker after start()
@@ -262,6 +262,7 @@ if (typeof dir !== 'string' || dir === '') {
 }
 
 const { FleetClient } = await import(pathToFileURL(join(dir, 'fleet-client.js')).href);
+const { keyOf } = await import(pathToFileURL(join(dir, 'seat-key.js')).href);
 const { startAgeTicker } = await import(pathToFileURL(join(dir, 'age-readout.js')).href);
 const { formatDuration } = await import(pathToFileURL(join(dir, 'duration.js')).href);
 const { createAnimationLog } = await import(pathToFileURL(join(dir, 'animation-log.js')).href);
@@ -625,7 +626,7 @@ async function replay(scenario) {
                     missing: client.readStatus(k).missing,
                 }]));
                 render.removals = drained.filter((entry) => entry.t === 'seat.removed')
-                    .map((entry) => ({ key: `${entry.install_id}/${entry.seat_id}`, cause: entry.cause }));
+                    .map((entry) => ({ key: keyOf(entry), cause: entry.cause }));
                 render.rows = rows.slice(logged);
                 logged = rows.length;
                 drained = [];
@@ -845,7 +846,7 @@ async function replay(scenario) {
 
             switch (act.action) {
                 case 'open':
-                    screen.openPanel(act.install_id, act.seat_id);
+                    screen.openPanel(act.seat_id);
                     break;
                 case 'close':
                     screen.closePanel();

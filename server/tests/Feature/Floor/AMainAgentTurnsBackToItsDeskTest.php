@@ -32,9 +32,9 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
-    private const IMPL_1 = 'aimla/aimla-impl-1';
+    private const IMPL_1 = 'aimla-impl-1';
 
-    private const IMPL_2 = 'aimla/aimla-impl-2';
+    private const IMPL_2 = 'aimla-impl-2';
 
     private const SCENE = '../floor/scene.js';
 
@@ -75,7 +75,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
 
     private function keyOf(array $e): string
     {
-        return "{$e['install_id']}/{$e['seat_id']}";
+        return $e['seat_id'];
     }
 
     /** @return list<array<string, mixed>> the seat walks (A1/A2 effects with frames) a frame draws */
@@ -89,7 +89,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
     private function walkRows(array $result, string $key): array
     {
         return array_values(array_map(static fn (array $r): string => $r['animation_id'], array_filter($result['animation_log'],
-            fn (array $r): bool => $r['class'] === 'edge' && in_array($r['animation_id'], ['A1', 'A2'], true) && "{$r['install_id']}/{$r['seat_id']}" === $key)));
+            fn (array $r): bool => $r['class'] === 'edge' && in_array($r['animation_id'], ['A1', 'A2'], true) && $r['seat_id'] === $key)));
     }
 
     /** The seat a run turns: the seat of its last A1 or A2 row. */
@@ -100,7 +100,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
         $this->assertNotSame([], $rows, 'the run logs no walk row');
         $last = $rows[count($rows) - 1];
 
-        return "{$last['install_id']}/{$last['seat_id']}";
+        return $last['seat_id'];
     }
 
     /** The first render that draws `$key`'s turn-round: `[at, frame, turn, walk turned from, its frame's at]`. */
@@ -320,7 +320,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
         }
 
         $this->assertNotNull($at, 'turn-at-desk draws no render of its return');
-        $key = "{$return['install_id']}/{$return['seat_id']}";
+        $key = $return['seat_id'];
         $this->assertSame([], $this->walks($at['frame'], $key), 'a walker waiting at its desk walks on its return');
         $this->assertContains('character', $this->kinds($this->deskIn($at['frame'], $key)), 'a walker waiting at its desk is not seated at once');
     }
@@ -392,7 +392,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
         foreach (['turn-queued', 'turn-riding-together'] as $run) {
             $result = $this->floorRun($run);
             [$at] = $this->firstTurn($result, self::IMPL_1);
-            $review = array_values(array_filter($this->drawn($result), fn ($r) => $r['at'] === $at && $this->walks($r['frame'], 'aimla/aimla-review') !== []));
+            $review = array_values(array_filter($this->drawn($result), fn ($r) => $r['at'] === $at && $this->walks($r['frame'], 'aimla-review') !== []));
             $this->assertNotSame([], $review, "[{$run}] the other walker's departure was cut by the turn");
         }
     }
@@ -444,7 +444,7 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
             $result = $this->floorRun($run);
             $key = $this->turned($result);
             $rows = array_values(array_filter($result['animation_log'], fn (array $r): bool => $r['class'] === 'edge'
-                && in_array($r['animation_id'], ['A1', 'A2'], true) && "{$r['install_id']}/{$r['seat_id']}" === $key));
+                && in_array($r['animation_id'], ['A1', 'A2'], true) && $r['seat_id'] === $key));
             $turns = [];
 
             foreach ($this->drawn($result) as $r) {
@@ -554,8 +554,11 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
     /** A probe that has not ended this long after it started is a run that never ends — the end timer spinning. */
     private const FUZZ_TIMEOUT_S = 180.0;
 
-    /** The fuzz runs the plant of review round 2's F-A must break: the mass departures seeded where the turn read a `line`. */
-    private const LABEL_RUNS = ['fuzz-mass-s7-4', 'fuzz-mass-s7-5', 'fuzz-mass-s7-21'];
+    /**
+     * The fuzz runs the plant of review round 2's F-A must break: the mass departures seeded where the turn read a `line` —
+     * re-measured over every mass run of the set when the seeded draws became the `seat_id`'s (card#13117).
+     */
+    private const LABEL_RUNS = ['fuzz-mass-s7-21', 'fuzz-mass-s99-35'];
 
     /** The shipped tree's fuzz outcome, replayed once per process and read by every test below. */
     private static ?array $fuzzed = null;

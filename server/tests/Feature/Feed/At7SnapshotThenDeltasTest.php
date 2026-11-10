@@ -84,7 +84,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
             $this->assertSame('reload', $stream->last()['reason']);
 
             $this->assertClientMatchesServer($client);
-            $this->assertSame('blocked', $client->seat(self::INSTALL, self::SEAT)['render_state'], $leg);
+            $this->assertSame('blocked', $client->seat(self::SEAT)['render_state'], $leg);
             $this->assertSame([], $client->resynced, $leg.': a window delta was mistaken for a gap');
 
             $this->refreshSeat();
@@ -124,7 +124,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
 
         $this->assertNotEmpty($stream->ofType('seat.delta'));
         $this->assertClientMatchesServer($client);
-        $this->assertSame('blocked', $client->seat(self::INSTALL, self::SEAT)['render_state']);
+        $this->assertSame('blocked', $client->seat(self::SEAT)['render_state']);
     }
 
     /**
@@ -191,7 +191,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
         $this->assertSame([], $stream->ofType('seat.delta'),
             'the desk was not quiet — the stream delivered a delta that would have healed the client');
 
-        $this->assertSame('idle', $client->seat(self::INSTALL, self::SEAT)['render_state'],
+        $this->assertSame('idle', $client->seat(self::SEAT)['render_state'],
             'the divergence healed by itself, so this fixture is not the permanent case § 11 names');
         $this->assertSame('unknown', $this->state()->render_state, 'the server moved on its own');
     }
@@ -241,7 +241,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
             fn () => $this->fold(),
             ...$this->idle(12),
             function () use ($client) {
-                $this->assertNotNull($client->seat(self::INSTALL, self::SEAT)['action'],
+                $this->assertNotNull($client->seat(self::SEAT)['action'],
                     'the fixture did not put an action on the client before the drain');
                 $client->drain();                  // …and only NOW is the stale buffer drained. Unconditionally.
             },
@@ -266,7 +266,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
         $this->assertSame('reload', $stream->last()['reason']);
 
         $this->assertNotNull($this->serverSeat()['action'], 'the fixture did not leave a call open');
-        $this->assertNull($client->seat(self::INSTALL, self::SEAT)['action'],
+        $this->assertNull($client->seat(self::SEAT)['action'],
             'the RED did not bite — the replayed delta was idempotent and § 11 says that proves nothing');
 
         // ⛔ THE SAME FRAMES WITH THE WATERMARK CONVERGE, which is what makes the line above a finding
@@ -286,7 +286,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
 
         $correct->drain();
 
-        $this->assertNotNull($correct->seat(self::INSTALL, self::SEAT)['action']);
+        $this->assertNotNull($correct->seat(self::SEAT)['action']);
         $this->assertClientMatchesServer($correct);
     }
 
@@ -329,7 +329,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
             $client->applySnapshot($body);
             $client->drain();
 
-            $results[] = json_encode($client->seat(self::INSTALL, self::SEAT));
+            $results[] = json_encode($client->seat(self::SEAT));
         }
 
         $this->assertCount(1, array_unique($results), '100 arrival orders produced more than one result');
@@ -396,7 +396,7 @@ class At7SnapshotThenDeltasTest extends FeedTestCase
     private function assertClientMatchesServer(ClientHarness $client): void
     {
         $server = $this->serverSeat();
-        $held = $client->seat(self::INSTALL, self::SEAT);
+        $held = $client->seat(self::SEAT);
 
         $this->assertNotNull($held, 'the client holds no such seat');
         $this->assertSame($server['state_version'], $held['state_version'], 'client and server versions differ');

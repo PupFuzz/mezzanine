@@ -1031,7 +1031,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -1571,7 +1571,7 @@
       "messages": [],
       "until_ms": 2000,
       "final": {
-        "aimla/aimla-catchup": {
+        "aimla-catchup": {
           "install_id": "aimla",
           "seat_id": "aimla-catchup",
           "character": {
@@ -1650,7 +1650,7 @@
             "cursor_event_id": 9912837
           }
         },
-        "aimla/aimla-stale": {
+        "aimla-stale": {
           "install_id": "aimla",
           "seat_id": "aimla-stale",
           "character": {
@@ -1729,7 +1729,7 @@
             "cursor_event_id": 9912837
           }
         },
-        "aimla/aimla-offline": {
+        "aimla-offline": {
           "install_id": "aimla",
           "seat_id": "aimla-offline",
           "character": {
@@ -1808,7 +1808,7 @@
             "cursor_event_id": 9912837
           }
         },
-        "aimla/aimla-disabled": {
+        "aimla-disabled": {
           "install_id": "aimla",
           "seat_id": "aimla-disabled",
           "character": {
@@ -1887,7 +1887,7 @@
             "cursor_event_id": 9912837
           }
         },
-        "aimla/aimla-lagged": {
+        "aimla-lagged": {
           "install_id": "aimla",
           "seat_id": "aimla-lagged",
           "character": {
@@ -1980,7 +1980,7 @@
             "cursor_event_id": 9911004
           }
         },
-        "aimla/aimla-idle": {
+        "aimla-idle": {
           "install_id": "aimla",
           "seat_id": "aimla-idle",
           "character": {

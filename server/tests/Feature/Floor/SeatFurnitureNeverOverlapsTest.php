@@ -40,6 +40,12 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
 
     private const CROWDED_REORDERED = 'scene_crowded_reordered';
 
+    /**
+     * The crowded map's overlapping pair, `id => slot`: two slots `fx-snapshot-4`'s seats occupy under § 3.2's function
+     * over the stub map's twelve objects (`fx-scene`'s note names the two seats).
+     */
+    private const CROWDED_PAIR = [10 => 9, 12 => 11];
+
     private const UNDERSIZED = 'scene_undersized';
 
     private const CAP = 'interns_cap';
@@ -455,7 +461,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
 
         foreach ($this->fixture($run)['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
             foreach ($install['seats'] as $seat) {
-                $seats["{$seat['install_id']}/{$seat['seat_id']}"] = $seat;
+                $seats[$seat['seat_id']] = $seat;
             }
         }
 
@@ -670,22 +676,23 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
         $seatAt = [];
 
         foreach ($room['desks'] as $d) {
-            $seatAt[$d['slot']] = explode('/', $d['key'])[1];
+            $seatAt[$d['slot']] = $d['key'];
         }
 
-        $expected = $this->intersectLine(3, 4, 'aimla', [$seatAt[2] ?? null, $seatAt[3] ?? null]);
+        [$earlier, $later] = array_keys(self::CROWDED_PAIR);
+        $expected = $this->intersectLine($earlier, $later, 'aimla', array_map(static fn (int $slot): ?string => $seatAt[$slot] ?? null, array_values(self::CROWDED_PAIR)));
 
         if (! in_array($expected, $this->f21Lines($frame), true)) {
             $defects[] = "no F21 line: expected «{$expected}»";
         }
 
         $order = array_column($scene['desks'], 'object_id');
-        $three = array_search(3, $order, true);
-        $four = array_search(4, $order, true);
+        $first = array_search($earlier, $order, true);
+        $second = array_search($later, $order, true);
 
-        if ($three === false || $four === false) {
+        if ($first === false || $second === false) {
             $defects[] = 'a desk of the crowded pair is not drawn';
-        } elseif ($four < $three) {
+        } elseif ($second < $first) {
             $defects[] = 'the earlier `id` is drawn on top';
         }
 
@@ -713,7 +720,7 @@ class SeatFurnitureNeverOverlapsTest extends TestCase
 
         $this->assertNotNull($key, 'slot 0 is not occupied on the undersized run — the fixture no longer plants its defect');
 
-        $expected = $this->undersizedLine(1, 'aimla', [explode('/', $key)[1]]);
+        $expected = $this->undersizedLine(1, 'aimla', [$key]);
 
         if ($this->f21Lines($frame) !== [$expected]) {
             $defects[] = "expected exactly «{$expected}», got «".implode('», «', $this->f21Lines($frame)).'»';

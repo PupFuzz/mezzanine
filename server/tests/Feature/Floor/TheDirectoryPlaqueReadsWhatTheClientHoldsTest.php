@@ -156,8 +156,9 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
         $this->assertSame('+'.($kanban['held'] - $cap).' more', $kanban['markers']['more']);
         $this->assertSame('+2 more', $kanban['markers']['more'], 'fx-lobby\'s markers run holds fourteen');
         $names = array_column($kanban['markers']['shown'], 'name');
-        $this->assertContains('kanban/a-01, working', $names);
-        $this->assertContains('kanban-bridge/a-01, idle', $names, 'the two namesakes are two markers with two names');
+        // § 4.1 (card#13117): a seat on a plaque of several rooms is named by its `seat_id` alone, unique site-wide.
+        $this->assertContains('a-01, working', $names);
+        $this->assertContains('b-01, idle', $names, 'a seat of the second room is not named by its seat_id alone');
 
         foreach ($this->plaques($this->replay('lobby_plaque')) as $floor => $plaque) {
             $this->assertNull($plaque['markers']['more'], "{$floor} holds fewer seats than the cap and carries a tag");
@@ -443,12 +444,11 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
             usort($seats, static fn (array $a, array $b): int => [$a['install_id'], $a['seat_id']] <=> [$b['install_id'], $b['seat_id']]);
             $shown = array_slice($seats, 0, $cap);
             $draws = $this->drawsCharacter(array_column($shown, 'render_state'));
-            $multi = count($plaque['rooms']) > 1;
             $want = [];
 
             foreach ($shown as $i => $seat) {
                 $word = in_array($seat['render_state'], $members, true) ? $seat['render_state'] : "unrecognised ({$seat['render_state']})";
-                $want[] = [($multi ? "{$seat['install_id']}/" : '').$seat['seat_id'].", {$word}", $draws[$i] ? 'disc' : 'ring'];
+                $want[] = [$seat['seat_id'].", {$word}", $draws[$i] ? 'disc' : 'ring'];
             }
 
             $got = array_map(static fn (array $m): array => [$m['name'], $m['shape']], $plaque['markers']['shown']);
@@ -481,8 +481,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
 
         foreach ($this->plaques($result) as $floor => $plaque) {
             $seats = $this->floorSeats($scenario, $floor);
-            $multi = count($plaque['rooms']) > 1;
-            $name = static fn (array $s): string => ($multi ? "{$s['install_id']}/" : '').$s['seat_id'];
+            $name = static fn (array $s): string => $s['seat_id'];
             $earliest = static function (array $pool, callable $at): ?array {
                 usort($pool, static fn (array $a, array $b): int => [$at($a), $a['install_id'], $a['seat_id']] <=> [$at($b), $b['install_id'], $b['seat_id']]);
 
@@ -537,7 +536,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
     private function populationDefects(array $probe): array
     {
         $seats = $this->heldSeats($this->fixture('lobby_attention'));
-        $want = array_values(array_map(static fn (array $s): string => "{$s['install_id']}/{$s['seat_id']}",
+        $want = array_values(array_map(static fn (array $s): string => $s['seat_id'],
             array_filter($seats, static fn (array $s): bool => $s['link_state'] === 'live' && $s['context'] !== null)));
 
         return $probe['directory']['context_candidates'] === $want ? [] : [

@@ -265,7 +265,7 @@ export function drillDownModel(seat, timeline, options = {}) {
     const desk = deskOf(seat, nowMs, stamps, options);
 
     return {
-        // § 3.1: `(install_id, seat_id)` is the identity and the whole of it. Never null.
+        // § 3.1: `seat_id` is the identity; `install_id` is the room the seat is drawn in. Never null.
         seat: { seat_id: seat?.seat_id ?? null, install_id: seat?.install_id ?? null },
         render_state: member(seat?.render_state),
         header: header(seat, desk, options, skew),

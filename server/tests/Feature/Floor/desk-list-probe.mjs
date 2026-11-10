@@ -4,7 +4,7 @@
  * no dependencies, no DOM.
  *
  * argv[2] — the tree's `wire/` directory (the harness's own convention); the module is `../desk/`.
- * stdin   — `{ "desks": [ { "run": "<run>", "key": "<install/seat>", "model": <deskModel() output> } ] }`,
+ * stdin   — `{ "desks": [ { "run": "<run>", "key": "<seat_id>", "model": <deskModel() output> } ] }`,
  *           every distinct desk model the fixtures' runs drew.
  * stdout  — `{ "leaves": { "<path>": { "nondefault_runs": [ … ] } }, "excluded": [ "<path>", … ],
  *              "not_listed": [ "<path>", … ], "defects": [ "<sentence>", … ] }`

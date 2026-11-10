@@ -56,7 +56,7 @@ export function reservationNotice(assignment, installId, roomsOnFloor) {
     const head = `reserved for \`${reserved.role}\` (id ${reserved.id})`;
     const bare = eligible.length === 0
         ? `${head} — no seat holds that role`
-        : `${head} — ${eligible.length} seats hold that role: ${eligible.map((key) => `\`${splitKey(key)[1]}\``).join(', ')}`;
+        : `${head} — ${eligible.length} seats hold that role: ${eligible.map((key) => `\`${key}\``).join(', ')}`;
 
     return roomsOnFloor > 1 ? `${bare} — ${installId}` : bare;
 }
@@ -87,13 +87,6 @@ export function layoutFailureStatement(status) {
 /** § 4.6: a room the layout declares that the client holds no seat for. About SEATS, never installs. */
 export const NO_SEATS_REPORTED = 'no seats reported for this room';
 
-/** A held seat's key, split back into the pair § 3.1 makes a desk's identity. */
-export function splitKey(key) {
-    const cut = key.indexOf('/');
-
-    return [key.slice(0, cut), key.slice(cut + 1)];
-}
-
 /**
  * One composed floor: its rooms placed, its desks slotted, its band, its extent, its overflow row and its notices.
  *
@@ -103,7 +96,7 @@ export function splitKey(key) {
  * @returns {{planned: boolean, hallway: object|null, extent: object|null, band: object|null, rooms: list<object>,
  *            draw_order: list<string>, overlaps: list<list<string>>, overflow: list<string>,
  *            desk_positions: Object<string, object>, notices: list<string>, assignments: Map<string, object>}}
- *          frozen; `desk_positions` keyed `install_id/seat_id`; `assignments` § 3.2's answer per room, the one the
+ *          frozen; `desk_positions` keyed by `keyOf()`; `assignments` § 3.2's answer per room, the one the
  *          desks were placed by
  */
 export function composeFloor(floor, building, seatsByRoom) {

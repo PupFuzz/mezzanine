@@ -370,7 +370,7 @@
       "messages": [],
       "until_ms": 2000,
       "final": {
-        "aimla/aimla-stalled": {
+        "aimla-stalled": {
           "install_id": "aimla",
           "seat_id": "aimla-stalled",
           "character": {
@@ -449,7 +449,7 @@
             "cursor_event_id": 9912837
           }
         },
-        "aimla/aimla-unknown": {
+        "aimla-unknown": {
           "install_id": "aimla",
           "seat_id": "aimla-unknown",
           "character": {

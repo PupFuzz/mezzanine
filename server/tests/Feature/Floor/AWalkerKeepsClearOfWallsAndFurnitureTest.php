@@ -45,9 +45,9 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
 
     /**
      * card#12513: routed runs whose seat walk crossed its own side table before the seat could leave from behind its
-     * chair — `return-from-stale` (A1) and `leave-stale` (A2) at the shipped default's desk the left strip's furniture
-     * walls in on its left, `idle-trip` (A25) and `idle-visit` (A26) at a desk whose snack table and restroom door are
-     * to its right, past its couch.
+     * chair — `return-from-stale` (A1) and `leave-stale` (A2) at `aimla-impl-1`'s desk, and `idle-trip` (A25) and
+     * `idle-visit` (A26) at `aimla-impl-2`'s, the desk the left strip's furniture walls in on its left and whose snack
+     * table and restroom door are to its right, past its couch (§ 3.2's slots since card#13117).
      */
     private const COUCH_RUNS = ['return-from-stale', 'leave-stale', 'idle-trip', 'idle-visit'];
 
@@ -110,7 +110,7 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
                         continue;
                     }
 
-                    $key = "{$e['install_id']}/{$e['seat_id']}";
+                    $key = $e['seat_id'];
                     $desk = array_values(array_filter($scene['desks'], static fn ($d) => $d['key'] === $key))[0] ?? null;
                     $legs = array_values(array_filter($e['legs'] ?? [], static fn ($l) => $l['kind'] === 'walk'));
 
@@ -327,14 +327,15 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
 
     /**
      * card#12513: the router before card#12513 — the seat leaves and reaches its desk on its anchor's row alone — walks
-     * the shipped default's walled-in desk across its couch, on the probe and in the elevator's runs.
+     * the shipped default's walled-in desk across its couch, on the probe and in the runs. That desk is `aimla-impl-2`'s
+     * under § 3.2's function since card#13117, so the run that shows it is its snack trip, idle-trip's A25.
      */
     public function test_red_the_seat_on_its_anchors_row_alone(): void
     {
         $dir = $this->mutatedModules([self::ROUTE, "    const seat = seatDesk(grid, walker)?.seat ?? null;\n", "    const seat = null;\n"]);
 
         $this->assertNotSame([], $this->floorCouchDefects($this->floor($this->defaultMapPath(), $dir)), 'CONTROL (the seat on its anchor\'s row alone) walked no desk of the shipped default across its couch');
-        $this->assertNotSame([], array_filter($this->runCouchDefects($dir), static fn ($d) => str_starts_with($d, '[return-from-stale] A1')), 'the couch guard did not see the return-from-stale walk across its couch');
+        $this->assertNotSame([], array_filter($this->runCouchDefects($dir), static fn ($d) => str_starts_with($d, '[idle-trip] A25')), 'the couch guard did not see the walled-in desk\'s idle-trip walk across its couch');
     }
 
     /** card#12513: the side table left open to the seat — the snack and restroom trips to its right cut across it. */

@@ -39,7 +39,7 @@ final class CharacterAllocation
     public const FLOOR_UNREAD = 'character_floor_unread';
 
     /**
-     * @param  string  $key  the new seat's key, `install_id/seat_id` — its preference order's start
+     * @param  string  $key  the new seat's key, its `seat_id` — its preference order's start
      * @param  iterable<object|array{install_id: string, species: string}>  $live  every live seat: its install and species
      * @param  callable(): list<string>  $floorInstalls  the install ids on the new seat's floor, its own included, or
      *                                                   none for a seat on no floor — called only when rule 1 has

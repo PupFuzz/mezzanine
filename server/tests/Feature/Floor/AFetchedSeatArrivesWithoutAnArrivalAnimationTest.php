@@ -28,7 +28,7 @@ class AFetchedSeatArrivesWithoutAnArrivalAnimationTest extends TestCase
     /** `fx-membership` leg (a): deltas for a seat absent from `fx-snapshot-4`, each patching only `context`. */
     private const RUN = 'leg_a';
 
-    private const INSERTED = 'aimla/aimla-impl-3';
+    private const INSERTED = 'aimla-impl-3';
 
     public function test_the_inserted_desk_renders_without_an_arrival_animation(): void
     {
@@ -80,11 +80,9 @@ class AFetchedSeatArrivesWithoutAnArrivalAnimationTest extends TestCase
      */
     private function rowsFor(array $result, string $key): array
     {
-        [$install, $seat] = explode('/', $key, 2);
-
         return array_values(array_filter(
             $result['animation_log'],
-            static fn (array $row): bool => $row['install_id'] === $install && $row['seat_id'] === $seat,
+            static fn (array $row): bool => $row['seat_id'] === $key,
         ));
     }
 }

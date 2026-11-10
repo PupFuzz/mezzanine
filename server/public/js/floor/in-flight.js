@@ -75,6 +75,7 @@
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
 import { pointAt } from './route.js';
+import { keyOf } from '../wire/seat-key.js';
 import { ELEVATOR_DOOR, RESTROOM_GAP_S, SNACK_GAP_S, departureLegs, laneFrame, leafLevel, queueLater, queueShape, restroomExit, restroomHome, seatInCab, snackHome, waitFrom } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
@@ -87,9 +88,6 @@ export const WALK_ROWS = Object.freeze(['A1', 'A2']);
 export function walkSide(renderState) {
     return staffed(renderState) ? 'staffed' : emptyChair(renderState) ? 'empty' : 'neither';
 }
-
-/** The held walks' seat keys. */
-const keyOf = (effect) => `${effect.install_id}/${effect.seat_id}`;
 
 /** An intern's A10 walk (card#12450) — keyed by its intern key, never by its seat's. */
 const isInternWalk = (effect) => effect.animation_id === 'A10' && typeof effect.intern_key === 'string';
@@ -234,7 +232,7 @@ export class EffectsInFlight {
         // seat's object or removes it, and touches it as it always did (clause 2).
         const touchedKeys = new Set((ctx.journal ?? [])
             .filter((entry) => entry.outcome === 'applied' && entry.t !== 'seat.delta' && typeof entry.seat_id === 'string')
-            .map((entry) => `${entry.install_id}/${entry.seat_id}`));
+            .map(keyOf));
         // Two opposite edges applied in one render leave the side unchanged and still cancel: their rows are here.
         const rowKeys = new Set(effects.filter((effect) => WALK_ROWS.includes(effect.animation_id)).map(keyOf));
         const cancelled = [];

@@ -101,7 +101,8 @@ import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, z
 import { TilesetLoader, namedTilesets } from './tileset.js';
 import { DoorViews } from './door-views.js';
 import { RoomClock } from './floor-layout.js';
-import { composeFloor, layoutFailureStatement, roomMaps, sceneInput, splitKey } from './floor-compose.js';
+import { composeFloor, layoutFailureStatement, roomMaps, sceneInput } from './floor-compose.js';
+import { keyOf } from '../wire/seat-key.js';
 
 /** § 9 F17: what the floors a screen still holds are labelled while the last request failed. */
 export const LAST_KNOWN_LAYOUT = 'last known layout';
@@ -388,15 +389,15 @@ export class FloorScreen {
 
     /**
      * Open the drill-down on one desk — § 4.3's "opened by selecting a desk". The segment the route
-     * carries is the desk's `seat_id` (§ 4.4); the pair is the desk's identity (§ 3.1).
+     * carries is the desk's `seat_id` (§ 4.4), which is also its identity (§ 3.1).
      *
      * @returns {Promise<void>} settled once the panel's two requests have answered
      */
-    openPanel(installId, seatId) {
+    openPanel(seatId) {
         this.#seatSegment = seatId;
         this.#seatOpened = true;
 
-        return this.#panel.open(installId, seatId);
+        return this.#panel.open(seatId);
     }
 
     /**
@@ -714,7 +715,7 @@ export class FloorScreen {
             // the arrays hold are what an arrival the cap dropped is cancelled against.
             // The slot the intern holds NOW (a departing one's last), so a slot that moved under a walk is a moved anchor.
             slot_foot: (fx) => {
-                const key = `${fx.install_id}/${fx.seat_id}`;
+                const key = keyOf(fx);
                 const slot = (frame.desks?.desks?.[key]?.side_table?.stools ?? []).find((s) => s.call_id === fx.call_id)?.slot ?? fx.slot;
 
                 return plain?.slot_feet?.[key]?.[slot] ?? null;
@@ -731,7 +732,7 @@ export class FloorScreen {
         // its row is drawn without the walk, and the map's defect is named once per firing.
         for (const effect of plain?.effects ?? []) {
             if (effect.no_route === true) {
-                this.#client.record(`${effect.install_id}/${effect.seat_id}: no open route between its desk and the elevator — drawn without the walk`);
+                this.#client.record(`${keyOf(effect)}: no open route between its desk and the elevator — drawn without the walk`);
             }
         }
 
@@ -818,7 +819,7 @@ export class FloorScreen {
 
         // card#12451: an intern walk's `seat` leg reads the intern's HELD state at each paint — the laptop of an arrival
         // whose subagent went idle on the way stays down — so each walk in flight carries it, read off the frame.
-        const heldOf = (fx) => (frame.desks?.desks?.[`${fx.install_id}/${fx.seat_id}`]?.side_table?.stools ?? [])
+        const heldOf = (fx) => (frame.desks?.desks?.[keyOf(fx)]?.side_table?.stools ?? [])
             .find((s) => s.call_id === fx.call_id)?.activity ?? null;
         // card#12785 (§ 6.6 item 4): a snack trip's walker carries its break's food thought while it is BUSY — its held
         // state `working` in this render's scene — and none while it is idle or walking home from a recall; read each
@@ -1091,7 +1092,7 @@ export class FloorScreen {
 
                 if (match !== undefined) {
                     this.#seatOpened = true;
-                    this.#panel.open(match.install_id, match.seat_id);
+                    this.#panel.open(match.seat_id);
                 } else {
                     // § 4.4's seat-segment notice, in the wording the operator ratified (card#7342,
                     // 2026-09-25).
@@ -1289,15 +1290,16 @@ export class FloorScreen {
      */
     #displacements(assignments, journal, at) {
         const applied = journal.filter((entry) => entry.t === 'seat.delta' && entry.outcome === 'applied');
-        const arrived = new Set(applied.map((entry) => `${entry.install_id}/${entry.seat_id}`));
+        const arrived = new Set(applied.map(keyOf));
         // The last applied delta per key that changed the seat's relayed role — the only member the
         // reserved desk's holder is a function of, besides the seat set.
         const relayed = new Map(applied
             .filter((entry) => entry.before?.protocol_agent_role !== entry.after?.protocol_agent_role)
-            .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.state_version]));
+            .map((entry) => [keyOf(entry), entry.state_version]));
         const announced = new Set(journal
             .filter((entry) => entry.t === 'seat.removed' && entry.cause !== 'snapshot')
-            .map((entry) => `${entry.install_id}/${entry.seat_id}`));
+            .map(keyOf));
+        const held = this.#client.seats;
 
         for (const [installId, assignment] of assignments) {
             const placed = this.#placed.get(installId) ?? null;
@@ -1336,7 +1338,6 @@ export class FloorScreen {
 
             for (const [key, slot] of assignment.slots) {
                 if (before.has(key) && before.get(key) !== slot) {
-                    const [install_id, seat_id] = splitKey(key);
                     const cause = relays.includes(key)
                         ? relayed.get(key)
                         : arrivals.length > 0
@@ -1345,7 +1346,7 @@ export class FloorScreen {
                                 ? departureCause(slot, formerHolder, departures)
                                 : relayed.get(relays[0]);
 
-                    this.#set.displaced(install_id, seat_id, cause, at);
+                    this.#set.displaced(installId, held.get(key).seat_id, cause, at);
                 }
             }
         }
@@ -1374,14 +1375,15 @@ export class FloorScreen {
                 }
 
                 this.#logUnresolved(round);
-                this.#fire(edgesOf(round, room.install_id), round.post_ref, at);
+                this.#fire(edgesOf(round, room.install_id, null), round.post_ref, at);
             }
         }
 
         // The FLEET-scope posts, which belong to no room: names join through every held seat's
         // `roundtable_agent_name` (D2 § 8.3.3 rule 1's fleet arm), and an end is on this floor when its
-        // desk was drawn here — `deskPositions` is keyed `install_id/seat_id`, the fleet arm's own key.
-        const fleet = fleetModel(messages, { ...buildFleetJoin(this.#client.seats.values()), here: new Set(Object.keys(deskPositions)) });
+        // desk was drawn here — `deskPositions` is keyed by `keyOf()`, the fleet arm's own key.
+        const held = this.#client.seats;
+        const fleet = fleetModel(messages, { ...buildFleetJoin(held.values()), here: new Set(Object.keys(deskPositions)) });
 
         for (const round of fleet.rounds) {
             if (!this.#drawn.first(round.post_ref)) {
@@ -1389,7 +1391,7 @@ export class FloorScreen {
             }
 
             this.#logUnresolved(round);
-            this.#fire(edgesOf(round), round.post_ref, at);
+            this.#fire(edgesOf(round, null, held), round.post_ref, at);
         }
 
         return { rooms: Object.freeze(rooms), fleet };
@@ -1503,7 +1505,7 @@ export function startFloorScreen(client, fetchImpl, clock, log, draw, options = 
         },
         // The drill-down's user actions (§ 4.3, § 9 F10/F11). Each returns once its requests have
         // answered; the page asks for a render after each, as after any other response.
-        openPanel: (installId, seatId) => screen.openPanel(installId, seatId),
+        openPanel: (seatId) => screen.openPanel(seatId),
         closePanel: () => screen.closePanel(),
         routeSeat: (seatId) => screen.routeSeat(seatId),
         retryPanel: () => screen.retryPanel(),

@@ -50,13 +50,13 @@ class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
         return $out;
     }
 
-    /** Floor `one` holds install `one`'s seats and floor `two` install `two`'s (D3 AT-D3-29's two floors). */
+    /** Floor `one` holds install `one`'s seats and floor `two` install `two`'s (D3 AT-D3-29's two floors), by desk key. */
     private function floors(): array
     {
         $floors = [];
 
         foreach (CoordSpec::spec()->raw()['installs'] as $install => $def) {
-            $floors[$def['floor']] = array_map(fn ($s) => "{$install}/{$s}", array_keys($def['seats']));
+            $floors[$def['floor']] = array_keys($def['seats']);
         }
 
         return $floors;
@@ -78,7 +78,7 @@ class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
     {
         $out = $this->drive($this->seats());
 
-        $this->assertSame('one/one-pm', $out['join']['pm-solo']);
+        $this->assertSame('one-pm', $out['join']['pm-solo']);
         $this->assertSame('duplicate_declaration', $out['reasons']['coder-solo']);
 
         foreach (['one', 'two'] as $floor) {
@@ -92,29 +92,29 @@ class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
     {
         $out = $this->drive($this->seats(clear: ['one-coder']));
 
-        $this->assertSame('two/two-reviewer', $out['join']['coder-solo']);
+        $this->assertSame('two-reviewer', $out['join']['coder-solo']);
 
         $one = $out['floors']['one'][$this->ref('F1')];
         $two = $out['floors']['two'][$this->ref('F1')];
         $this->assertSame([[], true, []], [$one['animations'], $one['departure'], $one['arrivals']]);
-        $this->assertSame([[], false, ['two/two-reviewer']], [$two['animations'], $two['departure'], $two['arrivals']]);
+        $this->assertSame([[], false, ['two-reviewer']], [$two['animations'], $two['departure'], $two['arrivals']]);
 
         // AT-D3-29 (ii): one departure from floor one's birdhouse and one arrival at floor two's — and no A19.
         $this->assertSame([['animation_id' => 'A22', 'install_id' => 'one']], $one['edges'], 'floor one does not fire exactly one portal departure');
         $this->assertSame([['animation_id' => 'A22', 'install_id' => 'two']], $two['edges'], 'floor two does not fire exactly one portal arrival');
 
         $f2 = $out['floors']['one'][$this->ref('F2')];
-        $this->assertSame(['one/one-pm'], $f2['arrivals'], 'F2 (the reverse) arrives at one-pm\'s desk from floor one\'s portal');
+        $this->assertSame(['one-pm'], $f2['arrivals'], 'F2 (the reverse) arrives at one-pm\'s desk from floor one\'s portal');
     }
 
     public function test_variant_iii_same_floor_is_one_traveller_and_no_portal_edge(): void
     {
         $out = $this->drive($this->seats(clear: ['two-reviewer']));
 
-        $this->assertSame('one/one-coder', $out['join']['coder-solo']);
+        $this->assertSame('one-coder', $out['join']['coder-solo']);
 
         $one = $out['floors']['one'][$this->ref('F1')];
-        $this->assertSame([['A19'], ['one/one-coder'], false, []], [$one['animations'], $one['travellers'], $one['departure'], $one['arrivals']]);
+        $this->assertSame([['A19'], ['one-coder'], false, []], [$one['animations'], $one['travellers'], $one['departure'], $one['arrivals']]);
         $this->assertSame([['animation_id' => 'A19', 'install_id' => 'one']], $one['edges'], 'the same-floor control does not fire exactly one traveller and no portal bird');
         $this->assertSame([], $out['floors']['two'][$this->ref('F1')]['edges'], 'floor two fired a row for a post with no end on it');
         $this->assertSame([[], false, []], [$out['floors']['two'][$this->ref('F1')]['animations'],
@@ -172,7 +172,24 @@ class TheFleetArmJoinsTheBuildingsDeclaredSeatsTest extends TestCase
         $loose = $this->drive($this->seats(clear: ['one-coder'], override: ['two-reviewer' => ['roundtable_agent_name_check' => 'unchecked']]),
             $this->mutatedModules(['coord-join.js', "const FLEET_RESOLVING_CHECKS = Object.freeze(['checked']);",
                 "const FLEET_RESOLVING_CHECKS = Object.freeze(['checked', 'unchecked']);"]));
-        $this->assertSame('two/two-reviewer', $loose['join']['coder-solo'] ?? null, 'the unchecked plant did not bite');
+        $this->assertSame('two-reviewer', $loose['join']['coder-solo'] ?? null, 'the unchecked plant did not bite');
+    }
+
+    /**
+     * T23's behavioural leg (card#13117, plan § 3.4): a fleet-scope end is keyed by its `seat_id`, which carries no
+     * room, so the room an A22 is logged against is the HELD seat's `install_id`. A build that still takes the room
+     * out of the key — the pre-13117 `key.split('/')[0]` — logs it against the whole seat id.
+     */
+    public function test_a_fleet_scope_edge_takes_its_room_from_the_held_seat_and_never_from_the_key(): void
+    {
+        $two = $this->drive($this->seats(clear: ['one-coder']))['floors']['two'][$this->ref('F1')]['edges'];
+        $this->assertSame([['animation_id' => 'A22', 'install_id' => 'two']], $two);
+
+        $split = $this->drive($this->seats(clear: ['one-coder']), $this->mutatedModules(['../coord/coord-model.js',
+            '    const roomOfEnd = (key) => (room !== null ? room : roomOf(key, held));',
+            "    const roomOfEnd = (key) => (room !== null ? room : key.split('/')[0]);"]));
+        $this->assertSame([['animation_id' => 'A22', 'install_id' => 'two-reviewer']], $split['floors']['two'][$this->ref('F1')]['edges'],
+            'the plant did not bite: a room taken out of the key is not the seat id the key now is');
     }
 
     /**

@@ -40,6 +40,7 @@
 import { correctedNowMs, wireMs } from '../wire/duration.js';
 import { failed } from '../wire/fleet-client.js';
 import { drillDownModel } from './drilldown-model.js';
+import { keyOf } from '../wire/seat-key.js';
 
 /** § 4.3's three `fetch-fresh` blocks — the nested objects whose members are among D2 § 6.5's ten. */
 const FRESH_BLOCKS = Object.freeze(['delivery', 'reporter', 'derivation']);
@@ -47,7 +48,7 @@ const FRESH_BLOCKS = Object.freeze(['delivery', 'reporter', 'derivation']);
 export class DrillDownPanel {
     #client;
 
-    /** `{ install_id, seat_id, key }` while open, else `null`. */
+    /** `{ seat_id, key }` while open, else `null`. */
     #target = null;
 
     /** Bumped on every open and close, so an answer to an earlier open is never applied to a later one. */
@@ -79,11 +80,11 @@ export class DrillDownPanel {
         this.#client = client;
     }
 
-    /** `{ install_id, seat_id }` of the open panel, or `null`. */
+    /** `{ seat_id }` of the open panel, or `null`. */
     get target() {
         return this.#target === null
             ? null
-            : { install_id: this.#target.install_id, seat_id: this.#target.seat_id };
+            : { seat_id: this.#target.seat_id };
     }
 
     /**
@@ -92,15 +93,15 @@ export class DrillDownPanel {
      *
      * @returns {Promise<void>} settled once both requests have answered, whichever way
      */
-    async open(installId, seatId) {
-        const k = `${installId}/${seatId}`;
+    async open(seatId) {
+        const k = keyOf({ seat_id: seatId });
 
         if (this.#target?.key === k) {
             return;
         }
 
         this.close();
-        this.#target = { install_id: installId, seat_id: seatId, key: k };
+        this.#target = { seat_id: seatId, key: k };
 
         const held = this.#client.seats.get(k);
 
@@ -165,10 +166,10 @@ export class DrillDownPanel {
             return;
         }
 
-        const { install_id: installId, seat_id: seatId } = this.#target;
+        const k = this.#target.key;
 
         for (const entry of journal) {
-            if (entry.install_id !== installId || entry.seat_id !== seatId) {
+            if (keyOf(entry) !== k) {
                 continue;
             }
 
@@ -277,11 +278,11 @@ export class DrillDownPanel {
         }
 
         const generation = this.#generation;
-        const { install_id: installId, seat_id: seatId } = this.#target;
+        const { seat_id: seatId } = this.#target;
 
         this.#inFlight.add('detail');
 
-        const res = await this.#client.readSeatDetail(installId, seatId);
+        const res = await this.#client.readSeatDetail(seatId);
 
         if (generation !== this.#generation) {
             return;
@@ -317,11 +318,11 @@ export class DrillDownPanel {
         }
 
         const generation = this.#generation;
-        const { install_id: installId, seat_id: seatId } = this.#target;
+        const { seat_id: seatId } = this.#target;
 
         this.#inFlight.add('timeline');
 
-        const res = await this.#client.readTimeline(installId, seatId, before);
+        const res = await this.#client.readTimeline(seatId, before);
 
         if (generation !== this.#generation) {
             return;

@@ -1280,8 +1280,6 @@ const PLANT_REACH = Object.freeze({
 
 // ── a desk's furniture set ────────────────────────────────────────────────────────────────────
 
-const deskKey = (installId, seatId) => `${installId}/${seatId}`;
-
 /** The chair's rect (§ 10.6's table): 54 × 64. */
 const CHAIR = Object.freeze({ w: 54, h: 64 });
 
@@ -1289,11 +1287,11 @@ const CHAIR = Object.freeze({ w: 54, h: 64 });
  * THE CHAIR's BACK, behind the creature, at every desk with art — its colour seeded from the desk's key. With
  * nobody in it it is § 7.1's empty chair; the drawing itself carries no fact.
  *
- * @param {{install_id: string, seat_id: string}} input the desk's key
+ * @param {{seat_id: string}} input the desk's key
  */
-export function chair({ install_id: installId, seat_id: seatId }) {
+export function chair({ seat_id: seatId }) {
     const pen = new Pen();
-    const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);
+    const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);
     const cx = CHAIR.w / 2;
     const w = 52;
     const y = 2;
@@ -1371,11 +1369,11 @@ const PROPS = Object.freeze({ w: 68, h: 50, top: 42 });
  * THE DESK PROPS, on the desk's left third: a desk lamp leaning in, with its small pool of light on the desk
  * top, and beside it a mug or a small plant — the choice and the colours seeded per desk.
  *
- * @param {{install_id: string, seat_id: string}} input the desk's key
+ * @param {{seat_id: string}} input the desk's key
  */
-export function deskProps({ install_id: installId, seat_id: seatId }) {
+export function deskProps({ seat_id: seatId }) {
     const pen = new Pen();
-    const key = deskKey(installId, seatId);
+    const key = seatId;
     const P = PALETTE['desk-props'];
     const lamp = pick(key, 'theme:lamp', P.lamps);
     const pot = pick(key, 'theme:mug', P.pots);
@@ -1427,13 +1425,13 @@ const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 41, seat_w: 
  * is drawn over it. As many places as it is handed — so an empty desk shows its front couch — and a plant beside the front
  * couch where the rect leaves room. The table's teapot went with the table.
  *
- * @param {{install_id: string, seat_id: string, seats: number}} input the desk's key and the seat count
+ * @param {{seat_id: string, seats: number}} input the desk's key and the seat count
  */
-export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
+export function sideTable({ seat_id: seatId, seats }) {
     finite(seats);
 
     const pen = new Pen();
-    const key = deskKey(installId, seatId);
+    const key = seatId;
     const P = PALETTE['side-table'];
     const c = pick(key, 'theme:couch', P.couch);
     const rows = Math.ceil(seats / TABLE.per_row);

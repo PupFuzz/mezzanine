@@ -79,7 +79,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
     {
         $live = CharacterAllocation::livePopulation();
 
-        return CharacterAllocation::choose("{$installId}/{$seatId}", $live,
+        return CharacterAllocation::choose($seatId, $live,
             CharacterAllocation::floorOf($installId, array_map(static fn (object $s): string => (string) $s->install_id, $live)),
             $this->list());
     }
@@ -161,7 +161,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
             $install = ['alpha', 'beta'][$i % 2];
             $seat = "seat-{$i}";
             // A new seat's preference key is its room's — `unassigned` at issue (card#13117 S1).
-            $own = $list->drawOf("unassigned/{$seat}");
+            $own = $list->drawOf($seat);
             $free = ! isset($this->held()[$own]);
 
             $got = $this->issue($install, $seat);
@@ -195,7 +195,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $seat = null;
 
         for ($k = 1; $seat === null; $k++) {
-            $seat = $this->preferenceOf("unassigned/over-{$k}")[0] === $twice ? "over-{$k}" : null;
+            $seat = $this->preferenceOf("over-{$k}")[0] === $twice ? "over-{$k}" : null;
         }
 
         $got = SeatTokens::issue($seat, 'suite');
@@ -206,6 +206,31 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $this->assertNotSame($twice, $species, "the roomless seat took {$species}, its first preference, which two live seats hold");
         // Every other species was held once before it, so the least used one is now held twice — by it and one other.
         $this->assertSame(2, $this->held()[$species], "the roomless seat took {$species}, which is not among the fleet's least used");
+    }
+
+    /**
+     * T9's server half (card#13117, plan § 3.4): the seat's first preference is the body the BROWSER draws for it —
+     * `creatures.js`'s `speciesOf()` over `seed.js`'s `seatKey()` of its `seat_id`, run under `node` — so a seat
+     * whose own draw is free wears, from the first allocation, the body the generator would have drawn. A server that
+     * keyed the preference by any other string (the pre-S2 `unassigned/<seat_id>`) gives another body; the seat id is
+     * chosen so the two keys draw differently, and that is asserted, so this leg tells them apart.
+     */
+    public function test_an_uncontended_seat_is_allocated_the_body_the_browser_draws_for_its_seat_id(): void
+    {
+        $list = $this->list();
+        $seat = null;
+
+        for ($k = 0; $seat === null; $k++) {
+            $seat = $list->drawOf("agree-{$k}") !== $list->drawOf("unassigned/agree-{$k}") ? "agree-{$k}" : null;
+        }
+
+        $tree = realpath(__DIR__.'/../../../../resources/characters') ?: $this->fail('resources/characters is not in the tree');
+        $script = sprintf('const seed = await import(%s); const C = await import(%s); console.log(JSON.stringify(C.speciesOf(seed.seatKey(%s))));',
+            json_encode('file://'.$tree.'/seed.js'), json_encode('file://'.$tree.'/creatures.js'), json_encode($seat));
+        $browser = json_decode((string) shell_exec('node --input-type=module -e '.escapeshellarg($script).' 2>&1'), true);
+        $this->assertIsString($browser, 'node did not print the species the generator draws');
+
+        $this->assertSame($browser, $this->issue('alpha', $seat), "an empty fleet allocated {$seat} a body other than the one the browser draws for it");
     }
 
     /**
@@ -348,7 +373,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $ref = (int) DB::table('seats')->orderBy('id')->value('id');
         $this->assertSame((string) DB::table('seats')->where('id', $ref)->value('species'), SeatObject::forSeatRef($ref, now()->getTimestampMs())['character']['species']);
         $this->assertSame('character', SeatDelta::WIRE_MEMBER['species']);
-        $this->assertSame(2, FleetReload::FEED_VERSION, 'the release that ships character.species bumps feed_version (§ 6.13)');
+        $this->assertGreaterThanOrEqual(2, FleetReload::FEED_VERSION, 'the release that ships character.species bumped feed_version to 2 (§ 6.13), and no later release lowers it');
 
         // A seat retired before the migration, as the migration marks it.
         app(SeatRetirement::class)->retire($seats[0][1], 'ops@example.com', 'gone before the migration');

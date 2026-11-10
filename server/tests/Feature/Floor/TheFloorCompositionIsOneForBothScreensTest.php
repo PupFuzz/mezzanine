@@ -65,7 +65,7 @@ class TheFloorCompositionIsOneForBothScreensTest extends TestCase
 
     public function test_red_a_floor_screen_that_composes_without_the_module(): void
     {
-        $dir = $this->mutatedModules(['floor-screen.js', "import { composeFloor, layoutFailureStatement, roomMaps, sceneInput, splitKey } from './floor-compose.js';\n", '']);
+        $dir = $this->mutatedModules(['floor-screen.js', "import { composeFloor, layoutFailureStatement, roomMaps, sceneInput } from './floor-compose.js';\n", '']);
 
         $this->assertNotSame([], $this->compositionDefects($dir), 'CONTROL (floor-compose.js not imported) did not bite');
     }

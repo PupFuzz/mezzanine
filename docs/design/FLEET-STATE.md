@@ -3382,7 +3382,12 @@ candidates a rule admits, the allocation takes the first in the seat's **prefere
 list rotated to start at the key's own draw — `draw(seatKey, SPECIES_FIELD) % SPECIES_KEYS.length`,
 the exact index `speciesOf` drew before this card — and walked cyclically. A new seat whose own draw is
 free therefore gets its own draw, which keeps new seats' bodies spread over the list rather than filling
-it from its first entry upward; what the migration keeps is stated with the migration, below, because
+it from its first entry upward. ⭐ **The key is the seat's `seat_id` alone since card#13117** — the string
+the browser's generator seeds the character from (`seed.js`'s `seatKey()`, [FLOOR.md § 10.2](FLOOR.md#102-characters-original-creatures-drawn-by-code)),
+so the first preference IS the body the browser would draw; it was `install_id/seat_id` before, and a seat's room
+is now a console fact that moves. `Tests\Feature\Fleet\ASeatsCharacterIsAllocatedOnceTest` holds an uncontended
+allocation equal to `node`'s draw for the seat id. Stored species did not move with the key (rule 4); the old
+migration's backfill keeps the pair key it ran under; what the migration keeps is stated with the migration, below, because
 one pass in creation order is not the same rule. The salt (`SPECIES_FIELD`) stays what it is and is
 **never searched again**: a repeat is prevented by the population read under the lock, not by a constant
 fitted to a roster ([FLOOR.md § 10.4](FLOOR.md#104-the-art-direction-as-a-specification)'s salt bullet,
@@ -4495,7 +4500,7 @@ both carry the same object, because the heartbeat is unconditional and periodic 
 health only from heartbeats would learn about a store outage up to 15 s late, on the one path where the
 client is waiting to be told why there is nothing.
 
-**Envelope** — every message: `{"feed_version":2,"t":…,"server_time":"…", …}`.
+**Envelope** — every message: `{"feed_version":3,"t":…,"server_time":"…", …}`.
 
 **`feed.heartbeat` is the property that makes the whole surface honest.** Without it, a stream that has
 silently died is indistinguishable from a fleet where nothing is happening — which is exactly the
@@ -5001,7 +5006,7 @@ so this paragraph cannot be read as the whole ledger.
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "seat.delta",
   "server_time": "2026-08-23T14:23:11.229Z",
   "install_id": "aimla",
@@ -5034,7 +5039,7 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "seat.delta",
   "server_time": "2026-08-23T14:23:09.882Z",
   "install_id": "01234567890123456789012345678901",
@@ -5362,7 +5367,7 @@ receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-del
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "coord.round",
   "server_time": "2026-08-27T09:14:03.501Z",
   "coord_round": {
@@ -5388,7 +5393,7 @@ The close of that same thread, which names nobody — `opened_by` is `null` and 
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "coord.thread",
   "server_time": "2026-08-27T16:02:11.802Z",
   "coord_thread": {

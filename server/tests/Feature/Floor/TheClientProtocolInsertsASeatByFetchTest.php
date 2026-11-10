@@ -41,7 +41,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
             'the fetched seat plus the delta that arrived while the fetch was in flight is not the '
             .'stated map');
 
-        $seat = $this->finalSeats($result)['aimla/aimla-impl-3'];
+        $seat = $this->finalSeats($result)['aimla-impl-3'];
 
         // The fetch answered 5001; 5002 was delivered while it was in flight and drained onto it.
         $this->assertSame(5002, $seat['state_version']);
@@ -52,7 +52,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
                 "the REST envelope member `{$member}` entered the held seat object");
         }
 
-        $this->assertStringContainsString('seat added to the floor: aimla/aimla-impl-3',
+        $this->assertStringContainsString('seat added to the floor: aimla-impl-3',
             $result['final']['event_log'][0] ?? '',
             'the record’s newest line does not narrate the arrival');
 
@@ -90,7 +90,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
 
         $this->assertCount(2, $this->seatRequests($result),
             'the failed insert fetch was not retried on the next delta');
-        $this->assertSame(5003, $this->finalSeats($result)['aimla/aimla-impl-3']['state_version'],
+        $this->assertSame(5003, $this->finalSeats($result)['aimla-impl-3']['state_version'],
             'the seat did not recover to the version the second fetch answered');
     }
 
@@ -111,7 +111,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
     {
         // P6 — the RED: patch into an empty object, no fetch. The seat exists and has no state.
         $empty = $this->replay('leg_a', $this->plantedClient(FleetClientPlants::EMPTY[0]));
-        $emptySeat = $this->finalSeats($empty)['aimla/aimla-impl-3'];
+        $emptySeat = $this->finalSeats($empty)['aimla-impl-3'];
 
         $this->assertArrayNotHasKey('render_state', $emptySeat,
             'P6 did not bite: the fetch was removed and the client still ended holding a whole seat');
@@ -136,7 +136,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
 
         $this->assertCount(2, $this->seatRequests($nopending),
             'P8 did not bite: buffering was removed and the client still issued one request');
-        $this->assertSame(5001, $this->finalSeats($nopending)['aimla/aimla-impl-3']['state_version'],
+        $this->assertSame(5001, $this->finalSeats($nopending)['aimla-impl-3']['state_version'],
             'P8 did not bite on the map: the drained delta is still applied');
 
         // P21 — the seat response is not read for `server_time`, so the offset is one message old.
@@ -149,7 +149,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
         // P13 — the buffer is deleted rather than released, so the in-flight delta is dropped.
         $nodrain = $this->replay('leg_a', $this->plantedClient(FleetClientPlants::NODRAIN[0]));
 
-        $this->assertSame(5001, $this->finalSeats($nodrain)['aimla/aimla-impl-3']['state_version'],
+        $this->assertSame(5001, $this->finalSeats($nodrain)['aimla-impl-3']['state_version'],
             'P13 did not bite: the release was replaced by a delete and the buffered delta still '
             .'reached the map');
 
@@ -158,7 +158,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
 
         $this->assertCount(1, $this->seatRequests($m9seat),
             'P16 did not bite: the key stayed pending and the client retried anyway');
-        $this->assertArrayNotHasKey('aimla/aimla-impl-3', $this->finalSeats($m9seat));
+        $this->assertArrayNotHasKey('aimla-impl-3', $this->finalSeats($m9seat));
 
         // P17 — a failed first snapshot goes live and releases its buffers. ⚠ Those releases issue
         // requests the fixture scripts nothing for, which is the defect, not an accident.
@@ -178,7 +178,7 @@ class TheClientProtocolInsertsASeatByFetchTest extends TestCase
      */
     private function envelopeMembersHeld(array $result): array
     {
-        $seat = $this->finalSeats($result)['aimla/aimla-impl-3'] ?? [];
+        $seat = $this->finalSeats($result)['aimla-impl-3'] ?? [];
 
         return array_values(array_filter(
             ['api_version', 'server_time', 'detail'],

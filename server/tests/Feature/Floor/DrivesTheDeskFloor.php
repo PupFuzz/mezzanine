@@ -94,12 +94,10 @@ trait DrivesTheDeskFloor
      */
     protected function heldRows(array $result, string $key): array
     {
-        [$install, $seat] = explode('/', $key, 2);
-
         $beside = [$this->documentSideTableRow(), $this->documentSnackRow(), $this->documentRestroomRow()];
 
         return array_values(array_filter($result['animation_log'], static fn (array $row): bool => $row['class'] === 'held'
-            && $row['install_id'] === $install && $row['seat_id'] === $seat && ! in_array($row['animation_id'], $beside, true)));
+            && $row['seat_id'] === $key && ! in_array($row['animation_id'], $beside, true)));
     }
 
     /** A copy of the shipped tree with one anchored edit in `desk/desk-render.js`. */

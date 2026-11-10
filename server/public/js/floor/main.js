@@ -77,6 +77,7 @@ import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { deskListRow } from '../desk/desk-list.js';
 import { arrival, revealed } from '../wire/ride-arrival.js';
 import { ridePage } from '../wire/ride-page.js';
+import { keyOf } from '../wire/seat-key.js';
 
 /** A missing element throws rather than being guarded past — the lobby's rule, for its reason. */
 function el(id) {
@@ -181,9 +182,9 @@ function seatSegment() {
 }
 
 /** § 4.3's "opened by selecting a desk" — from the drawing or the list, one path. */
-function openDesk(installId, seatId) {
+function openDesk(seatId) {
     window.history.pushState(null, '', routeOf(floorSegment(), seatId));
-    screen.openPanel(installId, seatId).then(requestRender);
+    screen.openPanel(seatId).then(requestRender);
     requestRender();
 }
 
@@ -205,7 +206,7 @@ function paintDesks(frame, desks) {
         link.textContent = first;
         link.addEventListener('click', (event) => {
             event.preventDefault();
-            openDesk(desk.install_id, desk.seat_id);
+            openDesk(desk.seat_id);
         });
         item.append(link);
 
@@ -238,7 +239,7 @@ const composeBox = composeBlock === null ? null : new ComposeBox(pageFetch, {
 
 /** The held seat object the open panel is over — the target line is computed from it alone (§ 15.10). */
 function panelSeat(panel) {
-    return panel === null ? null : client.seats.get(`${panel.seat.install_id}/${panel.seat.seat_id}`) ?? null;
+    return panel === null ? null : client.seats.get(keyOf(panel.seat)) ?? null;
 }
 
 /** The open drill-down, or none — `drilldown/main.js` fills the slots from the frame's model. */

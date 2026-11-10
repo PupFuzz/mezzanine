@@ -71,7 +71,7 @@ class SeatCharacterAllocationLockOrderTest extends CommittedSeatTestCase
         for ($n = 0; $n < 1000; $n++) {
             $seat = $this->install()."-q{$n}";
 
-            if (! in_array($list->drawOf("unassigned/{$seat}"), $live, true)) {
+            if (! in_array($list->drawOf($seat), $live, true)) {
                 return $seat;
             }
         }
@@ -164,8 +164,8 @@ class SeatCharacterAllocationLockOrderTest extends CommittedSeatTestCase
     {
         $list = SpeciesList::current();
         $seat = $this->newSeat();
-        $own = $list->drawOf("unassigned/{$seat}");
-        $next = $this->preferenceOf("unassigned/{$seat}")[1];
+        $own = $list->drawOf($seat);
+        $next = $this->preferenceOf($seat)[1];
         $live = DB::connection(self::FIXTURE)->table('seats')->whereNull('retired_at')->pluck('species')->all();
         $this->assertNotContains($next, $live, 'precondition: the species past the issuing seat\'s draw is taken, so "around" has no single answer');
 
@@ -192,11 +192,11 @@ class SeatCharacterAllocationLockOrderTest extends CommittedSeatTestCase
     {
         $list = SpeciesList::current();
         $seat = $this->newSeat();
-        $own = $list->drawOf("unassigned/{$seat}");
+        $own = $list->drawOf($seat);
 
         $this->probeCommitsASeat($seat.'a', $own);
         $this->issue($seat);
 
-        $this->assertSame($this->preferenceOf("unassigned/{$seat}")[1], $this->species($seat));
+        $this->assertSame($this->preferenceOf($seat)[1], $this->species($seat));
     }
 }

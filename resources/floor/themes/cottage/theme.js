@@ -1008,8 +1008,6 @@ function teaTable(pen, { top, n }, w, foot) {
 
 // ── a desk's furniture set ────────────────────────────────────────────────────────────────────
 
-const deskKey = (installId, seatId) => `${installId}/${seatId}`;
-
 /** The chair's rect (§ 10.6's table): 54 × 64. */
 const CHAIR = Object.freeze({ w: 54, h: 64 });
 
@@ -1018,11 +1016,11 @@ const CHAIR = Object.freeze({ w: 54, h: 64 });
  * spindles and a seat rail — its paint seeded from the desk's key. With nobody in it it is § 7.1's empty chair; the
  * drawing itself carries no fact.
  *
- * @param {{install_id: string, seat_id: string}} input the desk's key
+ * @param {{seat_id: string}} input the desk's key
  */
-export function chair({ install_id: installId, seat_id: seatId }) {
+export function chair({ seat_id: seatId }) {
     const pen = new Pen();
-    const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);
+    const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);
     const cx = CHAIR.w / 2;
     const m = [];
 
@@ -1122,11 +1120,11 @@ const PROPS = Object.freeze({ w: 68, h: 50, top: 42 });
  * goldfish bowl, a little cactus in a clay pot or a teacup on its saucer — the choice and the colours seeded per desk.
  * Nothing on them moves and nothing lights.
  *
- * @param {{install_id: string, seat_id: string}} input the desk's key
+ * @param {{seat_id: string}} input the desk's key
  */
-export function deskProps({ install_id: installId, seat_id: seatId }) {
+export function deskProps({ seat_id: seatId }) {
     const pen = new Pen();
-    const key = deskKey(installId, seatId);
+    const key = seatId;
     const P = PALETTE['desk-props'];
     const next = stream(key, 'theme:props');
     const y = PROPS.top;
@@ -1202,13 +1200,13 @@ const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 41, seat_w: 
  * first, so the front bench is drawn over it. As many places as it is handed — so an empty desk shows its front bench —
  * and a potted hydrangea beside the front bench where the rect leaves room.
  *
- * @param {{install_id: string, seat_id: string, seats: number}} input the desk's key and the seat count
+ * @param {{seat_id: string, seats: number}} input the desk's key and the seat count
  */
-export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
+export function sideTable({ seat_id: seatId, seats }) {
     finite(seats);
 
     const pen = new Pen();
-    const key = deskKey(installId, seatId);
+    const key = seatId;
     const P = PALETTE['side-table'];
     const c = pick(key, 'theme:bench', P.bench);
     const cushion = pick(key, 'theme:bench-cushion', P.cushion);

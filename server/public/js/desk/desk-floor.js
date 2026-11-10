@@ -40,6 +40,7 @@ import { AnimationSet } from '../wire/animation-set.js';
 import { correctedNowMs } from '../wire/duration.js';
 import { deskModel, unrecognisedValues } from './desk-render.js';
 import { advanceSlots, rebuildSlots } from './intern-slots.js';
+import { keyOf } from '../wire/seat-key.js';
 
 export class DeskFloor {
     #source;
@@ -173,7 +174,7 @@ export class DeskFloor {
         // has no held object left, so the version that ended its desk's held render is the removal's.
         this.#set.held(frame.desks, this.#held, at, new Map(journal
             .filter((entry) => entry.t === 'seat.removed')
-            .map((entry) => [`${entry.install_id}/${entry.seat_id}`, entry.cause])), this.#conditions(frame, readouts, before));
+            .map((entry) => [keyOf(entry), entry.cause])), this.#conditions(frame, readouts, before));
 
         return frame;
     }
@@ -191,7 +192,6 @@ export class DeskFloor {
     #internMoves(journal) {
         const moves = [];
         const flips = [];
-        const keyOf = (entry) => `${entry.install_id}/${entry.seat_id}`;
 
         for (const entry of journal) {
             if (entry.outcome !== 'applied' || typeof entry.seat_id !== 'string') {

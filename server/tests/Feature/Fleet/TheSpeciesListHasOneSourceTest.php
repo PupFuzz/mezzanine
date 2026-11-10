@@ -41,7 +41,10 @@ class TheSpeciesListHasOneSourceTest extends TestCase
     public function test_the_draw_is_the_generators_over_the_roster_and_the_published_hashes(): void
     {
         $roster = json_decode((string) file_get_contents(__DIR__.'/../../../../tools/characters/roster.json'), true)['seats'];
-        $keys = array_map(static fn (array $s): string => $s['install_id'].'/'.$s['seat_id'], $roster);
+        // The key each seat is drawn under is the generator's own `seatKey()` of its `seat_id` (FLOOR.md § 10.2).
+        $keys = $this->node('const seed = await import(%s); console.log(JSON.stringify(%s.map((s) => seed.seatKey(s))));',
+            $this->tree().'/seed.js', array_column($roster, 'seat_id'));
+        $this->assertSame(array_column($roster, 'seat_id'), $keys, 'seatKey() is not the seat_id — the server allocates under the seat_id');
         $fields = [SpeciesList::current()->field, 'pal', 'eyes', 'loop-phase'];
 
         $node = $this->node(
@@ -60,7 +63,7 @@ class TheSpeciesListHasOneSourceTest extends TestCase
 
         // FLOOR.md § 3.2's worked table publishes four `h` values — the binding verify-floor.py's Python copy has.
         $floor = (string) file_get_contents(__DIR__.'/../../../../docs/design/FLOOR.md');
-        $this->assertSame(4, preg_match_all('/^\| `([a-z0-9-]+\/[a-z0-9-]+)` \| (\d+) \| \d+ \| (?:\d+|role) \| \*\*\d+\*\* \|$/m', $floor, $rows, PREG_SET_ORDER),
+        $this->assertSame(4, preg_match_all('/^\| `([a-z0-9-]+)` \| (\d+) \| \d+ \| (?:\d+|role) \| \*\*\d+\*\* \|$/m', $floor, $rows, PREG_SET_ORDER),
             'FLOOR.md § 3.2\'s four published h values did not parse');
 
         $published = $this->node('const seed = await import(%s); console.log(JSON.stringify(%s.map((k) => seed.fnv1a32(k))));',
@@ -120,7 +123,7 @@ class TheSpeciesListHasOneSourceTest extends TestCase
         };
         $roster = json_decode((string) file_get_contents(__DIR__.'/../../../../tools/characters/roster.json'), true)['seats'];
         $differs = array_filter($roster, static function (array $s) use ($naive): bool {
-            $h = Draw::fnv1a32($s['install_id'].'/'.$s['seat_id'].'#species:s3');
+            $h = Draw::fnv1a32($s['seat_id'].'#species:s3');
             $ported = (new \ReflectionMethod(Draw::class, 'imul'))->invoke(null, ($h ^ ($h >> 16)) & 0xFFFFFFFF, 0x85EBCA6B);
 
             return $naive($h) !== $ported;

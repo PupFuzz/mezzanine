@@ -21,12 +21,10 @@ final class SeatRows
      */
     public static function insert(int $installRef, string $seatId, array $columns = []): int
     {
-        $installId = (string) DB::table('installs')->where('id', $installRef)->value('install_id');
-
         return (int) DB::table('seats')->insertGetId([
             'install_ref' => $installRef,
             'seat_id' => $seatId,
-            'species' => SpeciesList::current()->drawOf($installId.'/'.$seatId),
+            'species' => SpeciesList::current()->drawOf($seatId),
         ] + $columns);
     }
 }

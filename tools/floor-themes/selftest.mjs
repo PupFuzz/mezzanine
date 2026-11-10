@@ -96,7 +96,7 @@ const DESK_LAYOUT = readFileSync(join(shipped.js, 'floor', 'desk-layout.js'), 'u
 const CAP = Number(DESK_LAYOUT.match(/export const STOOL_CAP = (\d+);/)?.[1] ?? NaN);
 const SEATS_LEAST = Number(DESK_LAYOUT.match(/export const SIDE_TABLE_SEATS = (\d+);/)?.[1] ?? NaN);
 
-/** Every `(install_id, seat_id)` a fixture's snapshot or delta names. */
+/** Every seat a fixture's snapshot or delta names, by its room and `seat_id`. */
 function deskKeys(file) {
     const keys = new Set();
     const walk = (o) => {
@@ -798,8 +798,8 @@ const PLANTS = [
     ['text in a theme: the seat\'s id in the chair', 'wellFormedness', 'chair — a <text>',
         (t) => edit(THEME(t), "return doc(pen, CHAIR.w, CHAIR.h, rimmed(", 'return doc(pen, CHAIR.w, CHAIR.h, `<text>${seatId}</text>` + rimmed(')],
     ['state reaching a theme: the chair reads render_state', 'closure', 'chair draws',
-        (t) => edit(THEME(t), "export function chair({ install_id: installId, seat_id: seatId }) {\n    const pen = new Pen();\n    const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);",
-            "export function chair({ install_id: installId, seat_id: seatId }, seat) {\n    const pen = new Pen();\n    const c = seat?.render_state === 'offline' ? PALETTE.chair.colours[0] : pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);")],
+        (t) => edit(THEME(t), "export function chair({ seat_id: seatId }) {\n    const pen = new Pen();\n    const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);",
+            "export function chair({ seat_id: seatId }, seat) {\n    const pen = new Pen();\n    const c = seat?.render_state === 'offline' ? PALETTE.chair.colours[0] : pick(seatId, 'theme:chair', PALETTE.chair.colours);")],
     ['the reviewed set shrunk: offline dropped from REVIEWED', 'surfaces', "is not the tool's REVIEWED stale, disabled",
         (t) => edit(t.tool, "REVIEWED = ['stale', 'offline', 'disabled']", "REVIEWED = ['stale', 'disabled']")],
     ['a surface that is not a floor: the landing\'s colour', 'surfaces', "the landing's — an exclusion",
@@ -823,7 +823,7 @@ const PLANTS = [
     ['the second theme\'s view row loses a key the house theme has', 'drift', 'cottage: PALETTE.view holds the keys desk, desk_edge, monitor, partition, the house theme\'s are',
         (t) => edit(SECOND(t), ", partition: '#f2efe6', partition_cap: '#5f7f9f' }),", ", partition: '#f2efe6' }),")],
     ['the second theme writes a colour its palette does not hold', 'drift', 'cottage: the module writes #123456',
-        (t) => edit(SECOND(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", "const c = '#123456';")],
+        (t) => edit(SECOND(t), "const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);", "const c = '#123456';")],
     ['a shared module holds a colour', 'drift', 'themes/paint.js writes #3d2b3c',
         (t) => edit(PAINT(t), 'fill="${pen.soft(rules.shade, op)}"', 'fill="${pen.soft(\'#3d2b3c\', op)}"')],
     ['a shared module reads a random source', 'wellFormedness', 'themes/paint.js: the module requests, reads a clock, a random source or storage',
@@ -835,7 +835,7 @@ const PLANTS = [
     ['the second theme\'s window surround is not its rect', 'band', "cottage's windowSurround's document is",
         (t) => edit(SECOND(t), '    const W = gw + 64;', '    const W = gw + 60;')],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
-        (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
+        (t) => edit(THEME(t), "const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
 ];
 
 for (const [red, leg, says, plant] of PLANTS) {

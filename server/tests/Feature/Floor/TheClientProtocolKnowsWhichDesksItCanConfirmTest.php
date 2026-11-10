@@ -33,7 +33,7 @@ class TheClientProtocolKnowsWhichDesksItCanConfirmTest extends TestCase
 {
     use DrivesTheFleetClientModule;
 
-    private const WIN1 = 'aimla-win/win-1';
+    private const WIN1 = 'win-1';
 
     /** H14 — the second consecutive failed read is where the desk stops being claimable. */
     public function test_a_held_seat_whose_reads_keep_failing_is_unconfirmed_after_the_second(): void
@@ -110,7 +110,7 @@ class TheClientProtocolKnowsWhichDesksItCanConfirmTest extends TestCase
         $this->assertSame(['missing' => false, 'failStreak' => 0, 'confirmedAt' => 7300],
             $result['final']['read_status'][self::WIN1]);
         $this->assertSame(106, $this->finalSeats($result)[self::WIN1]['state_version']);
-        $this->assertArrayHasKey('aimla-win/win-3', $this->finalSeats($result),
+        $this->assertArrayHasKey('win-3', $this->finalSeats($result),
             'the discovery did not insert the seat it was sent to find');
         $this->assertCount(3, $this->seatRequests($result));
     }
