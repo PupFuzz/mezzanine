@@ -44,6 +44,15 @@ import { statusStrip } from '../floor/status-strip.js';
 import { stackModel } from './stack-model.js';
 
 /**
+ * § 7's statement when the browser offers no WebGL 2 context — the page's list is then the whole page. A constant here
+ * because text is a decision; whether the context exists is the page's own read of the browser.
+ */
+export const NO_WEBGL = 'this browser offers no WebGL 2, so the building is not drawn; the floors are listed below';
+
+/** The ground slab's entry in the floors' list: the lobby, by the lobby page's own heading. */
+export const GROUND_NAME = 'Lobby';
+
+/**
  * Each desk's label (§ 3.4): the desk's nameplate element's text — the floor page's own fitted string — its rect's
  * centre in scene px, and the link to its drill-down, `/floor/{key}/{seat_id}` by the floor's KEY. A desk with no
  * nameplate element has no label.
@@ -102,6 +111,9 @@ export class BuildingScreen {
     /** The asset ids every floor's painter reported failed (§ 9 F14). Never cleared: *retry on reload*. */
     #failed = new Set();
 
+    /** The last draw's directory rows and each floor's extent — what a resize re-stacks without a render. */
+    #drawn = { rows: null, extents: new Map() };
+
     /**
      * @param {object} client a `FleetClient`
      * @param {object} building a `wire/building.js` `Building`
@@ -137,9 +149,22 @@ export class BuildingScreen {
         }
     }
 
-    /** The stage changed size: the stack's storey is re-derived from it on the next draw. */
+    /**
+     * The stage changed size: the stack re-derived at once from the last draw's floors over the new stage, and answered —
+     * the acts read the stage from the stack (`stack.surface`), so a resize must reach them before the next gesture, not
+     * at the next render. `null` as `stackModel()` answers it: nothing drawn yet, or an unsized stage.
+     */
     resize(surface) {
         this.#surface = surface;
+
+        return this.#stack();
+    }
+
+    /** The stack over the last draw's rows and extents, at the stage as it stands. */
+    #stack() {
+        const { rows, extents } = this.#drawn;
+
+        return rows === null ? null : stackModel(rows, extents, this.#lobbyHref, this.#surface);
     }
 
     /** The directory's rows over what the client holds, or `null` with no layout held. */
@@ -225,11 +250,12 @@ export class BuildingScreen {
         this.#room.take(journal);
 
         const floors = (rows ?? []).map((row) => this.#floor(row, desks));
-        const extents = new Map(floors.map(({ row, scene }) => [row.floor, scene?.extent ?? null]));
+
+        this.#drawn = { rows, extents: new Map(floors.map(({ row, scene }) => [row.floor, scene?.extent ?? null])) };
 
         return Object.freeze({
             floors: Object.freeze(floors),
-            stack: rows === null ? null : stackModel(rows, extents, this.#lobbyHref, this.#surface),
+            stack: this.#stack(),
             strip: statusStrip(client.feed, client.fleet, {
                 reduce: this.#reduce,
                 art_failed: floors.some(({ scene }) => scene?.art_failed === true) || (this.#art === null && this.#failed.size > 0),
@@ -291,7 +317,8 @@ export class BuildingScreen {
  * @param {Function} fetchImpl the page's `fetch` (`wire/live-page.js`) — `wire/building.js`'s injection, and the tilesets'
  * @param {{now: function(): number}} clock
  * @param {object} log the animation log
- * @param {function(object): void} draw receives each building frame
+ * @param {function(object): (Promise<void>|void)} draw receives each building frame — awaited, so a render's pictures are
+ *        that render's and the page's coalesced render request bounds them (plan § 3.2)
  * @param {object} options `BuildingScreen`'s
  */
 export function startBuildingScreen(client, fetchImpl, clock, log, draw, options) {
@@ -299,7 +326,7 @@ export function startBuildingScreen(client, fetchImpl, clock, log, draw, options
 
     return {
         render: async () => {
-            draw(await screen.render());
+            await draw(await screen.render());
         },
         sceneInputs: (inputs) => screen.sceneInputs(inputs),
         assetsFailed: (ids) => screen.assetsFailed(ids),

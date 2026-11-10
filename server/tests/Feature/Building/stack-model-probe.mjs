@@ -323,6 +323,15 @@ for (const [fixture, extents] of Object.entries(FIXTURES)) {
     cell('− at the overview', M.snap(turned, { act: 'out' }, stack, surface), turned);
     cell('Fit at the overview', M.snap(turned, { act: 'fit' }, stack, surface), home);
 
+    // The keyboard's focus on a floor's label (§ 3.4): the click on its slab, named by its key — the ground's (`null`)
+    // and a key the stack does not hold stay.
+    for (const slab of stack.slabs) {
+        cell(`focus on ${slab.floor}'s label at the overview`, M.snap(turned, { act: 'floor', floor: slab.floor }, stack, surface), { pose: { floor: slab.floor }, azimuth: 0.7 });
+    }
+
+    cell('focus on the ground\'s label at the overview', M.snap(turned, { act: 'floor', floor: null }, stack, surface), turned);
+    cell('focus on a dropped floor\'s label at the overview', M.snap(turned, { act: 'floor', floor: 'no-such-floor' }, stack, surface), turned);
+
     stack.slabs.forEach((slab, i) => {
         const at = { pose: { floor: slab.floor }, azimuth: 0.7 };
         const camera = focus(stack, i, surface, fixture);
@@ -331,6 +340,12 @@ for (const [fixture, extents] of Object.entries(FIXTURES)) {
         cell(`− at ${slab.floor}`, M.snap(at, { act: 'out' }, stack, surface), turned);
         cell(`Fit at ${slab.floor}`, M.snap(at, { act: 'fit' }, stack, surface), home);
         cell(`in over ${slab.floor} itself`, M.snap(at, { act: 'in', point: { x: surface.width / 2, y: surface.height / 2 } }, stack, surface), at);
+        cell(`focus on ${slab.floor}'s own label at ${slab.floor}`, M.snap(at, { act: 'floor', floor: slab.floor }, stack, surface), at);
+        cell(`focus on the ground's label at ${slab.floor}`, M.snap(at, { act: 'floor', floor: null }, stack, surface), at);
+
+        for (const other of stack.slabs.filter((s) => s !== slab)) {
+            cell(`focus on ${other.floor}'s label at ${slab.floor}`, M.snap(at, { act: 'floor', floor: other.floor }, stack, surface), { pose: { floor: other.floor }, azimuth: 0.7 });
+        }
 
         // A point the focus pose aims at another floor — searched over the stage's grid.
         for (let gx = 10; gx < surface.width; gx += 40) {
@@ -509,6 +524,11 @@ printed.centre_misses = centreMisses;
 
         check(`fitDistance() on ${name(surface)} does not fit the bounding sphere to the narrower half-angle`, Math.abs(angular - half) < 1e-9);
     }
+
+    // The status line names what the view rests on, by the floor's name (a name and no figure).
+    check(`viewStatus() at the overview is ${JSON.stringify(M.viewStatus({ pose: 'overview', azimuth: 0.7 }, stack))}`, M.viewStatus({ pose: 'overview', azimuth: 0.7 }, stack) === 'the whole building');
+    check(`viewStatus() at ${slab.floor} is ${JSON.stringify(M.viewStatus({ pose: { floor: slab.floor }, azimuth: 0 }, stack))}`, M.viewStatus({ pose: { floor: slab.floor }, azimuth: 0 }, stack) === `floor ${slab.name}`);
+    check('viewStatus() at a dropped floor is not the whole building\'s', M.viewStatus({ pose: { floor: 'no-such-floor' }, azimuth: 0 }, stack) === 'the whole building');
 
     const t1 = M.textureSize(DEFAULT, 1, 8192);
     const t2 = M.textureSize({ x: 0, y: 0, w: 8000, h: 2000 }, 1, 8192);

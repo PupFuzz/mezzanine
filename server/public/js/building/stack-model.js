@@ -563,8 +563,10 @@ export function nearestToCentre(stack, camera, surface) {
  * THE SNAP (§ 3.3's table): the view to show for an intent at a view — the SAME view when nothing moves.
  *
  * @param {{pose: string|{floor: string}, azimuth: number}} view the resting view
- * @param {{act: 'in'|'click', point: {x: number, y: number}}|{act: 'plus'|'out'|'fit'}} intent a wheel in or a pinch in
- *        over a stage point, a click at one, **+**, a wheel out / a pinch out / **−**, or *Fit the building*
+ * @param {{act: 'in'|'click', point: {x: number, y: number}}|{act: 'floor', floor: string|null}|{act: 'plus'|'out'|'fit'}} intent
+ *        a wheel in or a pinch in over a stage point, a click at one, the keyboard's focus on a floor's label (§ 3.4 — the
+ *        table's *click on slab k*, the slab named by its key; `null` is the ground's), **+**, a wheel out / a pinch out /
+ *        **−**, or *Fit the building*
  */
 export function snap(view, intent, stack, surface) {
     const live = liveView(view, stack);
@@ -579,6 +581,9 @@ export function snap(view, intent, stack, surface) {
 
             return floor === null || floor === at ? live : focus(floor);
         }
+
+        case 'floor':
+            return intent.floor === at || !stack.slabs.some((slab) => slab.floor === intent.floor) ? live : focus(intent.floor);
 
         case 'plus':
             return at === null ? focus(nearestToCentre(stack, poseCamera(live, stack, surface), surface).floor) : live;
@@ -689,6 +694,16 @@ export function labelsShown(view, labelsByFloor, boxes, leader) {
     const { kept, culled } = cullOverlaps(labelsByFloor.get(view.pose.floor) ?? [], boxes, leader);
 
     return { shown: kept, culled };
+}
+
+/**
+ * The camera row's status line on arrival (§ 3.3): what the view rests on — the whole building, or a floor by its name.
+ * A name and no figure.
+ */
+export function viewStatus(view, stack) {
+    const live = liveView(view, stack);
+
+    return live.pose === 'overview' ? 'the whole building' : `floor ${stack.slabs.find((slab) => slab.floor === live.pose.floor).name}`;
 }
 
 /**

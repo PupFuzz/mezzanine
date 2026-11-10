@@ -18,14 +18,16 @@ use Tests\TestCase;
  * page's half of every equality is the SAME run entered at `/floor/{key}` through the harness's `floor` entry, one key at a
  * time — so an equality is known to be reachable, and the slab shows what the floor page shows.
  *
- * ⛔ THE GRAPH BOUND IS WALKED FROM THIS SLICE's MODULES. The building page's entry, `building/main.js`, is slice 4's; until
- * it lands the walk's roots are the three modules it will import (`ROOTS`), and its one path to the page's bounded log —
- * `wire/live-page.js` — joins `PATH` with it. What the walk holds now: the set constructed in `desk/desk-floor.js` alone,
- * and the two constants-only importers each to its one exact import line (`CONSTANTS`).
+ * ⛔ THE GRAPH BOUND IS WALKED FROM THE PAGE's ENTRY, `building/main.js` (slice 4; until it landed the walk started at
+ * the screen, the acts and the model). Its paths to the log and the set (`PATH`): `wire/live-page.js` constructs the
+ * page's bounded log, and `desk/desk-floor.js` the set — alone; the two constants-only importers are each held to their
+ * one exact import line (`CONSTANTS`). The walk follows the painter's art loader into the asset route
+ * (`WalksAPagesImportGraph`), since every floor's picture is the floor page's painter's.
  *
  * ⚠ WHAT THIS DOES NOT HOLD: the texture's pixels, the WebGL context, the labels on the stage and in the accessibility tree,
- * and the page's gated `show` over the real `wire/camera-view.js` — the browser leg's and `BuildingPageWiringTest`'s,
- * slice 4. The acts' probe stands in for the page's `show` as plan § 3.3 item 2 specifies it, and says so in its header.
+ * and the page's gated `show` over the real `wire/camera-view.js` — the browser leg's (`tools/design/building-view.browser.mjs`)
+ * and `BuildingPageWiringTest`'s. The acts' probe stands in for the page's `show` as plan § 3.3 item 2 specifies it, and
+ * says so in its header. The picture's two pure functions are `picture-probe.mjs`'s.
  */
 class TheBuildingViewStacksTheFloorsTest extends TestCase
 {
@@ -40,11 +42,11 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
 
     private const ACTS = '../building/building-acts.js';
 
-    /** The modules `building/main.js` will import — the walk's roots until it lands (see the header). */
-    private const ROOTS = ['building/building-screen.js', 'building/building-acts.js', 'building/stack-model.js'];
+    /** The page's entry — the walk's root (see the header). */
+    private const ROOTS = ['building/main.js'];
 
-    /** The building's paths to the animation set: importer => the module it may load. */
-    private const PATH = ['desk/desk-floor.js' => 'wire/animation-set.js'];
+    /** The building's paths to the animation log and the set: importer => the module it may load. */
+    private const PATH = ['wire/live-page.js' => 'wire/animation-log.js', 'desk/desk-floor.js' => 'wire/animation-set.js'];
 
     /** The importers of the set's module that read constants and pure readers out of it, each held to its exact line. */
     private const CONSTANTS = [
@@ -145,6 +147,37 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
     public function test_green_the_stack_models_leg(string $leg): void
     {
         $this->assertSame([], $this->modelProbe($this->buildingDir($this->jsRoot()))['legs'][$leg]);
+    }
+
+    /**
+     * Slice 3's review note 2: the acts read the stage from the stack, so a resize must reach them at once — the screen's
+     * `resize()` answers the stack re-derived from the last draw's floors over the new stage.
+     */
+    public function test_green_a_resize_answers_the_stack_over_the_new_stage(): void
+    {
+        $this->assertSame([], $this->resizeDefects($this->resized(null)));
+    }
+
+    /** The floor picture's two pure functions — `tokenNames()` and `pictureSvg()` (plan § 3.2 steps 1 and 4). */
+    public function test_green_the_picture_inlines_every_token_once(): void
+    {
+        $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['picture']);
+    }
+
+    /**
+     * The review's G1: one floor's raster failing — on its first paint, or on a later one — is that floor's: the other
+     * floors are painted, nothing escapes `paint()`, a render inside the interval does not throw, and the floor keeps its
+     * last picture, writes one line and is rasterised again at its next due render.
+     */
+    public function test_green_one_floors_failed_raster_is_that_floors_alone(): void
+    {
+        $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['isolation']);
+    }
+
+    /** The seat's ruling of 2026-11-10 on plan § 10: a floor's picture repainted at most once per `PICTURE_MIN_INTERVAL_MS`. */
+    public function test_green_each_floor_is_repainted_at_most_once_an_interval(): void
+    {
+        $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['interval']);
     }
 
     /** Plan § 8 item 3: the acts, under stand-in gestures and a stub clock, and the mute over a stream that outlives the glide. */
@@ -289,6 +322,77 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
             'the RED (a drag that reads a dropped floor) did not bite for its reason');
     }
 
+    /** Slice 3's review note 2 as a plant: a resize that stores no stage — the acts would aim from the old one. */
+    public function test_red_a_resize_the_acts_never_see(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "        this.#surface = surface;\n\n        return this.#stack();", '        return this.#stack();']);
+
+        $this->assertNotSame([], $this->resizeDefects($this->resized($dir)), 'the RED (a resize the acts never see) did not bite');
+    }
+
+    /** G1's plants: a failed raster that escapes the loop, and a floor with no answer before its first paint. */
+    public function test_red_one_floors_failed_raster_stops_the_building(): void
+    {
+        foreach ([
+            'the failure escaping the loop' => ['                        art.record(pictureFailedLine(row.name ?? row.floor, error));', '                        throw error;', 'paint() threw — planted'],
+            'no answer before the first paint' => ['                answer: Object.freeze({ canvas: null, changed: false }),', '                answer: null,', "reading 'canvas'"],
+        ] as $what => [$from, $to, $reason]) {
+            $defects = $this->pictureProbe($this->buildingDir(dirname($this->mutatedModules(['../building/floor-picture.js', $from, $to]))))['legs']['isolation'];
+
+            $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)), "CONTROL ({$what}) did not bite for its reason: ".json_encode($defects));
+        }
+    }
+
+    /** A card's title carrying a character XML does not allow, left in the picture — the floor would never decode. */
+    public function test_red_a_character_xml_does_not_allow_left_in_the_picture(): void
+    {
+        $dir = $this->mutatedModules(['../building/floor-picture.js', "    return (root + serialised.slice(open[0].length)).replace(NOT_XML, '');", '    return root + serialised.slice(open[0].length);']);
+        $defects = $this->pictureProbe($this->buildingDir(dirname($dir)))['legs']['picture'];
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'XML does not allow')), 'the RED (a character XML does not allow left in) did not bite: '.json_encode($defects));
+    }
+
+    /** The interval removed: every render repaints every floor (the seat's ruling of 2026-11-10's plant). */
+    public function test_red_the_interval_removed(): void
+    {
+        $dir = $this->mutatedModules(['../building/floor-picture.js', '        due: (key, t) => !last.has(key) || t - last.get(key) >= PICTURE_MIN_INTERVAL_MS,', '        due: () => true,']);
+        $defects = $this->pictureProbe($this->buildingDir(dirname($dir)))['legs']['interval'];
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'more than the')), 'the RED (the interval removed) did not bite for its reason: '.json_encode($defects));
+    }
+
+    /** The gap read from the handler's clock (`performance.now()`), which a long task moves, in place of the event's time. */
+    public function test_red_the_gap_read_from_the_handlers_clock(): void
+    {
+        $dir = $this->mutatedModules([self::ACTS, '        const t = at;', '        const t = performance.now();']);
+        $defects = $this->actsProbe($this->buildingDir(dirname($dir)))['legs']['mute'];
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'handler stalled')), 'the RED (the gap read from the handler\'s clock) did not bite for its reason: '.json_encode($defects));
+    }
+
+    /** The keyboard's focus on another floor's label is the snap table's click on its slab (plan § 3.4): planted to stay. */
+    public function test_red_a_focused_label_that_brings_no_floor(): void
+    {
+        $dir = $this->mutatedModules([self::MODEL, '? live : focus(intent.floor);', '? live : live;']);
+
+        $this->assertNotSame([], array_filter($this->modelProbe($this->buildingDir(dirname($dir)))['legs']['snap'], static fn (string $d): bool => str_contains($d, 'label')),
+            'the RED (a focused label that brings no floor) did not bite for its reason');
+    }
+
+    /** The picture's plants (plan § 8 item 3): an empty token written over the painter's fallback; a bare token missed; the root left at 100 %. */
+    public function test_red_the_picture_plants(): void
+    {
+        foreach ([
+            'an empty token written' => ["tokens.filter((t) => t.value !== '')", 'tokens', 'writes an empty token'],
+            'the bare form missed' => ['/var\(--([a-z0-9_-]+)\s*([),])/gi', '/var\(--([a-z0-9_-]+)\s*(,)/gi', 'bare token'],
+            'the root left at its percentages' => [".replace(/\\swidth=\"[^\"]*\"/, '')", '', 'is not sized'],
+        ] as $what => [$from, $to, $reason]) {
+            $defects = $this->pictureProbe($this->buildingDir(dirname($this->mutatedModules(['../building/floor-picture.js', $from, $to]))))['legs']['picture'];
+
+            $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)), "CONTROL ({$what}) did not bite for its reason: ".json_encode($defects));
+        }
+    }
+
     /** The graph bound: the set constructed off the paths, and a constants-only importer reaching for the set. */
     public function test_red_a_module_that_reaches_the_set_off_the_paths(): void
     {
@@ -296,6 +400,7 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
             'the building screen importing the set' => [self::SCREEN, "import { stackModel } from './stack-model.js';\n", "import { stackModel } from './stack-model.js';\nimport { AnimationSet } from '../wire/animation-set.js';\n", 'building/building-screen.js loads wire/animation-set.js'],
             'the scene importing the set beside its constants' => ['../floor/scene.js', self::CONSTANTS['floor/scene.js'], "import { ANIMATION_SET, AnimationSet, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';", 'floor/scene.js imports'],
             'the desk floor no longer loading the set' => ['../desk/desk-floor.js', "import { AnimationSet } from '../wire/animation-set.js';\n", '', 'no longer loads'],
+            'the page writing the log itself' => ['../building/main.js', "import { livePage } from '../wire/live-page.js';\n", "import { livePage } from '../wire/live-page.js';\nimport { createAnimationLog } from '../wire/animation-log.js';\n", 'building/main.js loads wire/animation-log.js'],
         ] as $what => [$file, $from, $to, $reason]) {
             $defects = $this->graphDefects(dirname($this->mutatedModules([$file, $from, $to])));
 
@@ -341,6 +446,51 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $glyph = $this->fixture(self::RUN)['building']['scene']['measurer']['glyph_w']['name'];
 
         return $this->boundedProbe(['cull' => ['extent' => $aimla['scene']['extent'], 'labels' => $aimla['labels'], 'glyph_w' => $glyph]], $dir, __DIR__.'/stack-model-probe.mjs');
+    }
+
+    /** The floor picture's probe. @return array<string, mixed> */
+    private function pictureProbe(string $dir): array
+    {
+        return $this->boundedProbe([], $dir, __DIR__.'/picture-probe.mjs');
+    }
+
+    /** The run, its screen resized once it ends to a stage half the run's width (`building_resized`). @return array{0: array<string, mixed>, 1: array{width: int, height: int}} */
+    private function resized(?string $wireDir): array
+    {
+        $spec = $this->fixture(self::RUN)['building'];
+        $to = ['width' => intdiv((int) $spec['surface']['width'], 2), 'height' => (int) $spec['surface']['height']];
+
+        return [$this->replay(self::RUN, $wireDir, ['building' => [...$spec, 'resize' => $to]]), $to];
+    }
+
+    /**
+     * @param  array{0: array<string, mixed>, 1: array{width: int, height: int}}  $resized
+     * @return list<string>
+     */
+    private function resizeDefects(array $resized): array
+    {
+        [$run, $to] = $resized;
+        $before = $this->last($run)['stack'];
+        $after = $run['building_resized'];
+        $defects = [];
+
+        if (! is_array($before) || ! is_array($after)) {
+            return ['CONTROL — the run drew no stack to resize, or the resize answered none'];
+        }
+
+        if ($after['surface'] !== $to) {
+            $defects[] = 'the resized stack carries the stage '.json_encode($after['surface']).', not '.json_encode($to).' — the acts would aim from the old one';
+        }
+
+        if ($after['storey'] === $before['storey']) {
+            $defects[] = 'the resized stack keeps the old storey — it was not re-derived from the new stage';
+        }
+
+        if (array_column($after['slabs'], 'floor') !== array_column($before['slabs'], 'floor')) {
+            $defects[] = 'the resized stack does not stand the last draw\'s floors';
+        }
+
+        return $defects;
     }
 
     /** @return array<string, mixed> */

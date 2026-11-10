@@ -10,18 +10,27 @@ namespace Tests\Feature\Support;
  * caller (card#13033 slice 3); each caller holds its own page's paths over the edges this answers.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ AN UNFOLLOWABLE SPECIFIER IS A DEFECT, NEVER SKIPPED (card#7343 r2-1) — with ONE declared exception, followed rather
- * than skipped: `floor/cab-paint.js`'s `loadThemes()`, whose two dynamic imports load the asset route's theme registry and
- * the theme modules it names, walked into `resources/floor/themes/` by name — every theme the registry's `THEMES` line
- * names. A third dynamic import there, or either of the two gone, makes both unfollowable defects again.
+ * ⛔ AN UNFOLLOWABLE SPECIFIER IS A DEFECT, NEVER SKIPPED (card#7343 r2-1) — with TWO declared exceptions, the asset
+ * route's loaders, followed rather than skipped, each held to its exact dynamic imports:
+ *  · `floor/cab-paint.js`'s `loadThemes()`, whose two load the theme registry and the theme modules it names;
+ *  · `floor/painter.js`'s `loadArt()` (the building view's pictures are the floor page's painter's, card#13033), whose one
+ *    loads the furniture box and the character tree — the paths its `FURNITURE_MODULE` and `CHARACTER_TREE` constants
+ *    name — and the same registry and themes.
+ * Each is walked into `resources/` by the asset route's own paths, the themes by every name the registry's `THEMES` line
+ * names. Another dynamic import in either file, or one of its own gone, makes them all unfollowable defects again.
  */
 trait WalksAPagesImportGraph
 {
-    /** The one module whose dynamic imports the walk follows into the asset route, and the two it holds them to. */
-    private static string $assetLoader = 'floor/cab-paint.js';
-
-    /** @var list<string> */
-    private static array $assetImports = ['await import(THEME_REGISTRY)', 'await import(themeModule(name))'];
+    /**
+     * The modules whose dynamic imports the walk follows into the asset route, each with the imports it holds them to and
+     * the art constants (`export const NAME = '/art/…';`) whose paths it loads beside the theme registry.
+     *
+     * @var array<string, array{imports: list<string>, constants: list<string>}>
+     */
+    private static array $assetLoaders = [
+        'floor/cab-paint.js' => ['imports' => ['await import(THEME_REGISTRY)', 'await import(themeModule(name))'], 'constants' => []],
+        'floor/painter.js' => ['imports' => ['await import(specifier)'], 'constants' => ['FURNITURE_MODULE', 'CHARACTER_TREE']],
+    ];
 
     /**
      * @param  string  $root  the module tree walked — the shipped `public/js` or a mutated copy of it
@@ -63,17 +72,23 @@ trait WalksAPagesImportGraph
                 $queue[] = $base;
             }
 
-            if ($file === self::$assetLoader && count($unfollowable) === count(self::$assetImports)
-                && array_filter(self::$assetImports, static fn (string $needle): bool => ! str_contains(ModuleSpecifiers::withoutComments($source), $needle)) === []) {
+            $loader = self::$assetLoaders[$file] ?? null;
+
+            if ($loader !== null && count($unfollowable) === count($loader['imports'])
+                && array_filter($loader['imports'], static fn (string $needle): bool => ! str_contains(ModuleSpecifiers::withoutComments($source), $needle)) === []) {
                 $registry = (string) file_get_contents($resources.'/floor/themes/index.js');
                 $this->assertSame(1, preg_match("/^export const THEMES = Object\\.freeze\\(\\[([^\\]]*)\\]\\);$/m", $registry, $line), 'the theme registry names no themes');
                 $this->assertGreaterThan(0, preg_match_all("/'([a-z0-9-]+)'/", $line[1], $names), 'the theme registry\'s THEMES line names no theme');
-                $queue[] = '@resources/floor/themes/index.js';
-                $edges[] = [$file, '@resources/floor/themes/index.js'];
+                $loads = ['@resources/floor/themes/index.js', ...array_map(static fn (string $name): string => "@resources/floor/themes/{$name}/theme.js", $names[1])];
 
-                foreach ($names[1] as $name) {
-                    $queue[] = "@resources/floor/themes/{$name}/theme.js";
-                    $edges[] = [$file, "@resources/floor/themes/{$name}/theme.js"];
+                foreach ($loader['constants'] as $constant) {
+                    $this->assertSame(1, preg_match("#^export const {$constant} = '/art/([a-z0-9/_.-]+)';$#m", $source, $art), "{$file} declares no {$constant} on the asset route");
+                    $loads[] = '@resources/'.$art[1];
+                }
+
+                foreach ($loads as $load) {
+                    $queue[] = $load;
+                    $edges[] = [$file, $load];
                 }
 
                 $unfollowable = [];

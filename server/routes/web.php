@@ -160,6 +160,14 @@ Route::middleware(['auth', 'mfa'])->group(function () {
         'floor' => $floor, 'seat' => null, 'composeRefusal' => ComposeCredential::refusal(),
     ]))->name('floor');
 
+    // THE BUILDING VIEW — `docs/design/FLOOR.md` § 4.4's `/building`, Appendix B row 47 (card#13033): every floor
+    // stacked in 3-D, each slab carrying that floor's drawing. Like the lobby and the floor it carries no layout and no
+    // fleet data — both are fetched by its client. ⛔ NAMED `building.view`, never `building`: that name is
+    // `GET /api/building`'s (`routes/fleet.php`), which `FleetReadGate::SESSION_ONLY_ROUTES` lists by it, and a second
+    // route of the name would make `php artisan route:cache` throw and `route('building')` resolve to the API.
+    Route::get('/building', fn () => view('building'))
+        ->name('building.view');
+
     // § 4.4's `/floor/{floor}/{seat_id}` — the drill-down open (Appendix B row 10). The SAME page: "the
     // drill-down is a panel over the floor rather than a route of its own, because closing it must not
     // cost a reconnect" (§ 4), so the seat segment is handed over as data exactly as the floor's is,
