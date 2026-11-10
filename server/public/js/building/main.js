@@ -390,6 +390,7 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
                 requestRender();
             },
             wake: requestRender,
+            record: (line) => client.record(line),
         });
     }
 

@@ -394,12 +394,19 @@ So the pipeline, in `building/floor-picture.js` (DOM; its two string functions a
 4. `pictureSvg(serialised, tokens, tw, th)` — pure: the serialised `<svg>` with its root given `width="tw"
    height="th"` in place of the painter's `100%`s and a `style` attribute carrying every token's resolved value —
    **skipping a token whose value is empty** (an undeclared token resolves to `''`; writing `--x:;` would override
-   the painter's own `var(--x, fallback)` with nothing, where leaving it out lets the fallback stand).
+   the painter's own `var(--x, fallback)` with nothing, where leaving it out lets the fallback stand) — **and every
+   character XML 1.0 does not allow removed** (slice 4's review: the pinned Chromium's `XMLSerializer` writes a U+000B,
+   U+0000 or U+FFFE in a text node bare and the image then fails to decode, and a desk's text carries a board card's
+   title, which nothing upstream strips them from; the floor page draws such a character as nothing).
 5. A `Blob` of type `image/svg+xml;charset=utf-8` → object URL → `<img>` → `drawImage()` onto a canvas of
    `tw × th` → `THREE.CanvasTexture` with `colorSpace = SRGBColorSpace`, `minFilter = LinearMipmapLinearFilter`,
    **the canvas kept for the texture's life** (a `CanvasTexture`'s `image` IS the canvas; it is what a context
    restore re-uploads from — § 7), the object URL revoked and the `<img>` dropped once drawn,
    `anisotropy` the renderer's maximum (the slab is seen obliquely; without anisotropy the desk text smears).
+   **A raster that fails is that floor's alone** (slice 4's review, G1): an image that does not decode or a canvas the
+   browser gives no 2-D context keeps the floor's last picture — none before its first — and its drawing's key, so it is
+   rasterised again at its next due render, writes one line in the page's event record, and every other floor is
+   still painted; nothing escapes the render.
 6. **Texture size**: `textureSize(extent, scale)` — `scale` texture px per scene px (step 8 says which), the result
    scaled down proportionally when its longer side would exceed `max = min(gl.MAX_TEXTURE_SIZE, 4096)` (§ 12's
    *Building view texture cap*, Chosen). The `min()` is what guarantees the upload: WebGL 2 inherits OpenGL ES 3.0's

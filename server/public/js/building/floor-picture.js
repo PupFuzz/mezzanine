@@ -49,11 +49,22 @@ export function tokenNames(css) {
     return [...names].map(([name, hasFallback]) => Object.freeze({ name, hasFallback }));
 }
 
+/**
+ * Every character XML 1.0 does not allow (its `Char` production: tab, newline, carriage return, U+0020–U+D7FF,
+ * U+E000–U+FFFD, U+10000–U+10FFFF; a lone surrogate is none of them). The browser's `XMLSerializer` writes them as they
+ * are — measured in the pinned Chromium: a U+000B, U+0000, U+001B or U+FFFE in a text node is serialised bare, and the
+ * image of that document then fails to decode — and a desk's text carries a board card's title, which nothing upstream
+ * strips them from.
+ */
+const NOT_XML = /[^\t\n\r\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu;
+
 const attribute = (value) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 /**
  * The picture's SVG text: the painter's serialised drawing with its root sized `width × height` in place of the
- * painter's `100%`s and every token whose value is not empty written on the root's `style`.
+ * painter's `100%`s, every token whose value is not empty written on the root's `style`, and every character XML does not
+ * allow removed (`NOT_XML`) — the floor page draws such a character as nothing, and in the picture it would leave the
+ * floor with no picture at all.
  *
  * @param {string} serialised the painter's `<svg>`, serialised
  * @param {list<{name: string, value: string}>} tokens each token's resolved value
@@ -71,7 +82,7 @@ export function pictureSvg(serialised, tokens, width, height) {
         .replace(/\sheight="[^"]*"/, '')
         .replace(/^<svg\b/, `<svg width="${width}" height="${height}" style="${attribute(style)}"`);
 
-    return root + serialised.slice(open[0].length);
+    return (root + serialised.slice(open[0].length)).replace(NOT_XML, '');
 }
 
 /** The least time between two paints of one floor's picture (see the header). */
@@ -99,8 +110,15 @@ export function pictureGate() {
     };
 }
 
+/**
+ * The line a floor's failed picture writes in the page's event record — its last picture kept, retried at its next repaint.
+ */
+export function pictureFailedLine(name, error) {
+    return `the picture of the floor ${name} could not be drawn (${error.message}); it keeps its last picture and is drawn again at its next repaint`;
+}
+
 /** A canvas holding the SVG text drawn at `width × height`, through an image of it. */
-async function rasterise(document, canvas, svg, width, height) {
+async function rasteriseImage(canvas, svg, width, height) {
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
 
     try {
@@ -109,11 +127,15 @@ async function rasterise(document, canvas, svg, width, height) {
         image.src = url;
         await image.decode();
 
-        canvas.width = width;
-        canvas.height = height;
-
+        // Before the canvas is resized, so a canvas the browser could not give a context leaves its last picture whole.
         const context = canvas.getContext('2d');
 
+        if (context === null) {
+            throw new Error('the browser gave the picture no 2-D context');
+        }
+
+        canvas.width = width;
+        canvas.height = height;
         context.clearRect(0, 0, width, height);
         context.drawImage(image, 0, 0, width, height);
     } finally {
@@ -127,10 +149,18 @@ async function rasterise(document, canvas, svg, width, height) {
  * @param {Document} document
  * @param {HTMLElement} host `#building-pictures`
  * @param {{characters: object|null, themes: Object<string, object|null>, house: string|null, clock: object,
- *          failed: function(list<string>): void, wake: function(): void}} art what `floor/main.js` hands its own painter,
- *        but `ride` and `select`; and `wake`, the page's render request, asked when a floor's interval ends
+ *          failed: function(list<string>): void, wake: function(): void, record: function(string): void}} art what
+ *        `floor/main.js` hands its own painter, but `ride` and `select`; `wake`, the page's render request, asked when a
+ *        floor's interval ends; and `record`, the page's event record, which a floor's failed picture writes one line to
+ * @param {{paintWith?: Function, serialise?: function(Element): string, rasterise?: Function}} [io] the painter's
+ *        constructor, the serialiser and the rasteriser — the browser's, and stand-ins under `node`
+ *        (`tests/Feature/Building/picture-probe.mjs`)
  */
-export function floorPictures(document, host, art) {
+export function floorPictures(document, host, art, {
+    paintWith = createPainter,
+    serialise = (svg) => new XMLSerializer().serializeToString(svg),
+    rasterise = rasteriseImage,
+} = {}) {
     // The page's palette, read once: the sheet keys no token on a media query (plan § 3.2 step 2).
     const page = document.defaultView.getComputedStyle(document.documentElement);
     const tokens = tokenNames(STYLE).map(({ name }) => ({ name, value: page.getPropertyValue(`--${name}`).trim() }));
@@ -151,10 +181,10 @@ export function floorPictures(document, host, art) {
                 painted,
                 canvas,
                 last: null,
-                // The floor's last answer, kept inside its interval; the timer that ends the interval, or `null`.
-                answer: null,
+                // The floor's last answer — kept inside its interval and through a failed raster; none before its first.
+                answer: Object.freeze({ canvas: null, changed: false }),
                 wake: null,
-                painter: createPainter({
+                painter: paintWith({
                     host: painted,
                     omit: new Set(['nameplate']),
                     characters: art.characters,
@@ -230,12 +260,23 @@ export function floorPictures(document, host, art) {
 
                 floor.painter.paint(scene, fit(frameOn(createCamera(size), scene.extent)));
 
-                const serialised = new XMLSerializer().serializeToString(floor.painted.querySelector('svg'));
+                const serialised = serialise(floor.painted.querySelector('svg'));
                 const key = `${size.width}×${size.height} ${serialised}`;
                 const changed = key !== floor.last;
 
                 if (changed) {
-                    await rasterise(document, floor.canvas, pictureSvg(serialised, tokens, size.width, size.height), size.width, size.height);
+                    // ⛔ ONE FLOOR's FAILURE IS THAT FLOOR's (the review's G1): an image that does not decode, or a canvas the
+                    // browser could not allocate, keeps the floor's last picture and its `last` — so it is drawn again at its
+                    // next due render — writes one line in the page's record, and every other floor is still painted.
+                    try {
+                        await rasterise(floor.canvas, pictureSvg(serialised, tokens, size.width, size.height), size.width, size.height);
+                    } catch (error) {
+                        art.record(pictureFailedLine(row.name ?? row.floor, error));
+                        out.set(row.floor, { canvas: floor.answer.canvas, changed: false });
+
+                        continue;
+                    }
+
                     floor.last = key;
                 }
 

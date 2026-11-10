@@ -164,6 +164,16 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['picture']);
     }
 
+    /**
+     * The review's G1: one floor's raster failing — on its first paint, or on a later one — is that floor's: the other
+     * floors are painted, nothing escapes `paint()`, a render inside the interval does not throw, and the floor keeps its
+     * last picture, writes one line and is rasterised again at its next due render.
+     */
+    public function test_green_one_floors_failed_raster_is_that_floors_alone(): void
+    {
+        $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['isolation']);
+    }
+
     /** The seat's ruling of 2026-11-10 on plan § 10: a floor's picture repainted at most once per `PICTURE_MIN_INTERVAL_MS`. */
     public function test_green_each_floor_is_repainted_at_most_once_an_interval(): void
     {
@@ -318,6 +328,28 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $dir = $this->mutatedModules([self::SCREEN, "        this.#surface = surface;\n\n        return this.#stack();", '        return this.#stack();']);
 
         $this->assertNotSame([], $this->resizeDefects($this->resized($dir)), 'the RED (a resize the acts never see) did not bite');
+    }
+
+    /** G1's plants: a failed raster that escapes the loop, and a floor with no answer before its first paint. */
+    public function test_red_one_floors_failed_raster_stops_the_building(): void
+    {
+        foreach ([
+            'the failure escaping the loop' => ['                        art.record(pictureFailedLine(row.name ?? row.floor, error));', '                        throw error;', 'paint() threw — planted'],
+            'no answer before the first paint' => ['                answer: Object.freeze({ canvas: null, changed: false }),', '                answer: null,', "reading 'canvas'"],
+        ] as $what => [$from, $to, $reason]) {
+            $defects = $this->pictureProbe($this->buildingDir(dirname($this->mutatedModules(['../building/floor-picture.js', $from, $to]))))['legs']['isolation'];
+
+            $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, $reason)), "CONTROL ({$what}) did not bite for its reason: ".json_encode($defects));
+        }
+    }
+
+    /** A card's title carrying a character XML does not allow, left in the picture — the floor would never decode. */
+    public function test_red_a_character_xml_does_not_allow_left_in_the_picture(): void
+    {
+        $dir = $this->mutatedModules(['../building/floor-picture.js', "    return (root + serialised.slice(open[0].length)).replace(NOT_XML, '');", '    return root + serialised.slice(open[0].length);']);
+        $defects = $this->pictureProbe($this->buildingDir(dirname($dir)))['legs']['picture'];
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'XML does not allow')), 'the RED (a character XML does not allow left in) did not bite: '.json_encode($defects));
     }
 
     /** The interval removed: every render repaints every floor (the seat's ruling of 2026-11-10's plant). */

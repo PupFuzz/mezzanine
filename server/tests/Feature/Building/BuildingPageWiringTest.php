@@ -51,7 +51,7 @@ class BuildingPageWiringTest extends TestCase
     {
         $this->assertSame(url('/building'), route('building.view'));
         $this->assertNotSame(route('building'), route('building.view'), 'the page took the API\'s route name');
-        $this->get('/building')->assertRedirect();
+        $this->get('/building')->assertRedirect(route('login'));
         $this->assertStringContainsString('/js/building/main.js', $this->page());
     }
 
@@ -285,7 +285,9 @@ class BuildingPageWiringTest extends TestCase
             }
         }
 
-        if (preg_match("/createPainter\\(\\{\\n\\s*host: painted,\\n\\s*omit: new Set\\(\\['nameplate'\\]\\),/", $s['picture']) !== 1) {
+        // The painter is constructed through the loop's `paintWith`, which is the floor page's `createPainter` on the page.
+        if (! str_contains($s['picture'], '    paintWith = createPainter,')
+            || preg_match("/paintWith\\(\\{\\n\\s*host: painted,\\n\\s*omit: new Set\\(\\['nameplate'\\]\\),/", $s['picture']) !== 1) {
             $defects[] = 'floor-picture.js paints with no nameplate omitted — the name would be drawn twice';
         }
 
