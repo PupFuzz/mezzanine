@@ -77,6 +77,9 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
             item.className = 'building-floor';
             item.dataset.floor = key;
             head.className = 'building-floor-head';
+            // Classed, so the sheet's rules for them are about these elements and never about every link or list item —
+            // the lobby's directory is built from the same tags, and its text must stay the page's body size.
+            link.className = 'building-floor-link';
             notices.className = 'building-notices';
             deskList.className = 'building-desks';
             head.append(link, notices);
@@ -155,6 +158,7 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
                 hold(floor.notices, notices.map((line) => {
                     const item = document.createElement('li');
 
+                    item.className = 'building-notice';
                     item.textContent = line;
 
                     return item;

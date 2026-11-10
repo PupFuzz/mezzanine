@@ -1364,7 +1364,7 @@ main > section.lobby {
     white-space: nowrap;
 }
 
-.building-floor-head[data-home="stage"] > a {
+.building-floor-head[data-home="stage"] > .building-floor-link {
     display: inline-block;
     padding: 2px 8px;
     border: 1px solid var(--line);
@@ -1376,7 +1376,7 @@ main > section.lobby {
     text-decoration: none;
 }
 
-.building-floor-head[data-home="stage"] > .building-notices > li {
+.building-floor-head[data-home="stage"] > .building-notices > .building-notice {
     max-width: 320px;
     white-space: normal;
     font-size: 12px;
