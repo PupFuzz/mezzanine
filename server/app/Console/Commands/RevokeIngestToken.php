@@ -59,12 +59,12 @@ class RevokeIngestToken extends Command
         }
 
         foreach ($result->revoked as $row) {
-            $this->line(sprintf('  revoked %s — %s / %s', $prefix, $row['installId'], $row['seatId']));
+            $this->line(sprintf('  revoked %s — %s', $prefix, $row['seatId']));
 
             if ($row['remaining'] === 0) {
                 // Said out loud because it is the state D1 § 3.3 calls "a dark seat with nothing
                 // to roll back to", and it is reachable by running this command one step early.
-                $this->warn('  '.SeatTokenRevocation::darkSeatWarning($row['installId'], $row['seatId']));
+                $this->warn('  '.SeatTokenRevocation::darkSeatWarning($row['seatId']));
             }
         }
 

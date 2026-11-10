@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Console\SeatOption;
+use App\Read\SeatIdentity;
 use Illuminate\Console\Command;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -41,7 +43,7 @@ use Illuminate\Support\Facades\DB;
 class SeatBoardUserCommand extends Command
 {
     protected $signature = 'mezzanine:seat-board-user
-        {--seat= : <install>/<seat>}
+        {--seat= : the seat id}
         {--board-user= : the board user id whose assigned cards answer for this seat}
         {--clear : remove the seat\'s board-user mapping, pin or refusal, returning it to automatic linking}
         {--refuse : refuse the seat\'s own board declaration: no mapping, and the link pass writes nothing for it}';
@@ -58,8 +60,8 @@ class SeatBoardUserCommand extends Command
         $clear = (bool) $this->option('clear');
         $refuse = (bool) $this->option('refuse');
 
-        if (! str_contains($seat, '/')) {
-            $this->error('--seat=<install>/<seat> is required');
+        if (($refusal = SeatOption::refusal($seat)) !== null) {
+            $this->error($refusal);
 
             return self::INVALID;
         }
@@ -85,13 +87,9 @@ class SeatBoardUserCommand extends Command
             $value = (int) $boardUser;
         }
 
-        [$installId, $seatId] = explode('/', $seat, 2);
-
-        $seatRef = DB::table('seats')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('installs.install_id', $installId)
-            ->where('seats.seat_id', $seatId)
-            ->value('seats.id');
+        // The live seat of the id, else its latest retired one — `--clear` and `--refuse` may name a
+        // retired seat, and the transaction below refuses `--board-user` for one.
+        $seatRef = SeatIdentity::latest($seat)?->seat_ref;
 
         if ($seatRef === null) {
             $this->error('no such seat: '.$seat);
@@ -115,15 +113,12 @@ class SeatBoardUserCommand extends Command
                 return null;
             });
         } catch (UniqueConstraintViolationException) {
-            $holder = DB::table('seats')
-                ->join('installs', 'installs.id', '=', 'seats.install_ref')
-                ->where('seats.board_user_id', $value)
-                ->first(['installs.install_id', 'seats.seat_id']);
+            $holder = DB::table('seats')->where('board_user_id', $value)->first(['seat_id']);
 
             $this->error(sprintf(
                 'board user %d is already mapped to %s — clear that seat first; nothing was changed',
                 $value,
-                $holder === null ? 'another seat' : $holder->install_id.'/'.$holder->seat_id,
+                $holder === null ? 'another seat' : $holder->seat_id,
             ));
 
             return self::FAILURE;

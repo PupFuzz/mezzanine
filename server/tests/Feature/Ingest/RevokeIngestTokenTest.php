@@ -18,10 +18,9 @@ final class RevokeIngestTokenTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function issue(string $install = 'aimla', string $seat = 'aimla-pm'): string
+    private function issue(string $seat = 'aimla-pm'): string
     {
         $this->artisan('mezzanine:ingest-token:issue', [
-            'install_id' => $install,
             'seat_id' => $seat,
             '--by' => 'suite',
         ])->assertSuccessful();
@@ -45,8 +44,8 @@ final class RevokeIngestTokenTest extends TestCase
         $prefix = $this->issue();
 
         $this->artisan('mezzanine:ingest-token:revoke', ['prefix' => $prefix])
-            ->expectsOutputToContain("revoked $prefix — aimla / aimla-pm")
-            ->expectsOutputToContain('aimla / aimla-pm now has NO active token and cannot post. If this was a rotation, issue the new token first.')
+            ->expectsOutputToContain("revoked $prefix — aimla-pm")
+            ->expectsOutputToContain('aimla-pm now has NO active token and cannot post. If this was a rotation, issue the new token first.')
             ->assertSuccessful();
 
         $row = DB::table('ingest_tokens')->where('prefix', $prefix)->first();
@@ -59,7 +58,7 @@ final class RevokeIngestTokenTest extends TestCase
         $this->issue();
 
         $this->artisan('mezzanine:ingest-token:revoke', ['prefix' => $old])
-            ->expectsOutputToContain("revoked $old — aimla / aimla-pm")
+            ->expectsOutputToContain("revoked $old — aimla-pm")
             ->doesntExpectOutputToContain('NO active token')
             ->assertSuccessful();
     }

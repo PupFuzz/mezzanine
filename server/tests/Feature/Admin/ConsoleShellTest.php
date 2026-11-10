@@ -208,7 +208,7 @@ class ConsoleShellTest extends TestCase
                 'name' => 'Renamed', 'email' => 'renamed@example.com',
             ]],
             'admin.users.retire' => ['post', route('admin.users.retire', $subject), ['reason' => 'x']],
-            'admin.agents.retire' => ['post', route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x']],
+            'admin.agents.retire' => ['post', route('admin.agents.retire', 'aimla-pm'), ['reason' => 'x']],
             'admin.floors.store' => ['post', route('admin.floors.store'), [
                 'install_id' => 'aimla', 'map' => FloorMapFixture::valid(),
             ]],
@@ -276,7 +276,7 @@ class ConsoleShellTest extends TestCase
         // The control: the refusals above are the MFA gate and not a route that refuses
         // everything. Same request, enrolled session, and it reaches the action's own answer.
         $this->actingAs($this->enrolled())
-            ->post(route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x'])
+            ->post(route('admin.agents.retire', 'aimla-pm'), ['reason' => 'x'])
             ->assertRedirect(route('admin.agents.index'))
             ->assertSessionHasErrors('retire');
     }
@@ -342,7 +342,7 @@ class ConsoleShellTest extends TestCase
 
         // The control: the same write as an enrolled operator reaches the action's own answer.
         $this->actingAs($this->enrolled())
-            ->post(route('admin.agents.retire', ['aimla', 'aimla-pm']), ['reason' => 'x'])
+            ->post(route('admin.agents.retire', 'aimla-pm'), ['reason' => 'x'])
             ->assertRedirect(route('admin.agents.index'))
             ->assertSessionHasErrors('retire');
     }

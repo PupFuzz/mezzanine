@@ -4,8 +4,8 @@ namespace App\Read;
 
 use App\Fold\Clock;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
  * `docs/design/FLEET-STATE.md § 8.2`'s `GET /api/fleet/snapshot` body — "the whole fleet: every
@@ -72,9 +72,9 @@ final class Snapshot
     public static function seats(): Collection
     {
         return RetirementFilter::renderable(self::query())
-            ->orderBy('installs.install_id')
+            ->orderByRaw(SeatIdentity::ROOM)
             ->orderBy('seats.seat_id')
-            ->get(self::COLUMNS);
+            ->get(self::columns());
     }
 
     /**
@@ -86,7 +86,7 @@ final class Snapshot
      * here. That is a better home than a ghost desk: it is queryable, it is not bounded by 14
      * days, and it does not consume a slot on a floor whose slot count is finite.
      *
-     * ⚠ SAME JOIN, SAME COLUMNS, OPPOSITE PREDICATE — `self::query()` and `self::COLUMNS` are
+     * ⚠ SAME JOIN, SAME COLUMNS, OPPOSITE PREDICATE — `self::query()` and `self::columns()` are
      * shared with `seats()` above rather than written a second time. The two lists are one list
      * because a console that selected its own would be free to disagree with the floor about what
      * a seat IS, and the retirement record is exactly the field set that would go missing.
@@ -97,32 +97,38 @@ final class Snapshot
     {
         return RetirementFilter::retired(self::query())
             ->orderByDesc('seats.retired_at')
-            ->orderBy('installs.install_id')
+            ->orderByRaw(SeatIdentity::ROOM)
             ->orderBy('seats.seat_id')
-            ->get(self::COLUMNS);
+            ->get(self::columns());
     }
 
     /**
-     * The one join both reads above are built on. `seat_state` first, so that a seat with no
-     * `seat_state` row cannot appear on either list — there is no such seat (§ 6.4 writes the row
+     * The one join both reads above are built on. An inner join to `seat_state`, so that a seat with
+     * no `seat_state` row cannot appear on either list — there is no such seat (§ 6.4 writes the row
      * at token-issue time), and this is the shape that keeps it true rather than a guard for it.
+     *
+     * ⭐ THE SEAT'S GROUP IS ITS ROOM, `unassigned` FOR A SEAT IN NONE (card#13117): `SeatIdentity`'s
+     * left join, so a seat the console has not placed is in the snapshot as a member of the virtual
+     * install `unassigned` — a group like any other to a reader — and `api_version` stays 1
+     * (`docs/design/plan-13117-seat-identity.md § 3.3`, § 4.4).
      */
     private static function query(): Builder
     {
-        return DB::table('seat_state')
-            ->join('seats', 'seats.id', '=', 'seat_state.seat_ref')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref');
+        return SeatIdentity::query()->join('seat_state', 'seat_state.seat_ref', '=', 'seats.id');
     }
 
-    /** @var list<string> */
-    private const COLUMNS = [
-        'seat_state.*',
-        'installs.install_id',
-        'seats.seat_id',
-        'seats.species',
-        'seats.species_drawn_at',
-        'seats.retired_at',
-        'seats.retired_by',
-        'seats.retired_reason',
-    ];
+    /** @return list<string|Expression> */
+    private static function columns(): array
+    {
+        return [
+            'seat_state.*',
+            SeatIdentity::installId(),
+            'seats.seat_id',
+            'seats.species',
+            'seats.species_drawn_at',
+            'seats.retired_at',
+            'seats.retired_by',
+            'seats.retired_reason',
+        ];
+    }
 }

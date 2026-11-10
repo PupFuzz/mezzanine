@@ -145,7 +145,7 @@ class TheInternListIsUncappedWhereTheSideTableIsCappedTest extends TestCase
         $panel = $this->openPanel($result, 'aimla-interns');
         $interns = $panel['interns'];
         $served = array_values(array_filter(
-            $fixture['http']['/api/fleet/seats/aimla/aimla-interns'][0]['body']['detail']['open_calls'],
+            $fixture['http']['/api/fleet/seats/aimla-interns'][0]['body']['detail']['open_calls'],
             static fn (array $c): bool => $c['is_dispatch'] === 1,
         ));
 

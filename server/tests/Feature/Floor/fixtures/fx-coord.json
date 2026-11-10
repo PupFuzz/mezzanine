@@ -1552,7 +1552,7 @@
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -1582,7 +1582,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -1606,7 +1606,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R2",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "helper",
               "attribution": "resolved",
@@ -1630,7 +1630,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R3",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "coder",
               "attribution": "resolved",
@@ -1658,7 +1658,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R4",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -1681,7 +1681,7 @@
             "server_time": "2026-08-23T14:23:26.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "closed",
               "subject": "the coordination-event producer",
@@ -2810,7 +2810,7 @@
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -2840,7 +2840,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -2864,7 +2864,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R2",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "helper",
               "attribution": "resolved",
@@ -2888,7 +2888,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R3",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "coder",
               "attribution": "resolved",
@@ -2916,7 +2916,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R4",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -2939,7 +2939,7 @@
             "server_time": "2026-08-23T14:23:26.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "closed",
               "subject": "the coordination-event producer",
@@ -4058,7 +4058,7 @@
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -4088,7 +4088,7 @@
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R5",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",

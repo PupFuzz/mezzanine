@@ -255,6 +255,48 @@
       ]
     },
     {
+      "name": "a seat in no room: the snapshot's virtual install `unassigned` gets the implicit floor any unplaced install gets, by today's rule (card#13117 S1)",
+      "layout": [
+        {
+          "rooms": {
+            "aimla": {
+              "form": "open"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "unassigned",
+        "aimla"
+      ],
+      "floors": [
+        {
+          "floor": "aimla",
+          "label": null,
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "unassigned",
+          "label": null,
+          "theme": null,
+          "rooms": [
+            {
+              "install": "unassigned",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "a room the fleet reports nothing for is drawn on its floor and flagged, never omitted",
       "layout": [
         {

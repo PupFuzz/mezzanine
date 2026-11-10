@@ -673,7 +673,7 @@
             "delay_ms": 0
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-3": [
+        "/api/fleet/seats/aimla-impl-3": [
           {
             "status": 200,
             "body": {
@@ -3096,7 +3096,7 @@
             "delay_ms": 500
           }
         ],
-        "/api/fleet/seats/aimla-win/win-1": [
+        "/api/fleet/seats/win-1": [
           {
             "status": 200,
             "body": {
@@ -7696,7 +7696,7 @@
             "delay_ms": 2000
           }
         ],
-        "/api/fleet/seats/aimla-win/win-1": [
+        "/api/fleet/seats/win-1": [
           {
             "status": 200,
             "body": {
@@ -10709,7 +10709,7 @@
             "delay_ms": 0
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-3": [
+        "/api/fleet/seats/aimla-impl-3": [
           {
             "status": 503,
             "body": {
@@ -11885,7 +11885,7 @@
             "delay_ms": 500
           }
         ],
-        "/api/fleet/seats/aimla-win/win-1": [
+        "/api/fleet/seats/win-1": [
           {
             "status": 503,
             "body": {
@@ -13410,7 +13410,7 @@
             "delay_ms": 2600
           }
         ],
-        "/api/fleet/seats/aimla-win/win-1": [
+        "/api/fleet/seats/win-1": [
           {
             "status": 503,
             "body": {
@@ -14908,7 +14908,7 @@
             "delay_ms": 500
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 503,
             "body": {
@@ -16406,7 +16406,7 @@
             "delay_ms": 2600
           }
         ],
-        "/api/fleet/seats/aimla-win/win-1": [
+        "/api/fleet/seats/win-1": [
           {
             "status": 503,
             "body": {

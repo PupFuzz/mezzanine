@@ -9,7 +9,7 @@ use App\Ingest\Counters;
 use App\Read\FleetHealth;
 use App\Read\IdleHorizon;
 use App\Read\ReadRefusal;
-use App\Read\RetirementFilter;
+use App\Read\SeatIdentity;
 use App\Read\SeatObject;
 use App\Read\SeatRow;
 use App\Read\Snapshot;
@@ -64,11 +64,19 @@ class FleetController extends Controller
 
     /**
      * § 8.2: one seat — "its state object plus the drill-down extras", and § 8.5's `resync_from`.
+     *
+     * ⭐ BY `{seat_id}` ALONE (card#13117): the route `/api/fleet/seats/{seat_id}` and the kept
+     * `/api/fleet/seats/{install_id}/{seat_id}` both land here, and the second's first segment is
+     * IGNORED — any slug — because the room is no part of a seat's identity
+     * (`docs/design/plan-13117-seat-identity.md § 3.3`). Read from the route by name for that reason:
+     * the two routes pass different positional parameters.
      */
-    public function seat(Request $request, string $installId, string $seatId): JsonResponse
+    public function seat(Request $request): JsonResponse
     {
-        return $this->serve(function () use ($request, $installId, $seatId) {
-            $row = SeatRow::find($installId, $seatId);
+        $seatId = (string) $request->route('seat_id');
+
+        return $this->serve(function () use ($request, $seatId) {
+            $row = SeatRow::find($seatId);
 
             if ($row === null) {
                 return ReadRefusal::seatNotFound();
@@ -92,24 +100,25 @@ class FleetController extends Controller
      * § 8.2: "**The timeline is a query, not a table.** … A materialized activity table was
      * considered and rejected: it would be a second copy of rows we already keep for 14 days,
      * with its own retention, its own backfill and its own opportunity to disagree with the log."
+     *
+     * By `{seat_id}` alone, from either timeline route, as `seat()` above says.
      */
-    public function timeline(Request $request, string $installId, string $seatId): JsonResponse
+    public function timeline(Request $request): JsonResponse
     {
-        return $this->serve(function () use ($request, $installId, $seatId) {
+        $seatId = (string) $request->route('seat_id');
+
+        return $this->serve(function () use ($request, $seatId) {
             // § 4.10: "the READ QUERIES stop selecting it" — PLURAL. A filter on the snapshot and
             // the detail but not here would leave a decommissioned desk gone from the floor and
             // still reachable by URL, which is the same row existing on two surfaces and not on a
-            // third.
-            $seatRef = RetirementFilter::renderable(
-                DB::table('seats')
-                    ->join('installs', 'installs.id', '=', 'seats.install_ref')
-                    ->where('installs.install_id', $installId)
-                    ->where('seats.seat_id', $seatId)
-            )->value('seats.id');
+            // third. `byId()` reads live seats only.
+            $seat = SeatIdentity::byId($seatId);
 
-            if ($seatRef === null) {
+            if ($seat === null) {
                 return ReadRefusal::seatNotFound();
             }
+
+            $seatRef = (int) $seat->seat_ref;
 
             // § 8.2 bounds `limit` at 200 and defaults it to 50. The bound CLAMPS rather than
             // refuses: a caller asking for 500 wants the most rows it can have, and a 422 there
@@ -154,7 +163,7 @@ class FleetController extends Controller
             return [
                 'api_version' => Snapshot::API_VERSION,
                 'server_time' => $this->serverTime(),
-                'install_id' => $installId,
+                'install_id' => (string) $seat->install_id,
                 'seat_id' => $seatId,
                 'limit' => $limit,
                 // § 8.1's additive rule: the cursor for the next page, ISSUED BY THE SERVER, and

@@ -61,17 +61,21 @@ import { DiscrepancyBudget } from './discrepancy-budget.js';
 /** § 2.2 step 3 / D2 § 8.2's full snapshot — the connect read, and the discovery read. */
 const SNAPSHOT_PATH = '/api/fleet/snapshot';
 
-/** D2 § 8.2.3's per-seat read. Each segment is encoded, never trusted — `building.js` does the same. */
-function seatPath(installId, seatId) {
-    return `/api/fleet/seats/${encodeURIComponent(installId)}/${encodeURIComponent(seatId)}`;
+/**
+ * D2 § 8.2.3's per-seat read, by the seat's id alone since card#13117 (a seat is known by its `seat_id`
+ * across the whole site; the client's key keeps the pair until the slice that re-keys it). The segment is
+ * encoded, never trusted — `building.js` does the same.
+ */
+function seatPath(seatId) {
+    return `/api/fleet/seats/${encodeURIComponent(seatId)}`;
 }
 
 /**
  * D2 § 8.2's recent-activity window for one seat — the drill-down's second request (FLOOR § 4.3):
  * `limit` 50 on open, and the SERVER's own `next_before` cursor for the page after it.
  */
-function timelinePath(installId, seatId, before) {
-    const base = `${seatPath(installId, seatId)}/timeline?limit=${TIMELINE_LIMIT}`;
+function timelinePath(seatId, before) {
+    const base = `${seatPath(seatId)}/timeline?limit=${TIMELINE_LIMIT}`;
 
     return before === null ? base : `${base}&before=${encodeURIComponent(before)}`;
 }
@@ -467,7 +471,7 @@ export class FleetClient {
         }
 
         const k = key(installId, seatId);
-        const res = await this.#get(seatPath(installId, seatId));
+        const res = await this.#get(seatPath(seatId));
 
         if (!failed(res) && this.#seats.has(k)) {
             this.#offerSeatBody(res.body);
@@ -488,7 +492,7 @@ export class FleetClient {
             return null;
         }
 
-        return this.#get(timelinePath(installId, seatId, before));
+        return this.#get(timelinePath(seatId, before));
     }
 
     /** The held seat map — a COPY, so a caller cannot mutate what the protocol holds. */
@@ -1617,8 +1621,8 @@ export class FleetClient {
         this.#pendingSeats.add(k);
 
         const path = resyncFrom === null
-            ? seatPath(installId, seatId)
-            : `${seatPath(installId, seatId)}?resync_from=${resyncFrom}`;
+            ? seatPath(seatId)
+            : `${seatPath(seatId)}?resync_from=${resyncFrom}`;
 
         if (resyncFrom !== null) {
             this.#resyncs++;

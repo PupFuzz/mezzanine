@@ -52,7 +52,7 @@ abstract class SweepTestCase extends FoldTestCase
     protected function retire(?string $seatId = null): void
     {
         $this->artisan('mezzanine:retire', [
-            '--seat' => self::INSTALL.'/'.($seatId ?? self::SEAT),
+            '--seat' => ($seatId ?? self::SEAT),
             '--by' => 'operator@aimla',
             '--reason' => 'decommissioned',
         ])->assertSuccessful();

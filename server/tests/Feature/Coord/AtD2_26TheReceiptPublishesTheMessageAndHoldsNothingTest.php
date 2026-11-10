@@ -30,7 +30,7 @@ class AtD2_26TheReceiptPublishesTheMessageAndHoldsNothingTest extends CoordTestC
 
         $rounds = $this->rounds();
         $this->assertCount(2, $rounds);
-        $this->assertSame([['install', 'one'], ['install', 'one']], array_map(fn ($r) => [$r['scope'], $r['install_id']], $rounds));
+        $this->assertSame([['room', 'one'], ['room', 'one']], array_map(fn ($r) => [$r['scope'], $r['install_id']], $rounds));
         $this->assertSame(['one', 'one'], DB::table('feed_outbox')->where('t', 'coord.round')->orderBy('id')->pluck('install_id')->all());
         $this->assertSame(0, DB::table('feed_outbox')->where('t', 'coord.thread')->count());
         $this->assertSame(2, DB::table('coord_deliveries')->count());

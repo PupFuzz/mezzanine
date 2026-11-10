@@ -194,7 +194,7 @@ class At23RetiredSeatTest extends SweepTestCase
 
         $this->advanceServerClock(60);
         $this->artisan('mezzanine:retire', [
-            '--seat' => self::INSTALL.'/'.self::SEAT,
+            '--seat' => self::SEAT,
             '--by' => 'somebody-else',
             '--reason' => 'a different reason',
         ])->assertSuccessful();
@@ -288,7 +288,7 @@ class At23RetiredSeatTest extends SweepTestCase
 
         try {
             $exit = Artisan::call('mezzanine:retire', [
-                '--seat' => self::INSTALL.'/'.self::SEAT, '--by' => 'operator@aimla', '--reason' => 'decommissioned',
+                '--seat' => self::SEAT, '--by' => 'operator@aimla', '--reason' => 'decommissioned',
             ]);
         } catch (\Throwable $e) {
             $thrown = $e;
@@ -318,7 +318,7 @@ class At23RetiredSeatTest extends SweepTestCase
 
         try {
             Artisan::call('mezzanine:retire', [
-                '--seat' => self::INSTALL.'/'.self::SEAT, '--by' => 'operator@aimla', '--reason' => 'decommissioned',
+                '--seat' => self::SEAT, '--by' => 'operator@aimla', '--reason' => 'decommissioned',
             ]);
         } catch (\Throwable $e) {
             $thrown = $e;

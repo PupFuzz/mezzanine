@@ -34,7 +34,7 @@ class AtD2_28AFleetScopeMessageReachesEveryClientCarryingNoRoomTest extends Feed
     {
         $spec = CoordSpec::spec();
         [$fleetHook, $fleetSecret] = HookBinding::issue($spec->repository('fleet'), 'fleet', null, true, 'suite');
-        [$installHook, $installSecret] = HookBinding::issue($spec->repository('install'), 'install', self::INSTALL, true, 'suite');
+        [$installHook, $installSecret] = HookBinding::issue($spec->repository('install'), 'room', self::INSTALL, true, 'suite');
 
         $stream = $this->openStream($this->enrolled(), [
             function () use ($fleetHook, $fleetSecret, $installHook, $installSecret) {
@@ -53,7 +53,7 @@ class AtD2_28AFleetScopeMessageReachesEveryClientCarryingNoRoomTest extends Feed
         $this->assertSame(['fleet', null], [$fleet['scope'], $fleet['install_id']]);
         $this->assertSame($fleet['to'], ['coder-solo']);
         $this->assertSame(['coder-solo'], $fleet['targets'], 'a named post\'s `targets` is its `to` less the author');
-        $this->assertSame(['install', self::INSTALL], [$install['scope'], $install['install_id']]);
+        $this->assertSame(['room', self::INSTALL], [$install['scope'], $install['install_id']]);
 
         $this->assertSame([null, self::INSTALL],
             DB::table('feed_outbox')->where('t', 'coord.round')->orderBy('id')->pluck('install_id')->all());

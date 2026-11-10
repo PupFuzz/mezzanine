@@ -11,9 +11,9 @@ use Illuminate\Support\Facades\DB;
  * unrevoked secrets — and the operator acts that write it (COORD-STORE.md § 3.1–3.2, card#12239).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ THE BINDING'S `scope` IS SET AT ISSUE AND NEVER READ FROM A PAYLOAD. `install` names one install
- * and one repository; `fleet` names one repository and NO install, and every object it derives carries
- * `install_id: null` (D1 § 18.6). The payload's `repository.full_name` is a claim held against
+ * ⛔ THE BINDING'S `scope` IS SET AT ISSUE AND NEVER READ FROM A PAYLOAD. `room` names one room (an
+ * `installs` row — `install` until card#13117) and one repository; `fleet` names one repository and NO
+ * room, and every object it derives carries `install_id: null` (D1 § 18.6). The payload's `repository.full_name` is a claim held against
  * `repository` for equality (D1 § 18.8 step 6) and never routed on. ⛔ `repository` IS STORED LOWERCASED
  * and step 6 compares case-insensitively, because GitHub's names are: an operator who issued `Org/Repo`
  * while GitHub reports `org/repo` is the same repository, and `uq_binding`'s byte-exact key then keeps one
@@ -105,15 +105,18 @@ final class HookBinding
         $repository = strtolower($repository);
 
         if ($scope === 'fleet' && $installId !== null) {
-            throw new BindingRefused('--scope=fleet names no install: a fleet-scope binding carries `install_id: null` (D1 § 18.6)');
+            throw new BindingRefused('--scope=fleet names no room: a fleet-scope binding carries `install_id: null` (D1 § 18.6)');
         }
 
-        if ($scope === 'install' && $installId === null) {
-            throw new BindingRefused('--scope=install needs --install=<install_id>: the binding names exactly one install');
+        if ($scope === 'room' && $installId === null) {
+            throw new BindingRefused('--scope=room needs --room=<room key>: the binding names exactly one room');
         }
 
-        if (! in_array($scope, ['install', 'fleet'], true)) {
-            throw new BindingRefused(sprintf('--scope must be `install` or `fleet`, not %s', json_encode($scope)));
+        // ⭐ `room`, NOT `install`, SINCE card#13117: the coordination scope is the console's room — the
+        // `installs` row is the room's record (plan-13117-seat-identity.md § 4.3) — and the wire's
+        // `scope` value is the stored one (D1 § 18.6, § 18.7).
+        if (! in_array($scope, ['room', 'fleet'], true)) {
+            throw new BindingRefused(sprintf('--scope must be `room` or `fleet`, not %s', json_encode($scope)));
         }
 
         $hookId = 'mzh_'.rtrim(strtr(base64_encode(random_bytes(16)), '+/', '-_'), '=');
@@ -127,7 +130,7 @@ final class HookBinding
                 $installRef = DB::table('installs')->where('install_id', $installId)->value('id');
 
                 if ($installRef === null) {
-                    throw new BindingRefused(sprintf('no install %s exists here — issue a seat token for it first', json_encode($installId)));
+                    throw new BindingRefused(sprintf('no room %s exists here — create it in the console first', json_encode($installId)));
                 }
             }
 

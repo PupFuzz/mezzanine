@@ -70,11 +70,8 @@ final class EventValidator
         }
 
         // Equality with the batch — which step 7 has already equated with the token's binding, so
-        // this transitively pins every event to the seat the credential names.
-        if (Wire::field($event, 'install_id') !== $binding->installId) {
-            return Refusal::invalidEvent($index, 'install_id', "must equal the batch's install_id");
-        }
-
+        // this transitively pins every event to the seat the credential names. The event's
+        // `install_id` is accepted and not read (card#13117, D1 § 4.3).
         if (Wire::field($event, 'seat_id') !== $binding->seatId) {
             return Refusal::invalidEvent($index, 'seat_id', "must equal the batch's seat_id");
         }

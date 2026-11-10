@@ -28,7 +28,7 @@ class AtD4_9ADeclarationIsMappedAndAPinOrRefusalOutranksItTest extends BoardTask
 
     private function seatBoardUser(array $args): int
     {
-        return $this->artisan('mezzanine:seat-board-user', ['--seat' => self::INSTALL.'/'.self::SEAT] + $args)->run();
+        return $this->artisan('mezzanine:seat-board-user', ['--seat' => self::SEAT] + $args)->run();
     }
 
     public function test_a_confirmed_declaration_maps_and_the_operator_outranks_it_both_ways(): void

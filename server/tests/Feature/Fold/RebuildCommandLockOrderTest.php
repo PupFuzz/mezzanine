@@ -43,7 +43,7 @@ class RebuildCommandLockOrderTest extends CommittedSeatTestCase
         };
 
         $exit = $this->on(self::WRITER_1, fn () => Artisan::call('mezzanine:rebuild', [
-            '--seat' => $this->install().'/'.$this->seat(),
+            '--seat' => $this->seat(),
         ]));
 
         $this->assertNotNull($probeRefused, 'the seam after the first DELETE never ran');

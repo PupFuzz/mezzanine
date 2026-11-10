@@ -988,7 +988,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $requests = $result['final']['requests'];
         $count = static fn (string $prefix): int => count(array_filter($requests, static fn (string $r): bool => str_starts_with($r, $prefix)));
 
-        foreach (['/api/fleet/snapshot' => 2, '/api/fleet/seats/aimla/aimla-pm' => 1, '/api/building/rooms/aimla/map' => 2] as $path => $n) {
+        foreach (['/api/fleet/snapshot' => 2, '/api/fleet/seats/aimla-pm' => 1, '/api/building/rooms/aimla/map' => 2] as $path => $n) {
             if ($count($path) < $n) {
                 $defects[] = "the run asked for {$path} fewer than {$n} times — that re-render never happened";
             }

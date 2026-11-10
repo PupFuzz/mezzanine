@@ -266,7 +266,7 @@ class At16ServerClosesWriteNoWireEventsTest extends FeedTestCase
 
         // A rebuild over the REAL log derives the same state, because the sweeper wrote no event
         // and the orphan close is not in the log at all.
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT])->assertSuccessful();
 
         $this->assertNull(DB::table('calls')->where('seat_ref', $this->seatRef)->value('closed_at'),
             'a rebuild reproduced a close that no event carries — the log is not the only source');
@@ -276,7 +276,7 @@ class At16ServerClosesWriteNoWireEventsTest extends FeedTestCase
         $this->fold();
         $this->synthesizeClose();
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT])->assertSuccessful();
 
         $this->assertNotNull(DB::table('calls')->where('seat_ref', $this->seatRef)
             ->orderByDesc('id')->value('closed_at'),

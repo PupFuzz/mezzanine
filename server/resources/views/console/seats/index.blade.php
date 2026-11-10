@@ -18,7 +18,7 @@
     <table>
         <thead>
             <tr>
-                <th>Install</th><th>Seat</th><th>Character</th><th>Render state</th><th>Link</th>
+                <th>Room</th><th>Seat</th><th>Character</th><th>Render state</th><th>Link</th>
                 <th>Last activity</th><th></th>
             </tr>
         </thead>
@@ -39,10 +39,10 @@
                     </td>
                     <td>
                         <form method="POST"
-                              action="{{ route('admin.agents.retire', [$seat->install_id, $seat->seat_id]) }}">
+                              action="{{ route('admin.agents.retire', $seat->seat_id) }}">
                             @csrf
-                            <label for="reason-{{ $seat->install_id }}-{{ $seat->seat_id }}">Reason</label>
-                            <input id="reason-{{ $seat->install_id }}-{{ $seat->seat_id }}"
+                            <label for="reason-{{ $seat->seat_id }}">Reason</label>
+                            <input id="reason-{{ $seat->seat_id }}"
                                    name="reason" type="text" required maxlength="255">
                             <button type="submit">Retire</button>
                         </form>
@@ -72,7 +72,7 @@
     <table>
         <thead>
             <tr>
-                <th>Install</th><th>Seat</th><th>Character</th><th>Retired</th><th>By</th><th>Reason</th>
+                <th>Room</th><th>Seat</th><th>Character</th><th>Retired</th><th>By</th><th>Reason</th>
             </tr>
         </thead>
         <tbody>

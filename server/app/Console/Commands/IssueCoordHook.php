@@ -30,8 +30,8 @@ class IssueCoordHook extends Command
 {
     protected $signature = 'mezzanine:coord-hook:issue
                             {repository? : `<owner>/<repo>` — the repository the hook is registered on}
-                            {--scope= : `install` (one install\'s own coordination repository) or `fleet` (the cross-install one)}
-                            {--install= : the install_id an `install`-scope binding names; refused with `--scope=fleet`}
+                            {--scope= : `room` (one room\'s own coordination repository) or `fleet` (the fleet-wide one)}
+                            {--room= : the room key a `room`-scope binding names; refused with `--scope=fleet`}
                             {--shared-identity= : `true` when every agent posts as one GitHub account, `false` otherwise}
                             {--hook= : an existing binding\'s `mzh_…` id: add a SECOND secret to it (rotation with overlap)}
                             {--by= : who issued it; defaults to the OS user}
@@ -63,7 +63,7 @@ class IssueCoordHook extends Command
             if (is_string($this->option('hook')) && $this->option('hook') !== '') {
                 $hookId = (string) $this->option('hook');
 
-                foreach (['repository' => $this->argument('repository'), '--scope' => $this->option('scope'), '--install' => $this->option('install')] as $what => $given) {
+                foreach (['repository' => $this->argument('repository'), '--scope' => $this->option('scope'), '--room' => $this->option('room')] as $what => $given) {
                     if ($given !== null) {
                         $this->error("{$what} is the binding's own and is not given with --hook. Nothing was issued.");
 
@@ -85,7 +85,7 @@ class IssueCoordHook extends Command
                 [$hookId, $secret] = HookBinding::issue(
                     $repository,
                     (string) $this->option('scope'),
-                    $this->option('install') === null ? null : (string) $this->option('install'),
+                    $this->option('room') === null ? null : (string) $this->option('room'),
                     $shared === 'true',
                     (string) ($this->option('by') ?: (get_current_user() ?: 'unknown')),
                 );

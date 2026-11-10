@@ -235,7 +235,7 @@ class LongestOpenCallTest extends FeedTestCase
         $this->assertSame($dispatch, $folded['call_id'] ?? null, 'the control: the dispatch is not the longest');
 
         $this->advanceServerClock(300);
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT])->assertSuccessful();
 
         $this->assertSame($folded, $this->served()['longest_open_call'], 'the rebuild named a different call');
     }

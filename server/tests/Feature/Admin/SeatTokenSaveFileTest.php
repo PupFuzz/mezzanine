@@ -45,14 +45,15 @@ class SeatTokenSaveFileTest extends TestCase
         config(['app.url' => 'https://mezzanine.example/']);
         $this->confirmedOperator();
 
-        $response = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+        $response = $this->issueOnPage('aimla-pm')->assertOk();
         $this->assertNotSame('mezzanine.example', request()->getHost(), 'the control: the request is not on app.url\'s host');
 
         $button = $this->saveButtonIn($response);
         $this->assertNotNull($button, 'the issue response renders no save button on an https site');
         $this->assertSame('https://mezzanine.example/api/ingest/events', $button['data-ingest-url'],
             'the ingest URL is not rtrim(app.url, "/")."/api/ingest/events"');
-        $this->assertSame('aimla', $button['data-install-id']);
+        // A new seat is in no room (card#13117): the v2 file carries `unassigned`, which the server never reads.
+        $this->assertSame('unassigned', $button['data-install-id']);
         $this->assertSame('aimla-pm', $button['data-seat-id']);
         $this->assertSame('button', $button['type'], 'a submit button would post the page\'s form');
         $response->assertSee('Save token file');
@@ -63,7 +64,7 @@ class SeatTokenSaveFileTest extends TestCase
         config(['app.url' => 'https://example.org/mezzanine']);
         $this->confirmedOperator();
 
-        $button = $this->saveButtonIn($this->issueOnPage('aimla', 'aimla-pm')->assertOk());
+        $button = $this->saveButtonIn($this->issueOnPage('aimla-pm')->assertOk());
 
         $this->assertSame('https://example.org/mezzanine/api/ingest/events', $button['data-ingest-url'] ?? null);
     }
@@ -78,7 +79,7 @@ class SeatTokenSaveFileTest extends TestCase
         config(['app.url' => 'https://mezzanine.example']);
         $this->confirmedOperator();
 
-        $response = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+        $response = $this->issueOnPage('aimla-pm')->assertOk();
         $token = $this->plaintextIn($response);
 
         $this->assertNotNull($token, 'the plaintext is no longer shown');
@@ -94,7 +95,7 @@ class SeatTokenSaveFileTest extends TestCase
         config(['app.url' => 'http://mezzanine.example']);
         $this->confirmedOperator();
 
-        $response = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+        $response = $this->issueOnPage('aimla-pm')->assertOk();
 
         $this->assertNull($this->saveButtonIn($response), 'an http site renders the save button');
         $response->assertDontSee('Save token file');
@@ -141,7 +142,7 @@ class SeatTokenSaveFileTest extends TestCase
         config(['app.url' => 'https://mezzanine.example']);
         $this->confirmedOperator();
 
-        $response = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+        $response = $this->issueOnPage('aimla-pm')->assertOk();
 
         $response->assertSee('node fleet-reporter/install.js --token-file &lt;that path&gt;', false);
         $response->assertSee('Do not paste the token to the agent.');
@@ -157,7 +158,7 @@ class SeatTokenSaveFileTest extends TestCase
         config(['app.url' => 'http://mezzanine.example']);
         $this->confirmedOperator();
 
-        $response = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+        $response = $this->issueOnPage('aimla-pm')->assertOk();
 
         $response->assertSee('the reporter\'s installer accepts only an', false);
         $response->assertDontSee('--token-file', false);

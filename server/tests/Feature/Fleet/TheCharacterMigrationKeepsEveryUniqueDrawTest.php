@@ -8,6 +8,7 @@ use App\Fleet\SeatTokens;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Rooms;
 use Tests\TestCase;
 
 /**
@@ -189,7 +190,8 @@ class TheCharacterMigrationKeepsEveryUniqueDrawTest extends TestCase
             $this->assertNull($this->drawnAt($live), "{$live} is marked as a draw, and the rules allocated it");
         }
 
-        $this->assertInstanceOf(SeatTokenIssued::class, SeatTokens::issue(self::INSTALL, 'after', 'suite'));
+        $this->assertInstanceOf(SeatTokenIssued::class, SeatTokens::issue('after', 'suite'));
+        Rooms::place('after', self::INSTALL);
         $this->assertNull($this->drawnAt('after'));
 
         $this->assertSame('NO', DB::selectOne("SELECT IS_NULLABLE AS n FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'seats' AND COLUMN_NAME = 'species'")->n);

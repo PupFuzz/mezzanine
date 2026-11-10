@@ -180,7 +180,7 @@ def headers_for(spec: dict, d: dict, index: int) -> list:
 
 
 def round_envelope(spec: dict, r: dict) -> dict:
-    which = "install" if r["scope"] == "install" else "fleet"
+    which = "install" if r["scope"] == "room" else "fleet"
     full = spec["repositories"][which]["full_name"]
     if spec["repositories"][which]["install_id"] != r["install_id"]:
         raise SpecError(f"{r['key']}: install_id {r['install_id']!r} is not its repository's binding's")

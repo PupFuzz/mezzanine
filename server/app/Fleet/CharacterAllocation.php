@@ -3,10 +3,11 @@
 namespace App\Fleet;
 
 use App\Building\InvalidBuildingLayout;
-use App\Characters\SpeciesList;
 use App\Building\Layouts;
+use App\Characters\SpeciesList;
 use App\Ingest\Counters;
-use Illuminate\Support\Facades\DB;
+use App\Read\RetirementFilter;
+use App\Read\SeatIdentity;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -21,7 +22,8 @@ use Illuminate\Support\Facades\Log;
  * still has a free species (§ 6.13 rule 2's lazy read). The rules, in the order tried:
  *
  *   1. a species no live seat holds;
- *   2. else one no live seat on the seat's FLOOR holds;
+ *   2. else one no live seat on the seat's FLOOR holds — skipped for a seat on no floor, which since card#13117 is
+ *      every new seat: it is created in no room;
  *   3. else the one the fewest live seats on the floor hold, then the fewest fleet-wide, then the first in the
  *      seat's preference order — total, so the allocation always answers.
  *
@@ -39,8 +41,9 @@ final class CharacterAllocation
     /**
      * @param  string  $key  the new seat's key, `install_id/seat_id` — its preference order's start
      * @param  iterable<object|array{install_id: string, species: string}>  $live  every live seat: its install and species
-     * @param  callable(): list<string>  $floorInstalls  the install ids on the new seat's floor, its own included —
-     *                                                   called only when rule 1 has no answer
+     * @param  callable(): list<string>  $floorInstalls  the install ids on the new seat's floor, its own included, or
+     *                                                   none for a seat on no floor — called only when rule 1 has
+     *                                                   no answer
      * @param  SpeciesList  $list  the generator's species list and draw field
      */
     public static function choose(string $key, iterable $live, callable $floorInstalls, SpeciesList $list): string
@@ -65,10 +68,15 @@ final class CharacterAllocation
         $onFloor = array_flip($floorInstalls());
         $floor = self::counts(array_values(array_filter($population, static fn (array $s): bool => isset($onFloor[$s[0]]))));
 
-        // Rule 2 — no live seat on its floor holds it.
-        foreach ($preference as $species) {
-            if (($floor[$species] ?? 0) === 0) {
-                return $species;
+        // Rule 2 — no live seat on its floor holds it. A seat on NO floor (an empty list: a floor always holds the
+        // seat's own room) skips it rather than reading it as a floor nobody is on, where every species would pass
+        // and the first preference would win over the least used — § 6.13 rule 2 is *the seat's floor, or nothing
+        // while it has none* (card#13117, operator ruling 2026-11-10, Q6 (a)).
+        if ($onFloor !== []) {
+            foreach ($preference as $species) {
+                if (($floor[$species] ?? 0) === 0) {
+                    return $species;
+                }
             }
         }
 
@@ -82,18 +90,16 @@ final class CharacterAllocation
 
     /**
      * The live population an allocation reads — `seats` with `retired_at IS NULL` (§ 4.10's one predicate),
-     * joined to `installs` for the names. A PLAIN read: the caller holds the mutex, taken as its transaction's
+     * with each seat's room (`unassigned` for none) through `App\Read\SeatIdentity`. A PLAIN read: the caller holds the mutex, taken as its transaction's
      * first statement, so this read's snapshot follows every allocation that committed before it (§ 6.13).
      *
      * @return list<object{install_id: string, species: string}>
      */
     public static function livePopulation(): array
     {
-        return DB::table('seats')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->whereNull('seats.retired_at')
+        return RetirementFilter::renderable(SeatIdentity::query())
             ->orderBy('seats.id')
-            ->get(['installs.install_id', 'seats.species'])
+            ->get([SeatIdentity::installId(), 'seats.species'])
             ->all();
     }
 

@@ -374,16 +374,18 @@ with the operator's ruling on card#9415. `server/routes/admin.php` carries the s
 the middleware.
 
 **A seat is added on the Seat tokens page** (`/admin/tokens`, card#12331). It asks for your password
-again before it opens. Type the install id and the seat id — a new one creates the install and the
-seat — and the page shows the seat's reporter token once, with a *Save token file* button that saves it as
+again before it opens. Type the seat id — one name for the whole site (card#13117): a new id creates the
+seat, in no room, and an id that is already live is a **re-issue** for that seat, which the page says
+with the seat's room and last receipt — and the page shows the seat's reporter token once, with a *Save token file* button that saves it as
 the file the seat's installer takes (`fleet-reporter/INSTALL.md` § The token file). Save it right away, because
 only its SHA-256 is kept and the page cannot show it again. The button appears when the site's `APP_URL` starts
 with `https://`, the only kind of site the installer accepts. The seat is on the floor from that moment, as *no data yet*, until its first
-batch (`docs/design/FLOOR.md § 3.4`). A seat that already holds a token gets a second one beside it,
+batch (`docs/design/FLOOR.md § 3.4`) — a new seat under *unassigned*, on a floor of that name, until it
+is placed in a room (the console's room controls are a later slice of card#13117). A seat that already holds a token gets a second one beside it,
 which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
 A revoked token is refused on the seat's next request, and the list keeps who revoked it and when;
 a revocation takes no reason. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
-shell as `php artisan mezzanine:ingest-token:issue <install_id> <seat_id>` and
+shell as `php artisan mezzanine:ingest-token:issue <seat_id>` and
 `mezzanine:ingest-token:revoke <prefix>`.
 
 **To install the reporter on a seat**, see [Install the reporter on an agent machine](#install-the-reporter-on-an-agent-machine):
@@ -411,9 +413,9 @@ operator's:
    the seat back to its declaration:
 
 ```sh
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<board user id>   # pin
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --refuse                       # refuse its declaration
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear                        # back to automatic
+php artisan mezzanine:seat-board-user --seat=<seat_id> --board-user=<board user id>   # pin
+php artisan mezzanine:seat-board-user --seat=<seat_id> --refuse                       # refuse its declaration
+php artisan mezzanine:seat-board-user --seat=<seat_id> --clear                        # back to automatic
 ```
 
    A seat's detail counts why a declaring seat is not linked: `board_link_conflict` (another seat holds
@@ -458,15 +460,15 @@ into the sender's floor's birdhouse and out of the recipient's, so each floor sh
 drawn once; an end the floor cannot place on a desk is written to the page's event log with the reason.
 
 Mezzanine receives the posts itself, as GitHub webhook deliveries to `POST /api/ingest/github/{hook}`.
-Each repository gets **one binding**: `install` scope for an install's own coordination repository, or
-`fleet` scope for a repository whose threads span installs. Issuing one is an **operator act at your own
+Each repository gets **one binding**: `room` scope for a room's own coordination repository (`install`
+until card#13117), or `fleet` scope for a repository whose threads span rooms. Issuing one is an **operator act at your own
 terminal**, because the secret must stay out of every transcript and command line:
 
 ```sh
 # on the Mezzanine host, as the deploy user; both output paths outside any git checkout
 php artisan mezzanine:coord-hook:issue <owner>/<repo> --scope=fleet --shared-identity=true \
     --by=<you> --secret-out ~/coord-secret --hook-request-out ~/coord-hook.json
-#   …or --scope=install --install=<install_id> for an install's own repository
+#   …or --scope=room --room=<room key> for a room's own repository
 
 # register the hook with YOUR GitHub credential (admin on that repository)
 gh api repos/<owner>/<repo>/hooks --input ~/coord-hook.json

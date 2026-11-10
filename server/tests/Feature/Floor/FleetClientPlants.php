@@ -122,10 +122,10 @@ final class FleetClientPlants
     public const NOPARAM = [
         [
             <<<'JS'
-            `${seatPath(installId, seatId)}?resync_from=${resyncFrom}`
+            `${seatPath(seatId)}?resync_from=${resyncFrom}`
             JS,
             <<<'JS'
-            seatPath(installId, seatId)
+            seatPath(seatId)
             JS,
         ],
     ];

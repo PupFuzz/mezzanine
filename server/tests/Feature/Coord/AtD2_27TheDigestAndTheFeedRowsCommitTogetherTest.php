@@ -143,7 +143,7 @@ class AtD2_27TheDigestAndTheFeedRowsCommitTogetherTest extends CoordTestCase
 
     public function test_one_unrevoked_binding_per_repository_at_any_scope_and_reissue_after_revoke(): void
     {
-        $this->artisanIssue($this->spec()->repository('fleet'), ['--scope' => 'install', '--install' => 'one'])
+        $this->artisanIssue($this->spec()->repository('fleet'), ['--scope' => 'room', '--room' => 'one'])
             ->expectsOutputToContain('already has an unrevoked binding')->assertFailed();
         $this->artisanIssue($this->spec()->repository('install'), ['--scope' => 'fleet'])
             ->expectsOutputToContain('already has an unrevoked binding')->assertFailed();
@@ -171,7 +171,7 @@ class AtD2_27TheDigestAndTheFeedRowsCommitTogetherTest extends CoordTestCase
         // Half two: issued in another casing, it is stored lowercased and receives the delivery GitHub
         // signs with the repository's own casing.
         $this->artisan('mezzanine:coord-hook:revoke', ['hook' => $this->install['hook']])->assertSuccessful();
-        [$hook, $secret] = HookBinding::issue(strtoupper($this->spec()->repository('install')), 'install', 'one', true, 'suite');
+        [$hook, $secret] = HookBinding::issue(strtoupper($this->spec()->repository('install')), 'room', 'one', true, 'suite');
 
         $this->assertSame($this->spec()->repository('install'), DB::table('coord_hooks')->where('hook_id', $hook)->value('repository'),
             'the binding did not store its repository lowercased');

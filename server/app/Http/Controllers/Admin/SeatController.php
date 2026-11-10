@@ -67,7 +67,6 @@ class SeatController extends Controller
     public function retire(
         Request $request,
         SeatRetirement $retirement,
-        string $installId,
         string $seatId,
     ): RedirectResponse {
         $validated = $request->validate([
@@ -81,17 +80,17 @@ class SeatController extends Controller
                 'retire' => sprintf(
                     'Refused: this seat store records the retiring operator in %d characters '
                     .'(docs/design/FLEET-STATE.md § 6.4) and your address is %d. Retire from the '
-                    .'shell with `php artisan mezzanine:retire --seat=%s/%s --by=<short name> '
+                    .'shell with `php artisan mezzanine:retire --seat=%s --by=<short name> '
                     .'--reason=…` so the record names you correctly.',
-                    self::AUTHOR_MAX, mb_strlen($by), $installId, $seatId,
+                    self::AUTHOR_MAX, mb_strlen($by), $seatId,
                 ),
             ]);
         }
 
-        $seat = $installId.'/'.$seatId;
+        $seat = $seatId;
 
         try {
-            $outcome = $retirement->retire($installId, $seatId, $by, $validated['reason']);
+            $outcome = $retirement->retire($seatId, $by, $validated['reason']);
         } catch (\Throwable $e) {
             // card#9466: a seat another writer kept busy past the act's bounded wait and retries
             // (`SeatRetirement::LOCK_WAIT_TIMEOUT_S`, `LOCK_ATTEMPTS`) rolled back whole, so the

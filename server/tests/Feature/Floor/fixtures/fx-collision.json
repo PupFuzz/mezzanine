@@ -1375,7 +1375,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-mac-1": [
           {
             "status": 200,
             "body": {
@@ -2501,7 +2501,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-5": [
+        "/api/fleet/seats/aimla-win-5": [
           {
             "status": 200,
             "body": {
@@ -3627,7 +3627,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-4": [
+        "/api/fleet/seats/aimla-impl-4": [
           {
             "status": 200,
             "body": {
@@ -5790,7 +5790,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-beta": [
+        "/api/fleet/seats/aimla-beta": [
           {
             "status": 200,
             "body": {
@@ -7449,7 +7449,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-linux-4": [
+        "/api/fleet/seats/aimla-linux-4": [
           {
             "status": 503,
             "body": {
@@ -7460,7 +7460,7 @@
             "delay_ms": 100
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-5": [
+        "/api/fleet/seats/aimla-win-5": [
           {
             "status": 503,
             "body": {
@@ -8552,7 +8552,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-6": [
+        "/api/fleet/seats/aimla-impl-6": [
           {
             "status": 200,
             "body": {
@@ -8640,7 +8640,7 @@
             "delay_ms": 100
           }
         ],
-        "/api/fleet/seats/aimla/aimla-win-6": [
+        "/api/fleet/seats/aimla-win-6": [
           {
             "status": 200,
             "body": {

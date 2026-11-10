@@ -202,12 +202,13 @@ export function unresolvedEnds(round) {
 }
 
 /**
- * One ROOM's install-scope posts, from the `coord.round` messages a render applied.
+ * One ROOM's room-scope posts, from the `coord.round` messages a render applied.
  *
  * `options.install_id` is the room. ⛔ A post whose `install_id` is not this room's, or whose `scope`
- * is not `install`, is not this room's and is counted `off_floor`, never drawn: an install-scope post
+ * is not `room`, is not this room's and is counted `off_floor`, never drawn: a room-scope post
  * animates in the room its binding names and in no other (§ 5.7 property 3), and a fleet-scope post is
- * `fleetModel()`'s. A post repeated in the list is drawn once (`post_ref` is a post's identity).
+ * `fleetModel()`'s. The scope was `install` until card#13117, which renamed it with the server in one
+ * deploy (the feed is browser-only, D2 § 8.1 row 2). A post repeated in the list is drawn once (`post_ref` is a post's identity).
  */
 export function coordModel(messages, options) {
     const opts = options === null || typeof options !== 'object' ? {} : options;
@@ -228,7 +229,7 @@ export function coordModel(messages, options) {
             continue;
         }
 
-        if ((room !== null && body.install_id !== room) || body.scope !== INSTALL_SCOPE) {
+        if ((room !== null && body.install_id !== room) || body.scope !== ROOM_SCOPE) {
             offFloor += 1;
 
             continue;
@@ -255,8 +256,8 @@ export function coordModel(messages, options) {
     });
 }
 
-/** D2 § 8.3.3's two `scope` values (card#12239). */
-export const INSTALL_SCOPE = 'install';
+/** D2 § 8.3.3's two `scope` values (card#12239; `room` was `install` until card#13117). */
+export const ROOM_SCOPE = 'room';
 
 export const FLEET_SCOPE = 'fleet';
 

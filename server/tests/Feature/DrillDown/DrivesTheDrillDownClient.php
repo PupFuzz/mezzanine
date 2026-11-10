@@ -116,7 +116,7 @@ trait DrivesTheDrillDownClient
     }
 
     /**
-     * `GET /api/fleet/seats/aimla/aimla-pm`'s body: D2 § 8.2.2's worked seat object transcribed
+     * `GET /api/fleet/seats/aimla-pm`'s body: D2 § 8.2.2's worked seat object transcribed
      * field for field, plus the two members only this endpoint carries — `server_time` (§ 8.2)
      * and `detail` (§ 8.2.3).
      *

@@ -4,6 +4,7 @@ namespace App\Building;
 
 use App\Floor\FloorMap;
 use App\Floor\InvalidFloorMap;
+use App\Read\SeatIdentity;
 
 /**
  * The building layout as authored — `docs/design/FLOOR.md § 4.6`, card#9267's operator ruling:
@@ -326,6 +327,20 @@ final class BuildingLayout
                 // Iterating an object yields its member names as STRINGS, an all-digit
                 // `install_id` (`^[a-z0-9][a-z0-9-]{1,31}$`) included. The PHP arrays below are
                 // where such a key becomes an int, and each read of one casts it back.
+                // ⛔ `unassigned` IS RESERVED (card#13117, plan-13117-seat-identity.md § 4.4): it is the
+                // virtual install the snapshot groups the seats in no room under, which the console can
+                // never create as a room, so a layout placing it places a room that cannot exist — and
+                // would draw the roomless seats on an authored floor as though they had been placed.
+                // Refused here, so the write and every load refuse it alike.
+                if ((string) $installId === SeatIdentity::UNASSIGNED) {
+                    throw new InvalidBuildingLayout(sprintf(
+                        'Floor #%d places a room keyed `%s`, which is reserved: it is the group of the seats '
+                        .'the console has placed in no room (card#13117), never a room a layout may place.',
+                        $position,
+                        SeatIdentity::UNASSIGNED,
+                    ));
+                }
+
                 if (isset($floorByRoom[$installId])) {
                     throw new InvalidBuildingLayout(sprintf(
                         'Room `%s` is on floor `%s` and again on floor #%d. A room is in one place '

@@ -46,12 +46,12 @@ final readonly class SeatTokenRefusal
      * "a retired seat that keeps reporting is a misconfiguration") — and nothing in `App\Ingest`
      * reads `retired_at`, so the token would post into a seat no read surface shows.
      */
-    public static function seatRetired(string $installId, string $seatId, string $at, ?string $by, ?string $reason): self
+    public static function seatRetired(string $seatId, string $at, ?string $by, ?string $reason): self
     {
         return new self(self::SEAT_RETIRED, 'seat_id', sprintf(
-            'seat %s/%s was retired at %s by %s (reason: %s). There is no un-retire: a replacement seat '
+            'seat %s was retired at %s by %s (reason: %s). There is no un-retire: a replacement seat '
             .'takes a new seat_id. Nothing was issued.',
-            $installId, $seatId, $at, $by ?? 'an author not recorded', $reason ?? 'not recorded',
+            $seatId, $at, $by ?? 'an author not recorded', $reason ?? 'not recorded',
         ), $at, $by, $reason);
     }
 }
