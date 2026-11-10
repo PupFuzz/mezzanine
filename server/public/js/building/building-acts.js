@@ -21,8 +21,8 @@
  * turn (`drag()` at the overview), which never arrives. Every snap is aimed from it.
  */
 
-import { LINE_PX, NOTCH_PX, PINCH_GAIN } from '../wire/camera.js';
-import { snap } from './stack-model.js';
+import { NOTCH_PX, PINCH_GAIN } from '../wire/camera.js';
+import { liveView, snap } from './stack-model.js';
 
 /** How long a gesture must be quiet before the next event starts a new one (§ 12 item 14, a seat ruling). */
 export const GESTURE_GAP_MS = 300;
@@ -77,11 +77,11 @@ export function pinchBucket(bucket, factor) {
 /**
  * The act set, over the page's live stack and stage.
  *
- * @param {{stack: function(): (object|null), surface: function(): {width: number, height: number},
- *          now: function(): number, gliding: function(): boolean}} page `stack` the stack as it stands (`null` before
- *        any floor has an extent), `surface` the stage, `now` the page's clock, `gliding` whether a glide is in flight
+ * @param {{stack: function(): (object|null), now: function(): number, gliding: function(): boolean}} page `stack` the
+ *        stack as it stands — `null` before any floor has an extent or while the stage has no size — whose `surface` is
+ *        the stage every act reads; `now` the page's clock; `gliding` whether a glide is in flight
  */
-export function buildingActs({ stack, surface, now, gliding }) {
+export function buildingActs({ stack, now, gliding }) {
     let resting = HOME_VIEW;
     let wheel = 0;
     let pinched = 0;
@@ -92,7 +92,7 @@ export function buildingActs({ stack, surface, now, gliding }) {
     const snapped = (intent) => {
         const live = stack();
 
-        return live === null ? resting : snap(resting, intent, live, surface());
+        return live === null ? resting : snap(resting, intent, live, live.surface);
     };
 
     /**
@@ -166,14 +166,20 @@ export function buildingActs({ stack, surface, now, gliding }) {
         /**
          * A press that moved, or an arrow key: at the overview the building turns by `dx` — 2π over the stage's width, so
          * a drag across the stage is one turn — and the turn is the resting view; `dy` is nothing, and at a focus pose
-         * nothing moves.
+         * nothing moves. The resting view is read through `liveView()` first, as every snap reads it: a focused floor the
+         * layout dropped is the overview (§ 12 item 10), which a drag turns. The wires take no drag while the camera
+         * frames nothing, so there is a stack here.
          */
         drag(dx) {
+            const live = stack();
+
+            resting = liveView(resting, live);
+
             if (resting.pose !== 'overview') {
                 return resting;
             }
 
-            const turned = resting.azimuth - (dx * 2 * Math.PI) / surface().width;
+            const turned = resting.azimuth - (dx * 2 * Math.PI) / live.surface.width;
 
             resting = Object.freeze({ pose: 'overview', azimuth: Math.atan2(Math.sin(turned), Math.cos(turned)) });
 

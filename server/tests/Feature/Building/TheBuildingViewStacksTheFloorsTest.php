@@ -270,6 +270,25 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $this->assertNotSame([], $this->modelProbe($this->buildingDir(dirname($dir)))['legs']['cull'], 'the fifteenth RED (the link that lies) did not bite');
     }
 
+    /** The review's G1: an unsized stage — a collapsed or hidden one — built into a stack, whose poses then have no aspect. */
+    public function test_red_an_unsized_stage_that_builds_a_stack(): void
+    {
+        $dir = $this->mutatedModules([self::MODEL, 'if (held.every((extent) => extent === null) || !(surface.width > 0 && surface.height > 0)) {',
+            'if (held.every((extent) => extent === null)) {']);
+
+        $this->assertNotSame([], array_filter($this->modelProbe($this->buildingDir(dirname($dir)))['legs']['focus'], static fn (string $d): bool => str_contains($d, 'unsized')),
+            'the RED (an unsized stage that builds a stack) did not bite for its reason');
+    }
+
+    /** The review's G2: a drag reading the resting view as it was, after the layout dropped the focused floor. */
+    public function test_red_a_drag_that_reads_a_dropped_floor(): void
+    {
+        $dir = $this->mutatedModules([self::ACTS, "            resting = liveView(resting, live);\n\n", '']);
+
+        $this->assertNotSame([], array_filter($this->actsProbe($this->buildingDir(dirname($dir)))['legs']['acts'], static fn (string $d): bool => str_contains($d, 'dropped the focused floor')),
+            'the RED (a drag that reads a dropped floor) did not bite for its reason');
+    }
+
     /** The graph bound: the set constructed off the paths, and a constants-only importer reaching for the set. */
     public function test_red_a_module_that_reaches_the_set_off_the_paths(): void
     {

@@ -307,7 +307,13 @@ naturally at; any constant works and this one is written once).
   page reads it: back wall at the far edge, desks nearer.
 
 `stackModel(rows, extents, lobbyHref, surface)` returns `{ storey: s, slabs: [{ floor, name, href, level, storey, box: {x, y, z, w, h,
-d}, picture: boolean }], ground: {…}, bounds: {x, y, z, w, h, d} }` — frozen, no DOM, no Three.
+d}, picture: boolean }], ground: {…}, bounds: {x, y, z, w, h, d}, surface: {width, height} }` — frozen, no DOM, no Three
+— or `null` while no row's scene has an extent or the stage has no width or no height. ⚠ **The stage's size has this one
+owner** (slice 3's review, G1): a collapsed or hidden stage reads `clientWidth` 0 and is handed to the screen's `resize()`;
+every pose, snap and act reads the stage from the stack it was built for (`stack.surface` — the acts take no stage of
+their own), so a `null` stack, which every wire gate already reads as framing nothing, keeps an unsized stage from every
+aspect, every pose search and every drag. The focus search's doubling is bounded too (`FOCUS_SEARCH_BOUND`): a face no
+distance frames is an error that names the floor, never a loop.
 
 ### 3.2 The texture — the floor page's drawing, rasterised, with its palette inlined
 
@@ -456,7 +462,8 @@ inside the stage inset by `LABEL_MARGIN` — half the widest label across (`LABE
 nameplate's text bound plus the label's padding and border, property (4) below) and a label's height down
 (**20** px) — so no label on an edge desk is cut by the frame; found by bisection on the distance (the predicate is monotone).
 ⚠ **On an axis too short for two margins the inset is a quarter of that axis** (`focusInset()`, slice 3): the first
-draft's inset could not be met on a stage under 162 px across or 40 px down at any distance, and the search for it never
+draft's inset could not be met on a stage at most 162 px across or 40 px down (the two margins leave no width for a face's two
+edges) at any distance, and the search for it never
 ended — a hang on a stage *any browser size* (`FLOOR.md` § 13 row 14) makes reachable; there the face fills the middle
 half and the partial view (§ 3.4) holds the names that fit. On a
 1,280 × 600 stage that is **14.87 units** from the centre, the camera **9.5 units above** its floor (the storey's
@@ -622,7 +629,8 @@ a 2-D screen's:
   reset on firing and at a new gesture, muted as the wheel is;
 - `drag(dx, dy)` — a press that moved, or an arrow key: at the overview, the azimuth by `dx`, **recorded as the acts'
   resting azimuth** (a turn never arrives; `arrived()` overrides — round 6's minor 4); `dy` is nothing; at a focus
-  pose, nothing;
+  pose, nothing — the resting view read through `liveView()` first, as every snap reads it, so a focused floor a
+  layout dropped is the overview a drag turns (slice 3's review, G2);
 - `camera()` — the resting view with `bounds` (the stack's, or `null` before any floor has an extent), so the
   wire's one gate (`framesNothing()`, `camera.js` L114) and `offerKeys()` withhold every gesture, the buttons, the
   hint and the tab stop until the stack is drawn, as on the drawn pages;

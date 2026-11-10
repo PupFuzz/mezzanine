@@ -46,7 +46,8 @@ function rig(stack, surface, { glideMs = GLIDE_MS } = {}) {
     let glide = null;
     let resting = A.HOME_VIEW;
     const changes = [];
-    const acts = A.buildingActs({ stack: () => stack, surface: () => surface, now: () => t, gliding: () => glide !== null });
+    let current = stack;
+    const acts = A.buildingActs({ stack: () => current, now: () => t, gliding: () => glide !== null });
     const settle = () => {
         if (glide !== null && t >= glide.end) {
             resting = glide.to;
@@ -91,6 +92,10 @@ function rig(stack, surface, { glideMs = GLIDE_MS } = {}) {
             return changes.length === 0 ? null : changes[changes.length - 1].at + glideMs;
         },
         page,
+        /** The layout changed under the page: the stack the acts read from now on. */
+        restack(next) {
+            current = next;
+        },
     };
 }
 
@@ -385,16 +390,41 @@ for (const deltaMode of [1, 2]) {
     }
 }
 
+// ── a focused floor the layout dropped is the overview, and a drag turns it (§ 12 item 10) ─────
+
+{
+    const r = rig(stack, surface);
+
+    r.page.show(r.acts.pan({ deltaY: -NOTCH_PX, deltaMode: 0 }, overTop).camera);
+    r.at(r.arrivedBy + 1);
+
+    if (r.resting.pose === 'overview') {
+        leg('acts').push('CONTROL — the wheel in did not reach a focus pose, so the dropped-floor case read nothing');
+    }
+
+    // A `building.layout` that drops the focused floor: the stack without it (its floors re-levelled, as `plates()` would).
+    const kept = stack.slabs.filter((slab) => slab.floor !== r.resting.pose.floor);
+    const rows = kept.map((slab, level) => ({ floor: slab.floor, name: slab.name, href: slab.href, level }));
+
+    r.restack(M.stackModel(rows, new Map(rows.map((row) => [row.floor, DEFAULT])), '/', surface));
+
+    const turned = r.acts.drag(120, 0);
+
+    if (turned.pose !== 'overview' || turned.azimuth === 0 || r.acts.camera().pose !== 'overview') {
+        leg('acts').push(`a drag after the layout dropped the focused floor answered ${JSON.stringify(turned)} — the resting view still names the dropped floor`);
+    }
+}
+
 // ── no stack, no bounds ───────────────────────────────────────────────────────────────────────
 
 {
-    const acts = A.buildingActs({ stack: () => null, surface: () => surface, now: () => 0, gliding: () => false });
+    const acts = A.buildingActs({ stack: () => null, now: () => 0, gliding: () => false });
 
     if (acts.camera().bounds !== null) {
         leg('acts').push('camera() before any extent has bounds');
     }
 
-    if (acts.camera().pose !== 'overview' || stackOf(1, surface) === null || A.buildingActs({ stack: () => stack, surface: () => surface, now: () => 0, gliding: () => false }).camera().bounds === null) {
+    if (acts.camera().pose !== 'overview' || stackOf(1, surface) === null || A.buildingActs({ stack: () => stack, now: () => 0, gliding: () => false }).camera().bounds === null) {
         leg('acts').push('CONTROL — camera() over a drawn stack has no bounds');
     }
 }

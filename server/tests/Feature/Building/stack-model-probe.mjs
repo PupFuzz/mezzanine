@@ -174,17 +174,37 @@ for (const [fixture, extents] of Object.entries(FIXTURES)) {
     }
 }
 
-// A stage too small for two label margins still frames every floor — the inset falls to a quarter of the stage.
-for (const surface of [stage(120, 600), stage(1280, 30), stage(100, 80)]) {
+// A stage too small for two label margins still frames every floor — the inset falls to a quarter of the stage — and a
+// stage with no size (collapsed or hidden: the page reads `clientWidth` 0) builds no stack, which frames nothing.
+for (const surface of [stage(120, 600), stage(1280, 30), stage(100, 80), stage(0, 500), stage(0, 0), stage(800, 0)]) {
     const stack = stackOf(Array(5).fill(DEFAULT), surface);
-    const inset = M.focusInset(surface);
 
-    if (!(inset.x < M.LABEL_MARGIN.x || inset.y < M.LABEL_MARGIN.y)) {
-        leg('focus').push(`CONTROL — ${name(surface)} holds the full label margins, so it tests nothing`);
+    if (surface.width <= 0 || surface.height <= 0) {
+        if (stack !== null) {
+            leg('focus').push(`the unsized ${name(surface)} stage built a stack (storey ${stack.storey}) — it frames nothing`);
+        }
+
+        continue;
     }
 
+    // The control reads the stage against the margins, not `focusInset()` — the function this case is about.
+    if (surface.width > 2 * M.LABEL_MARGIN.x && surface.height > 2 * M.LABEL_MARGIN.y) {
+        leg('focus').push(`CONTROL — ${name(surface)} holds two label margins each way, so it tests nothing`);
+    }
+
+    const inset = M.focusInset(surface);
+
     stack.slabs.forEach((slab, i) => {
-        const camera = M.focusPose(stack, i, surface);
+        let camera;
+
+        try {
+            camera = M.focusPose(stack, i, surface);
+        } catch (error) {
+            leg('focus').push(`the small ${name(surface)}: ${error.message}`);
+
+            return;
+        }
+
         const { x, z, w, d } = slab.box;
         const y = topOf(slab);
 

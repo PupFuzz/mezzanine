@@ -60,6 +60,9 @@ export const LABEL_H = 20;
 /** How far inside the stage the focused face's corners must project: half the widest label across, a label's height down. */
 export const LABEL_MARGIN = Object.freeze({ x: LABEL_MAX / 2, y: LABEL_H });
 
+/** How many times the focus search may double its distance before it is a defect, never a loop (`focusPose()`). */
+const FOCUS_SEARCH_BOUND = 64;
+
 /** The longest texture side drawn, whatever the GPU allows above it (§ 12's *Building view texture cap*). */
 export const TEXTURE_CAP = 4096;
 
@@ -179,7 +182,13 @@ export function storeySpacing(footprints, surface) {
  * The stack (§ 3.1): one slab per directory row, the first row at the top storey (`n − 1 − level`, the operator's
  * ruling 3), each its scene's extent in world units — a floor with no extent the widest footprint and no picture — and
  * the lobby the ground slab. It reads a row's key, level, name and link and nothing else of it. `null` while no row's
- * scene has an extent: there is no stack to draw.
+ * scene has an extent, and while the stage has no width or no height: there is no stack to draw, and a `null` stack is
+ * what every wire gate reads as framing nothing.
+ *
+ * ⛔ THE STAGE's SIZE HAS ONE OWNER, AND IT IS HERE. A collapsed or hidden stage reads `clientWidth` 0, and the page
+ * hands that to the screen's `resize()`; every pose, snap and act is derived from a stack and reads the stage it was built
+ * for (`stack.surface`), so an unsized stage stopped here reaches none of them — no pose is searched for, no aspect
+ * divides by zero, no drag turns by NaN.
  *
  * @param {list<{floor: string, name: string, href: string, level: number}>} rows `lobby/building-model.js`'s `plates()`
  * @param {Map<string, {x: number, y: number, w: number, h: number}|null>} extents each row's scene extent, by key
@@ -189,7 +198,7 @@ export function storeySpacing(footprints, surface) {
 export function stackModel(rows, extents, lobbyHref, surface) {
     const held = rows.map((row) => extents.get(row.floor) ?? null);
 
-    if (held.every((extent) => extent === null)) {
+    if (held.every((extent) => extent === null) || !(surface.width > 0 && surface.height > 0)) {
         return null;
     }
 
@@ -219,6 +228,8 @@ export function stackModel(rows, extents, lobbyHref, surface) {
         slabs: Object.freeze(slabs),
         ground: Object.freeze({ floor: null, name: null, href: lobbyHref, level: null, storey: -1, box: ground, picture: false, extent: null }),
         bounds,
+        // The stage the stack was derived for — the one every pose and act reads (see the header above).
+        surface: Object.freeze({ width: surface.width, height: surface.height }),
         // The stack's axis — what a transition rounds (§ 3.3).
         axis: Object.freeze({ x: 0, z: 0 }),
     });
@@ -272,7 +283,12 @@ export function focusPose(stack, i, surface) {
     let near = 0;
     let far = Math.max(w, d);
 
-    while (!framed(far)) {
+    // A sized stage frames the face well inside this many doublings; past them the search has no answer to find.
+    for (let doubling = 0; !framed(far); doubling++) {
+        if (doubling === FOCUS_SEARCH_BOUND) {
+            throw new Error(`no distance frames ${slab.floor}'s face on a ${surface.width} × ${surface.height} stage`);
+        }
+
         near = far;
         far *= 2;
     }

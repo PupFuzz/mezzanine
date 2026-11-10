@@ -177,6 +177,11 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
                     default => array_map(fn (array $r): array => $r['frame']['desks'], $result['desk_renders']),
                 };
 
+                if ($building) {
+                    $this->assertGreaterThan(0, array_sum(array_map('count', $frames)),
+                        "[{$run}] the building view's frames carry no desk — the reader of its floors' frames read nothing");
+                }
+
                 foreach ($frames as $frame) {
                     foreach ($frame as $key => $model) {
                         $hash = md5((string) json_encode($model));
