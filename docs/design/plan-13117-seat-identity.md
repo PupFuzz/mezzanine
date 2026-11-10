@@ -58,7 +58,10 @@ the reporter's grep leg; the installer population as `readTokenFile(` call sites
 rollback too; T6 selects routes by action and T23 derives its roots from what the pages load. The S1-after-S6
 rollback residual is accepted in § 11 with its reason. Q6 and Q7 stay open.
 
-**Design approval: not yet given.** The operator's direction, verbatim from the card (`kbcard show --task 13117`):
+**Revision 6 (2026-11-10)** folds the operator's last answers: Q6 (a), Q7 (b) — the floor wins, keep the code
+simple — the per-profile cost kept, and the design approved (§ 13).
+
+**Design approved by the operator, 2026-11-10.** The operator's direction, verbatim from the card (`kbcard show --task 13117`):
 
 1. *"the install ID shouldn't be tied to a floor name. It should just be a short string of random letters"*
 2. superseding 1: *"each agent should just only use a unique seat-id without an install-id. The mapping of seat-id
@@ -197,7 +200,7 @@ seat_id = ?` decides:
 
 | Found | Outcome |
 |---|---|
-| no row | create the seat with `install_ref NULL` (§ 4.4), allocate its species (§ 13 Q6 governs rule 2), insert the token |
+| no row | create the seat with `install_ref NULL` (§ 4.4), allocate its species (§ 13 Q6: rule 2 is the seat's floor, or nothing while it has none), insert the token |
 | a live row | **re-issue** for that seat (rotation, D1 § 3.3's order) — today's behaviour, minus the install segment |
 | a retired row | **refused**, `SeatTokenRefusal::seatRetired` — today's refusal, now site-wide: the console's *there is no un-retire — a replacement seat takes a new seat id* (`SeatTokenController.php`) |
 | a live row **and** a retired row of the same id (reachable on a store migrated from a per-install namespace: `x` live under one install, `x` retired under another — § 6.1's precondition checks live pairs only) | **the live row wins**: a re-issue for the live seat, as the row above; refused only when every row of the id is retired (round 3's m-J). T1 plants it |
@@ -530,9 +533,9 @@ needs to be deleted, then delete first" — and the old link then opens the new 
   `aliases` as it becomes current again.
 - **Redirect**: alias → `location.replace('/floor/{current}[/{seat_id}]')` with the seat segment preserved, exactly
   as the room→floor redirect does today (D3 § 4.4 row 3, `main.js:264-277`; `#ride` survives a `replace`). ⚠ **A
-  drill-down link whose floor segment was taken over** opens the new floor, where the seat is not — § 13 Q7 asks
-  whether the seat (unique site-wide) or the floor wins that link; this revision builds neither until it is
-  decided, and the redirect above stays on the floor segment alone.
+  drill-down link whose floor segment was taken over** opens the new floor, where the seat is not, and shows the
+  ordinary *no such desk on this floor* notice. The floor wins (§ 13 Q7, operator 2026-11-10): the redirect stays
+  on the floor segment alone, and a desk that moved is reached by its new link.
 - **No chains by construction**: every alias maps to its holder's **current** slug, and a second rename appends
   another alias to the same entry; a name used three times ago still redirects in one hop.
 - **Take-over**: a save giving floor B a name whose slug is in floor A's `aliases` **removes it from A's list and
@@ -1088,8 +1091,8 @@ precedes S4 because the take-over and the materialisation write through `amend()
   as any room.
 - **The unreported rooms `kanban` and `mezzanine` stay drawn nowhere after the migration** (§ 6.3), listed in the
   console for the operator to retire: no floor is minted for them, as none is drawn for them today.
-- **A species allocated against no floor** (§ 13 Q6) can duplicate a floor-mate's body after placement — undecided,
-  and named rather than built either way.
+- **A species allocated against no floor** (§ 13 Q6) can duplicate a floor-mate's body after placement — accepted
+  by the operator; reachable only once the fleet holds more live seats than species.
 - **Rolling S1 back after S6 has shipped — accepted.** A seat installed from a v3 token file after S6 has no
   `install_id` in its config and sends none; a pre-S1 server compares the envelope's `install_id` with the token's
   binding (step 7) and refuses the batch `403 identity_mismatch`, which is the reporter's auth stop — every such seat
@@ -1121,7 +1124,12 @@ accepted (§ 3.4); Q2 **reversed** — a new floor takes over a former address, 
 `install_id`/`installs` stay (§ 2.1); Q4 `CLAUDE_CONFIG_DIR` per agent (§ 8.2); Q5 the pre-13117 restore cost is
 accepted (§ 6.5).
 
-**Open — each with options and a recommendation; neither is built until decided:**
+**Answered 2026-11-10, folded into revision 6:** Q6 **(a)** — allocate at issue against the fleet; rule 2 is
+amended to *the seat's floor, or nothing while it has none*, and rule 4 holds. Q7 **(b)** — the floor wins; the
+operator's reason: *"keep the code simple. If a desk moves, use the new link"*. The `CLAUDE_CONFIG_DIR` per-profile
+setup cost (§ 8.2) is kept. The design is approved.
+
+The questions as they were asked, kept for the record:
 
 **Q6 — a new seat's species, with no room to check against (D2 § 6.13 rule 2).** Species are allocated once, at
 issue, and rule 2 — *a species no live seat on its FLOOR holds* — needs a floor. Under ruling 3 a new seat has
@@ -1173,7 +1181,7 @@ own ⭐/⚠ note (card#13117, or card#13118 for § 8's rows). Nothing here is a 
 | D2 § 6.4 | DDL: `installs` comment, `install_ref NULL`, `ix_seat_install`, `live_seat_id`/`uq_live_seat`, `uq_seat` gone, `coord_hooks.scope` enum | S1 |
 | D2 § 6.5 | `install_id` version-bearing by the subtraction | S3 |
 | D2 § 6.11, § 8.7 | *an install* → *a room*; `Layouts::amend()` and the compare-and-swap as the write path; the worked JSON with `name`/`aliases` | S3, S4 |
-| D2 § 6.13 | the allocation's preference key; rule 2 per Q6's answer | S2 |
+| D2 § 6.13 | the allocation's preference key; rule 2 is the seat's floor, or nothing while it has none (Q6) | S2 |
 | D2 § 8.1, § 8.2 | the snapshot's additive change under `api_version` 1 and the gated bump; the routes by seat beside the two-segment ones; the `unassigned` group; the declaration to the bridge owner recorded | S1 |
 | D2 § 9, § 14 item 7, § 6.4's `feed_outbox` comment | the deferred ACL's attachment point is the **room** key, `unassigned` for a roomless seat's rows; the timeline's session-only rule names both timeline routes | S1 |
 | D2 § 8.2.1 | the binding paragraph: `seat_id` alone is the identity; `install_id` is the room, a mutable member; *uniqueness is site-wide among live seats* | S1 |
@@ -1183,7 +1191,7 @@ own ⭐/⚠ note (card#13117, or card#13118 for § 8's rows). Nothing here is a 
 | D3 § 3.2, § 10.2 | the hash over `seat_id`; the published `h` table | S2 |
 | D3 § 3.4, § 3.5 | the move's render beside the first appearance and the removal | S3 |
 | D3 § 4.1, § 4.2 | `name` where `label` was | S4 |
-| D3 § 4.4 | routes: slug, the precedence (current slug > alias > room key), the two-rooms notice deleted; Q7's answer | S1, S4 |
+| D3 § 4.4 | routes: slug, the precedence (current slug > alias > room key), the two-rooms notice deleted; a drill-down link redirects on its floor segment alone (Q7) | S1, S4 |
 | D3 § 4.6 | `name`, `aliases`, the reader's refusals, the take-over, the implicit floor → Unassigned, the *no authored id* paragraph's reversal | S4 |
 | D3 § 9 | F17's unclaimed rooms → Unassigned | S4 |
 | D3 § 13 rows 6, 24, 25, 27 | reversed or narrowed, each in place | S2, S4 |
