@@ -7,7 +7,8 @@
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ ITS FETCHING WRITES NOTHING A SCREEN READS AS A FACT, AND ITS ONLY FAILURE SIGNAL IS THE BARE ROOM (plan § 4, cut 2): the
- * press runs `Building#enterRooms()` for every stop's rooms (held by version, so a second ride fetches nothing), the maps'
+ * press is `floor/floor-data.js`'s `prefetch()` (hoisted there by card#13033, whose building view runs the same sequence)
+ * — `Building#enterRooms()` for every stop's rooms (held by version, so a second ride fetches nothing), the maps'
  * tilesets through the page's loader, and — on a page that holds no theme module, the lobby — every theme the registry names
  * through `cab-paint.js`'s one loader. NO `Building#fetchLayout()`: that sets the failure both screens state as F17's and
  * refuse on at 401, and a press is a request for a ride, not a reading of the layout. What the steps write — a room's
@@ -20,10 +21,8 @@
 
 import { doorView } from './door-view.js';
 import { floorTheme } from './floor-theme.js';
+import { FloorData, NO_THEMES } from './floor-data.js';
 import { namedTilesets } from './tileset.js';
-
-/** No theme registry and no module held: every floor's view is the bare room in the sheet's tokens (plan § 5's R3). */
-const NO_THEMES = Object.freeze({ registry: null, modules: Object.freeze({}) });
 
 export class DoorViews {
     #building;
@@ -34,12 +33,8 @@ export class DoorViews {
 
     #themes;
 
-    #loadThemes;
-
-    #wake;
-
-    /** The themes the press loaded (`#loadThemes`), or `null` until it answered — a page whose themes are its own has none. */
-    #loaded = null;
+    /** The press's fetches (`floor/floor-data.js`), over the same building, loader and rows. */
+    #data;
 
     /** The memo: key → model. */
     #memo = new Map();
@@ -58,34 +53,17 @@ export class DoorViews {
         this.#tilesets = tilesets;
         this.#rows = rows;
         this.#themes = themes;
-        this.#loadThemes = loadThemes;
-        this.#wake = wake;
+        this.#data = new FloorData({ building, tilesets, rows, loadThemes, wake });
     }
 
     /**
-     * THE PRESS's SEQUENCE (plan § 4): every stop's rooms, the stops in parallel; then each stop's maps' tilesets; and the
-     * theme modules where the page loads them here — the page woken after each step answers.
+     * THE PRESS's SEQUENCE (plan § 4) — `FloorData#prefetch()`: every stop's rooms, the stops in parallel; then each
+     * stop's maps' tilesets; and the theme modules where the page loads them here — the page woken after each step answers.
      *
      * @returns {Promise<void>} settled when every step has
      */
     prefetch() {
-        const steps = (this.#rows() ?? []).map(async (row) => {
-            const ids = row.rooms.map((room) => room.install_id);
-
-            await this.#building.enterRooms(ids);
-            this.#wake();
-            await this.#tilesets.load(namedTilesets([row.hallway ?? null, ...ids.map((id) => this.#building.room(id)?.held?.map ?? null)]));
-            this.#wake();
-        });
-
-        if (this.#loadThemes !== null && this.#loaded === null) {
-            steps.push(this.#loadThemes().then((themes) => {
-                this.#loaded = themes ?? NO_THEMES;
-                this.#wake();
-            }));
-        }
-
-        return Promise.all(steps).then(() => undefined);
+        return this.#data.prefetch();
     }
 
     /**
@@ -107,7 +85,7 @@ export class DoorViews {
     /** The model for `stop`, the memo's when every input it reads is unchanged. */
     #view(stop) {
         const row = (this.#rows() ?? []).find((r) => r.floor === stop) ?? null;
-        const themes = this.#loaded ?? this.#themes() ?? NO_THEMES;
+        const themes = this.#data.themes ?? this.#themes() ?? NO_THEMES;
         const key = this.#key(stop, row, themes);
         const held = this.#memo.get(key);
 

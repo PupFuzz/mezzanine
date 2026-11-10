@@ -129,7 +129,8 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
      * while the doors close and bravo's once bravo is chosen — each in its own theme's carriers, its walls on the side the
      * rider's frame puts them, its desks empty, its standing pieces the theme's own documents in the one order — and the bare
      * room where the client does not wholly hold the stop's data (S3–S7); a model that lands while the doors open repaints the
-     * cab once, woken by the press's own fetch (S4); and the press fetches no layout (S8).
+     * cab once, woken by the press's own fetch (S4); the press fetches no layout (S8); and `FloorData#roomTilesets()` loads
+     * one room's tilesets and enters no room (S9, card#13033).
      */
     public function test_the_floor_behind_the_doors_is_that_floors(): void
     {
@@ -381,9 +382,13 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'the root styled with no module' => ["        style: palette === null ? null : Object.entries(palette)", "        style: palette === null ? '--dv-floor:undefined;' : Object.entries(palette)", 'doorViewDefects'],
             'the arrival never repainted' => ['            if (REPAINTED.includes(phase) && view.cab !== null && view.cab.view !== paintedView) {', '            if (false) {', 'doorViewDefects', '../wire/ride-page.js'],
             'the arrival repainted every frame' => ['            if (REPAINTED.includes(phase) && view.cab !== null && view.cab.view !== paintedView) {', '            if (REPAINTED.includes(phase) && view.cab !== null) {', 'doorViewDefects', '../wire/ride-page.js'],
-            'the press\'s wake removed' => ['        this.#wake = wake;', '        this.#wake = () => {};', 'doorViewDefects', 'door-views.js'],
+            'the press\'s wake removed' => ['        this.#wake = wake;', '        this.#wake = () => {};', 'doorViewDefects', 'floor-data.js'],
             'the memo dropped' => ['        if (held !== undefined) {', '        if (false) {', 'doorViewDefects', 'door-views.js'],
-            'the press refetching the layout' => ["    prefetch() {\n", "    prefetch() {\n        this.#building.fetchLayout();\n", 'doorViewDefects', 'door-views.js'],
+            'the press refetching the layout' => ["    prefetch() {\n        const steps", "    prefetch() {\n        this.#building.fetchLayout();\n        const steps", 'doorViewDefects', 'floor-data.js'],
+            // card#13033: `FloorData#roomTilesets()` — one room's held map's tilesets, no room entered, the page woken.
+            'one room\'s tilesets by re-entering every room' => ["        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n", "        await this.prefetch();\n", 'doorViewDefects', 'floor-data.js'],
+            'one room\'s tilesets as every row\'s' => ['namedTilesets([this.#building.room(installId)?.held?.map ?? null])', 'namedTilesets((this.#rows() ?? []).flatMap((row) => row.rooms.map((room) => this.#building.room(room.install_id)?.held?.map ?? null)))', 'doorViewDefects', 'floor-data.js'],
+            'one room\'s tilesets with no wake' => ["        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n        this.#wake();\n", "        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n", 'doorViewDefects', 'floor-data.js'],
         ] as $what => $control) {
             [$from, $to, $check] = $control;
             // The cab's drawing is `cab-paint.js`'s since card#12113; the band and the painter's own wrappers stay in `painter.js`;
@@ -1077,6 +1082,22 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             if (array_filter($s['room_requests'], static fn ($n) => $n !== 1) !== []) {
                 $defects[] = "S8 ({$status}): the press did not fetch each other stop's room once: ".json_encode($s['room_requests']);
             }
+        }
+
+        // S9 (card#13033): `FloorData#roomTilesets()` loads one room's held map's tilesets, enters no room — bravo's failed map,
+        // which any re-entry fetches again, stays unrequested — and wakes the page once per call.
+        $s9 = $v['s9'];
+
+        if (! $s9['bravo_failed']) {
+            $defects[] = 'S9: the fixture\'s bravo did not fail, so the leg cannot see a room re-entered';
+        }
+
+        if ($s9['alpha_requests'] !== $s9['owed']['alpha'] || $s9['charlie2_requests'] !== $s9['owed']['charlie2']) {
+            $defects[] = 'S9: one room\'s tilesets requested '.json_encode(['alpha' => $s9['alpha_requests'], 'charlie-2' => $s9['charlie2_requests']]).', not '.json_encode($s9['owed']);
+        }
+
+        if ($s9['wakes'] !== 2) {
+            $defects[] = "S9: two calls of roomTilesets() woke the page {$s9['wakes']} time(s), not 2";
         }
 
         return $defects;

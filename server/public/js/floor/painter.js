@@ -237,20 +237,21 @@ function effectKey(fx) {
 }
 
 /**
- * The painter, over the floor view's own drawing element — `#floor-drawing`, which
+ * The painter, over a drawing element — by default the floor view's own, `#floor-drawing`, which
  * `FloorPageWiringTest` holds to the view in both directions.
  *
- * @param {{characters: object|null, themes: Object<string, object|null>, failed: function(list<string>): void,
- *          select: function(string, string): void, ride: function(): void, house: string|null,
- *          clock: {now: function(): number}}} options `themes` the theme modules `loadArt()` held, by name; `ride`
- *          the elevator's press (§ 4.5); `house` the house theme's name, whose elevator palette the cab is drawn in;
- *          `clock` the page's clock, the one a bird's or a walker's `started_at` was read from (`pinEffects()`)
+ * @param {{host?: Element|null, omit?: Set<string>, characters: object|null, themes: Object<string, object|null>,
+ *          failed: function(list<string>): void, select: function(string, string): void, ride: function(): void,
+ *          house: string|null, clock: {now: function(): number}}} options `host` the element the drawing is painted
+ *          into (the building view paints each floor into a hidden one, card#13033); `omit` the `DRAWN_MEMBERS` members
+ *          (`desk-layout.js`) whose elements a desk is painted without — the building view's `nameplate`, whose name it
+ *          carries as a label instead — empty on the floor page; `themes` the theme modules `loadArt()` held, by name;
+ *          `ride` the elevator's press (§ 4.5); `house` the house theme's name, whose elevator palette the cab is drawn
+ *          in; `clock` the page's clock, the one a bird's or a walker's `started_at` was read from (`pinEffects()`)
  */
-export function createPainter({ characters, themes = {}, failed, select, ride = () => {}, house = null, clock = { now: () => Date.now() } }) {
-    const host = document.getElementById('floor-drawing');
-
+export function createPainter({ host = document.getElementById('floor-drawing'), omit = new Set(), characters, themes = {}, failed, select, ride = () => {}, house = null, clock = { now: () => Date.now() } }) {
     if (host === null) {
-        throw new Error('the floor page has no #floor-drawing');
+        throw new Error('the painter has no host to paint into — on the floor page, #floor-drawing');
     }
 
     const reported = new Set();
@@ -509,6 +510,11 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         let faded = null;
 
         desk.elements.forEach((e, i) => {
+            // A member the caller omits is not painted: every element it draws by, and nothing else.
+            if (omit.has(e.member)) {
+                return;
+            }
+
             const id = `${desk.key}:${i}`;
 
             if (e.opacity === undefined) {

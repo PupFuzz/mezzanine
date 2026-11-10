@@ -31,8 +31,9 @@
  * one client-side rule — an install the snapshot carries that no delivered floor places is a floor
  * of its own, alone, `open` — and gives it two homes held to one fixture
  * (`App\Building\Building::compose()` and `floors()`). A third here would be a third answer to
- * *which rooms are on this floor*; what this module adds is the GEOMETRY, which is
- * `floor/floor-layout.js`'s and which neither of those two computes.
+ * *which rooms are on this floor*; what this screen adds is the GEOMETRY — `floor/floor-compose.js`'s
+ * `composeFloor()` over `floor/floor-layout.js`'s functions, which neither of those two computes, and which
+ * the building view composes every floor by too (card#13033).
  *
  * ⛔ F17 COMPOSES NOTHING ON A COLD START (§ 9). `floors()` answers `null` for a layout that was
  * never read, and this screen carries that `null` through as the uncomposed render: the statement,
@@ -99,67 +100,8 @@ import { EffectsInFlight, awayDesk, walkSide } from './in-flight.js';
 import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, zoomStep } from '../wire/camera.js';
 import { TilesetLoader, namedTilesets } from './tileset.js';
 import { DoorViews } from './door-views.js';
-import {
-    assignSlots,
-    backWallBand,
-    mapDesks,
-    mapGrid,
-    mapReservation,
-    placeRooms,
-    RoomClock,
-} from './floor-layout.js';
-
-/**
- * § 5.5's *floor map is short N desks* — bare on a one-room floor, whose single map needs no
- * naming, and suffixed with the room on a floor of several, because *which map is short* is the
- * question the notice exists to answer (card#9292).
- */
-export function shortNotice(count, installId, roomsOnFloor) {
-    const bare = `floor map is short ${count} desks`;
-
-    return roomsOnFloor > 1 ? `${bare} — ${installId}` : bare;
-}
-
-/**
- * § 5.5's reserved-desk line and § 9 F22 (card#11144): the room's reserved desk seats nobody, either
- * because no seat relays its role or because two or more do — named by its Tiled `id`, never by
- * § 3.2's slot index, and the seats by their `seat_id` in § 3.2's `order`. `null` when the desk seats
- * its one holder, which is the case with nothing to say. Bare on a one-room floor and suffixed with
- * the room on a floor of several, as `shortNotice()` is and for its reason: *which room's desk* is
- * the question.
- *
- * @param {{reserved: {id: number|null, role: string}|null, eligible: list<string>}} assignment `assignSlots()`'s answer for the room
- */
-export function reservationNotice(assignment, installId, roomsOnFloor) {
-    const { reserved, eligible } = assignment;
-
-    if (reserved === null || eligible.length === 1) {
-        return null;
-    }
-
-    const head = `reserved for \`${reserved.role}\` (id ${reserved.id})`;
-    const bare = eligible.length === 0
-        ? `${head} — no seat holds that role`
-        : `${head} — ${eligible.length} seats hold that role: ${eligible.map((key) => `\`${splitKey(key)[1]}\``).join(', ')}`;
-
-    return roomsOnFloor > 1 ? `${bare} — ${installId}` : bare;
-}
-
-/** § 5.5 and § 9 F18: the two `install_id`s in key order, which is the order they are placed in. */
-export function overlapNotice(a, b) {
-    return `rooms \`${a}\` and \`${b}\` overlap on this floor`;
-}
-
-/**
- * § 9 F16's notice, naming the room. A `null` status is a request that never reached one — the
- * browser could not reach the server — and it is kept apart from every code rather than rendered as
- * one, for `wire/building.js`'s own reason: a failure with no code to name must not read as a code.
- */
-export function mapFailureNotice(installId, status) {
-    return status === null
-        ? `room map could not be loaded — no response — ${installId}`
-        : `room map could not be loaded — HTTP ${status} — ${installId}`;
-}
+import { RoomClock } from './floor-layout.js';
+import { composeFloor, roomMaps, sceneInput, splitKey } from './floor-compose.js';
 
 /** § 9 F17's full-width statement, on the floor route exactly as on the lobby. */
 export function layoutFailureStatement(status) {
@@ -170,9 +112,6 @@ export function layoutFailureStatement(status) {
 
 /** § 9 F17: what the floors a screen still holds are labelled while the last request failed. */
 export const LAST_KNOWN_LAYOUT = 'last known layout';
-
-/** § 4.6: a room the layout declares that the client holds no seat for. About SEATS, never installs. */
-export const NO_SEATS_REPORTED = 'no seats reported for this room';
 
 /**
  * § 4.4's floor segment, resolved against the composed floors: the floor it names, the floor to
@@ -278,8 +217,8 @@ export class FloorScreen {
     #tilesets;
 
     /**
-     * The scene's inputs no module may import (Appendix B row 14) — `{ box, measure, character,
-     * themes }` — or `null` until the page (or the harness) supplies them. With none, a frame carries no
+     * The scene's inputs no module may import (Appendix B row 14) — the page's `floor-compose.js`
+     * `artInputs()` — or `null` until the page (or the harness) supplies them. With none, a frame carries no
      * scene.
      */
     #sceneInput = null;
@@ -518,7 +457,7 @@ export class FloorScreen {
     }
 
     /**
-     * The scene's inputs (Appendix B row 14): `{ box, measure, character, themes }`. The page
+     * The scene's inputs (Appendix B row 14): `floor-compose.js`'s `artInputs()`. The page
      * supplies them once its imports of the asset route's modules have answered; the harness from
      * its fixture. The next render draws the scene.
      */
@@ -754,15 +693,14 @@ export class FloorScreen {
         const drawable = this.#sceneInput !== null && frame.floor !== null;
         // card#12450: the intern walks in flight going into this render — what item 16 turns an arrival from — and each
         // intern's laptop opacity, which a departure and a flip fade from.
-        const plain = drawable ? buildScene(frame, {
-            ...this.#sceneDocs(frame, rows),
+        const plain = drawable ? buildScene(frame, this.#sceneDocs(frame, rows, {
             interns_in_flight: this.#inFlight.interns(now),
             laptop_at: (key) => this.#inFlight.laptopAt(key, now),
             // card#12749: the snack trips in flight — where an A2 or an A10 that lands mid-trip walks from.
             trips_in_flight: this.#inFlight.trips(now),
             // card#12466: the seat walks in flight — what an A1 over a departure, or an A2 over an arrival, turns round.
             walks_in_flight: this.#inFlight.walks(now),
-        }) : null;
+        })) : null;
 
         if (drawable) {
             this.#lastFrame = frame;
@@ -1115,11 +1053,13 @@ export class FloorScreen {
         return this.#lastDrawn;
     }
 
-    /** What the scene reads beside a frame: the inputs, the documents held, and what failed. */
-    #sceneDocs(frame, effects) {
-        return {
-            ...this.#sceneInput,
-            maps: new Map(frame.rooms.map((room) => [room.install_id, this.#building.room(room.install_id)?.held?.map ?? null])),
+    /**
+     * What the scene reads beside a frame (`floor-compose.js`'s `sceneInput()`): the inputs, the documents held, what
+     * failed, and — from a render — the effects in flight (`inFlight`).
+     */
+    #sceneDocs(frame, effects, inFlight = {}) {
+        return sceneInput(this.#sceneInput, {
+            maps: roomMaps(frame, this.#building),
             hallway: this.#target()?.hallway ?? null,
             tilesets: this.#tilesets?.held ?? new Map(),
             layout_version: this.#building.layoutVersion,
@@ -1127,7 +1067,8 @@ export class FloorScreen {
             reduce: this.#options.reduce === true,
             effects,
             previous: this.#anchors,
-        };
+            ...inFlight,
+        });
     }
 
     /**
@@ -1260,137 +1201,17 @@ export class FloorScreen {
         return this.#drawFloor(route.floor, deskFrame, failure, layout, journal, at, narration);
     }
 
-    /** One composed floor: its rooms placed, its desks slotted, its band, and its lines. */
+    /**
+     * One composed floor — `floor/floor-compose.js`'s `composeFloor()`: its rooms placed, its desks slotted, its band —
+     * and what only a render over the journal adds to it: § 3.3's displacement and § 5.7's lines.
+     */
     #drawFloor(floor, deskFrame, failure, layout, journal, at, narration) {
-        const held = new Map();
-        const extents = new Map();
-
-        for (const room of floor.rooms) {
-            const state = this.#building.room(room.install_id);
-            const map = state?.held?.map ?? null;
-            const grid = mapGrid(map);
-
-            held.set(room.install_id, { state, map, grid });
-            // § 9 F16: a mapless room "keeps the extent of the last map the client held for it, and
-            // with none held it has NO footprint" — so the footprint is the held document's whether
-            // or not the last request failed, and `null` where nothing is held. `null` is not the
-            // room leaving the floor's extent: § 4.6 rule 5 puts its origin in that union, which
-            // `placeRooms()` reads from the placement it just made rather than from this map.
-            extents.set(room.install_id, grid);
-        }
-
-        const placement = placeRooms(floor.rooms, extents, floor.hallway);
-        const notices = [];
-
-        for (const [a, b] of placement.overlaps) {
-            notices.push(overlapNotice(a, b));
-        }
-
         const seatsByRoom = this.#seatsByRoom();
-        // `floors()` already answered § 4.6's *a room the fleet reports no seat for* for each room;
-        // the placement carries geometry, so the composed row is read back by key rather than having
-        // that member copied into a geometry function that has no use for it.
-        const composed = new Map(floor.rooms.map((room) => [room.install_id, room]));
-        const rooms = [];
-        const positions = new Map();
-        const overflow = [];
+        const composition = composeFloor(floor, this.#building, seatsByRoom);
 
-        // ⛔ ONE ASSIGNMENT PER ROOM PER RENDER, read by the desks AND by § 3.3's displacement
-        // check. Two runs of § 3.2 over one seat set would be two answers free to disagree, which
-        // is the defect a pure function makes avoidable rather than impossible.
-        const assignments = new Map();
+        this.#displacements(composition.assignments, journal, at);
 
-        for (const placed of placement.rooms) {
-            const state = held.get(placed.install_id);
-            const seats = seatsByRoom.get(placed.install_id) ?? [];
-            const mapless = this.#building.mapless(placed.install_id);
-            const slots = mapless ? [] : mapDesks(state.map);
-            const assignment = assignSlots(seats, slots.length, mapReservation(slots));
-
-            assignments.set(placed.install_id, assignment);
-
-            // § 9 F16: with no map to draw, every desk is F14's placeholder "in a plain grid —
-            // every fact as F14 draws it, no room". The ORDER is still
-            // § 3.2's own `(h, seat_id)` order, so a mapless room's desks are as stable across a
-            // reload as a mapped room's — F16 costs the room, never the identity.
-            const drawn = mapless
-                ? assignment.order.map((key, index) => ({ key, slot: null, grid_index: index, x: null, y: null }))
-                : assignment.order
-                    .filter((key) => assignment.slots.has(key))
-                    .map((key) => {
-                        const slot = assignment.slots.get(key);
-                        const object = slots[slot];
-
-                        return {
-                            key,
-                            slot,
-                            grid_index: null,
-                            // § 3.2's slot on the ROOM's map, plus § 4.6's origin for the room:
-                            // the plan places the grid and never a seat.
-                            x: placed.origin.x + object.x,
-                            y: placed.origin.y + object.y,
-                        };
-                    });
-
-            for (const desk of drawn) {
-                positions.set(desk.key, Object.freeze({ ...desk, install_id: placed.install_id }));
-            }
-
-            const roomNotices = [];
-
-            if (mapless) {
-                roomNotices.push(mapFailureNotice(placed.install_id, state.state?.failure?.status ?? null));
-            } else if (assignment.overflow.length > 0) {
-                roomNotices.push(shortNotice(assignment.overflow.length, placed.install_id, floor.rooms.length));
-            }
-
-            const reservation = reservationNotice(assignment, placed.install_id, floor.rooms.length);
-
-            if (reservation !== null) {
-                roomNotices.push(reservation);
-            }
-
-            // § 4.6: a room the fleet reports no seat for is drawn and LABELLED, never omitted — and
-            // the wording is about SEATS, because "a client cannot tell an install with no seats
-            // from an install that does not exist".
-            const reported = composed.get(placed.install_id).reported;
-
-            if (!reported) {
-                roomNotices.push(NO_SEATS_REPORTED);
-            }
-
-            // ⛔ A MAPLESS ROOM'S DESKS ARE NOT THE OVERFLOW ROW. § 3.2's overflow is *seats past the
-            // map's `S`*, and F16's room has no map and therefore no `S` at all: its desks are
-            // placeholders in a plain grid, drawn in the room, and the floor's band below the
-            // composed floor is for seats a MAP was short of. Reading `assignSlots(…, 0)`'s answer
-            // as overflow here would put a whole room in that band under a notice about a map count.
-            if (!mapless) {
-                overflow.push(...assignment.overflow);
-            }
-
-            notices.push(...roomNotices);
-
-            rooms.push(Object.freeze({
-                install_id: placed.install_id,
-                form: placed.form,
-                origin: placed.origin,
-                footprint: placed.footprint,
-                map: state.state?.held == null ? null : Object.freeze({
-                    source: state.state.held.source,
-                    map_version: state.state.held.map_version,
-                }),
-                mapless,
-                slots: mapless ? null : slots.length,
-                desks: Object.freeze(drawn.map((desk) => Object.freeze(desk))),
-                overflow: Object.freeze(assignment.overflow),
-                reported,
-                notices: Object.freeze(roomNotices),
-            }));
-        }
-
-        this.#displacements(assignments, journal, at);
-
-        const { rooms: coord, fleet: coordFleet } = this.#coordinate(floor, seatsByRoom, positions, journal, at);
+        const { rooms: coord, fleet: coordFleet } = this.#coordinate(floor, seatsByRoom, composition.desk_positions, journal, at);
 
         return Object.freeze({
             composed: true,
@@ -1409,26 +1230,22 @@ export class FloorScreen {
                 theme: floor.theme ?? null,
             }),
             redirect: null,
-            planned: placement.planned,
-            hallway: placement.hallway,
-            extent: placement.extent,
-            // § 4.2: ONE back-wall band for the floor, spanning its whole extent, inside no room's
-            // map and inside no hallway's. A floor of five offices has one clock over all five.
-            band: backWallBand(placement.extent),
+            planned: composition.planned,
+            hallway: composition.hallway,
+            extent: composition.extent,
+            band: composition.band,
             room: this.#room.tick,
-            rooms: Object.freeze(rooms),
-            draw_order: placement.draw_order,
-            overlaps: placement.overlaps,
-            // § 3.2: the overflow row is the FLOOR's — one band below the composed floor — however
-            // many rooms are short.
-            overflow: Object.freeze(overflow),
+            rooms: composition.rooms,
+            draw_order: composition.draw_order,
+            overlaps: composition.overlaps,
+            overflow: composition.overflow,
             desks: deskFrame,
-            desk_positions: Object.fromEntries(positions),
+            desk_positions: composition.desk_positions,
             coord,
             // card#12239: the floor's FLEET-scope posts — D2 § 8.3.3 rule 1's fleet arm over every held
             // seat, each end a desk on this floor or on another (`coord/coord-model.js`'s `fleetModel()`).
             coord_fleet: coordFleet,
-            notices: Object.freeze(notices),
+            notices: composition.notices,
             ...narration,
         });
     }
@@ -1552,7 +1369,7 @@ export class FloorScreen {
      * is drawn in its own room through the install arm of the join; a fleet-scope post through the fleet
      * arm, over every held seat, each end a desk on this floor or on another (`fleetModel()`).
      */
-    #coordinate(floor, seatsByRoom, positions, journal, at) {
+    #coordinate(floor, seatsByRoom, deskPositions, journal, at) {
         const messages = journal
             .filter((entry) => entry.t === 'coord.round' && entry.outcome === 'applied' && entry.round !== null && entry.round !== undefined)
             .map((entry) => ({ t: 'coord.round', coord_round: entry.round }));
@@ -1575,8 +1392,8 @@ export class FloorScreen {
 
         // The FLEET-scope posts, which belong to no room: names join through every held seat's
         // `roundtable_agent_name` (D2 § 8.3.3 rule 1's fleet arm), and an end is on this floor when its
-        // desk was drawn here — `positions` is keyed `install_id/seat_id`, the fleet arm's own key.
-        const fleet = fleetModel(messages, { ...buildFleetJoin(this.#client.seats.values()), here: new Set(positions.keys()) });
+        // desk was drawn here — `deskPositions` is keyed `install_id/seat_id`, the fleet arm's own key.
+        const fleet = fleetModel(messages, { ...buildFleetJoin(this.#client.seats.values()), here: new Set(Object.keys(deskPositions)) });
 
         for (const round of fleet.rounds) {
             if (!this.#drawn.first(round.post_ref)) {
@@ -1668,13 +1485,6 @@ function tapped(log) {
         },
         take: () => taken.splice(0),
     };
-}
-
-/** A held seat's key, split back into the pair § 3.1 makes a desk's identity. */
-function splitKey(key) {
-    const cut = key.indexOf('/');
-
-    return [key.slice(0, cut), key.slice(cut + 1)];
 }
 
 /**

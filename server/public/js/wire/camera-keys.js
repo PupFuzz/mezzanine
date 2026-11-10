@@ -107,8 +107,10 @@ export function cameraKeys(element, buttons, acts, show) {
  * @param {{zoomIn: HTMLElement, zoomOut: HTMLElement, fit: HTMLElement, hint: HTMLElement}} buttons the same
  *        zoom buttons, the page's framing control, and the page's gesture hint
  * @param {{bounds: object|null}} camera the screen's camera as it stands
+ * @param {string} [shortcuts] what the drawing names in `aria-keyshortcuts` while offered — `KEY_SHORTCUTS` by default;
+ *        a page whose acts move nothing on some of the keys names only those that work (the building view, card#13033)
  */
-export function offerKeys(element, buttons, camera) {
+export function offerKeys(element, buttons, camera, shortcuts = KEY_SHORTCUTS) {
     const offered = !framesNothing(camera);
 
     if (element.hasAttribute('aria-keyshortcuts') === offered) {
@@ -121,7 +123,7 @@ export function offerKeys(element, buttons, camera) {
     buttons.hint.hidden = !offered;
 
     if (offered) {
-        element.setAttribute('aria-keyshortcuts', KEY_SHORTCUTS);
+        element.setAttribute('aria-keyshortcuts', shortcuts);
         element.setAttribute('tabindex', '0');
     } else {
         element.removeAttribute('aria-keyshortcuts');

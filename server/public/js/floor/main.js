@@ -69,7 +69,8 @@ import { startAgeTicker } from '../wire/age-readout.js';
 import { startFloorScreen } from './floor-screen.js';
 import { renderCompose, renderDrillDown } from '../drilldown/main.js';
 import { ComposeBox } from '../drilldown/compose-box.js';
-import { createPainter, loadArt, measurer, themeInputs } from './painter.js';
+import { createPainter, loadArt, measurer } from './painter.js';
+import { artInputs } from './floor-compose.js';
 import { cameraView } from '../wire/camera-view.js';
 import { cameraGestures } from '../wire/camera-gestures.js';
 import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
@@ -425,21 +426,7 @@ loadArt().then(({ furniture, characters, registry, themes, failed }) => {
     painter.cabTheme(cab.dialog);
 
     if (furniture !== null) {
-        screen.sceneInputs({
-            box: furniture.FURNITURE_BOX,
-            measure: measurer(),
-            character: { w: characters?.SCENE_W ?? 0, h: characters?.SCENE_H ?? 0 },
-            // The character tree's seeded draw: a departing walker's wait at the elevator is one (§ 6.2's walk note item 5).
-            draw: characters?.draw ?? null,
-            // The character tree's crest of a seat's drawn head: where § 5.1's thought trail ends (card#12444).
-            crest: characters?.crestTop ?? null,
-            // The tree's face and pose mark over the head: what the bubble is set above (card#12446).
-            headClear: characters?.headClear ?? null,
-            // FLOOR.md § 10.6: the registry each floor's `theme` is resolved against (item 5, § 9 F23) and
-            // which themes the page holds (item 8). A registry or a theme whose import was rejected is
-            // § 9 F14's: the floor draws its fallback, and the strip names the asset.
-            themes: themeInputs(registry, themes),
-        });
+        screen.sceneInputs(artInputs({ furniture, characters, registry, themes }, measurer()));
     }
 
     screen.assetsFailed(failed);

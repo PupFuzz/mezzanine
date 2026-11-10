@@ -466,9 +466,9 @@ class TheFloorComposesItsRoomsTest extends TestCase
      */
     public function test_green_a_floor_with_nothing_measurable_on_it_still_has_no_extent(): void
     {
-        $gridless = $this->mutatedModules([self::FLOOR_SCREEN,
-            '            const grid = mapGrid(map);',
-            '            const grid = null;',
+        $gridless = $this->mutatedModules(['../floor/floor-compose.js',
+            '        const grid = mapGrid(map);',
+            '        const grid = null;',
         ]);
 
         $frame = $this->lastFloor($this->floorRun(self::MAP_FAILS, $gridless));

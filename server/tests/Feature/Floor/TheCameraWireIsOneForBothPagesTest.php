@@ -53,6 +53,12 @@ use Tests\TestCase;
  * ⛔ A GESTURE OVER AN ELEMENT THAT DECLARES IT SCROLLS IS ITS OWN WHILE IT CAN MOVE (card#12113, § 4.1's directory):
  * the wheel, and the drag decided at its first move and kept — `scrollerDefects()`.
  *
+ * ⛔ A THIRD PAGE's OPTIONS, EACH DEFAULTING TO WHAT THE TWO PAGES DO (card#13033, the building view): the plain wheel hands
+ * `pan()` the cursor beside its deltas; `cameraView()` steps on a page's own `between` and tells its `onArrive` when a glide
+ * that ran its length, or a cut, reaches its destination — never an interrupted one — and answers `gliding()`; `offerKeys()`
+ * names the shortcuts a page gives it. The legs above, which pass none of them, are the controls that the floor and the
+ * lobby see no change.
+ *
  * ⚠ WHAT THIS DOES NOT HOLD: that a browser delivers these events to these listeners, honours
  * `user-select` (or its WebKit-prefixed form), or paints what is applied — card#11045 PR-B drove the pages
  * in headless Chromium by hand, and card#11045 PR-C dispatched synthetic `gesture*` events in a headless
@@ -109,6 +115,109 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         $this->assertNotSame([['applied' => 'from'], ['applied' => 'between'], ['applied' => 'other']], $log, 'CONTROL (a glide never stopped) did not bite');
     }
 
+    // ── The three options a third page gives the wires (card#13033) ─────────────────────────────
+
+    /**
+     * A page's own step, and its arrival hook: the glide steps on the page's `between` — not `camera.js`'s, which the
+     * calls with no option still glide on (`test_green_a_glide_ends_on_its_destination_whether_it_glides_or_cuts`, the
+     * control) — and arrives once, after the step that applied the destination or after a cut, and never after an
+     * interruption; `gliding()` is true exactly while a glide is in flight.
+     */
+    public function test_green_a_pages_own_step_and_its_arrival(): void
+    {
+        $this->assertSame([], $this->optionDefects());
+    }
+
+    /** @return array<string, array{0: string, 1: string}> */
+    public static function optionPlants(): array
+    {
+        return [
+            'the page\'s step ignored' => ['            shown = between(from, to, t);', '            shown = cameraBetween(from, to, t);'],
+            'a glide that runs its length never arriving' => ["            glide = null;\n            onArrive(to);\n", "            glide = null;\n"],
+            'a cut that never arrives' => ["            show(to);\n            onArrive(to);\n", "            show(to);\n"],
+            'an interrupted glide arriving' => ["            cancelAnimationFrame(glide.frame);\n", "            cancelAnimationFrame(glide.frame);\n            onArrive(shown);\n"],
+            'a glide never seen in flight' => ['        return glide !== null;', '        return false;'],
+            'a glide seen in flight after it arrived' => ["            glide = null;\n            onArrive(to);\n", "            onArrive(to);\n"],
+        ];
+    }
+
+    #[DataProvider('optionPlants')]
+    public function test_red_each_option_defect(string $anchor, string $replacement): void
+    {
+        $dir = $this->mutatedModules(['camera-view.js', $anchor, $replacement]);
+
+        $this->assertNotSame([], $this->optionDefects($dir), 'the planted option defect did not bite');
+    }
+
+    /** The plain wheel hands the cursor on the drawing to `pan()` beside its deltas — the deltas first, as before. */
+    public function test_green_the_plain_wheel_hands_pan_its_point(): void
+    {
+        $this->assertSame([], $this->panPointDefects());
+    }
+
+    public function test_red_a_plain_wheel_that_hands_pan_no_point(): void
+    {
+        $dir = $this->mutatedModules(['camera-gestures.js', 'deltaMode: event.deltaMode }, local(event.clientX, event.clientY));', 'deltaMode: event.deltaMode });']);
+
+        $this->assertNotSame([], $this->panPointDefects($dir), 'CONTROL (the point dropped) did not bite');
+    }
+
+    /** `offerKeys()` given the keys a page advertises names exactly those — and withdraws them as it withdraws the default. */
+    public function test_green_the_keys_a_page_advertises_are_the_ones_named(): void
+    {
+        $this->assertSame([], $this->shortcutDefects());
+    }
+
+    public function test_red_the_advertised_keys_ignored(): void
+    {
+        $dir = $this->mutatedModules(['camera-keys.js', "        element.setAttribute('aria-keyshortcuts', shortcuts);", "        element.setAttribute('aria-keyshortcuts', KEY_SHORTCUTS);"]);
+
+        $this->assertNotSame([], $this->shortcutDefects($dir), 'CONTROL (the advertised keys ignored) did not bite');
+    }
+
+    /** @return list<string> */
+    private function optionDefects(?string $dir = null): array
+    {
+        $options = ['between' => true, 'on_arrive' => true];
+        $run = fn (array $ops): array => $this->probe(['view' => $ops, 'options' => $options], $dir)['log'];
+        $defects = [];
+
+        // A glide that runs its length: the page's steps (logged `other`), the destination, one arrival — in flight until then.
+        $glided = $run([['op' => 'gliding'], ['op' => 'glide', 'ms' => 850], ['op' => 'gliding'], ['op' => 'frame', 'ms' => 400], ['op' => 'gliding'], ['op' => 'frame', 'ms' => 500], ['op' => 'gliding'], ['op' => 'frame', 'ms' => 500]]);
+        $want = [['gliding' => false], ['applied' => 'from'], ['gliding' => true], ['applied' => 'other'], ['gliding' => true], ['applied' => 'to'], ['arrived' => 'to'], ['gliding' => false]];
+        array_push($defects, ...$this->logDefects($glided, $want, 'glided'));
+
+        // A cut (reduced motion) arrives at once and is never in flight.
+        array_push($defects, ...$this->logDefects($run([['op' => 'glide', 'ms' => 0], ['op' => 'gliding']]), [['applied' => 'from'], ['applied' => 'to'], ['arrived' => 'to'], ['gliding' => false]], 'cut'));
+
+        // An interrupted glide never arrives, and is not in flight after it.
+        $interrupted = $run([['op' => 'glide', 'ms' => 850], ['op' => 'frame', 'ms' => 100], ['op' => 'show'], ['op' => 'gliding'], ['op' => 'frame', 'ms' => 1000]]);
+        array_push($defects, ...$this->logDefects($interrupted, [['applied' => 'from'], ['applied' => 'other'], ['applied' => 'other'], ['gliding' => false]], 'interrupted'));
+
+        return $defects;
+    }
+
+    /** @return list<string> */
+    private function panPointDefects(?string $dir = null): array
+    {
+        $log = $this->probe(['gestures' => [['type' => 'wheel', 'clientX' => 110, 'clientY' => 220, 'deltaX' => -30, 'deltaY' => 120, 'deltaMode' => 0, 'ctrlKey' => false]], 'pan_point' => true], $dir)['log'];
+        $want = [
+            ['show' => ['act' => 'pan', 'delta' => ['deltaX' => -30, 'deltaY' => 120, 'deltaMode' => 0], 'point' => ['x' => 100, 'y' => 200]]],
+            ['event' => 'wheel', 'default_prevented' => true, 'propagation_stopped' => false, 'user_select' => '', 'webkit_user_select' => ''],
+        ];
+
+        return $this->logDefects($log, $want, 'pan point');
+    }
+
+    /** @return list<string> */
+    private function shortcutDefects(?string $dir = null): array
+    {
+        $log = $this->probe(['offer' => [true, false, true], 'shortcuts' => '+ - ArrowLeft ArrowRight'], $dir)['log'];
+
+        return $this->logDefects(array_map(static fn (array $e): array => ['framed' => $e['framed'], 'keyshortcuts' => $e['keyshortcuts']], $log),
+            [['framed' => true, 'keyshortcuts' => '+ - ArrowLeft ArrowRight'], ['framed' => false, 'keyshortcuts' => null], ['framed' => true, 'keyshortcuts' => '+ - ArrowLeft ArrowRight']], 'shortcuts');
+    }
+
     // ── The gestures ───────────────────────────────────────────────────────────────────────────
 
     public function test_green_the_gestures_reach_the_acts_as_both_pages_need_them(): void
@@ -137,8 +246,8 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
             // card#11045: the plain wheel pans and the Ctrl+wheel zooms — each with its own members, about the drawing.
             'a plain wheel that zooms' => ['camera-gestures.js', 'const { camera, consumed } = event.ctrlKey', 'const { camera, consumed } = true'],
             'a Ctrl+wheel (a trackpad pinch) that pans' => ['camera-gestures.js', 'const { camera, consumed } = event.ctrlKey', 'const { camera, consumed } = false'],
-            'a pan whose deltaX never reaches the camera' => ['camera-gestures.js', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode })', 'acts.pan({ deltaY: event.deltaY, deltaMode: event.deltaMode })'],
-            'a pan whose deltaMode never reaches the camera' => ['camera-gestures.js', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode })', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY })'],
+            'a pan whose deltaX never reaches the camera' => ['camera-gestures.js', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode },', 'acts.pan({ deltaY: event.deltaY, deltaMode: event.deltaMode },'],
+            'a pan whose deltaMode never reaches the camera' => ['camera-gestures.js', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode },', 'acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY },'],
             'a zoom whose deltaMode never reaches the camera' => ['camera-gestures.js', 'acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY, deltaMode: event.deltaMode })', 'acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY })'],
             'a zoom about the page, not the drawing' => ['camera-gestures.js', 'acts.zoom(local(event.clientX, event.clientY)', 'acts.zoom({ x: event.clientX, y: event.clientY }'],
             'a wheel that also scrolls the page' => ['camera-gestures.js', "        event.preventDefault();\n        show(camera);", '        show(camera);'],
@@ -425,7 +534,9 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         return [
             'a zoom-in button never shown' => ["    buttons.zoomIn.hidden = !offered;\n", ''],
             'a zoom-out button never hidden again' => ['    buttons.zoomOut.hidden = !offered;', '    buttons.zoomOut.hidden = false;'],
-            'keys never named' => ["        element.setAttribute('aria-keyshortcuts', KEY_SHORTCUTS);\n", ''],
+            'keys never named' => ["        element.setAttribute('aria-keyshortcuts', shortcuts);\n", ''],
+            // card#13033: the default the floor and the lobby rely on, narrowed.
+            'a default that names fewer keys than the wire takes' => ['shortcuts = KEY_SHORTCUTS) {', "shortcuts = '+ -') {"],
             'keys named after the camera stopped framing' => ["        element.removeAttribute('aria-keyshortcuts');\n", ''],
             'an arrow key the drawing does not name' => ["['+', '-', ...Object.keys(KEY_PAN)]", "['+', '-', 'ArrowLeft']"],
             'a key named that no handler takes' => ["['+', '-', ...Object.keys(KEY_PAN)]", "['+', '-', 'Home', ...Object.keys(KEY_PAN)]"],

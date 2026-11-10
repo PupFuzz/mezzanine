@@ -14,11 +14,17 @@
  *    two 1600 × 1000 plates, TO is FROM focused on the first plate, OTHER on the second. Ops:
  *    `{ "op": "glide", "ms" }` — `glideTo(FROM, TO, ms)`;
  *    `{ "op": "frame", "ms" }` — the clock moves `ms` and every frame requested so far runs;
- *    `{ "op": "show" }` — `show(OTHER)`; `{ "op": "glide_other", "ms" }` — `glideTo(FROM, OTHER, …)`.
+ *    `{ "op": "show" }` — `show(OTHER)`; `{ "op": "glide_other", "ms" }` — `glideTo(FROM, OTHER, …)`;
+ *    `{ "op": "gliding" }` — logs `{ "gliding": bool }`, the view's `gliding()`. With `"options": {"between"?: true,
+ *    "on_arrive"?: true}` the view is given its options (card#13033): `between` a page's own step, which answers OTHER
+ *    until `t` reaches 1 and the destination there, so its steps log as `other`; `on_arrive` a hook logging
+ *    `{ "arrived": name }`. Without `options` the view is called with `apply` alone, as the floor and the lobby call it.
  *  · `{ "gestures": [event, …], "framed"? }` — `cameraGestures()` on a stand-in element whose box is
  *    at (10, 20), with acts that record their arguments — the wheel's two, `pan` and `zoom`, answering
  *    that they consumed the event, as a framed camera's do off the edge; with `"pan_consumed": false`
- *    the pan answers that it did not, as at an edge (card#11045 Q3); with `"scroller": {scrollTop, clientHeight,
+ *    the pan answers that it did not, as at an edge (card#11045 Q3); with `"pan_point": true` the pan's show also
+ *    carries its second argument as `point` (card#13033: the wheel's cursor), and without it the pan records its
+ *    deltas alone, as a 2-D screen's pan reads them; with `"scroller": {scrollTop, clientHeight,
  *    scrollHeight}` a stand-in element inside the drawing that declares it scrolls, the target of every event
  *    spec carrying `"over": "scroller"`, its `scrollTop` logged after each event (card#12113) — and a camera
  *    that frames a scene — or, with
@@ -32,7 +38,8 @@
  *    that button; `reframe` as above.
  *  · `{ "offer": [bool, …] }` — `offerKeys()` on a stand-in drawing and four stand-ins (the zoom buttons,
  *    the page's framing control and its gesture hint), each starting withdrawn as both pages' markup does,
- *    once per entry with a camera that frames a scene (`true`) or nothing (`false`), logging after each
+ *    once per entry with a camera that frames a scene (`true`) or nothing (`false`) — and with `"shortcuts"` that
+ *    string as its fourth argument (card#13033), without it none, as the floor and the lobby call it — logging after each
  *    whether each is hidden, the drawing's `aria-keyshortcuts` and `tabindex` (`null` when it has none), and
  *    `writes` — how many writes `offerKeys()` has made to the drawing and the buttons so far.
  * stdout — JSON: `{ "log": [ … ] }` — for `view`, each camera applied, named `from` / `to` / `other`
@@ -88,7 +95,12 @@ if (payload.view !== undefined) {
     };
     const same = (a, b) => a.zoom === b.zoom && a.x === b.x && a.y === b.y;
     const name = (camera) => Object.keys(cameras).find((k) => same(cameras[k], camera)) ?? 'between';
-    const view = cameraView((camera) => log.push({ applied: name(camera) }));
+    const apply = (camera) => log.push({ applied: name(camera) });
+    const options = payload.options === undefined ? null : {
+        ...(payload.options.between ? { between: (from, to, t) => (t >= 1 ? to : cameras.other) } : {}),
+        ...(payload.options.on_arrive ? { onArrive: (to) => log.push({ arrived: name(to) }) } : {}),
+    };
+    const view = options === null ? cameraView(apply) : cameraView(apply, options);
 
     for (const op of payload.view) {
         switch (op.op) {
@@ -100,6 +112,9 @@ if (payload.view !== undefined) {
                 break;
             case 'show':
                 view.show(cameras.other);
+                break;
+            case 'gliding':
+                log.push({ gliding: view.gliding() });
                 break;
             case 'frame': {
                 clock += op.ms;
@@ -148,7 +163,13 @@ if (payload.view !== undefined) {
     const buttons = { zoomIn: button(), zoomOut: button(), fit: button(), hint: button() };
 
     for (const framed of payload.offer) {
-        offerKeys(element, buttons, { bounds: framed ? { x: 0, y: 0, w: 1600, h: 2000 } : null });
+        const camera = { bounds: framed ? { x: 0, y: 0, w: 1600, h: 2000 } : null };
+
+        if (payload.shortcuts === undefined) {
+            offerKeys(element, buttons, camera);
+        } else {
+            offerKeys(element, buttons, camera, payload.shortcuts);
+        }
         log.push({
             framed,
             zoom_in_hidden: buttons.zoomIn.hidden,
@@ -180,7 +201,7 @@ if (payload.view !== undefined) {
     element.contains = (node) => node === scroller;
 
     const acts = {
-        pan: (delta) => ({ camera: { act: 'pan', delta }, consumed: payload.pan_consumed !== false }),
+        pan: (delta, point) => ({ camera: { act: 'pan', delta, ...(payload.pan_point === true ? { point } : {}) }, consumed: payload.pan_consumed !== false }),
         zoom: (point, delta) => ({ camera: { act: 'zoom', point, delta }, consumed: true }),
         pinch: (from, to, factor) => ({ act: 'pinch', from, to, factor }),
         zoomStep: (notches) => ({ act: 'zoomStep', notches }),

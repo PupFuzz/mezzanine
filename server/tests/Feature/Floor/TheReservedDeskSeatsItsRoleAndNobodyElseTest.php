@@ -252,7 +252,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
     /** ⛔ RED — a client that ignores the reservation seats `aimla-pm` at its hash slot. */
     public function test_red_a_client_that_ignores_the_reservation_reds_the_seated_runs(): void
     {
-        $ignoring = $this->mutatedModules([self::FLOOR_SCREEN,
+        $ignoring = $this->mutatedModules(['../floor/floor-compose.js',
             'assignSlots(seats, slots.length, mapReservation(slots))',
             'assignSlots(seats, slots.length)',
         ]);
