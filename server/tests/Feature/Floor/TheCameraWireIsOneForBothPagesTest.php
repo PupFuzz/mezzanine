@@ -53,7 +53,7 @@ use Tests\TestCase;
  * ⛔ A GESTURE OVER AN ELEMENT THAT DECLARES IT SCROLLS IS ITS OWN WHILE IT CAN MOVE (card#12113, § 4.1's directory):
  * the wheel, and the drag decided at its first move and kept — `scrollerDefects()`.
  *
- * ⛔ A THIRD PAGE's OPTIONS, EACH DEFAULTING TO WHAT THE TWO PAGES DO (card#13033, the building view): the plain wheel hands
+ * ⛔ THE BUILDING VIEW's OPTIONS, EACH DEFAULTING TO WHAT THE FLOOR AND THE LOBBY DO (card#13033): the plain wheel hands
  * `pan()` the cursor beside its deltas; `cameraView()` steps on a page's own `between` and tells its `onArrive` when a glide
  * that ran its length, or a cut, reaches its destination — never an interrupted one — and answers `gliding()`; `offerKeys()`
  * names the shortcuts a page gives it. The legs above, which pass none of them, are the controls that the floor and the
@@ -115,7 +115,7 @@ class TheCameraWireIsOneForBothPagesTest extends TestCase
         $this->assertNotSame([['applied' => 'from'], ['applied' => 'between'], ['applied' => 'other']], $log, 'CONTROL (a glide never stopped) did not bite');
     }
 
-    // ── The three options a third page gives the wires (card#13033) ─────────────────────────────
+    // ── The building view's options to the wires: the wheel's point, the view's step and arrival, the keys (card#13033) ──
 
     /**
      * A page's own step, and its arrival hook: the glide steps on the page's `between` — not `camera.js`'s, which the

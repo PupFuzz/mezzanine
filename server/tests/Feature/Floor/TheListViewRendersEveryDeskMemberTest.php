@@ -15,7 +15,8 @@ use Tests\TestCase;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ BOTH POPULATIONS ARE DERIVED, NEITHER IS LISTED. The RUNS are every run of every checked-in
  * fixture file (`fixtureFileNames()`, the one population every harness reader shares) that draws a
- * desk: a run that starts the floor screen is replayed as written, a run that starts no renderer is
+ * desk: a run that starts the floor screen or the building view is replayed as written (the building view's
+ * desks are its one desk floor's, carried on every floor's frame), a run that starts no renderer is
  * replayed under the desk floor — the page condition `DrivesTheDeskFloor` already adds — and a lobby
  * run is skipped because the lobby draws no desk model. The LEAVES are whatever `deskModel()` returned
  * on those runs, walked by `desk-list-probe.mjs`; nothing here or in the module names a fact the model
@@ -165,12 +166,16 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
                 }
 
                 $floor = array_key_exists('floor', $scenario);
-                $result = $this->replay($run, $dir, $floor || ($scenario['desk_floor'] ?? false) === true ? [] : ['desk_floor' => true]);
+                $building = array_key_exists('building', $scenario);
+                $result = $this->replay($run, $dir, $floor || $building || ($scenario['desk_floor'] ?? false) === true ? [] : ['desk_floor' => true]);
                 $perRun[$run] = 0;
 
-                $frames = $floor
-                    ? array_map(fn (array $r): array => $r['frame']['desks']['desks'], $result['floor_renders'])
-                    : array_map(fn (array $r): array => $r['frame']['desks'], $result['desk_renders']);
+                $frames = match (true) {
+                    $floor => array_map(fn (array $r): array => $r['frame']['desks']['desks'], $result['floor_renders']),
+                    // Every floor's frame carries the one desk floor's frame; a render before the layout has no floor.
+                    $building => array_map(fn (array $r): array => $r['frame']['floors'][0]['frame']['desks']['desks'] ?? [], $result['building_renders']),
+                    default => array_map(fn (array $r): array => $r['frame']['desks'], $result['desk_renders']),
+                };
 
                 foreach ($frames as $frame) {
                     foreach ($frame as $key => $model) {

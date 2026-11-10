@@ -4,8 +4,8 @@ namespace Tests\Feature\Support;
 
 /**
  * **Every module specifier a browser module's source names** — the one reader behind every import walk
- * in this suite (`DrivesAShippedClientModule::relativeImports()`, and the lobby's import-graph bound in
- * `Tests\Feature\Floor\TheBuildingCameraMovesTheViewerAndNeverTheFleetTest`).
+ * in this suite (`DrivesAShippedClientModule::relativeImports()`, and `WalksAPagesImportGraph`, the walk
+ * behind each page's import-graph bound).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ IT FAILS CLOSED (card#7343 r2-1). A walk that reads only the specifiers it knows how to follow

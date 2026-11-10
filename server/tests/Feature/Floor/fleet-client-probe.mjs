@@ -81,6 +81,15 @@
  *                                               //  `lobby_renders[]` with the trigger `ride`;
  *                                               //  `"local_hours": N, "local_minutes": N` the viewer's
  *                                               //  civil time for the sky, as the floor's
+ *      "building":   { "surface": {width, height}, // start `building/building-screen.js` after start(),
+ *                      "lobby_href": "<url>",   //  `render()` after every settled event — the BUILDING VIEW
+ *                      "scene": { … } }         //  (Appendix B row 47, card#13033) over this same client: the
+ *                                               //  stage (absent, `HARNESS_SURFACE`), the ground slab's link, and
+ *                                               //  the scene inputs in the floor's `scene` shape, its
+ *                                               //  `themes.reject` injected as the floor's are, and
+ *                                               //  `local_hours`/`local_minutes` as the floor's. Each render's
+ *                                               //  frame is recorded in `building_renders[]` with `drains`, the
+ *                                               //  number of `takeWire()` calls it made
  *      "floor.lobby_href": "<url>"              // the floor page's own *Back to the lobby* link's href,
  *                                               //  handed to the screen as the page hands it (§ 4.5's
  *                                               //  ride, card#11795) — the cab's lobby stop
@@ -137,6 +146,7 @@
  *      after a ride act (`rideView()`), "ride_acts": [ {at, act, answer, ride, scene_view_ride} ] — each ride act's
  *      answer, the `ride` of the frame painted after it (`null` when it answered `null` and nothing was painted)
  *      and the `ride` of the 1 s tick's scene over that frame's desks (`sceneView()`),
+ *      "building_renders": [ {at, trigger, drains, frame} ] — the building view's, each render's journal drains counted,
  *      "lobby_renders": [ {at, trigger, frame} ] — `trigger` `render`, `ride` for the frame a page paints
  *      after a ride act (`rideView()`) and `tick` for the 1 s tick's (`tickView()`) — "camera_acts": [ {at,
  *      act, before, after, glide_ms} ] on either page —
@@ -210,6 +220,10 @@
  * `desk_floor` would be two renderers racing for one drain. Its building requests go through the
  * microtask transport the floor's do, for the floor's reason: the lobby awaits them inside its render.
  *
+ * ⛔ THE BUILDING VIEW IS THE SHIPPED ONE TOO, EXCLUSIVE WITH THE OTHER THREE FOR THEIR REASON: it drains the journal. Its
+ * drains are COUNTED, not inferred — `takeWire()` is wrapped and each render records how many times it was called — because
+ * the scenario-key rule above sees two renderers named, never one renderer draining twice (AT-D3-37's fifth RED).
+ *
  * ⛔ THE VIEWER'S CIVIL TIME IS THE SCENARIO'S, NEVER THE BUILD HOST'S. § 4.2's sky has four phases
  * by the viewer's own hour, and a host in another zone would read a different one out of the same
  * fixture — a test whose answer depends on where it ran. So the probe supplies § 4.2's civil-time
@@ -253,6 +267,7 @@ const { startFloorScreen } = await import(pathToFileURL(join(dir, '..', 'floor',
 const { statusStrip } = await import(pathToFileURL(join(dir, '..', 'floor', 'status-strip.js')).href);
 const { failureRender } = await import(pathToFileURL(join(dir, 'failure-render.js')).href);
 const { startLobbyScreen } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-screen.js')).href);
+const { startBuildingScreen } = await import(pathToFileURL(join(dir, '..', 'building', 'building-screen.js')).href);
 const { healthCounters } = await import(pathToFileURL(join(dir, '..', 'lobby', 'lobby-model.js')).href);
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -508,6 +523,7 @@ async function replay(scenario) {
     const deskRenders = [];
     const floorRenders = [];
     const lobbyRenders = [];
+    const buildingRenders = [];
     const cameraActs = [];
     const log = createAnimationLog();
     let floor = null;
@@ -516,8 +532,10 @@ async function replay(scenario) {
     // `lobby: true` is the lobby with no camera acts; an object states them (see the header).
     const lobbyRun = scenario.lobby === true ? {} : (typeof scenario.lobby === 'object' && scenario.lobby !== null ? scenario.lobby : null);
 
-    if ([scenario.desk_floor === true, (scenario.floor ?? null) !== null, lobbyRun !== null].filter(Boolean).length > 1) {
-        throw new Error('a scenario names more than one of `desk_floor`, `floor` and `lobby`: two renderers, one journal');
+    const buildingRun = scenario.building ?? null;
+
+    if ([scenario.desk_floor === true, (scenario.floor ?? null) !== null, lobbyRun !== null, buildingRun !== null].filter(Boolean).length > 1) {
+        throw new Error('a scenario names more than one of `desk_floor`, `floor`, `lobby` and `building`: two renderers, one journal');
     }
 
     // The shipped ticker's timer, on the scenario queue: one repeating event per interval.
@@ -651,22 +669,53 @@ async function replay(scenario) {
     // theme's (`themes.reject: [name]`), and each is reported failed as `loadArt()` reports it.
     let supplyScene = null;
 
-    if (screen !== null && scenario.floor.scene !== undefined) {
-        const { measurer, character, box, themes: spec = {} } = scenario.floor.scene;
+    // The building view, started beside the floor's: its drains counted per render (see the header).
+    let building = null;
+    let drains = 0;
+
+    if (buildingRun !== null) {
+        const takeWire = client.takeWire.bind(client);
+
+        client.takeWire = () => {
+            drains++;
+
+            return takeWire();
+        };
+        building = startBuildingScreen(client, buildingHttp.fetch, clock, log, (frame) => {
+            buildingRenders.push({ at: now, trigger: 'render', drains, frame: recorded(frame) });
+        }, {
+            surface: buildingRun.surface ?? HARNESS_SURFACE,
+            reduce: scenario.reduce === true,
+            local_time: viewerTime(buildingRun),
+            lobby_href: buildingRun.lobby_href ?? null,
+        });
+    }
+
+    /** One render of the building view, its drains counted from zero. */
+    const renderBuilding = async () => {
+        drains = 0;
+        await building.render();
+    };
+
+    const sceneScreen = screen ?? building;
+    const sceneSpec = screen !== null ? scenario.floor.scene : buildingRun?.scene;
+
+    if (sceneScreen !== null && sceneSpec !== undefined) {
+        const { measurer, character, box, themes: spec = {} } = sceneSpec;
         const { themeInputs, THEME_REGISTRY } = await import(pathToFileURL(join(dir, '..', 'floor', 'painter.js')).href);
         const registry = spec.registry === false ? null : themeRegistry;
         const rejected = registry === null ? [] : registry.THEMES.filter((name) => (spec.reject ?? []).includes(name));
         const modules = registry === null ? {} : Object.fromEntries(registry.THEMES.map((name) => [name, rejected.includes(name) ? null : themeModules[name]]));
 
         supplyScene = () => {
-            screen.sceneInputs({
+            sceneScreen.sceneInputs({
                 box: box ?? furniture.FURNITURE_BOX,
                 measure: harnessMeasurer(measurer),
                 character,
                 draw: seededDraw,
                 themes: themeInputs(registry, modules),
             });
-            screen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
+            sceneScreen.assetsFailed([...(registry === null ? [THEME_REGISTRY] : []), ...rejected.map((name) => `theme:${name}`)]);
         };
     }
 
@@ -913,6 +962,11 @@ async function replay(scenario) {
         await turn();
     }
 
+    if (building !== null) {
+        await renderBuilding();
+        await turn();
+    }
+
     if (screen !== null) {
         // The page's frame drawn before the entry has answered (card#11825): on a page the entry and
         // the renders run concurrently, so a frame can be drawn while the layout is still pending.
@@ -980,6 +1034,11 @@ async function replay(scenario) {
                 await lobby.render();
                 await turn();
             }
+
+            if (building !== null) {
+                await renderBuilding();
+                await turn();
+            }
         }
 
         snap(timer.label, outcome ?? null);
@@ -1007,6 +1066,7 @@ async function replay(scenario) {
         desk_renders: deskRenders,
         floor_renders: floorRenders,
         lobby_renders: lobbyRenders,
+        building_renders: buildingRenders,
         camera_acts: cameraActs,
         ride_acts: rideActs,
         animation_log: log.rows,

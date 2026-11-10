@@ -77,6 +77,13 @@ export function mapFailureNotice(installId, status) {
         : `room map could not be loaded — HTTP ${status} — ${installId}`;
 }
 
+/** § 9 F17's full-width statement, on every screen that composes floors — the floor route, and the building view. */
+export function layoutFailureStatement(status) {
+    return status === null
+        ? 'the building layout could not be loaded — no response'
+        : `the building layout could not be loaded — HTTP ${status}`;
+}
+
 /** § 4.6: a room the layout declares that the client holds no seat for. About SEATS, never installs. */
 export const NO_SEATS_REPORTED = 'no seats reported for this room';
 
@@ -245,8 +252,9 @@ export function composeFloor(floor, building, seatsByRoom) {
 }
 
 /**
- * Every member `buildScene()` reads off its input — the art's, the documents', the render's and the four the floor
- * screen's in-flight effects add. `TheFloorCompositionIsOneForBothScreensTest` holds it equal to `scene.js`'s reads.
+ * Every member `buildScene()` reads off its input — the art's, the documents', the render's, and the members the floor
+ * screen's in-flight effects add (the list's last line). `TheFloorCompositionIsOneForBothScreensTest` holds it equal to
+ * `scene.js`'s reads.
  */
 export const SCENE_INPUT_KEYS = Object.freeze([
     'box', 'measure', 'character', 'draw', 'crest', 'headClear', 'themes',
@@ -292,8 +300,8 @@ export function roomMaps(frame, building) {
 
 /**
  * What `buildScene()` reads beside a frame: the art inputs and the per-frame documents — `{ maps, hallway, tilesets,
- * layout_version, failed, reduce, effects, previous }` and, from the floor screen's render, the four in-flight members
- * (`interns_in_flight`, `laptop_at`, `trips_in_flight`, `walks_in_flight`) — joined. A member a caller has no value
+ * layout_version, failed, reduce, effects, previous }` and, from the floor screen's render, the in-flight members
+ * `interns_in_flight`, `laptop_at`, `trips_in_flight` and `walks_in_flight` — joined. A member a caller has no value
  * for is left out, and the scene reads its absence as nothing in flight.
  *
  * @param {object} art `artInputs()`'s answer (the harness hands its own of the same members)

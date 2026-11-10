@@ -4,7 +4,7 @@ namespace Tests\Feature\Floor;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Tests\Feature\Support\ModuleSpecifiers;
+use Tests\Feature\Support\WalksAPagesImportGraph;
 use Tests\TestCase;
 
 /**
@@ -53,6 +53,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 {
     use DrivesTheFleetClientModule;
     use RefreshDatabase;
+    use WalksAPagesImportGraph;
 
     private const RUN = 'building_room';
 
@@ -91,11 +92,6 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     /** The ride's one import from the set's module — a constant, never the set (card#12113). */
     private const RIDE_IMPORT = "import { LOOP_FPS } from './animation-set.js';";
-
-    /** The one module whose dynamic imports the walk follows into the asset route, and the two it holds them to. */
-    private const ASSET_LOADER = 'floor/cab-paint.js';
-
-    private const ASSET_IMPORTS = ['await import(THEME_REGISTRY)', 'await import(themeModule(name))'];
 
     private const EPSILON = 1e-6;
 
@@ -657,83 +653,24 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     }
 
     /**
-     * Every module the lobby page loads, from `lobby/main.js` and from each of `DOOR_VIEW_ROOTS`, through every specifier
-     * each module names (`ModuleSpecifiers::of()`) — and a defect for each import of the animation log or the animation set by any module but
-     * its importer on `PATH`, for each module on `PATH` that no longer loads its one, for the ride's import from the set
-     * being anything but its constant, and for each specifier the walk cannot follow but the asset loader's two, which it
-     * follows into `resources/floor/themes/` by name.
-     *
-     * ⛔ AN UNFOLLOWABLE SPECIFIER IS A DEFECT, NEVER SKIPPED (card#7343 r2-1).
+     * Every module the lobby page loads, from `lobby/main.js` and from each of `DOOR_VIEW_ROOTS` (the walk is
+     * `Tests\Feature\Support\WalksAPagesImportGraph`'s, which also reds every specifier it cannot follow) — and a defect for
+     * each import of the animation log or the animation set by any module but its importer on `PATH`, for each module on
+     * `PATH` that no longer loads its one, and for the ride's import from the set being anything but its constant.
      *
      * @return list<string>
      */
     private function graphDefects(string $root): array
     {
-        // The asset route's tree is the repository's `resources/`, whichever copy of the module tree is walked.
-        $resources = dirname($this->jsRoot(), 3).'/resources';
-        $seen = [];
-        $queue = ['lobby/main.js', ...self::DOOR_VIEW_ROOTS];
-        $defects = [];
-        $edges = [];
+        ['seen' => $seen, 'edges' => $edges, 'defects' => $defects] = $this->importGraph($root, ['lobby/main.js', ...self::DOOR_VIEW_ROOTS]);
 
-        while ($queue !== []) {
-            $file = array_shift($queue);
-
-            if (isset($seen[$file])) {
-                continue;
-            }
-
-            // A key `@resources/…` is the asset route's tree (`resources/`), walked with its own relative imports.
-            $path = str_starts_with($file, '@resources/') ? $resources.'/'.substr($file, 11) : $root.'/'.$file;
-            $this->assertFileExists($path, "the lobby page imports {$file}, which is not there");
-            $seen[$file] = true;
-            $source = (string) file_get_contents($path);
-            $unfollowable = [];
-
-            foreach (ModuleSpecifiers::of($source) as $s) {
-                if (! $s['followable']) {
-                    $unfollowable[] = $s;
-
-                    continue;
-                }
-
-                $base = str_starts_with($file, '@resources/') ? '@resources/'.$this->normalise(dirname(substr($file, 11)).'/'.$s['specifier']) : $this->normalise(dirname($file).'/'.$s['specifier']);
-                $edges[] = [$file, $base];
-                $queue[] = $base;
-            }
-
-            // The asset loader's two dynamic imports, and only those two, are followed into the asset route by name: the
-            // registry, and every theme module its `THEMES` line names (any of them may be loaded — card#12987's view
-            // behind the cab's doors loads them all).
-            if ($file === self::ASSET_LOADER && count($unfollowable) === count(self::ASSET_IMPORTS)
-                && array_filter(self::ASSET_IMPORTS, static fn (string $needle): bool => ! str_contains(ModuleSpecifiers::withoutComments($source), $needle)) === []) {
-                $registry = (string) file_get_contents($resources.'/floor/themes/index.js');
-                $this->assertSame(1, preg_match("/^export const THEMES = Object\\.freeze\\(\\[([^\\]]*)\\]\\);$/m", $registry, $line), 'the theme registry names no themes');
-                $this->assertGreaterThan(0, preg_match_all("/'([a-z0-9-]+)'/", $line[1], $names), 'the theme registry\'s THEMES line names no theme');
-                $queue[] = '@resources/floor/themes/index.js';
-                $edges[] = [$file, '@resources/floor/themes/index.js'];
-
-                foreach ($names[1] as $name) {
-                    $queue[] = "@resources/floor/themes/{$name}/theme.js";
-                    $edges[] = [$file, "@resources/floor/themes/{$name}/theme.js"];
-                }
-
-                $unfollowable = [];
-            }
-
-            foreach ($unfollowable as $s) {
-                $defects[] = sprintf('%s loads %s by %s, which this walk cannot follow: %s',
-                    $file, $s['specifier'] === null ? 'a non-literal' : "`{$s['specifier']}`", $s['form'], $s['why']);
-            }
-
-            if ($file === 'wire/ride.js' && ! str_contains($source, self::RIDE_IMPORT)) {
-                $defects[] = 'wire/ride.js imports from the set\'s module something beside its constant — `'.self::RIDE_IMPORT.'` is its one import there';
-            }
+        if (in_array('wire/ride.js', $seen, true) && ! str_contains((string) file_get_contents($root.'/wire/ride.js'), self::RIDE_IMPORT)) {
+            $defects[] = 'wire/ride.js imports from the set\'s module something beside its constant — `'.self::RIDE_IMPORT.'` is its one import there';
         }
 
-        $this->assertContains('lobby/lobby-screen.js', array_keys($seen), 'the walk never reached the lobby screen — it read nothing');
-        $this->assertContains('wire/camera.js', array_keys($seen), 'the walk never reached the camera — it read nothing');
-        $this->assertContains('wire/ride.js', array_keys($seen), 'the walk never reached the ride — it read nothing');
+        $this->assertContains('lobby/lobby-screen.js', $seen, 'the walk never reached the lobby screen — it read nothing');
+        $this->assertContains('wire/camera.js', $seen, 'the walk never reached the camera — it read nothing');
+        $this->assertContains('wire/ride.js', $seen, 'the walk never reached the ride — it read nothing');
 
         foreach ($edges as [$from, $to]) {
             if (in_array(basename($to), ['animation-log.js', 'animation-set.js'], true) && (self::PATH[$from] ?? null) !== $to) {
@@ -748,21 +685,6 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         }
 
         return $defects;
-    }
-
-    private function normalise(string $path): string
-    {
-        $parts = [];
-
-        foreach (explode('/', $path) as $part) {
-            if ($part === '..') {
-                array_pop($parts);
-            } elseif ($part !== '.' && $part !== '') {
-                $parts[] = $part;
-            }
-        }
-
-        return implode('/', $parts);
     }
 
     /** @return list<string> */

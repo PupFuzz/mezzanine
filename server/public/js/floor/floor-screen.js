@@ -101,14 +101,7 @@ import { createCamera, fit, frameOn, glideMs, pan, panBy, pinch, resize, zoom, z
 import { TilesetLoader, namedTilesets } from './tileset.js';
 import { DoorViews } from './door-views.js';
 import { RoomClock } from './floor-layout.js';
-import { composeFloor, roomMaps, sceneInput, splitKey } from './floor-compose.js';
-
-/** § 9 F17's full-width statement, on the floor route exactly as on the lobby. */
-export function layoutFailureStatement(status) {
-    return status === null
-        ? 'the building layout could not be loaded — no response'
-        : `the building layout could not be loaded — HTTP ${status}`;
-}
+import { composeFloor, layoutFailureStatement, roomMaps, sceneInput, splitKey } from './floor-compose.js';
 
 /** § 9 F17: what the floors a screen still holds are labelled while the last request failed. */
 export const LAST_KNOWN_LAYOUT = 'last known layout';
