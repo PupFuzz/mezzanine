@@ -3,12 +3,15 @@
 // row 23). Node, no dependencies — but real navigations in the Playwright-cached headless Chromium: the served floor,
 // lobby, sign-in and console pages (`render-floor-view.php`, each rendered through the real layout, whose head script
 // and inline style ARE what is measured here), the shipped `server/public` modules and stylesheet, the asset route's
-// art, and one checked-in fixture run (`floor_rides`, `fx-camera.json`) answering every page's `/api/…` requests.
+// art, and one checked-in fixture run (`floor_rides`, `fx-camera.json`) answering every page's `/api/…` requests. Its
+// rides leave `aimla` for `the-annex`: the floor named *the annex*, at its name's slug (§ 4.4) — `zeta` is the room on it.
 //
 //   node tools/design/floor-ride.browser.mjs              every row, each once
 //   node tools/design/floor-ride.browser.mjs --row <id>   one row (`--row starts --selftest` is what CI runs, card#12326)
 //   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
-//                                                         which must red (the bookmark row documents a residual and plants nothing)
+//                                                         which must red (the bookmark row documents a residual and plants nothing);
+//                                                         a row red with no plant runs none (UNMEASURED), and a plant whose
+//                                                         anchor is gone from what it edits FAILs as NOT PLANTED
 //   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows, and the doors held open, as PNGs under <dir>
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
@@ -39,7 +42,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { browser, findChrome } from './headless-chromium.mjs';
-import { VIEWS, fixtureRun, serve } from './served-pages.mjs';
+import { StaleAnchor, VIEWS, fixtureRun, serve } from './served-pages.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
@@ -266,9 +269,10 @@ const NO_MIX = [
 /**
  * card#12194's walker sampler, installed before the page's first script and run on every animation frame for the first
  * `ms`: each `.fx-walker` (the gliding group) — its path, its point and feet `y` from its computed `offset-distance`, whether
- * its shown group draws it, its node (a rebuild is a new one) and its place among the floor stack's children (a move is a
- * new place for the same node), its glide's timing function, duration and start on the timeline, read off the `glide`
- * animation itself (card#12705: a walker with two walk legs runs a second, `walker-shown`, on each glide) — and, per frame, the floor stack:
+ * it is drawn (its shown group's opacity and its own: a leg's glide is drawn only through its own `walker-shown` run), its
+ * node (a rebuild is a new one) and its place among the floor stack's children (a move is a new place for the same node),
+ * its glide's timing function, duration and start on the timeline, read off the `glide` animation itself (card#12705: a
+ * walker with two walk legs runs a second, `walker-shown`, on each glide) — and, per frame, the floor stack:
  * each desk's key, place and foot line (its desk sprite's viewport `y + height`), each walker's place, which element has
  * focus, any walker element outside the stack, a walker shown in the cab outside the band's cab or after its leaves, and any
  * point under a shown walker that is a walker element.
@@ -296,7 +300,7 @@ const WALKER_SAMPLER = (ms) => `(window.__walkers = { samples: [], frames: [] },
       const at = p.getPointAtLength(len * pct / 100);
       const glide = el.getAnimations().find((a) => a.animationName === 'glide');
       const origin = glide === undefined || glide.startTime === null ? null : glide.startTime + glide.effect.getTiming().delay - t0;
-      const shown = Number(getComputedStyle(shownEl).opacity) > 0;
+      const shown = Number(getComputedStyle(shownEl).opacity) > 0 && Number(cs.opacity) > 0;
       const index = kids.indexOf(shownEl);
       if (index === -1) frame.loose.push('walker in ' + (shownEl.parentNode?.getAttribute('class') ?? '?'));
       frame.walkers.push({ y: at.y, index, shown });
@@ -736,9 +740,10 @@ const ROWS = {
   // and before each deeper one, walkers among themselves by feet `y`, a pair inside one loop frame of travel (24 px) of a
   // crossing excused as § 6.2 item 9's stated lag (H16); the desks' relative order and `document.activeElement` unchanged
   // (H18); every walker element a child of the floor stack, and a walker shown in the cab inside the band's cab clip group
-  // before the leaves (H8); and that the point under each shown walker is never a walker element (H19). Then, with
-  // `aimla-review` standing in its wait at its spot beside the doors (card#12793): its image draws one frame on two ticks
-  // (H21), and a click where its drawn body covers the right leaf — under the waiting walker — opens the cab (H19). Two MEASUREMENTS are reported as facts: whether
+  // before the leaves (H8); and that the point under each shown walker is never a walker element (H19). Then, on a second
+  // page of the run, with `aimla-review` standing in its wait at its spot beside the doors (card#12793): its image draws one
+  // frame on two ticks (H21), and a click where its drawn body covers the right leaf — under the waiting walker — opens the
+  // cab (H19). Two MEASUREMENTS are reported as facts: whether
   // `insertBefore` of a walker's node restarts its running animations (`reinsert`), and whether a re-inserted walker's
   // `<image>` is missing from the next composited frame (`flicker`, the walker's clip compared before and after).
   // The PLANTs: no `pin()` after a move (H20), the walker drawn in the effects layer (H16), every stack child re-appended
@@ -757,75 +762,86 @@ const ROWS = {
       { plant: [{ file: 'js/floor/painter.js', from: 'if (window !== null && !strides(window, now)) {', to: 'if (false) {' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '{ stack: desks, cab: cabLayer }', to: '{ stack: desks, cab: effectsLayer }' }] },
     ],
-    (chrome, c) => within(chrome, c, async (s) => {
-      const SAMPLE_MS = 15500;
-      await s.page('Page.addScriptToEvaluateOnNewDocument', { source: WALKER_SAMPLER(SAMPLE_MS) });
-      await s.open('/floor/aimla');
-      await s.ev(`(() => { const d = document.querySelector('#floor-drawing [data-key="aimla-impl-1"]'); d.focus(); window.__walkers.focusAt = performance.now() - window.__walkers.t0; return true; })()`);
-      await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 8000, 'the page never reached the end of the sample');
-      const all = await s.ev('window.__walkers.samples');
-      const focusAt = await s.ev('window.__walkers.focusAt');
-      const frames = await s.ev('window.__walkers.frames');
+    async (chrome, c) => {
       const d = [];
-      const facts = { walks: [], moves: 0, frames: frames.length };
-      const walks = byPath(all);
-      if (walks.size < 2) d.push(`${walks.size} walker(s) drawn — the crossing measured nothing`);
-      for (const [path, xs] of walks) {
-        const f = glideDefects(path, xs, d);
-        facts.walks.push(f);
-        facts.moves += f.moves;
-      }
-      if (facts.moves === 0) d.push('no walker\'s node moved in the floor stack inside its walk — continuity across a move was not measured');
-      // H16, H18, H8, H19 on every frame.
-      const LAG = 24 + 3;
-      let deskOrder = null;
-      for (const fr of frames) {
-        if (fr.loose.length > 0) { d.push(`at ${Math.round(fr.t)} ms a walker element is outside the floor stack: ${fr.loose.join(', ')}`); break; }
-        if (fr.cabBad) { d.push(`at ${Math.round(fr.t)} ms a walker shown in the cab is not inside the band's cab before the leaves`); break; }
-        if (fr.hit.length > 0) { d.push(`at ${Math.round(fr.t)} ms the point under a shown walker is a walker element: ${fr.hit[0]}`); break; }
-        // The desks' order is read once the page has settled (focus placed), and must never change after it.
-        if (deskOrder === null && fr.t > focusAt) deskOrder = fr.desks.map((x) => x.key).join(' ');
-        if (deskOrder !== null && fr.desks.map((x) => x.key).join(' ') !== deskOrder) { d.push(`at ${Math.round(fr.t)} ms the desks were re-ordered: ${fr.desks.map((x) => x.key).join(' ')}`); break; }
-        if (fr.t > focusAt + 20 && fr.focus !== 'aimla-impl-1') { d.push(`at ${Math.round(fr.t)} ms focus is on ${fr.focus}, not the desk it was placed on`); break; }
-        const bad = [];
-        for (const w of fr.walkers.filter((x) => x.shown)) {
-          for (const desk of fr.desks) {
-            if (desk.depth === null || Math.abs(w.y - desk.depth) <= LAG) continue;
-            if ((w.y >= desk.depth) !== (w.index > desk.index)) bad.push(`walker at y ${w.y.toFixed(1)} is ${w.index > desk.index ? 'after' : 'before'} ${desk.key} (foot line ${desk.depth})`);
-          }
-          for (const v of fr.walkers.filter((x) => x.shown && x !== w && x.y - w.y > LAG)) {
-            if (v.index < w.index) bad.push(`the nearer walker (y ${v.y.toFixed(1)}) is behind the farther (y ${w.y.toFixed(1)})`);
-          }
+      const facts = { walks: [], moves: 0 };
+      await within(chrome, c, async (s) => {
+        const SAMPLE_MS = 15500;
+        await s.page('Page.addScriptToEvaluateOnNewDocument', { source: WALKER_SAMPLER(SAMPLE_MS) });
+        await s.open('/floor/aimla');
+        await s.ev(`(() => { const d = document.querySelector('#floor-drawing [data-key="aimla-impl-1"]'); d.focus(); window.__walkers.focusAt = performance.now() - window.__walkers.t0; return true; })()`);
+        await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 8000, 'the page never reached the end of the sample');
+        const all = await s.ev('window.__walkers.samples');
+        const focusAt = await s.ev('window.__walkers.focusAt');
+        const frames = await s.ev('window.__walkers.frames');
+        facts.frames = frames.length;
+        const walks = byPath(all);
+        if (walks.size < 2) d.push(`${walks.size} walker(s) drawn — the crossing measured nothing`);
+        for (const [path, xs] of walks) {
+          const f = glideDefects(path, xs, d);
+          facts.walks.push(f);
+          facts.moves += f.moves;
         }
-        if (bad.length > 0) { d.push(`at ${Math.round(fr.t)} ms: ${bad[0]}`); break; }
-      }
-      // H21: the waiting walker stands at one frame; then measure, then H19: the press under it.
-      const review = await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href').length ?? null; })()`);
-      const hrefs = [];
-      for (let i = 0; i < 3; i++) {
-        hrefs.push(await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href') ?? null; })()`));
-        await sleep(300);
-      }
-      if (review === null || hrefs.some((h) => h === null)) d.push('no walker stood at its spot in its wait to read');
-      else if (new Set(hrefs).size !== 1) d.push(`the waiting walker drew ${new Set(hrefs).size} different frames on three ticks — it walks in place`);
-      facts.reinsert = await s.ev(REINSERT);
-      facts.flicker = await flicker(s);
-      // card#12793: nobody waits on the threshold any more — the first waiter stands beside the doors, outside the lane,
-      // its drawn body still reaching over the right leaf — so the press is made where that body covers a leaf: the centre
-      // of its image's rect and the right leaf's, overlapping. A waiter that covers no leaf measures nothing, and says so.
-      const under = await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); const l = document.querySelector('#floor-drawing .elevator-leaf.right'); if (w === undefined || l === null) return null; const a = w.querySelector('image').getBoundingClientRect(); const b = l.getBoundingClientRect(); const x0 = Math.max(a.left, b.left); const x1 = Math.min(a.right, b.right); const y0 = Math.max(a.top, b.top); const y1 = Math.min(a.bottom, b.bottom); return x1 > x0 && y1 > y0 ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; })()`);
-      if (under === null) {
-        d.push('no waiting walker\'s body covers a leaf — the press under a waiting walker measured nothing');
-        return { defects: d.slice(0, 6), facts };
-      }
-      for (const type of ['mousePressed', 'mouseReleased']) await s.page('Input.dispatchMouseEvent', { type, x: under.x, y: under.y, button: 'left', clickCount: 1 });
-      const leaf = await s.ev(`(() => { const e = document.elementFromPoint(${under.x}, ${under.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
-      const opened = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'never').then(() => true, () => false);
-      const cab = await s.cab();
-      facts.press = { under: leaf, cab: cab.open, opened };
-      if (!cab.open) d.push(`a press on the leaves under the waiting walker did not open the cab (the point is ${leaf})`);
+        if (facts.moves === 0) d.push('no walker\'s node moved in the floor stack inside its walk — continuity across a move was not measured');
+        // H16, H18, H8, H19 on every frame.
+        const LAG = 24 + 3;
+        let deskOrder = null;
+        for (const fr of frames) {
+          if (fr.loose.length > 0) { d.push(`at ${Math.round(fr.t)} ms a walker element is outside the floor stack: ${fr.loose.join(', ')}`); break; }
+          if (fr.cabBad) { d.push(`at ${Math.round(fr.t)} ms a walker shown in the cab is not inside the band's cab before the leaves`); break; }
+          if (fr.hit.length > 0) { d.push(`at ${Math.round(fr.t)} ms the point under a shown walker is a walker element: ${fr.hit[0]}`); break; }
+          // The desks' order is read once the page has settled (focus placed), and must never change after it.
+          if (deskOrder === null && fr.t > focusAt) deskOrder = fr.desks.map((x) => x.key).join(' ');
+          if (deskOrder !== null && fr.desks.map((x) => x.key).join(' ') !== deskOrder) { d.push(`at ${Math.round(fr.t)} ms the desks were re-ordered: ${fr.desks.map((x) => x.key).join(' ')}`); break; }
+          if (fr.t > focusAt + 20 && fr.focus !== 'aimla-impl-1') { d.push(`at ${Math.round(fr.t)} ms focus is on ${fr.focus}, not the desk it was placed on`); break; }
+          const bad = [];
+          for (const w of fr.walkers.filter((x) => x.shown)) {
+            for (const desk of fr.desks) {
+              if (desk.depth === null || Math.abs(w.y - desk.depth) <= LAG) continue;
+              if ((w.y >= desk.depth) !== (w.index > desk.index)) bad.push(`walker at y ${w.y.toFixed(1)} is ${w.index > desk.index ? 'after' : 'before'} ${desk.key} (foot line ${desk.depth})`);
+            }
+            for (const v of fr.walkers.filter((x) => x.shown && x !== w && x.y - w.y > LAG)) {
+              if (v.index < w.index) bad.push(`the nearer walker (y ${v.y.toFixed(1)}) is behind the farther (y ${w.y.toFixed(1)})`);
+            }
+          }
+          if (bad.length > 0) { d.push(`at ${Math.round(fr.t)} ms: ${bad[0]}`); break; }
+        }
+      });
+      // H21 and H19's press, on a second page of the run: `aimla-review` standing at its spot in its wait — the stand
+      // before its boarding walk, its last leg but one at its end and drawn — found when it begins rather than at a fixed
+      // instant, since the wait's place on the run's clock follows the desk slots and the host's pace (card#13117). Its
+      // image draws one frame on two ticks; then the press under it; then the two measurements, on whichever walker is
+      // still shown (null when none is).
+      await within(chrome, c, async (s) => {
+        const WAITER = `[...document.querySelectorAll('#floor-drawing .fx-walker-leg')].find((g) => { const legs = [...g.parentNode.children].filter((n) => n.classList.contains('fx-walker-leg')); return legs.indexOf(g) === legs.length - 2 && getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'; })`;
+        await s.open('/floor/aimla');
+        const waiting = await until(() => s.ev(`${WAITER} !== undefined`), 30000, 'never').then(() => true, () => false);
+        const hrefs = [];
+        for (let i = 0; waiting && i < 3; i++) {
+          hrefs.push(await s.ev(`${WAITER}?.querySelector('image')?.getAttribute('href') ?? null`));
+          if (i < 2) await sleep(300);
+        }
+        if (!waiting || hrefs.some((h) => h === null)) d.push('no walker stood at its spot in its wait to read');
+        else if (new Set(hrefs).size !== 1) d.push(`the waiting walker drew ${new Set(hrefs).size} different frames on three ticks — it walks in place`);
+        // card#12793: nobody waits on the threshold any more — the first waiter stands beside the doors, outside the lane,
+        // its drawn body still reaching over the right leaf — so the press is made where that body covers a leaf: the centre
+        // of its image's rect and the right leaf's, overlapping. A waiter that covers no leaf measures nothing, and says so.
+        const under = await s.ev(`(() => { const w = ${WAITER}; const l = document.querySelector('#floor-drawing .elevator-leaf.right'); if (w === undefined || l === null) return null; const a = w.querySelector('image').getBoundingClientRect(); const b = l.getBoundingClientRect(); const x0 = Math.max(a.left, b.left); const x1 = Math.min(a.right, b.right); const y0 = Math.max(a.top, b.top); const y1 = Math.min(a.bottom, b.bottom); return x1 > x0 && y1 > y0 ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; })()`);
+        if (under === null) {
+          d.push('no waiting walker\'s body covers a leaf — the press under a waiting walker measured nothing');
+          return;
+        }
+        for (const type of ['mousePressed', 'mouseReleased']) await s.page('Input.dispatchMouseEvent', { type, x: under.x, y: under.y, button: 'left', clickCount: 1 });
+        const leaf = await s.ev(`(() => { const e = document.elementFromPoint(${under.x}, ${under.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
+        const opened = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'never').then(() => true, () => false);
+        const cab = await s.cab();
+        facts.press = { under: leaf, cab: cab.open, opened };
+        if (!cab.open) d.push(`a press on the leaves under the waiting walker did not open the cab (the point is ${leaf})`);
+        facts.reinsert = await s.ev(REINSERT);
+        facts.flicker = await flicker(s);
+      });
       return { defects: d.slice(0, 6), facts };
-    })),
+    }),
 
   focus: row('inside, focus is on the current floor\'s button, and stays there across a render', {}, { plant: [{ file: PANEL, from: '            const held = new Map([...list.children].map((li) => [li.dataset.stop, li]));', to: "            [...list.children].forEach((li) => li.remove());\n            const held = new Map();" }] },
     (chrome, c) => within(chrome, c, async (s) => {
@@ -833,10 +849,15 @@ const ROWS = {
       await intoTheCab(s);
       await sleep(50);
       const first = (await s.cab()).focus;
-      // The run's next heartbeat renders the page; the panel is reconciled on that paint.
-      await until(async () => (await s.ev('performance.now()')) > 5600, 8000, 'the clock stood still');
+      // The run's next heartbeat AFTER that read renders the page, and the panel is reconciled on that paint; a read
+      // taken after the run's last heartbeat has no render to measure, and says so.
+      const delivered = await s.ev('window.__ride.delivered.length');
+      const rendered = await until(() => s.ev(`window.__ride.delivered.length > ${delivered}`), 8000, 'none').then(() => true, () => false);
+      await s.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))');
       const later = (await s.cab()).focus;
-      return { defects: [first, later].every((f) => f === 'aimla') ? [] : [`focus: ${first} inside, ${later} after a render`], facts: { first, later } };
+      const d = rendered ? [] : ['no heartbeat landed after focus was read inside — the render was not measured'];
+      if (![first, later].every((f) => f === 'aimla')) d.push(`focus: ${first} inside, ${later} after a render`);
+      return { defects: d, facts: { first, later, rendered } };
     })),
 
   // card#12039: the operator's *I want to see the top of the elevator door (currently the door is too tall and stretches
@@ -989,8 +1010,8 @@ const ROWS = {
   // With `--shots`, each held door is saved: the cab half and fully open, the floor's elevator zoomed, half open.
   'through-doors': row('through the open doors the floor shows from inside the cab and the cab from the floor, each door held half open, and nothing — no seam line — is drawn across the open doorway', {},
     { plant: [
-      { file: 'js/floor/painter.js', from: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n",
-        to: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n" },
+      { file: 'js/floor/painter.js', from: "            const right = node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n",
+        to: "            const right = node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n" },
       { file: 'js/floor/cab-paint.js', from: "    node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n",
         to: "    node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n    node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);\n" },
     ] },
@@ -1027,7 +1048,7 @@ const ROWS = {
           await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'the elevator opened no cab');
           await until(() => s.ev("!document.getElementById('floor-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the cab never reached inside');
           await buttonsIn(s);
-          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
           await until(() => s.ev("document.querySelector('#floor-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the cab\'s leaves never moved');
           const cab = await hold(s, '#floor-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 0.5);
           if (c.plant.length === 0) await s.shot(`cab-half-open-${tag}`);
@@ -1141,7 +1162,7 @@ const ROWS = {
     })),
 
   'two-escapes-committed': row('two Escapes in chosen, and in leaving, with the destination 1 200 ms late: the destination is a cut with its own doors, never A\'s floor held over it (M5-1)',
-    { doc: { '/floor/zeta': 1200 } }, { plant: [{ file: RULE, from: "    if (ride?.phase === 'leaving' && ride.cab === 'open') {", to: "    if (ride?.phase === 'leaving') {" }] },
+    { doc: { '/floor/the-annex': 1200 } }, { plant: [{ file: RULE, from: "    if (ride?.phase === 'leaving' && ride.cab === 'open') {", to: "    if (ride?.phase === 'leaving') {" }] },
     async (chrome, c) => {
       const d = [];
       const facts = {};
@@ -1149,12 +1170,12 @@ const ROWS = {
         await within(chrome, c, async (s) => {
           await s.open('/floor/aimla');
           await intoTheCab(s);
-          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
           await sleep(wait);
           await s.escape();
           await sleep(30);
           await s.escape();
-          await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+          await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
           const r = await arrivedRecord(s);
           facts[label] = { reveals: r.reveals, classes: r.classes, leaves: r.scene?.leaves };
           d.push(...cut(r, label));
@@ -1165,7 +1186,7 @@ const ROWS = {
     }),
 
   race: row('a second Escape within a frame or so of the commit, either side: the destination is still a cut (m6-1); with no second Escape the cab is held',
-    { doc: { '/floor/zeta': 'gate' } }, { plant: [{ file: PERFORMER, from: '        outbound = skipUnlessCabLeaving(outbound, lastRide());\n', to: '' }] },
+    { doc: { '/floor/the-annex': 'gate' } }, { plant: [{ file: PERFORMER, from: '        outbound = skipUnlessCabLeaving(outbound, lastRide());\n', to: '' }] },
     async (chrome, c) => {
       const d = [];
       const facts = [];
@@ -1173,14 +1194,14 @@ const ROWS = {
         await within(chrome, c, async (s, srv) => {
           await s.open('/floor/aimla');
           await intoTheCab(s);
-          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
           await sleep(DOOR_PHASE_MS + 150);                      // leaving: the navigation pending, held by the server
           await s.escape();
           await sleep(40);
           const release = () => fetch(`${srv.base}/release`);
           if (off === null) await release();
           else if (off >= 0) { await release(); if (off > 0) await sleep(off); await s.escape(); } else { await s.escape(); await sleep(-off); await release(); }
-          await until(async () => (await s.ev('location.pathname')) === '/floor/zeta' && (await s.record()).reveals.length > 0, 8000, 'the ride never committed');
+          await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex' && (await s.record()).reveals.length > 0, 8000, 'the ride never committed');
           await sleep(100);
           const r = await s.record();
           const held = r.classes.some(([, k]) => k.includes('ride-holding'));
@@ -1228,7 +1249,7 @@ const ROWS = {
   'pre-layout': row('the pre-layout frame under the hold: at the first chrome change the cab is still held, nothing is stated, no room is listed', { api: { '/api/building': 600 } },
     { plant: [{ file: MAIN, from: '        if (frame.scene !== null) {\n            revealed(html);', to: '        if (frame.scene !== null || frame.statement !== null || frame.floor === null) {\n            revealed(html);' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const change = r.chrome.find((x) => !x.initial) ?? null;
       const d = [];
@@ -1240,13 +1261,13 @@ const ROWS = {
       return { defects: d, facts: { change, scene: r.scene?.at } };
     })),
 
-  'layout-fails': row('a layout that fails (503): its statement drawn under the hold, the cab fading into it at the bound, no elevator, no door motion', { layout: { '/floor/zeta': 503 } },
+  'layout-fails': row('a layout that fails (503): its statement drawn under the hold, the cab fading into it at the bound, no elevator, no door motion', { layout: { '/floor/the-annex': 503 } },
     { plant: [{ file: MAIN, from: '        if (frame.scene !== null) {\n            revealed(html);', to: '        if (frame.scene !== null || frame.statement !== null) {\n            revealed(html);' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
-      await s.click('#floor-cab-stops li[data-stop="zeta"] button');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+      await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
       await sleep(CAB_HOLD_MS + 600);
       const r = await s.record();
       const t0 = Number(r.arrivalAt);
@@ -1263,7 +1284,7 @@ const ROWS = {
   pending: row('a layout pending past the bound (2 200 ms): the cab fades into the waiting chrome at the bound, and the room drawn later has its leaves at rest',
     { api: { '/api/building': 2200 } }, { plant: [{ file: RIDE, from: ' && !this.#endsRide(frame) && now <= expiresAt) {', to: ' && !this.#endsRide(frame)) {' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await until(async () => (await s.record()).scene !== null, 8000, 'the destination never drew');
       await sleep(200);
       const r = await s.record();
@@ -1285,7 +1306,7 @@ const ROWS = {
       { file: 'page', from: "addEventListener('pagereveal', function (event) {", to: 'window.__rideReveal = (function (event) {' },
       { file: MAIN, from: "const root = el('floor');\n", to: "addEventListener('pagereveal', window.__rideReveal);\nconst root = el('floor');\n" }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await until(async () => (await s.record()).scene !== null, 10000, 'the destination never drew');
       const r = await s.record();
       const held = r.classes.find(([, k]) => k.includes('ride-holding'))?.[0] ?? null;
@@ -1298,10 +1319,10 @@ const ROWS = {
     })),
 
   'late-commit': row('the destination\'s document 2 500 ms late: A tears down at the bound, and the late commit is a cut on B with its own doors (M4-1)',
-    { doc: { '/floor/zeta': 2500 } }, { plant: [{ file: PERFORMER, from: "    window.addEventListener('pageswap', (event) => {\n        outbound = skipUnlessCabLeaving(event.viewTransition, lastRide());\n    });", to: '' }] },
+    { doc: { '/floor/the-annex': 2500 } }, { plant: [{ file: PERFORMER, from: "    window.addEventListener('pageswap', (event) => {\n        outbound = skipUnlessCabLeaving(event.viewTransition, lastRide());\n    });", to: '' }] },
     (chrome, c) => within(chrome, c, async (s, srv) => {
-      const pressed = await pressStop(s, 'zeta');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+      const pressed = await pressStop(s, 'the-annex');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
       const r = await arrivedRecord(s);
       const d = [...cut(r, 'the late commit'), ...tornDown(srv, pressed)];
       if (!(r.scene?.leaves ?? []).some((l) => String(l).includes('leaf-close'))) d.push(`B's leaves did not close on its first scene: ${JSON.stringify(r.scene?.leaves)}`);
@@ -1319,7 +1340,7 @@ const ROWS = {
   'arrival-doors': row('on the destination the leaves are drawn open, close after the fade, and the ride is over one fade and one ride door motion after the arrival', {},
     { plant: [{ file: MAIN, from: '    screen.arriveByRide(rideArrival);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'))?.[0] ?? null;
       const leaf = await s.ev("(async () => { const a = document.querySelector('#floor-drawing .elevator-leaf')?.getAnimations()[0]; if (a === undefined) return null; await a.ready; return { name: a.animationName, start: a.startTime + a.effect.getTiming().delay }; })()");
@@ -1364,8 +1385,8 @@ const ROWS = {
       await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the lobby\'s cab never reached inside');
       const stops = await s.ev("[...document.querySelectorAll('#lobby-cab-stops li')].map((li) => [li.dataset.stop, li.classList.contains('current')])");
       await buttonsIn(s, 'lobby');
-      await s.click('#lobby-cab-stops li[data-stop="zeta"] button');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 15000, 'the ride never reached /floor/zeta');
+      await s.click('#lobby-cab-stops li[data-stop="the-annex"] button');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 15000, 'the ride never reached /floor/the-annex');
       const r = await arrivedRecord(s);
       const d = [];
       if (stops.at(-1)?.[0] !== '' || stops.at(-1)?.[1] !== true || stops.filter(([, cur]) => cur).length !== 1) d.push(`the lobby's cab does not end on *Lobby*, current alone: ${JSON.stringify(stops)}`);
@@ -1412,7 +1433,7 @@ const ROWS = {
           await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 2000, 'the lobby\'s cab never reached inside');
           await buttonsIn(s, 'lobby');
           // A floor chosen: the cab's doors open on that floor.
-          await s.click('#lobby-cab-stops li[data-stop="zeta"] button');
+          await s.click('#lobby-cab-stops li[data-stop="the-annex"] button');
           await until(() => s.ev("document.querySelector('#lobby-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the lobby\'s cab never opened its doors');
           const chosen = await hold(s, '#lobby-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 0.5);
           if (c.plant.length === 0) await s.shot(`lobby-cab-chosen-half-open-${tag}`);
@@ -1469,12 +1490,12 @@ const ROWS = {
               await intoTheCab(s);
               await buttonsIn(s);
             }
-            await s.click(`#${prefix}-cab-stops li[data-stop="zeta"] button`);
+            await s.click(`#${prefix}-cab-stops li[data-stop="the-annex"] button`);
             await until(() => s.ev(`document.querySelector('#${prefix}-cab-doors .elevator-leaf')?.getAnimations().length > 0`), 2000, 'the cab never opened its doors');
             const half = await hold(s, `#${prefix}-cab-doors`, '.cab-beyond .dv-back', '.cab-beyond', 0.5);
             if (c.plant.length === 0) await s.shot(`door-view-${prefix}-half-open-${tag}`);
             const v = await viewOf(s, `#${prefix}-cab-doors`);
-            judge(`${tag} ${prefix}: zeta half open`, half, v);
+            judge(`${tag} ${prefix}: the-annex half open`, half, v);
             if (c.plant.length === 0) { await hold(s, `#${prefix}-cab-doors`, '.cab-beyond .dv-back', '.cab-beyond', 1); await s.shot(`door-view-${prefix}-open-${tag}`); }
             facts[`${tag} ${prefix}`] = { open: half.open, view: v };
           });
@@ -1489,9 +1510,9 @@ const ROWS = {
       const d = [];
       await s.open('/dashboard');
       // The plaque may sit past the directory's fold: the list is scrolled to it, as the keyboard's focus would.
-      await s.ev(`document.querySelector('#lobby-floors li[data-floor="zeta"] a').scrollIntoView({ block: 'nearest' })`);
-      await s.click('#lobby-floors li[data-floor="zeta"] a');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the plaque link never arrived');
+      await s.ev(`document.querySelector('#lobby-floors li[data-floor="the-annex"] a').scrollIntoView({ block: 'nearest' })`);
+      await s.click('#lobby-floors li[data-floor="the-annex"] a');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the plaque link never arrived');
       const plate = await arrivedRecord(s);
       // card#12113: the lobby is a ride's departing page now, so its own `pageswap` rule skips a plaque link's outbound
       // transition before the floor sees one (as a floor's own links are skipped); the destination's skip is measured on
@@ -1517,7 +1538,7 @@ const ROWS = {
   strip: row('the fragment is stripped by the time the cab is held: the hold is reached and the hash is already gone at its first read', {},
     { plant: [{ file: 'page', from: "                history.replaceState(null, '', location.pathname + location.search);\n", to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const held = r.classes.find(([, k]) => k.includes('ride-holding')) ?? null;
       return { defects: held === null ? ['the destination never held'] : (held[2] !== '' ? [`the hash at the first hold was ${held[2]}`] : []), facts: { held } };
@@ -1528,7 +1549,7 @@ const ROWS = {
     async (chrome, c) => {
       const held = [];
       for (let i = 0; i < 3; i++) {
-        held.push(await within(chrome, c, async (s) => { await rideTo(s, 'zeta'); return (await arrivedRecord(s)).classes.some(([, k]) => k.includes('ride-holding')); }));
+        held.push(await within(chrome, c, async (s) => { await rideTo(s, 'the-annex'); return (await arrivedRecord(s)).classes.some(([, k]) => k.includes('ride-holding')); }));
       }
       return { defects: held.every(Boolean) ? [] : [`held in ${held.filter(Boolean).length} of 3 rides`], facts: held };
     }),
@@ -1538,7 +1559,7 @@ const ROWS = {
     // or a traversal could read it, so the gate is reached only once the strip has failed too — which is this plant.
     { plant: [{ file: 'page', from: " && entry !== undefined && entry.type === 'navigate';", to: ';' }, { file: 'page', from: "                history.replaceState(null, '', location.pathname + location.search);\n", to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await arrivedRecord(s);
       await s.page('Page.reload', {});
       await until(async () => (await s.ev("document.readyState === 'complete' && window.__ride.scene !== null")), 8000, 'the reload never drew');
@@ -1554,9 +1575,9 @@ const ROWS = {
       return { defects: d, facts: { reload: [reloaded.nav, reloaded.reveals], back: [back.nav, back.reveals] } };
     })),
 
-  bookmark: row('a bookmark-style open of /floor/zeta#ride: the named residual — the leaves open then close, the hash stripped, no hold', {}, null,
+  bookmark: row('a bookmark-style open of /floor/the-annex#ride: the named residual — the leaves open then close, the hash stripped, no hold', {}, null,
     (chrome, c) => within(chrome, c, async (s) => {
-      await s.open('/floor/zeta#ride');
+      await s.open('/floor/the-annex#ride');
       const r = await s.record();
       const d = [];
       if (r.hash !== '') d.push(`the hash was not stripped: ${r.hash}`);
@@ -1564,12 +1585,12 @@ const ROWS = {
       return { defects: d, facts: { reveals: r.reveals, leaves: r.scene?.leaves } };
     })),
 
-  'to-login': row('the destination answering a 302 to /login: the sign-in page cuts, the hash stripped', { redirect: { '/floor/zeta': '/login' } },
+  'to-login': row('the destination answering a 302 to /login: the sign-in page cuts, the hash stripped', { redirect: { '/floor/the-annex': '/login' } },
     { plant: [{ file: 'page', from: '            if (!(arriving && reveals) || reduce) {', to: '            if (!arriving || reduce) {' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
-      await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+      await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
       await until(async () => (await s.ev('location.pathname')) === '/login', 8000, 'the redirect never arrived');
       await sleep(500);
       const r = await s.record();
@@ -1578,14 +1599,14 @@ const ROWS = {
       return { defects: d, facts: { reveals: r.reveals, classes: r.classes } };
     })),
 
-  'never-commits': row('a destination that does not answer within the bound: the cab closes and A\'s floor is back, its leaves at rest; a late answer is a cut', { doc: { '/floor/zeta': 'gate' } },
+  'never-commits': row('a destination that does not answer within the bound: the cab closes and A\'s floor is back, its leaves at rest; a late answer is a cut', { doc: { '/floor/the-annex': 'gate' } },
     { plant: [{ file: PERFORMER, from: '            after(ride.ms, () => screen().abandoned());\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s, srv) => {
-      const pressed = await pressStop(s, 'zeta');
+      const pressed = await pressStop(s, 'the-annex');
       await sleep(DOOR_PHASE_MS + CAB_HOLD_MS + 500);
       const d = tornDown(srv, pressed);
       await fetch(`${srv.base}/release`);
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the late answer never arrived');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the late answer never arrived');
       const r = await arrivedRecord(s);
       d.push(...cut(r, 'the late answer'));
       return { defects: d, facts: { beacons: srv.beacons } };
@@ -1608,7 +1629,7 @@ const ROWS = {
   reduce: row('under prefers-reduced-motion: the ride arrives as a cut — the transition skipped, no hold, no leaf motion', { media: [{ name: 'prefers-reduced-motion', value: 'reduce' }] },
     { plant: [{ file: 'page', from: '            if (!(arriving && reveals) || reduce) {', to: '            if (!(arriving && reveals)) {' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const d = [...cut(r, 'reduced motion')];
       if ((r.scene?.leaves ?? []).some((l) => String(l).includes('animation'))) d.push(`the leaves moved: ${JSON.stringify(r.scene?.leaves)}`);
@@ -1681,15 +1702,15 @@ const ROWS = {
       await s.click('#floor-drawing [data-key="elevator"]');
       await sleep(RIDE_DOOR_MS + DOOR_PHASE_MS + FADE_MS + 100);   // inside, its buttons faded in
       const a = (await s.record()).errors;
-      await s.click('#floor-cab-stops li[data-stop="zeta"] button').catch(() => {});
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, '').catch(() => {});
+      await s.click('#floor-cab-stops li[data-stop="the-annex"] button').catch(() => {});
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, '').catch(() => {});
       const b = (await s.record().catch(() => ({ errors: [] }))).errors;
       return { defects: [...a, ...b].length === 0 ? [] : [`errors: ${JSON.stringify([...a, ...b])}`], facts: { a, b } };
     })),
 
   'held-enter': row('an Enter held on the elevator rides once and chooses no floor (m9)', {},
     { plant: [{ file: PANEL, from: "        if (!event.repeat) {\n            armed = true;\n        }", to: '        armed = true;' }] },
-    (chrome, c) => within(chrome, c, async (s) => {
+    (chrome, c) => within(chrome, c, async (s, srv) => {
       await s.open('/floor/aimla');
       await s.ev("document.querySelector('#floor-drawing [data-key=\"elevator\"]').focus()");
       const enter = (autoRepeat) => s.page('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r', autoRepeat });
@@ -1702,7 +1723,12 @@ const ROWS = {
       // Still `inside`: the cab open on this page and the band's leaves held open behind it — a stay chosen late in the
       // hold is still fading the cab out, but its leaves are already closing.
       const inside = cab.open && cab.path === '/floor/aimla' && cab.leaves.every((l) => l === 'transform:scaleX(.12)');
-      return { defects: inside ? [] : [`the held Enter chose: ${JSON.stringify(cab)}`], facts: cab };
+      // And the cab opened once and never closed: a stay chosen under the hold closes it, focus goes back to the elevator,
+      // and the Enter still held there rides again — ending in a cab that reads as `inside` (card#13117).
+      const opens = srv.beacons.filter((b) => b.kind === 'cab').map((b) => b.open);
+      const d = inside ? [] : [`the held Enter chose: ${JSON.stringify(cab)}`];
+      if (opens.length !== 1 || opens[0] !== true) d.push(`the cab opened and closed as ${JSON.stringify(opens)} under the held Enter, not once and open`);
+      return { defects: d, facts: { ...cab, opens } };
     })),
 
   ride: row('press a floor: the destination is navigated to by a ride, held, and revealed at its first scene (no blank)',
@@ -1710,7 +1736,7 @@ const ROWS = {
     { api: { '/api/building': 600 } },
     { plant: [{ file: MAIN, from: "        if (frame.scene !== null) {\n            revealed(html);\n        }\n", to: "        revealed(html);\n" }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await until(async () => { const r = await s.record(); return r.scene !== null && r.classes.some(([, k]) => k.includes('ride-arrived')); }, 6000, 'the destination never arrived and drew');
       const r = await s.record();
       const d = [];
@@ -1753,9 +1779,9 @@ async function holdPixels(chrome, c) {
   return within(chrome, c, async (s) => {
     await s.open('/floor/aimla');
     const { floor } = await references(s);
-    await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+    await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
     const cabRef = await cabOpenPixel(s);
-    await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+    await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
     await until(async () => (await s.record()).classes.some(([, k]) => k.includes('ride-holding')), 3000, 'the destination never held');
     const held = (await s.record()).classes.find(([, k]) => k.includes('ride-holding'))[0];
     const now = await s.ev('performance.now()');
@@ -1796,15 +1822,19 @@ for (const [id, row] of rows) {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${id} — ${row.what}${ok ? '' : `\n  ${result.defects.join('\n  ')}`}\n  facts: ${JSON.stringify(result.facts)}`);
   if (argv.includes('--selftest') && row.plant === null) {
     console.log(`PASS ${id} PLANT — none: the row documents a named residual, and no defect of it is planted`);
+  } else if (argv.includes('--selftest') && !ok) {
+    console.log(`UNMEASURED ${id} PLANT — the row is red with no plant, so its red under one is no evidence`);
   } else if (argv.includes('--selftest')) {
     const plants = Array.isArray(row.plant) ? row.plant : [row.plant];
     for (const [i, plant] of plants.entries()) {
       let planted;
-      try { planted = await row.run(chrome, conditions(row, plant)); } catch (e) { planted = { defects: [`(raised) ${e.message}`] }; }
-      const bit = planted.defects.length > 0;
+      let stale = null;
+      try { planted = await row.run(chrome, conditions(row, plant)); } catch (e) { if (e instanceof StaleAnchor) stale = e; planted = { defects: [`(raised) ${e.message}`] }; }
+      const bit = stale === null && planted.defects.length > 0;
       failed += bit ? 0 : 1;
       const tag = plants.length === 1 ? 'PLANT' : `PLANT ${i + 1}/${plants.length}`;
-      console.log(`${bit ? "PASS" : "FAIL"} ${id} ${tag} — ${bit ? `red: ${planted.defects[0]}` : `NOT CAUGHT — facts: ${JSON.stringify(planted.facts ?? null)}`}`);
+      const why = stale !== null ? `NOT PLANTED — ${stale.message}` : `NOT CAUGHT — facts: ${JSON.stringify(planted.facts ?? null)}`;
+      console.log(`${bit ? "PASS" : "FAIL"} ${id} ${tag} — ${bit ? `red: ${planted.defects[0]}` : why}`);
     }
   }
 }

@@ -147,6 +147,11 @@ export const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0, busy = 0) =>
 })();
 </script>`;
 
+/** A plant whose `from` is not in the file it edits: the code it was written against has changed. */
+export class StaleAnchor extends Error {
+  constructor(file, from) { super(`the plant's anchor is not in ${file}: ${from.slice(0, 60)}`); this.name = 'StaleAnchor'; }
+}
+
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png',
   '.json': 'application/json', '.tmj': 'application/json', '.tsx': 'application/xml', '.svg': 'image/svg+xml' };
 
@@ -159,13 +164,17 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * has settled on a slow host), `busy` (ms the page spends in one long task as each message lands, before it is
  * handled — the next frame's time is then taken before the message's paint runs, as on a busy live floor); and
  * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public`, `art:<path>` for a
- * file the asset route serves as `/art/<path>` (card#13033), or `page` (every rendered page).
+ * file the asset route serves as `/art/<path>` (card#13033), `page:<view>` (that view's rendered page) or `page`
+ * (every rendered page).
+ *
+ * Every plant's anchor is found before the server listens, or `serve()` throws `StaleAnchor`: a plant whose anchor has
+ * moved plants nothing, so a tool must report it as a plant that no longer exists — never as a row that went red.
  */
 export function serve(c = {}) {
   const run = fixtureRun(c.run ?? 'floor_rides');
   const plants = c.plant ?? [];
   const edit = (file, text) => plants.filter((p) => p.file === file).reduce((t, p) => {
-    if (!t.includes(p.from)) throw new Error(`the plant's anchor is not in ${file}: ${p.from.slice(0, 60)}`);
+    if (!t.includes(p.from)) throw new StaleAnchor(file, p.from);
     return t.split(p.from).join(p.to);
   }, text);
   const pageOf = (view, key, seat = '') => {
@@ -174,9 +183,14 @@ export function serve(c = {}) {
     const at = html.indexOf('<link rel="stylesheet"');
     return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0, c.busy ?? 0) + html.slice(at)));
   };
+  const roots = [['/art/floor/', join(REPO, 'resources', 'floor')], ['/art/characters/', join(REPO, 'resources', 'characters')], ['/', join(REPO, 'server', 'public')]];
+  // Each planted file edited once now, as it would be served: an edit inside a request would throw past the server.
+  for (const view of Object.keys(VIEWS)) pageOf(view, 'aimla');
+  for (const file of new Set(plants.map((p) => p.file).filter((f) => f !== 'page' && !f.startsWith('page:')))) {
+    edit(file, readFileSync(file.startsWith('art:') ? join(REPO, 'resources', file.slice('art:'.length)) : join(REPO, 'server', 'public', file), 'utf8'));
+  }
   const beacons = [];
   let release = null;
-  const roots = [['/art/floor/', join(REPO, 'resources', 'floor')], ['/art/characters/', join(REPO, 'resources', 'characters')], ['/', join(REPO, 'server', 'public')]];
   const server = createServer((req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     const doc = (body) => { res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' }); res.end(body); };
