@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\ConsoleController;
 use App\Http\Controllers\Admin\FloorController;
 use App\Http\Controllers\Admin\LayoutController;
+use App\Http\Controllers\Admin\RoomController;
 use App\Http\Controllers\Admin\SeatController;
 use App\Http\Controllers\Admin\SeatTokenController;
 use App\Http\Controllers\Admin\UserController;
@@ -79,6 +80,23 @@ Route::get('/agents', [SeatController::class, 'index'])->name('agents.index');
 Route::post('/agents/{seat_id}/retire', [SeatController::class, 'retire'])
     ->where('seat_id', Slug::SEAT_ID)
     ->name('agents.retire');
+// The room move (card#13117): the second operator act on a seat beside retirement, `App\Fleet\SeatMove`.
+Route::patch('/agents/{seat_id}/room', [SeatController::class, 'room'])
+    ->where('seat_id', Slug::SEAT_ID)
+    ->name('agents.room');
+
+/*
+ * THE ROOMS MODULE — card#13117 (plan-13117-seat-identity.md § 4.2). A room is an `installs` row; the console
+ * creates it with a key typed once and a name, may place it on a floor of the current layout in the same act,
+ * renames it, and retires it. `App\Building\Rooms` owns every act; the layout is written through
+ * `Layouts::amend()`. No route here deletes a room: retirement is a POST to a named act, as a seat's is.
+ */
+Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
+Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
+Route::patch('/rooms/{room}', [RoomController::class, 'update'])
+    ->where('room', Slug::INSTALL_ID)->name('rooms.update');
+Route::post('/rooms/{room}/retire', [RoomController::class, 'retire'])
+    ->where('room', Slug::INSTALL_ID)->name('rooms.retire');
 
 /*
  * THE FLOORS MODULE — card#9085, the (a) half of the operator's 2026-09-08 ruling. A floor's map
@@ -91,9 +109,9 @@ Route::post('/agents/{seat_id}/retire', [SeatController::class, 'retire'])
  * edit that would cross this line is one column and one form field.
  *
  * ⛔ AND NO FLOORS ROUTE CREATES AN INSTALL. A room IS an install (§ 3.1). ⭐ Since card#13117
- * issuing a seat's token creates no install: the seat starts in no room, and the `installs` rows are
- * the rooms that existed before it plus those its migration minted for the rooms the layout places;
- * the console's Rooms module (a later slice) is where a room is created. "Add a floor" here means
+ * issuing a seat's token creates no install: the seat starts in no room, and a room is created in the
+ * console's Rooms module below (`App\Building\Rooms`), beside the rows that existed before it and those its
+ * migration minted for the rooms the layout places. "Add a floor" here means
  * give an existing room its map, and the write refuses a room no seat renders in — the virtual
  * install `unassigned` included.
  *

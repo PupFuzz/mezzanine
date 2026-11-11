@@ -375,7 +375,7 @@ refused as *no such seat*. The exact sites are what the grep leg prints on the d
 | Column | Today | After |
 |---|---|---|
 | `installs.install_id` | typed at token issue (`SeatTokens::issue()` inserts the install when missing) | the **room key**: typed once at room creation in the console, `Slug::INSTALL_ID`'s pattern, immutable; `unassigned` **reserved** (refused by name, § 4.4). It is the `subject` of the room's map revisions and the `floors.install_id` of its current map, which is why it is not a slug of the name: a rename must not orphan a map's history |
-| `installs.display_name` | present, never read or written: `grep -rn display_name server/app server/resources` prints nothing; the column exists in the DDL (`2026_08_25_100000_create_fleet_store_tables.php`) alone | the room's **name**, free text, renamable, **bounded at 64 bytes** — the column's own width (`string('display_name', 64)` in that migration; D2 § 6.4), refused by name over it, as a floor's name is bounded by nothing but its document (§ 5.2); `null` reads as the key, as a floor's absent label did |
+| `installs.display_name` | present, never read or written: `grep -rn display_name server/app server/resources` prints nothing; the column exists in the DDL (`2026_08_25_100000_create_fleet_store_tables.php`) alone | the room's **name**, free text, renamable, **bounded at 64 characters** — the column's own width (`string('display_name', 64)` in that migration; D2 § 6.4; ⭐ **characters, corrected at S3's build**: this cell said bytes, and a `utf8mb4` `VARCHAR(64)` holds 64 characters, which `RoomConsoleTest` stores whole), refused by name over it, as a floor's name is bounded by nothing but its document (§ 5.2); `null` reads as the key, as a floor's absent label did |
 | `installs.retired_at` | present, never written (the same grep over `installs.*retired_at` in `server/app` prints nothing) | set by the console's **retire room**, under the room's `installs` row taken `FOR UPDATE` — **the one lock a move (§ 4.2) and a retirement share**, so a seat cannot be placed into a room in the act of retiring (round 2's m-3); refused by name while any live seat is in the room **or any unrevoked coordination hook is bound to it** (round 1's m8: `coord_hooks.install_ref`; revoke the hook first); the whole act runs **inside `Layouts::serialise()`'s lock** and decides there whether the current document places the room: placed → the same transaction removes it through `amend()` (one revision); unplaced → no revision, since `amend()` refuses a no-op (round 2's m-2) — and the decision is taken under the lock, never from the form's rendering, so a textarea save that places the room cannot slip between the check and the retirement (round 3's m-F; the property § 5.5 states for every decision about the document). So no stored layout places a retired room; a later save or restore that would place one is refused **at the write** by name (route: the raw JSON editor, a restore of an older revision) — never at load, because no load can meet one. A retired room is listed in the console only, and its map history stands |
 | `seats.install_ref` | `NOT NULL`, written at issue | **nullable**; `NULL` = unassigned; written at issue (`NULL`) and by the console's **place seat** (§ 4.2) |
 | `coord_hooks.install_ref` | the install | the room (§ 4.3) |
@@ -1101,6 +1101,30 @@ that named the fixture floor's free slots (0 and 5, now 4 and 5), a re-slot's ta
 the walled-in desk's run and the turn-round fuzz's label runs read the new layout; a planted seat whose delivered species
 became its key's own draw got another; and the lobby run that held one `seat_id` in two rooms — a state S1's
 `uq_live_seat` makes unreachable — renames the second.
+
+**Build notes, S3 (2026-11-11) — where the build read this section differently, and why.** (1) T22's *second action
+blocked on the lock* is driven in sequence (`Tests\Feature\Admin\RoomConsoleTest`): the suite holds one connection
+(card#7523), so what is proven is that the second action, rendered from the first's base, reads the first's result and
+applies on top of it or is refused naming the floor; the lock's serialisation of two concurrent ones is not measured
+here. (2) T8's RED reads `changed[]`, not *nothing is emitted*: the move records its author as a `cause: operator`
+transitions row (`owesRow`, the ledger's home for an operator act's cause), and that row bumps the version, so a build
+without `install_id` in `versionBearing()` still publishes a delta — one that does not carry the room, which is the
+defect. (3) § 4.2's two warnings are shown on the Agents page after the move, computed under the move's locks, rather
+than on the form before it: the duplicate warning depends on the destination the select names. (4) A room is placed at
+creation on a floor chosen by its DERIVED key (the lexically least room on it — S4 is where a floor gets a name), as
+`{"form": "open"}`; a planned floor refuses it by the reader's own all-or-nothing rule, and the room's row rolls back
+with the refusal. (5) Retiring the last room of a floor drops the floor's entry in the same `amend()`: a floor of no
+rooms is a document the reader refuses. (6) § 5.1's *a placed room the store holds as retired* write refusal lands
+here, with the retirement that makes it reachable, at `save()`, `amend()` and `restore()`. (7) Binding a coordination
+hook takes the room's row `FOR UPDATE` and refuses a retired room and the reserved key, so § 4.1's *no unrevoked hook*
+check cannot be passed against a binding about to commit. (8) A retired room is not renamed: it is a record. (9) The
+render: the old room's chain re-probes under A16 naming the moved seat (`floor/floor-screen.js`'s `#displacements()`,
+`fx-room-move`'s `move_collision`), and the new room treats the move as an arrival (`move_in_collision`). **Not built:**
+§ 4.2's A13 for the departing desk and its *moved to room X* log line — A13's driving fact is D3 § 6.2's closed table,
+and a desk that leaves one room while the same key is drawn in another is a scene question this slice did not take on.
+**Not addressed, the plan silent:** an open drill-down panel whose seat moves to a room on another floor keeps naming
+the floor it was opened on; § 4.2 says nothing of the panel, and Q7 (b) rules on links only. (10) The move's bounded
+lock wait is retirement's, extracted at this second caller into `SeatLock::withOperatorWait()`.
 
 ## 10. The slice plan, for the coder
 

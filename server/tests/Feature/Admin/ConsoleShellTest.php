@@ -49,6 +49,8 @@ class ConsoleShellTest extends TestCase
             'admin.users.create' => route('admin.users.create'),
             'admin.users.edit' => route('admin.users.edit', $subject),
             'admin.agents.index' => route('admin.agents.index'),
+            // card#13117's Rooms module.
+            'admin.rooms.index' => route('admin.rooms.index'),
             'admin.floors.index' => route('admin.floors.index'),
             'admin.floors.create' => route('admin.floors.create'),
             'admin.floors.edit' => route('admin.floors.edit', $this->authoredFloor()),
@@ -108,8 +110,8 @@ class ConsoleShellTest extends TestCase
     private function savedLayout(): void
     {
         if (Layouts::version() === 0) {
-            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "open"}}}]}', 'ops@example.com');
-            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "office"}}}]}', 'ops@example.com');
+            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "open"}}}]}', 'ops@example.com', 0);
+            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "office"}}}]}', 'ops@example.com', 1);
         }
     }
 
@@ -209,6 +211,12 @@ class ConsoleShellTest extends TestCase
             ]],
             'admin.users.retire' => ['post', route('admin.users.retire', $subject), ['reason' => 'x']],
             'admin.agents.retire' => ['post', route('admin.agents.retire', 'aimla-pm'), ['reason' => 'x']],
+            // card#13117's room move and Rooms module. The subjects need not exist: a gate arm that let one
+            // through reaches the action's own refusal and writes nothing.
+            'admin.agents.room' => ['patch', route('admin.agents.room', 'aimla-pm'), ['room' => 'aimla']],
+            'admin.rooms.store' => ['post', route('admin.rooms.store'), ['key' => 'gate-room', 'name' => 'Gate room']],
+            'admin.rooms.update' => ['patch', route('admin.rooms.update', 'aimla'), ['name' => 'Renamed']],
+            'admin.rooms.retire' => ['post', route('admin.rooms.retire', 'aimla'), []],
             'admin.floors.store' => ['post', route('admin.floors.store'), [
                 'install_id' => 'aimla', 'map' => FloorMapFixture::valid(),
             ]],
@@ -220,7 +228,7 @@ class ConsoleShellTest extends TestCase
             // card#9208's two write acts that are not a save: a restore is a forward revision
             // (§ 6.11), and the layout has a save of its own.
             'admin.floors.restore' => ['post', route('admin.floors.restore', [$this->authoredFloor(), 1]), []],
-            'admin.layout.update' => ['patch', route('admin.layout.update'), ['layout' => '{"floors": []}']],
+            'admin.layout.update' => ['patch', route('admin.layout.update'), ['layout' => '{"floors": []}', 'base_layout_version' => 0]],
             'admin.layout.restore' => ['post', route('admin.layout.restore', 1), []],
 
             // card#12331's seat tokens. The issue payload carries no valid key on purpose: a gate

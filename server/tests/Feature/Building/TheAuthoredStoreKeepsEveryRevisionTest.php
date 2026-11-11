@@ -53,7 +53,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
     /** @param list<array<string, mixed>> $floors */
     private function compose(array $floors): int
     {
-        return Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), self::OPERATOR);
+        return Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), self::OPERATOR, Layouts::version());
     }
 
     private function save(string $installId, string $document): int
@@ -182,12 +182,12 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
     {
         $document = (string) json_encode(['floors' => [['rooms' => ['sola' => ['form' => 'office']]]]], JSON_PRETTY_PRINT);
 
-        $this->assertSame(1, Layouts::save($document, self::OPERATOR));
+        $this->assertSame(1, Layouts::save($document, self::OPERATOR, Layouts::version()));
         $this->assertSame(1, Layouts::version());
         $this->assertSame($document, Layouts::documentText());
 
         try {
-            Layouts::save($document, self::OPERATOR);
+            Layouts::save($document, self::OPERATOR, Layouts::version());
             $this->fail('a byte-identical layout save was recorded as a revision');
         } catch (InvalidBuildingLayout $e) {
             $this->assertStringContainsString('byte for byte the one that is already current', $e->getMessage());

@@ -1044,7 +1044,7 @@ Applied by **revision 2** (this commit), each a diff to the owning text with its
 
 Waits for a slice, with its reason:
 
-- **§ 11's AT-D3-38 and Appendix B row 48** — added by **slice 2**, which lands the probe they name:
+- **§ 11's AT-D3-38 and Appendix B row 49** — added by **slice 2**, which lands the probe they name:
   `tools/design/verify-floor.py`'s G5 holds every acceptance test to a suite and its fixture names both ways, so a
   test written ahead of its suite reds the gate on this commit.
 - **§ 4.4's row swap** — slice 7, after the operator's reading (Q3 A).

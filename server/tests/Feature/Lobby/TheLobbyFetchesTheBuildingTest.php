@@ -69,7 +69,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         Layouts::save((string) json_encode(['floors' => [['label' => 'the solos', 'rooms' => [
             'zeta' => ['form' => 'office'],
             'sola' => ['form' => 'office'],
-        ]]]], JSON_PRETTY_PRINT), 'ops@example.com');
+        ]]]], JSON_PRETTY_PRINT), 'ops@example.com', Layouts::version());
     }
 
     /**
@@ -338,7 +338,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         $first = $this->served(self::BUILDING);
 
         $this->wire->forget();
-        Layouts::save((string) json_encode(['floors' => [['rooms' => ['sola' => ['form' => 'open']]]]]), 'ops@example.com');
+        Layouts::save((string) json_encode(['floors' => [['rooms' => ['sola' => ['form' => 'open']]]]]), 'ops@example.com', Layouts::version());
         [$message] = $this->wire->ofType('building.layout');
         $second = $this->served(self::BUILDING);
 

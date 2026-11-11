@@ -51,11 +51,18 @@ final class ConsoleModules
                     .'them looks like. Every save is a revision, and any of them can be restored.',
             ],
             [
+                'key' => 'rooms',
+                'label' => 'Rooms',
+                'route' => 'admin.rooms.index',
+                'blurb' => 'The rooms seats are placed in: create one with its name, put it on a floor, '
+                    .'rename it, and retire it once it is empty.',
+            ],
+            [
                 'key' => 'agents',
                 'label' => 'Agents',
                 'route' => 'admin.agents.index',
-                'blurb' => 'Seats reporting to this install: their current state, and the '
-                    .'operator retirement act that takes one off the floor.',
+                'blurb' => 'Seats reporting to this install: their current state, the room each is '
+                    .'placed in, and the operator retirement act that takes one off the floor.',
             ],
             [
                 'key' => 'tokens',

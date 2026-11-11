@@ -106,7 +106,7 @@ class FloorConsoleTest extends TestCase
      */
     private function composeTheBuilding(array $floors): void
     {
-        Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), 'ops@example.com');
+        Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), 'ops@example.com', Layouts::version());
     }
 
     private function author(string $installId, string $map, ?User $as = null): TestResponse

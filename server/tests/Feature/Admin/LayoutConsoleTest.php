@@ -48,9 +48,12 @@ class LayoutConsoleTest extends TestCase
         return (string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 
+    /** A save from the form as the editor renders it now — its base the current revision (card#13117). */
     private function save(string $document): TestResponse
     {
-        return $this->actingAs($this->operator())->patch(route('admin.layout.update'), ['layout' => $document]);
+        return $this->actingAs($this->operator())->patch(route('admin.layout.update'), [
+            'layout' => $document, 'base_layout_version' => Layouts::version(),
+        ]);
     }
 
     public function test_the_layout_module_is_an_entry_in_the_console_module_list(): void

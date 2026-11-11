@@ -3,8 +3,10 @@
 @section('console')
     <p>
         <strong>A room is an install; a floor is a set of rooms you compose</strong>
-        (<code>docs/design/FLOOR.md § 4.6</code>, operator ruling card#9267). This document is the
-        composition, and it is the only place that says which rooms share a floor. Everything else
+        (<code>docs/design/FLOOR.md § 4.6</code>, operator ruling card#9267). Rooms are created, named and
+        retired in the <a href="{{ route('admin.rooms.index') }}">Rooms</a> module, which can also place a new
+        room on a floor here as a revision of this document. This document is the composition, and it is the
+        only place that says which rooms share a floor. Everything else
         about a room — how big it is, where its desks are, what it looks like — is that room's own
         map, in the <a href="{{ route('admin.floors.index') }}">floors</a> module.
     </p>
@@ -24,6 +26,8 @@
     <form method="POST" action="{{ route('admin.layout.update') }}">
         @csrf
         @method('PATCH')
+        {{-- The revision this form was rendered from: a save is refused if the layout moved since (card#13117). --}}
+        <input type="hidden" name="base_layout_version" value="{{ old('base_layout_version', $version) }}">
 
         <label for="layout">The layout document (JSON)</label>
         <textarea id="layout" name="layout" rows="24" cols="100" required>{{ old('layout', $document) }}</textarea>
@@ -92,7 +96,9 @@
         {{-- Revisions and restore: docs/design/FLEET-STATE.md § 6.11 (citation kept off-screen by
              the operator's wording ruling, 2026-09-25, card#7341 c6585). --}}
         ⚠ Every save is a <strong>revision</strong> and any of them can be restored. A save that
-        changes nothing is refused rather than recorded, so a revision always records a change. There is no
+        changes nothing is refused rather than recorded, so a revision always records a change. A save is
+        refused if the layout changed since this page was opened — by another save or a Rooms action — so
+        reload and re-apply the edit. A layout that places a retired room is refused. There is no
         <strong>preview</strong> yet — the floor's own renderer is built, and this console does not
         draw with it yet — so until then the restore is what stands between a bad save and every
         viewer.

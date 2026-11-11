@@ -99,14 +99,14 @@ class TheBuildingSurfaceTest extends FeedTestCase
                 'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 160]],
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
             ]],
-        ]]), self::OPERATOR);
+        ]]), self::OPERATOR, Layouts::version());
         Layouts::save((string) json_encode(['floors' => [
             ['rooms' => ['aimla' => ['form' => 'open']]],
             ['label' => 'the solos', 'hallway' => $hallway, 'rooms' => [
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
                 'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 160]],
             ]],
-        ]]), self::OPERATOR);
+        ]]), self::OPERATOR, Layouts::version());
 
         $response = $this->browse('/api/building')->assertOk();
 
@@ -153,7 +153,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
         // `install_id` is legal (EVENT-SCHEMA § 3.1) and a PHP array key turns it into an int, so
         // this is the document where a decode change could move the keys, the floor order (`100`
         // sorts before `42` as a STRING) or the key's JSON type.
-        Layouts::save('{"floors": [{"rooms": {"42": {"form": "open"}, "sola": {"form": "office"}}}, {"rooms": {"100": {"form": "office"}}}]}', self::OPERATOR);
+        Layouts::save('{"floors": [{"rooms": {"42": {"form": "open"}, "sola": {"form": "office"}}}, {"rooms": {"100": {"form": "office"}}}]}', self::OPERATOR, Layouts::version());
 
         $this->assertSame(
             '{"layout_version":1,"floors":['
@@ -180,7 +180,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
                 'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 160]],
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
             ]],
-        ]]), self::OPERATOR);
+        ]]), self::OPERATOR, Layouts::version());
 
         $this->assertSame(
             '{"layout_version":1,"floors":['
@@ -206,7 +206,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
 
         Layouts::save((string) json_encode(['floors' => [
             ['hallway' => $hallway, 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]]],
-        ]]), self::OPERATOR);
+        ]]), self::OPERATOR, Layouts::version());
 
         $layout = $this->layoutBytes($this->browse('/api/building')->assertOk());
 
@@ -228,7 +228,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
      */
     public function test_a_save_committing_during_the_read_never_tears_the_version_from_its_floors(): void
     {
-        Layouts::save((string) json_encode(['floors' => [['rooms' => ['aimla' => ['form' => 'open']]]]]), self::OPERATOR);
+        Layouts::save((string) json_encode(['floors' => [['rooms' => ['aimla' => ['form' => 'open']]]]]), self::OPERATOR, Layouts::version());
 
         $user = $this->enrolled();
         $planted = false;
@@ -236,7 +236,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
         DB::listen(function ($query) use (&$planted) {
             if (! $planted && str_starts_with($query->sql, 'select * from '.$this->wrapTable('building_layout'))) {
                 $planted = true;
-                Layouts::save((string) json_encode(['floors' => [['rooms' => ['zeta' => ['form' => 'office']]]]]), self::OPERATOR);
+                Layouts::save((string) json_encode(['floors' => [['rooms' => ['zeta' => ['form' => 'office']]]]]), self::OPERATOR, Layouts::version());
             }
         });
 
@@ -263,7 +263,7 @@ class TheBuildingSurfaceTest extends FeedTestCase
 
         Layouts::save((string) json_encode(['floors' => [
             ['rooms' => ['zeta' => ['form' => 'office']]],
-        ]]), self::OPERATOR);
+        ]]), self::OPERATOR, Layouts::version());
 
         // § 8.7: `rooms[]` "is not a population statement" — `zeta` is placed and unauthored, `aimla`
         // was removed back to the default; neither is listed.

@@ -258,7 +258,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $this->fill(static fn (int $i): string => $i === 0 ? 'alpha' : ($i === $n - 1 ? 'gamma' : 'beta'));
         $gamma = array_keys($this->held(['gamma']));
 
-        Layouts::save('{"floors": [{"rooms": {"alpha": {"form": "open"}, "beta": {"form": "open"}}}]}', 'suite');
+        Layouts::save('{"floors": [{"rooms": {"alpha": {"form": "open"}, "beta": {"form": "open"}}}]}', 'suite', Layouts::version());
         $this->assertSame(Layouts::layout()->floorOf('alpha'), Layouts::layout()->floorOf('beta'));
         $this->assertNotSame(Layouts::layout()->floorOf('alpha'), Layouts::layout()->floorOf('gamma'));
 
@@ -283,7 +283,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
     public function test_rule_three_the_least_used_on_the_floor_then_the_fleet_then_the_order(): void
     {
         $this->fill(static fn (int $i): string => $i % 3 === 2 ? 'gamma' : 'alpha');
-        Layouts::save('{"floors": [{"rooms": {"alpha": {"form": "open"}}}]}', 'suite');
+        Layouts::save('{"floors": [{"rooms": {"alpha": {"form": "open"}}}]}', 'suite', Layouts::version());
 
         // Fill the floor: every species `gamma` holds gets an `alpha` seat too, so the floor holds every species.
         $k = 0;

@@ -87,7 +87,7 @@ class AnUnassignedSeatRidesTheSnapshotTest extends TestCase
         $document = '{"floors": [{"rooms": {"aimla": {"form": "open"}, "unassigned": {"form": "open"}}}]}';
 
         try {
-            Layouts::save($document, 'suite');
+            Layouts::save($document, 'suite', Layouts::version());
             $this->fail('the write stored a layout placing the reserved key');
         } catch (InvalidBuildingLayout $e) {
             $this->assertStringContainsString('keyed `unassigned`, which is reserved', $e->getMessage());
