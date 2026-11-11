@@ -1279,6 +1279,10 @@ export class FloorScreen {
      * makes for an arrival's cascade, read from the other side. ⚠ The departure half of `cause` is
      * this step's reading — § 11's cell names the ARRIVING seat's key, and a departure has none.
      *
+     * ⛔ AND A ROOM MOVE IS A DEPARTURE FROM THE ROOM IT LEFT (card#13117): the applied delta that moved the
+     * seat's `install_id` is read as that room's announcement, so the desks that shared the seat's chain there
+     * re-probe under A16 with the moved seat's key as `cause`, exactly as after a retirement (§ 3.5).
+     *
      * ⛔ AND A DELTA THAT CHANGES THE RESERVED DESK'S HOLDER IS THE THIRD DRIVER (§ 3.2, card#11144).
      * A held seat's relayed `protocol_agent_role` changing on an applied delta can seat it at the
      * reserved desk, walk it out of the desk, or make a second seat eligible so that the incumbent
@@ -1296,9 +1300,12 @@ export class FloorScreen {
         const relayed = new Map(applied
             .filter((entry) => entry.before?.protocol_agent_role !== entry.after?.protocol_agent_role)
             .map((entry) => [keyOf(entry), entry.state_version]));
-        const announced = new Set(journal
-            .filter((entry) => entry.t === 'seat.removed' && entry.cause !== 'snapshot')
-            .map(keyOf));
+        // A room move's delta is the announcement for the room it LEFT (card#13117, the docblock above); in the
+        // room it entered, the same delta is an arrival, through `arrived`.
+        const announced = new Set([
+            ...journal.filter((entry) => entry.t === 'seat.removed' && entry.cause !== 'snapshot'),
+            ...applied.filter((entry) => entry.before.install_id !== entry.after.install_id),
+        ].map(keyOf));
         const held = this.#client.seats;
 
         for (const [installId, assignment] of assignments) {

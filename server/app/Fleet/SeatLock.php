@@ -19,7 +19,8 @@ use Illuminate\Support\Facades\DB;
  * re-issue path held `seats` and waited on `seat_state` while `SeatRetirement` held `seat_state` and
  * waited on `seats`, and MariaDB broke the cycle with `1213`.
  *
- * WHO CALLS THIS. `SeatTokens::issue()` (re-issue of an existing seat) and `SeatRetirement` (the act).
+ * WHO CALLS THIS. `SeatTokens::issue()` (re-issue of an existing seat), `SeatRetirement` (the act) and
+ * `SeatMove` (a room move, card#13117).
  * The population is re-derived, not listed: `git grep -nE "lockForUpdate|FOR UPDATE|sharedLock" --
  * server/app` lists every locking read, and `docs/design/FLEET-STATE.md § 6.5` gives the command that
  * lists every write statement. A transaction that locks or writes a seat's `seat_state` row only, or its
@@ -42,5 +43,31 @@ final class SeatLock
         DB::table('seat_state')->where('seat_ref', $seatRef)->lockForUpdate()->value('seat_ref');
 
         return DB::table('seats')->where('id', $seatRef)->lockForUpdate()->first($seatColumns);
+    }
+
+    /**
+     * Run an operator's act on a seat with this session's `innodb_lock_wait_timeout` pinned to `$seconds`,
+     * restored on every exit — the return, a throw once the act's attempts are spent — to the value read
+     * from this session rather than assumed to be the server's. `SET SESSION`, never `SET GLOBAL`.
+     *
+     * The callers are the two acts a person waits on: retirement (`SeatRetirement`, whose
+     * `LOCK_WAIT_TIMEOUT_S` states why a short wait) and a room move (`SeatMove`, card#13117). Extracted
+     * at that second caller so the pin and its restore exist once.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $act
+     * @return T
+     */
+    public static function withOperatorWait(int $seconds, callable $act): mixed
+    {
+        $wait = (int) DB::selectOne('SELECT @@session.innodb_lock_wait_timeout AS v')->v;
+        DB::statement('SET SESSION innodb_lock_wait_timeout = '.$seconds);
+
+        try {
+            return $act();
+        } finally {
+            DB::statement('SET SESSION innodb_lock_wait_timeout = '.$wait);
+        }
     }
 }

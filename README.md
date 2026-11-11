@@ -6,7 +6,7 @@ they are actually doing right now — with a drill-down into their tasks and sub
 
 > Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
 > shell with no floor behind it yet, plus the **admin console** at `/admin` (users, agent
-> manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
+> manage/remove/move, rooms, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
 > reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **creature generator** exists in
 > [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw each
 > seat's animal, vegetable or fruit creature, as vector SVG, from its identity and the species the server
@@ -328,9 +328,10 @@ who does not want that property leaves `MAIL_MAILER` unconfigured and the path s
 
 `/admin`, behind the same session + second factor as the dashboard, **for operators only** — an
 observer is refused it with a `403` and the dashboard does not link it (card#9415). It carries **users** (create,
-edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
-**retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
-where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
+edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, the *Room* control that
+moves a seat between rooms, and the **retired seats** record — a removed seat's desk goes from the floor
+immediately, so the console is where *who retired it, when and why* lives, `card#9078`), **rooms** (create,
+rename and retire the rooms seats are placed in, `card#13117`), **floors** (each room's Tiled map: how
 many desks it has and where they sit, `card#9085`), the **building layout** (which rooms share a
 floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`) and
 **seat tokens** (issue a seat's reporter token, shown once to copy, and revoke one later,
@@ -381,12 +382,32 @@ the file the seat's installer takes (`fleet-reporter/INSTALL.md` § The token fi
 only its SHA-256 is kept and the page cannot show it again. The button appears when the site's `APP_URL` starts
 with `https://`, the only kind of site the installer accepts. The seat is on the floor from that moment, as *no data yet*, until its first
 batch (`docs/design/FLOOR.md § 3.4`) — a new seat under *unassigned*, on a floor of that name, until it
-is placed in a room (the console's room controls are a later slice of card#13117). A seat that already holds a token gets a second one beside it,
+is placed in a room. A seat that already holds a token gets a second one beside it,
 which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
 A revoked token is refused on the seat's next request, and the list keeps who revoked it and when;
 a revocation takes no reason. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
 shell as `php artisan mezzanine:ingest-token:issue <seat_id>` and
 `mezzanine:ingest-token:revoke <prefix>`.
+
+**Rooms are the console's** (`/admin/rooms`, card#13117). A room has a **key**, typed once — lower-case
+letters, digits and hyphens, `unassigned` reserved, and the page names the bounds it refuses — which never
+changes because the room's map history is kept under it, and a **name**, which a rename changes. Creating a room
+may place it on a floor of the current building layout in the same act, as one layout revision; a floor laid
+out with positions refuses a room without one, so place such a room in the layout document instead. A room
+is retired once no live seat is in it and no coordination binding is bound to it; retiring it takes it off
+its floor in the same act, and a layout save or restore that would place it again is refused. A retired
+room is listed as a record and drawn nowhere; its key is never reused.
+
+**A seat is placed in a room from the Agents page**: the *Room* control beside each live seat moves it to a
+live room, or back to *Unassigned*. The move redraws the desk in its new room on every connected floor,
+keeps the seat's character, and records who moved it on the seat's transitions ledger
+(`docs/design/FLEET-STATE.md § 4.10`). The seat's coordination scope moves with it: the page warns, and does
+not refuse, when the seat declares an agent name another seat in the destination room also declares, and
+when it leaves a room a coordination binding is bound to. A seat's reporter needs nothing on a move.
+
+**The building layout's editor refuses a stale save**: the form carries the revision it was opened at, and
+a save made after another save or a console action wrote a newer one is refused, naming both revisions, so
+reload and re-apply the edit.
 
 **To install the reporter on a seat**, see [Install the reporter on an agent machine](#install-the-reporter-on-an-agent-machine):
 the seat's own Claude Code agent runs it, and the token reaches the seat as a file, never through the agent.

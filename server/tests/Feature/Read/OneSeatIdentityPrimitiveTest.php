@@ -3,7 +3,9 @@
 namespace Tests\Feature\Read;
 
 use App\Board\LinkPass;
+use App\Building\Rooms;
 use App\Fleet\CharacterAllocation;
+use App\Fleet\SeatMove;
 use App\Fleet\SeatTokenIssued;
 use App\Fleet\SeatTokens;
 use App\Read\SeatIdentity;
@@ -112,6 +114,15 @@ class OneSeatIdentityPrimitiveTest extends TestCase
 
         // a species allocation after it counts it in the live population
         $this->assertCount(DB::table('seats')->whereNull('retired_at')->count(), CharacterAllocation::livePopulation());
+
+        // a room move (card#13117's S3): one delta for the roomless seat, into a room and back out of it
+        Rooms::create('t21-room', 'T21', null, 'suite');
+        $outbox = (int) DB::table('feed_outbox')->max('id');
+        $this->assertTrue(app(SeatMove::class)->move(self::SEAT, 't21-room', 'suite')->moved);
+        $this->assertTrue(app(SeatMove::class)->move(self::SEAT, SeatIdentity::UNASSIGNED, 'suite')->moved);
+        $this->assertSame([['seat.delta', 't21-room'], ['seat.delta', SeatIdentity::UNASSIGNED]],
+            DB::table('feed_outbox')->where('id', '>', $outbox)->orderBy('id')->get(['t', 'install_id'])
+                ->map(fn ($r) => [$r->t, $r->install_id])->all());
 
         // token revoke
         $revoked = SeatTokens::revoke($issued->prefix, 'suite');

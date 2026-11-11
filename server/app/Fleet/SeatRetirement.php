@@ -169,18 +169,13 @@ final class SeatRetirement
         $installId = (string) $row->install_id;
         $at = Clock::sql(now());
 
-        // THE SHORT WAIT IS RESTORED ON EVERY EXIT, not pinned and left: the `finally` covers the
-        // retired return, the already-retired return (both return from inside the callback) and a
-        // throw once the attempts are spent, so nothing run later on this connection inherits it.
-        // The value restored is read from this session rather than assumed to be the server's.
-        $wait = (int) DB::selectOne('SELECT @@session.innodb_lock_wait_timeout AS v')->v;
-        DB::statement('SET SESSION innodb_lock_wait_timeout = '.self::LOCK_WAIT_TIMEOUT_S);
-
-        try {
-            return $this->act($seatRef, $installId, $seatId, $at, $by, $reason);
-        } finally {
-            DB::statement('SET SESSION innodb_lock_wait_timeout = '.$wait);
-        }
+        // THE SHORT WAIT IS RESTORED ON EVERY EXIT, not pinned and left — `SeatLock::withOperatorWait()`
+        // covers the retired return, the already-retired return (both return from inside the callback)
+        // and a throw once the attempts are spent, so nothing run later on this connection inherits it.
+        return SeatLock::withOperatorWait(
+            self::LOCK_WAIT_TIMEOUT_S,
+            fn () => $this->act($seatRef, $installId, $seatId, $at, $by, $reason),
+        );
     }
 
     private function act(int $seatRef, string $installId, string $seatId, string $at, string $by, string $reason): SeatRetirementOutcome

@@ -65,12 +65,16 @@ class LayoutController extends Controller
 
     public function update(Request $request): RedirectResponse
     {
-        $validated = $request->validate(['layout' => ['required', 'string']]);
+        $validated = $request->validate([
+            'layout' => ['required', 'string'],
+            // The revision the form was rendered from — `Layouts::save()`'s compare-and-swap (card#13117).
+            'base_layout_version' => ['required', 'integer', 'min:0'],
+        ]);
 
         $document = AuthoredDocument::fromForm($validated['layout']);
 
         try {
-            $version = Layouts::save($document, (string) $request->user()->email);
+            $version = Layouts::save($document, (string) $request->user()->email, (int) $validated['base_layout_version']);
         } catch (InvalidBuildingLayout $e) {
             return back()->withInput()->withErrors(['layout' => $e->getMessage()]);
         }

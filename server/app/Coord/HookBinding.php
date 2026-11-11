@@ -3,6 +3,7 @@
 namespace App\Coord;
 
 use App\Fold\Clock;
+use App\Read\SeatIdentity;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -127,11 +128,23 @@ final class HookBinding
             $installRef = null;
 
             if ($installId !== null) {
-                $installRef = DB::table('installs')->where('install_id', $installId)->value('id');
+                // ⛔ LOCKED, because a room's retirement refuses while an unrevoked hook is bound to it
+                // (`App\Building\Rooms::retire()`, card#13117) and takes this row `FOR UPDATE` to ask: an
+                // unlocked read here could bind a hook to a room retiring in the same instant. `unassigned`
+                // is the group of the seats in no room and never a room, whatever legacy row carries the key.
+                $room = $installId === SeatIdentity::UNASSIGNED
+                    ? null
+                    : DB::table('installs')->where('install_id', $installId)->lockForUpdate()->first(['id', 'retired_at']);
 
-                if ($installRef === null) {
+                if ($room === null) {
                     throw new BindingRefused(sprintf('no room %s exists here — create it in the console first', json_encode($installId)));
                 }
+
+                if ($room->retired_at !== null) {
+                    throw new BindingRefused(sprintf('room %s is retired — a binding names a live room', json_encode($installId)));
+                }
+
+                $installRef = $room->id;
             }
 
             // ⛔ THE KEY IS THE ONLY AUTHORITY (`uq_binding`), with no read ahead of it: a pre-check

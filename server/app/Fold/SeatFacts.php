@@ -2,6 +2,7 @@
 
 namespace App\Fold;
 
+use App\Read\SeatIdentity;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -185,7 +186,9 @@ final class SeatFacts
     public static function versionBearing(int $seatRef): array
     {
         $s = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
-        $seat = DB::table('seats')->where('id', $seatRef)->first();
+        // Through the one seat-identity read (card#13117): it answers the seat's ROOM beside its columns,
+        // `unassigned` for none, which an inner join here would drop the roomless seat for.
+        $seat = SeatIdentity::byRef($seatRef);
 
         $action = self::action($s);
         $longest = self::longestOpenCall($s);
@@ -259,6 +262,10 @@ final class SeatFacts
             // card#12443 (§ 6.13): version-bearing by the subtraction — not one of the ten. No runtime writer
             // moves it: it is written once, at the seat's creation, and a deploy's migration is the one thing that can.
             'species' => $seat->species,
+            // card#13117: the ROOM the seat is drawn in is version-bearing by the subtraction — not one of the
+            // ten. One runtime writer moves it, the console's room move (`App\Fleet\SeatMove`), and a desk drawn
+            // in another room is a different rendering, so the move is a delta like any other state change.
+            'install_id' => $seat->install_id,
             'retired' => $seat->retired_at === null
                 ? null
                 : [$seat->retired_at, $seat->retired_by, $seat->retired_reason],
