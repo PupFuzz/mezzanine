@@ -66,7 +66,9 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         $this->deliver($this->cleanTurn());
         $this->fold();
 
-        Layouts::save((string) json_encode(['floors' => [['label' => 'the solos', 'rooms' => [
+        // The rig's own install on a floor of its own, and the composed one (card#13117: a room no floor places is
+        // drawn on the Unassigned floor, which this rig is not about).
+        Layouts::save((string) json_encode(['floors' => [['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]], ['name' => 'the solos', 'rooms' => [
             'zeta' => ['form' => 'office'],
             'sola' => ['form' => 'office'],
         ]]]], JSON_PRETTY_PRINT), 'ops@example.com', Layouts::version());
@@ -122,7 +124,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         $this->assertSame([self::SNAPSHOT, self::BUILDING], $entered['requests']);
         $this->assertSame([self::SNAPSHOT], $entered['before_snapshot'],
             'the layout was requested before the snapshot had answered');
-        $this->assertSame(['aimla', 'sola'], $this->stacked($entered),
+        $this->assertSame(['aimla', 'the-solos'], $this->stacked($entered),
             'the lobby did not stack the floors GET /api/building answered');
         $this->assertSame('the solos', $entered['lobby']['floors'][1]['name']);
         $this->assertSame(['sola', 'zeta'], array_column($entered['lobby']['floors'][1]['rooms'], 'install_id'));
@@ -140,7 +142,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         [$ignored] = $this->scenario($responses, [['do' => 'enter']], $dropped);
 
         $this->assertSame([self::SNAPSHOT, self::BUILDING], $ignored['requests']);
-        $this->assertNotSame(['aimla', 'sola'], $this->stacked($ignored),
+        $this->assertNotSame(['aimla', 'the-solos'], $this->stacked($ignored),
             'CONTROL 20 did not bite: the fetched layout was discarded and the lobby still stacked it');
 
         // ⛔ CONTROL 21 — the order reversed: the layout asked for on the first render, whether or not
@@ -307,7 +309,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
      * F17's refusal lives in the composition primitive, so a caller that reaches `floors()` or `plates()`
      * with no layout held (Appendix B step 7's floor route is the next one) gets no building, and not
      * the EMPTY layout's building. The empty layout, an actual `[]`, is § 4.6's legal document and still
-     * composes one floor per install.
+     * composes — every reported room on the Unassigned floor (card#13117).
      */
     public function test_the_composition_primitives_compose_no_building_from_no_layout(): void
     {
@@ -323,8 +325,8 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
 
             $this->assertNull($absent, "$primitive() called with no layout composed a building");
             $this->assertNull($null, "$primitive() called with a null layout composed a building");
-            $this->assertSame(['aimla'], array_column($empty, 'floor'),
-                "$primitive() no longer composes the empty layout as one floor per install");
+            $this->assertSame(['unassigned'], array_column($empty, 'floor'),
+                "$primitive() no longer composes the empty layout as the Unassigned floor");
         }
 
         $this->assertSame(0, $primitives['plates'][2][0]['level']);
@@ -338,7 +340,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         $first = $this->served(self::BUILDING);
 
         $this->wire->forget();
-        Layouts::save((string) json_encode(['floors' => [['rooms' => ['sola' => ['form' => 'open']]]]]), 'ops@example.com', Layouts::version());
+        Layouts::save((string) json_encode(['floors' => [['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]], ['name' => 'sola', 'rooms' => ['sola' => ['form' => 'open']]]]]), 'ops@example.com', Layouts::version());
         [$message] = $this->wire->ofType('building.layout');
         $second = $this->served(self::BUILDING);
 
@@ -363,7 +365,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         $this->assertFalse($unchanged['result']);
 
         $this->assertTrue($failed['result']);
-        $this->assertSame(['aimla', 'sola'], $this->stacked($failed), 'a failed re-fetch dropped the layout the client already held');
+        $this->assertSame(['aimla', 'the-solos'], $this->stacked($failed), 'a failed re-fetch dropped the layout the client already held');
         $this->assertSame('the building layout could not be loaded — HTTP 500', $failed['lobby']['layout_statement']);
         $this->assertSame('last known layout', $failed['lobby']['layout_kept']);
 
@@ -415,7 +417,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
         $this->assertNull($recovered['layout_failure']);
         $this->assertNull($recovered['lobby']['layout_statement']);
         $this->assertNull($recovered['lobby']['layout_kept']);
-        $this->assertSame(['aimla', 'sola'], $this->stacked($recovered));
+        $this->assertSame(['aimla', 'the-solos'], $this->stacked($recovered));
 
         // ⛔ CONTROL 26 — the failure dropped from the apply's test: only the version is compared, so a
         // client whose last request failed stays failed until the layout changes.
@@ -444,7 +446,7 @@ class TheLobbyFetchesTheBuildingTest extends FeedTestCase
 
         DB::table('building_layout')->insert([
             'id' => 1,
-            'document' => '{"floors":[{"rooms":{"sola":{"form":"cubicle"}}}]}',
+            'document' => '{"floors":[{"name":"sola","rooms":{"sola":{"form":"cubicle"}}}]}',
             'layout_version' => 1,
             'updated_by' => 'ops@example.com',
             'updated_at' => Clock::sql(now()),

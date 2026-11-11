@@ -19,9 +19,9 @@ use Illuminate\Support\Facades\DB;
  * — and `App\Building\BuildingLayout` still takes a DECODED DOCUMENT and knows nothing about
  * where it came from. This class is that caller.
  *
- * ⚠ NO ROW IS *TODAY'S BUILDING*, NOT A MISSING ONE. `docs/design/FLEET-STATE.md § 8.7`:
- * "`layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
- * building, one floor per install." So `version()` answers 0 and `document()` answers
+ * ⚠ NO ROW IS THE EMPTY BUILDING, NOT A MISSING ONE. `docs/design/FLEET-STATE.md § 8.7`:
+ * "`layout_version` is `0` with an empty `floors` when no layout was ever saved: every room on
+ * the Unassigned floor." So `version()` answers 0 and `document()` answers
  * `{"floors": []}` — which § 4.6 calls "a legal and meaningful document". Nothing seeds a row to
  * say that, because a seeded revision 1 would claim an operator pressed save.
  *

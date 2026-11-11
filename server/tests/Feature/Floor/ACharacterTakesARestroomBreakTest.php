@@ -25,6 +25,7 @@ use Tests\TestCase;
  */
 class ACharacterTakesARestroomBreakTest extends TestCase
 {
+    use ReadsTheDrawnScenes;
     use DrivesTheFloorScreen;
 
     private const IMPL_1 = 'aimla-impl-1';
@@ -64,12 +65,6 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         }
 
         return self::$runs[$run] ??= $this->floorRun($run);
-    }
-
-    /** @return list<array<string, mixed>> the renders and refreshes that drew a scene */
-    private function drawn(array $result): array
-    {
-        return array_values(array_filter($result['floor_renders'], static fn (array $r): bool => ($r['frame']['scene'] ?? null) !== null));
     }
 
     /** @return list<array<string, mixed>> the restroom visits a frame draws (A26 effects with frames), of one walker where named */

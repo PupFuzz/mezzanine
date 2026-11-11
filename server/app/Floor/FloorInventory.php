@@ -62,16 +62,23 @@ final class FloorInventory
         $box = app(FurnitureBox::class);
 
         // ⛔ ONE DERIVATION OF WHERE A ROOM SITS, AND IT IS THE COMPOSER'S. Reading the layout
-        // directly here — "its floor if it is placed, else its own id" — would be a second copy of
-        // `App\Building\Building::compose()`'s rule, and the two would disagree the first time one
-        // of them learned about a new case. So the building is composed once and flattened.
+        // directly here — "its floor if it is placed, else the Unassigned floor" — would be a second copy
+        // of `App\Building\Building::compose()`'s rule, and the two would disagree the first time one
+        // of them learned about a new case. So the building is composed once and flattened, over the
+        // population the browser composes from too: the rendered rooms and the live rooms with a map.
         $placement = [];
 
         // ⭐ THE LAYOUT IS READ FROM THE CONSOLE'S OWN STORE since card#9208's reversal
         // (`App\Building\Layouts`, `docs/design/FLEET-STATE.md § 6.11`), where it was
         // `config/building.php` before. The composer did not change with it: § 4.6's promise was
         // that whatever reads the document "takes the DECODED document, never a path".
-        foreach (Building::compose(Layouts::layout(), $seats->keys()->map(strval(...))->all()) as $floor) {
+        $composed = Building::compose(
+            Layouts::layout(),
+            $seats->keys()->map(strval(...))->all(),
+            Floors::versions()->pluck('install_id')->map(strval(...))->all(),
+        );
+
+        foreach ($composed as $floor) {
             foreach ($floor['rooms'] as $room) {
                 $placement[$room['install']] = ['floor' => $floor['floor'], 'form' => $room['form']];
             }
@@ -119,9 +126,9 @@ final class FloorInventory
 
             $rows[] = [
                 'install_id' => (string) $installId,
-                // null for a room that is on no floor at all: the fleet reports nothing for it
-                // and the layout places it nowhere, so nothing draws it. That is a true and
-                // actionable answer, and it is why this is not defaulted to the install's own id.
+                // The composer puts every rendered, placed or live authored room on a floor — the Unassigned floor
+                // when the layout places it nowhere (card#13117). null is a RETIRED room's map: kept as a record,
+                // and drawn nowhere.
                 'floor' => $placement[(string) $installId]['floor'] ?? null,
                 'form' => $placement[(string) $installId]['form'] ?? null,
                 'seats' => $count,

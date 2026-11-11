@@ -134,7 +134,7 @@ export class LobbyScreen {
         this.#set = new AnimationSet(log, { reduce: this.#reduce, edgeRows: ['A17'] });
 
         // The cab's stops — the plaques, which the ride offers and whose floors the door view draws.
-        const stops = () => plates(this.#body(), this.#building.floors);
+        const stops = () => plates(this.#body(), this.#building.floors, null, this.#building.authored);
 
         this.#ride = new Ride({
             clock,
@@ -256,7 +256,7 @@ export class LobbyScreen {
         const client = this.#client;
 
         return client.feed.applied
-            ? lobbyModel(this.#body(), this.#building.floors, this.#building.layoutFailure, correctedNowMs(client.clockOffsetMs, this.#clock.now()))
+            ? lobbyModel(this.#body(), this.#building.floors, this.#building.layoutFailure, correctedNowMs(client.clockOffsetMs, this.#clock.now()), this.#building.authored)
             : null;
     }
 

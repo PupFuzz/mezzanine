@@ -25,8 +25,8 @@ use Tests\TestCase;
  */
 class BuildingLayoutTest extends TestCase
 {
-    /** The floor this whole file is one edit away from: two offices, composed, unnamed. */
-    private const ACCEPTED = ['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]];
+    /** The floor this whole file is one edit away from: two offices, composed, named. */
+    private const ACCEPTED = ['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]];
 
     private function refuses(array $document, string $expect): void
     {
@@ -45,10 +45,10 @@ class BuildingLayoutTest extends TestCase
     {
         $layout = LayoutFixture::read(self::ACCEPTED);
 
-        // Member order is the document's — floor, label, rooms (card#9273) — and `assertSame` is
+        // Member order is the document's — floor, name, aliases, rooms (card#13117) — and `assertSame` is
         // order-sensitive, which is what holds the delivered shape rather than merely its content.
         $this->assertSame(
-            [['floor' => 'sola', 'label' => null, 'rooms' => [
+            [['floor' => 'sola', 'name' => 'sola', 'aliases' => [], 'rooms' => [
                 ['install' => 'sola', 'form' => 'office'],
                 ['install' => 'zeta', 'form' => 'office'],
             ]]],
@@ -58,38 +58,25 @@ class BuildingLayoutTest extends TestCase
         $this->assertNull($layout->floorOf('aimla'));
     }
 
-    // ── § 4.6: a floor has no authored id — its key is DERIVED ───────────────────────────────
+    // ── § 4.6: a floor's key is the slug of its NAME (card#13117) ────────────────────────────
 
-    public function test_a_floors_key_is_the_lexically_least_of_its_rooms_whatever_order_they_were_written_in(): void
+    public function test_a_floors_key_is_the_slug_of_its_name_and_never_its_rooms(): void
     {
-        // `zeta` first in the document; the key is still `sola`, and the rooms come out in
-        // § 2.1 row 6's order rather than the author's — the document's key order never reaches
-        // the screen, so no desk moves when a room is re-listed.
-        $layout = LayoutFixture::read(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]]);
+        // ⭐ card#13117 reverses card#9267's derived key: `The Solos` on a floor of `zeta` and `sola` is keyed
+        // `the-solos`, and its rooms still come out in § 2.1 row 6's order rather than the author's.
+        $layout = LayoutFixture::read(['floors' => [['name' => 'The Solos', 'rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]]);
 
-        $this->assertSame('sola', $layout->floors[0]['floor']);
+        $this->assertSame('the-solos', $layout->floors[0]['floor']);
         $this->assertSame(['sola', 'zeta'], array_column($layout->floors[0]['rooms'], 'install'));
-        $this->assertSame('sola', $layout->floorOf('zeta'));
+        $this->assertSame('the-solos', $layout->floorOf('zeta'));
     }
 
     public function test_the_floors_come_out_keys_ascending_not_in_authored_order(): void
     {
-        $layout = LayoutFixture::read(['floors' => [['rooms' => ['zeta' => ['form' => 'open']]], ['rooms' => ['aimla' => ['form' => 'open']]]]]);
+        $layout = LayoutFixture::read(['floors' => [['name' => 'Zeta', 'rooms' => ['aimla' => ['form' => 'open']]], ['name' => 'Aimla', 'rooms' => ['zeta' => ['form' => 'open']]]]]);
 
         $this->assertSame(['aimla', 'zeta'], array_column($layout->floors, 'floor'));
-    }
-
-    public function test_every_floor_key_is_an_install_the_layout_places_so_an_unplaced_install_can_never_collide(): void
-    {
-        // The property the derived key buys, asserted rather than argued: an install the layout
-        // does NOT place can never equal a floor key, which is what lets `Building::compose()`
-        // mint the implicit floor under the install's own id with no disambiguation rule at all.
-        $layout = LayoutFixture::read(self::ACCEPTED);
-
-        foreach ($layout->floors as $floor) {
-            $this->assertSame($floor['floor'], $layout->floorOf($floor['floor']),
-                "floor {$floor['floor']} is not keyed by a room this layout places");
-        }
+        $this->assertSame(['zeta', 'aimla'], array_column(array_merge(...array_column($layout->floors, 'rooms')), 'install'));
     }
 
     public function test_a_keyed_floors_list_is_refused_because_a_floor_has_no_name_to_give_it(): void
@@ -98,7 +85,7 @@ class BuildingLayoutTest extends TestCase
         // first draft of this card used. Ignoring the key would silently accept a name the design
         // does not have; the reader says so instead.
         $this->refuses(
-            ['floors' => ['the-solos' => ['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
+            ['floors' => ['the-solos' => ['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
             'is not a LIST of floors',
         );
     }
@@ -109,17 +96,17 @@ class BuildingLayoutTest extends TestCase
     {
         $this->refuses(
             ['floors' => [
-                ['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
-                ['rooms' => ['aimla' => ['form' => 'open'], 'zeta' => ['form' => 'office']]],
+                ['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
+                ['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open'], 'zeta' => ['form' => 'office']]],
             ]],
-            'is on floor `sola` and again on floor #1',
+            'Room `zeta` is on floor `sola` and again on floor `aimla`',
         );
     }
 
     public function test_a_form_outside_the_closed_set_is_refused_by_name_never_mapped(): void
     {
         $this->refuses(
-            ['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'cubicle']]]]],
+            ['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'cubicle']]]]],
             'declares the form `cubicle`',
         );
     }
@@ -132,9 +119,9 @@ class BuildingLayoutTest extends TestCase
     public function test_a_floor_record_with_no_rooms_member_at_all_is_refused(): void
     {
         // Distinct from the arm above and worth its own: an EMPTY `rooms` is a floor that draws
-        // nothing, and an ABSENT one is an entry that is not a floor record at all. A label with
+        // nothing, and an ABSENT one is an entry that is not a floor record at all. A name with
         // no rooms is the shape that reaches this — the author named a floor and never composed it.
-        $this->refuses(['floors' => [['label' => 'the solos']]], 'declares no `rooms`');
+        $this->refuses(['floors' => [['name' => 'the solos']]], 'declares no `rooms`');
     }
 
     public function test_a_floors_member_that_is_not_a_mapping_is_refused(): void
@@ -142,7 +129,7 @@ class BuildingLayoutTest extends TestCase
         $this->refuses(['floors' => ['sola']], 'is not a mapping');
     }
 
-    // ── § 4.6's LABEL, card#9273 ─────────────────────────────────────────────────────────────
+    // ── § 4.6's NAME, card#13117 (the LABEL of card#9273 until then) ─────────────────────────
 
     public function test_the_shape_before_the_label_is_refused_by_name_rather_than_read_as_rooms(): void
     {
@@ -160,32 +147,40 @@ class BuildingLayoutTest extends TestCase
         // § 4.6: "the member an author reaches for is an id" — and a floor has none, so `id` is
         // refused rather than stored, ignored, or quietly used as a label.
         $this->refuses(
-            ['floors' => [['id' => 'the-solos', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
+            ['floors' => [['name' => 'sola', 'id' => 'the-solos', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
             '`id`',
         );
     }
 
-    public function test_a_label_that_is_not_a_string_is_refused_by_type_and_never_coerced(): void
+    public function test_a_label_is_refused_by_its_own_name_naming_the_member_that_replaced_it(): void
     {
-        // `3` is the value an author writes for the third floor, and rendering it as *3* would be
-        // this reader inventing a name out of a mistake — the same refusal a form outside the
-        // closed set gets, for the same reason.
+        // ⭐ card#13117: one shape. A pre-13117 revision restored, or a hand copy of one, is told the one edit that
+        // makes it current — and the arm with no other change is accepted, so the refusal is the label's alone.
         $this->refuses(
-            ['floors' => [['label' => 3, 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
-            'declares a label that is not a string',
+            ['floors' => [['label' => 'the solos', 'name' => 'the solos', 'rooms' => ['sola' => ['form' => 'office']]]]],
+            'since card#13117 the member is `name`',
         );
+        $this->assertSame('the-solos', LayoutFixture::read(['floors' => [['name' => 'the solos', 'rooms' => ['sola' => ['form' => 'office']]]]])->floors[0]['floor']);
     }
 
-    /**
-     * § 4.6's `theme` (card#11046, docs/design/FLOOR.md § 10.6 item 5): a NAME or nothing, refused at load
-     * by type and never coerced — `3` is the third theme nobody has, and `["studio"]` a list where a name
-     * belongs (AT-D3-25's selection half).
-     */
+    public function test_a_floor_with_no_name_is_refused(): void
+    {
+        $this->refuses(['floors' => [['rooms' => ['sola' => ['form' => 'office']]]]], 'declares no `name`');
+    }
+
+    public function test_a_name_that_is_not_a_string_is_refused_by_type_and_never_coerced(): void
+    {
+        // `3` is the value an author writes for the third floor, and rendering it as *3* would be a coercion; an
+        // explicit `null` is no name either.
+        $this->refuses(['floors' => [['name' => 3, 'rooms' => ['sola' => ['form' => 'office']]]]], 'declares a `name` that is not a string (int)');
+        $this->refuses(['floors' => [['name' => null, 'rooms' => ['sola' => ['form' => 'office']]]]], 'declares a `name` that is not a string (null)');
+    }
+
     public function test_a_theme_that_is_not_a_string_is_refused_by_type_and_never_coerced(): void
     {
         foreach ([3, ['studio'], ['name' => 'studio'], true] as $theme) {
             $this->refuses(
-                ['floors' => [['theme' => $theme, 'rooms' => ['sola' => ['form' => 'office']]]]],
+                ['floors' => [['name' => 'sola', 'theme' => $theme, 'rooms' => ['sola' => ['form' => 'office']]]]],
                 'declares a `theme` of type',
             );
         }
@@ -198,7 +193,7 @@ class BuildingLayoutTest extends TestCase
      */
     public function test_the_reader_carries_a_theme_as_authored_and_absent_or_null_is_the_house_theme(): void
     {
-        $theme = fn (array $floor): mixed => LayoutFixture::read(['floors' => [$floor + ['rooms' => ['sola' => ['form' => 'office']]]]])->floors[0]['theme'] ?? null;
+        $theme = fn (array $floor): mixed => LayoutFixture::read(['floors' => [$floor + ['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]])->floors[0]['theme'] ?? null;
 
         $this->assertSame('nowhere', $theme(['theme' => 'nowhere']));
         $this->assertSame('studio', $theme(['theme' => 'studio']));
@@ -206,192 +201,66 @@ class BuildingLayoutTest extends TestCase
         // as `origin` and `hallway`, it is carried only where it is authored.
         $this->assertNull($theme(['theme' => null]));
         $this->assertNull($theme([]));
-        $this->assertArrayNotHasKey('theme', LayoutFixture::read(['floors' => [['theme' => null, 'rooms' => ['sola' => ['form' => 'office']]]]])->floors[0]);
+        $this->assertArrayNotHasKey('theme', LayoutFixture::read(['floors' => [['name' => 'sola', 'theme' => null, 'rooms' => ['sola' => ['form' => 'office']]]]])->floors[0]);
     }
 
-    public function test_an_explicit_null_label_is_an_absent_label_and_not_a_type_refusal(): void
+    public function test_a_blank_name_is_refused_because_a_floor_whose_name_renders_as_nothing_is_the_hole_in_miniature(): void
     {
-        // § 4.6: "The SHAPE is the contract; the store is the caller's" — the whole point of which
-        // is that card#9071's console could later hold this document in a JSON column "without the
-        // reader changing". A JSON column encodes an UNNAMED floor as `"label": null`, so refusing
-        // that by type would make the promise false for the one store it was made for. Null is
-        // therefore ABSENT — the floor reads as its key — and every other non-string is still
-        // refused by type, which is what the arm above holds.
-        $layout = LayoutFixture::read(
-            ['floors' => [['label' => null, 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
-        );
-
-        $this->assertSame([['floor' => 'sola', 'label' => null, 'rooms' => [
-            ['install' => 'sola', 'form' => 'office'],
-            ['install' => 'zeta', 'form' => 'office'],
-        ]]], $layout->floors);
+        $this->refuses(['floors' => [['name' => '  ', 'rooms' => ['sola' => ['form' => 'office']]]]], 'declares a blank `name`');
     }
 
-    public function test_a_blank_label_is_refused_because_a_floor_whose_name_renders_as_nothing_is_the_hole_in_miniature(): void
+    public function test_a_name_of_non_ascii_whitespace_is_blank_because_the_plaque_renders_as_nothing(): void
     {
-        $this->refuses(
-            ['floors' => [['label' => '  ', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
-            'declares a blank label',
-        );
+        // `trim()` is ASCII-only, so a name of one NO-BREAK SPACE (U+00A0) would walk past a trim; it is asked of
+        // what the page RENDERS.
+        $this->refuses(['floors' => [['name' => "\u{00A0}", 'rooms' => ['sola' => ['form' => 'office']]]]], 'declares a blank `name`');
     }
 
-    public function test_a_label_of_non_ascii_whitespace_is_blank_because_the_plate_renders_as_nothing(): void
+    public function test_a_name_with_no_letter_or_digit_a_to_z_is_refused_because_it_has_no_address(): void
     {
-        // `trim()` is ASCII-only, so a label of one NO-BREAK SPACE (U+00A0) walked past the blank
-        // refusal above and composed a plate whose name renders as nothing — § 4.6's "a floor whose
-        // name renders as nothing", the hole this document exists to refuse, arriving through the
-        // very check written to refuse it. The blank rule is the same question as the reads-alike
-        // one below and is answered the same way: what does this text RENDER as?
-        $this->refuses(
-            ['floors' => [['label' => "\u{00A0}", 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
-            'declares a blank label',
-        );
+        $this->refuses(['floors' => [['name' => '三階', 'rooms' => ['sola' => ['form' => 'office']]]]], 'must contain a letter or digit a–z 0–9');
+        $this->refuses(['floors' => [['name' => '***', 'rooms' => ['sola' => ['form' => 'office']]]]], 'must contain a letter or digit a–z 0–9');
     }
 
-    public function test_two_floors_that_would_read_the_same_are_refused_naming_both_keys_and_the_string(): void
+    public function test_two_floors_whose_names_make_one_address_are_refused_naming_both_and_the_address(): void
     {
-        $this->refuses(
-            ['floors' => [
-                ['label' => 'the solos', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
-                ['label' => 'the solos', 'rooms' => ['mira' => ['form' => 'open'], 'nova' => ['form' => 'open']]],
-            ]],
-            'Floors `mira` and `sola` would both read as `the solos`',
-        );
+        // Two names that READ alike always slug alike — a doubled space, a trailing one, a case, an accent — so the
+        // card#9273 refusal of two plates reading the same is this one clause.
+        foreach (['the solos', ' the solos', 'the  solos', 'The Solos', 'thé solos', 'the-solos!'] as $twin) {
+            $this->refuses(['floors' => [
+                ['name' => 'the solos', 'rooms' => ['mira' => ['form' => 'open']]],
+                ['name' => $twin, 'rooms' => ['sola' => ['form' => 'office']]],
+            ]], 'would both be at the address `/floor/the-solos`');
+        }
+
+        // The control: one character apart in the ADDRESS is two floors.
+        $this->assertCount(2, LayoutFixture::read(['floors' => [
+            ['name' => 'the solos', 'rooms' => ['mira' => ['form' => 'open']]],
+            ['name' => 'the solo', 'rooms' => ['sola' => ['form' => 'office']]],
+        ]])->floors);
     }
 
-    public function test_a_label_equal_to_another_floors_key_is_caught_by_the_same_clause(): void
+    public function test_a_name_is_stored_exactly_as_authored_and_is_never_trimmed(): void
     {
-        // § 4.6 states the rule on what a viewer READS — the label where given, else the key — so
-        // this needs no second check beside the duplicate-label one, and the test exists to say
-        // that the one clause covers both rather than to add a rule.
-        $this->refuses(
-            ['floors' => [
-                ['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
-                ['label' => 'sola', 'rooms' => ['mira' => ['form' => 'open'], 'nova' => ['form' => 'open']]],
-            ]],
-            'Floors `mira` and `sola` would both read as `sola`',
-        );
+        $layout = LayoutFixture::read(['floors' => [['name' => ' The  Solos ', 'rooms' => ['sola' => ['form' => 'office']]]]]);
+
+        $this->assertSame([' The  Solos ', 'the-solos'], [$layout->floors[0]['name'], $layout->floors[0]['floor']]);
     }
 
-    public function test_two_floors_reading_alike_once_the_page_renders_them_are_refused_because_html_collapses_whitespace(): void
+    public function test_a_rename_moves_the_floors_key_and_no_room(): void
     {
-        // ⛔ WHAT A VIEWER READS IS HTML, NOT BYTES, so the comparison is on the RENDERED form.
-        // `server/public/js/lobby/directory.js` writes the plaque's name as a text node, under the page
-        // chrome sheet's default `white-space` on the plaque's row — which strips that text at both ends
-        // and collapses every run of whitespace inside it. A comparison on the BYTES therefore accepts documents whose plates
-        // are indistinguishable on the screen — which is exactly the building § 4.6 refuses: "two
-        // plates reading alike is a building nobody can navigate".
-        //
-        // Each arm names the AUTHORED string in the message — the string the operator has to go and
-        // edit — and the backticks around it are what make the whitespace visible there.
-
-        // (a) a label with a trailing space, beside the floor whose KEY it otherwise equals.
-        $this->refuses(
-            ['floors' => [
-                ['rooms' => ['sola' => ['form' => 'office']]],
-                ['label' => 'sola ', 'rooms' => ['zeta' => ['form' => 'office']]],
-            ]],
-            'Floors `sola` and `zeta` would both read as `sola `',
-        );
-
-        // (b) a leading space on one of two labels.
-        $this->refuses(
-            ['floors' => [
-                ['label' => 'the solos', 'rooms' => ['mira' => ['form' => 'open'], 'nova' => ['form' => 'open']]],
-                ['label' => ' the solos', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
-            ]],
-            'Floors `mira` and `sola` would both read as ` the solos`',
-        );
-
-        // (c) a doubled space INSIDE one of two labels — the arm a trim alone would still accept.
-        $this->refuses(
-            ['floors' => [
-                ['label' => 'the solos', 'rooms' => ['mira' => ['form' => 'open'], 'nova' => ['form' => 'open']]],
-                ['label' => 'the  solos', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]],
-            ]],
-            'Floors `mira` and `sola` would both read as `the  solos`',
-        );
-    }
-
-    public function test_two_unlabelled_floors_whose_keys_differ_only_in_whitespace_are_refused_by_the_same_clause(): void
-    {
-        // The sibling of the arm above, and the reason the normalisation is applied to the key
-        // FALLBACK and not to the label alone: two UNLABELLED floors keyed `sola` and `sola ` are
-        // two plates both reading *sola*, with different links. This reader deliberately does not
-        // validate that a room id is a well-formed `install_id` (docs/design/EVENT-SCHEMA.md
-        // § 3.1 owns that pattern and a second copy here would be free to drift), so the document
-        // reaches this clause — and § 4.6's clause is stated on what a viewer READS, which says
-        // nothing about whether the string came from a label or from a key.
-        $this->refuses(
-            ['floors' => [
-                ['rooms' => ['sola' => ['form' => 'office']]],
-                ['rooms' => ['sola ' => ['form' => 'office']]],
-            ]],
-            'Floors `sola` and `sola ` would both read as `sola `',
-        );
-    }
-
-    public function test_a_label_equal_to_its_own_key_is_accepted_because_there_is_nothing_to_refuse(): void
-    {
-        // THE CONTROL for the reads-alike arms above: the same collision shape with the two plates being
-        // ONE plate. It reads `sola` and links to `sola`, which is what it would have done
-        // unlabelled — a refusal here would be the rule fired on a document nobody can misread.
-        $layout = LayoutFixture::read(
-            ['floors' => [['label' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
-        );
-
-        $this->assertSame([['floor' => 'sola', 'label' => 'sola', 'rooms' => [
-            ['install' => 'sola', 'form' => 'office'],
-            ['install' => 'zeta', 'form' => 'office'],
-        ]]], $layout->floors);
-    }
-
-    public function test_a_label_is_stored_exactly_as_authored_and_is_never_trimmed(): void
-    {
-        // The reader refuses what it cannot accept and repairs nothing it can (§ 4.6). A trim
-        // here would be a second, silent normalisation the author never sees and the document
-        // never records — and the blank refusal above is only honest if `' the solos '` is kept.
-        $layout = LayoutFixture::read(
-            ['floors' => [['label' => ' the solos ', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]],
-        );
-
-        $this->assertSame(' the solos ', $layout->floors[0]['label']);
-    }
-
-    public function test_a_label_edit_moves_no_key_and_breaks_no_link(): void
-    {
-        // ⭐ THE GUARANTEE THE WHOLE CARD RESTS ON, asserted as a PROPERTY over three documents
-        // that differ in labels and in nothing else: same floors, same keys, same index from room
-        // to floor. § 4.6: "editing a label moves no floor and breaks no link — which is the whole
-        // reason it is a separate member". An implementation that keyed, sorted or indexed by the
-        // label would red here and nowhere else in this file.
+        // ⭐ card#13117, the reversal stated as a property: two layouts that differ in names and in nothing else place
+        // every room on the same floor, and the floors' keys are the slugs of the names.
         $rooms = ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']];
-
-        $unlabelled = LayoutFixture::read(['floors' => [['rooms' => $rooms], ['rooms' => ['aimla' => ['form' => 'open']]]]]);
-        $labelled = LayoutFixture::read(['floors' => [
-            ['label' => 'the solos', 'rooms' => $rooms],
-            ['label' => 'reception', 'rooms' => ['aimla' => ['form' => 'open']]],
-        ]]);
-        $renamed = LayoutFixture::read(['floors' => [
-            ['label' => 'the hallway', 'rooms' => $rooms],
-            ['label' => 'the lobby', 'rooms' => ['aimla' => ['form' => 'open']]],
+        $before = LayoutFixture::read(['floors' => [['name' => 'the solos', 'rooms' => $rooms], ['name' => 'reception', 'rooms' => ['aimla' => ['form' => 'open']]]]]);
+        $after = LayoutFixture::read(['floors' => [
+            ['name' => 'the hallway', 'aliases' => ['the-solos'], 'rooms' => $rooms],
+            ['name' => 'the lobby', 'aliases' => ['reception'], 'rooms' => ['aimla' => ['form' => 'open']]],
         ]]);
 
-        $keys = fn (BuildingLayout $l) => array_column($l->floors, 'floor');
-
-        $this->assertSame(['aimla', 'sola'], $keys($unlabelled));
-        $this->assertSame($keys($unlabelled), $keys($labelled), 'a label moved a floor key');
-        $this->assertSame($keys($labelled), $keys($renamed), 'renaming a floor moved its key');
-
-        $this->assertSame(['sola' => 'sola', 'zeta' => 'sola', 'aimla' => 'aimla'], $unlabelled->floorByRoom);
-        $this->assertSame($unlabelled->floorByRoom, $labelled->floorByRoom, 'a label moved a room');
-        $this->assertSame($labelled->floorByRoom, $renamed->floorByRoom, 'renaming a floor moved a room');
-
-        // And the labels really did differ — without this the three arms could agree by all being
-        // unlabelled, which is the way this property test would quietly stop measuring anything.
-        $this->assertSame([null, null], array_column($unlabelled->floors, 'label'));
-        $this->assertSame(['reception', 'the solos'], array_column($labelled->floors, 'label'));
-        $this->assertSame(['the lobby', 'the hallway'], array_column($renamed->floors, 'label'));
+        $this->assertSame(['sola' => 'the-solos', 'zeta' => 'the-solos', 'aimla' => 'reception'], $before->floorByRoom);
+        $this->assertSame(['sola' => 'the-hallway', 'zeta' => 'the-hallway', 'aimla' => 'the-lobby'], $after->floorByRoom);
+        $this->assertSame([['the-solos'], ['reception']], array_column($after->floors, 'aliases'));
     }
 
     // ── the two documents that are NOT errors, and are different from each other ─────────────
@@ -400,8 +269,8 @@ class BuildingLayoutTest extends TestCase
     {
         $layout = LayoutFixture::read(['floors' => []]);
 
-        // § 4.6: "An empty layout is therefore a legal and meaningful document — it is today's
-        // building". What that building looks like is the fixture's first case.
+        // § 4.6: "An empty layout is therefore a legal and meaningful document". What that building looks
+        // like — every reported room on the Unassigned floor — is the fixture's first case.
         $this->assertSame([], $layout->floors);
         $this->assertNull($layout->floorOf('aimla'));
     }
@@ -426,7 +295,7 @@ class BuildingLayoutTest extends TestCase
     {
         // ⚠ THE SIBLING OF THE ARM ABOVE, and the one a `??` swallows: `{"floors": null}` reads as
         // the empty building — a deliberate authoring choice — unless the reader looks for the KEY
-        // rather than for a truthy value. It is not the `label => null` case, where absent is
+        // rather than for a truthy value. It is not the `theme => null` case, where absent is
         // legal and null is how a JSON column spells it; here absent is itself a refusal, so null
         // cannot mean absent.
         $this->refuses(['floors' => null], 'is not a LIST of floors');
@@ -438,7 +307,7 @@ class BuildingLayoutTest extends TestCase
     {
         // THE CONTROL for the two refusals below, and it is also the document the layout editor
         // shows on a deployment that has never saved one (`App\Http\...\LayoutController`): the
-        // empty building, which § 8.7 calls today's building — one floor per install.
+        // empty building — every room on the Unassigned floor (card#13117).
         $this->assertSame([], BuildingLayout::fromJson("{\n    \"floors\": []\n}")->floors);
     }
 
@@ -509,7 +378,7 @@ class BuildingLayoutTest extends TestCase
         // as a form" — because `origin` is reachable only inside a record, and a document read
         // both ways would be two shapes living forever.
         $this->refuses(
-            ['floors' => [['rooms' => ['sola' => 'office', 'zeta' => ['form' => 'office']]]]],
+            ['floors' => [['name' => 'sola', 'rooms' => ['sola' => 'office', 'zeta' => ['form' => 'office']]]]],
             'declares `office` where a record belongs',
         );
     }
@@ -519,7 +388,7 @@ class BuildingLayoutTest extends TestCase
         // § 4.6 rule 1: "extent lives in the room, position lives on the floor, and nothing lives
         // in both". A `width` here is the second home the whole plan shape exists to refuse.
         $this->refuses(
-            ['floors' => [['rooms' => ['sola' => ['form' => 'office', 'width' => 640]]]]],
+            ['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'width' => 640]]]]],
             '`width`',
         );
     }
@@ -528,12 +397,12 @@ class BuildingLayoutTest extends TestCase
     {
         // THE CONTROL for every plan refusal below: the operator's own worked floor from § 4.6,
         // accepted, with `origin` carried in the room record and in member order.
-        $layout = LayoutFixture::read(['floors' => [['rooms' => [
+        $layout = LayoutFixture::read(['floors' => [['name' => 'sola', 'rooms' => [
             'zeta' => ['form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
         ]]]]);
 
-        $this->assertSame([['floor' => 'sola', 'label' => null, 'rooms' => [
+        $this->assertSame([['floor' => 'sola', 'name' => 'sola', 'aliases' => [], 'rooms' => [
             ['install' => 'sola', 'form' => 'office', 'origin' => ['x' => 0, 'y' => 160]],
             ['install' => 'zeta', 'form' => 'office', 'origin' => ['x' => 288, 'y' => 160]],
         ]]], $layout->floors);
@@ -545,7 +414,7 @@ class BuildingLayoutTest extends TestCase
         // nowhere to go that the plan did not claim, and a default arrangement laid beside an
         // authored one is two rules on one screen".
         $this->refuses(
-            ['floors' => [['rooms' => [
+            ['floors' => [['name' => 'sola', 'rooms' => [
                 'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
                 'zeta' => ['form' => 'office'],
             ]]]],
@@ -556,7 +425,7 @@ class BuildingLayoutTest extends TestCase
     public function test_an_origin_member_other_than_x_and_y_is_refused_by_name(): void
     {
         $this->refuses(
-            ['floors' => [['rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0, 'width' => 320]]]]]],
+            ['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0, 'width' => 320]]]]]],
             '`width`',
         );
     }
@@ -564,7 +433,7 @@ class BuildingLayoutTest extends TestCase
     public function test_a_non_integer_origin_is_refused_rather_than_rounded(): void
     {
         $this->refuses(
-            ['floors' => [['rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => '0', 'y' => 0]]]]]],
+            ['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => '0', 'y' => 0]]]]]],
             'declares `origin.x` as `0`',
         );
     }
@@ -572,7 +441,7 @@ class BuildingLayoutTest extends TestCase
     public function test_a_negative_origin_is_refused_because_it_draws_the_room_off_the_floor(): void
     {
         $this->refuses(
-            ['floors' => [['rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => -32]]]]]],
+            ['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => -32]]]]]],
             'declares `origin.y` as -32',
         );
     }
@@ -583,7 +452,7 @@ class BuildingLayoutTest extends TestCase
         // a floor the camera must pan across … a bound would be a number with no derivation
         // behind it". Asserted so that adding one later is a deliberate change to this document's
         // rule and not a tidy-up.
-        $layout = LayoutFixture::read(['floors' => [['rooms' => [
+        $layout = LayoutFixture::read(['floors' => [['name' => 'sola', 'rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 4000000, 'y' => 0]],
         ]]]]);
@@ -598,14 +467,14 @@ class BuildingLayoutTest extends TestCase
         // THE CONTROL: the same hallway on a planned floor is accepted and kept byte for byte —
         // it is part of the layout document, so it has no `map_version` and no `room.map` of its
         // own (§ 4.6, D2 § 6.11).
-        $layout = LayoutFixture::read(['floors' => [['rooms' => $planned, 'hallway' => FloorMapFixture::hallway()]]]);
+        $layout = LayoutFixture::read(['floors' => [['name' => 'sola', 'rooms' => $planned, 'hallway' => FloorMapFixture::hallway()]]]);
 
         $this->assertSame(json_encode(FloorMapFixture::hallway()), json_encode($layout->floors[0]['hallway']));
 
         // § 4.6: "on a floor whose rooms carry no `origin`: refused by name — a corridor with no
         // rooms placed along it is a picture of nothing".
         $this->refuses(
-            ['floors' => [['rooms' => ['sola' => ['form' => 'office']], 'hallway' => FloorMapFixture::hallway()]]],
+            ['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']], 'hallway' => FloorMapFixture::hallway()]]],
             'declares a `hallway` and places none of its rooms',
         );
     }
@@ -617,7 +486,7 @@ class BuildingLayoutTest extends TestCase
         // ROOM — so a slot out in the corridor would be a desk no install owns.
         $this->refuses(
             ['floors' => [[
-                'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
+                'name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
                 'hallway' => FloorMapFixture::decoded(),
             ]]],
             'declares an object layer named `desks`',
@@ -636,7 +505,7 @@ class BuildingLayoutTest extends TestCase
 
         $this->refuses(
             ['floors' => [[
-                'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
+                'name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
                 'hallway' => $base64,
             ]]],
             'declares encoding "base64"',
@@ -647,7 +516,7 @@ class BuildingLayoutTest extends TestCase
     {
         $this->refuses(
             ['floors' => [[
-                'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
+                'name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
                 'hallway' => 'tiles/floor-plane.tsx',
             ]]],
             'declares a `hallway` that is not a Tiled document',
@@ -682,7 +551,7 @@ class BuildingLayoutTest extends TestCase
             $hallway = FloorMapFixture::hallway();
             $hallway[$member] = $value;
 
-            return (string) json_encode(['floors' => [['rooms' => $planned, 'hallway' => $hallway]]]);
+            return (string) json_encode(['floors' => [['name' => 'sola', 'rooms' => $planned, 'hallway' => $hallway]]]);
         };
 
         foreach (['layers' => 'declares no `layers` array', 'tilesets' => 'something other than a list of tilesets'] as $member => $expect) {
@@ -700,7 +569,7 @@ class BuildingLayoutTest extends TestCase
     public function test_a_rooms_list_is_refused_because_a_room_is_keyed_by_its_install(): void
     {
         // THE CONTROL: `rooms` is a mapping of `install_id` to its record.
-        $this->assertSame('sola', BuildingLayout::fromJson('{"floors": [{"rooms": {"sola": {"form": "open"}}}]}')->floors[0]['floor']);
+        $this->assertSame('sola', BuildingLayout::fromJson('{"floors": [{"name": "sola","rooms": {"sola": {"form": "open"}}}]}')->floors[0]['floor']);
 
         // Decoded associatively, a LIST of records arrived keyed `0`, `1`, … and was placed as rooms
         // named by their positions — a floor of installs nobody has.
@@ -716,9 +585,9 @@ class BuildingLayoutTest extends TestCase
         // all-digit install id is legal — and PHP, like `json_decode(…, true)`, turns such a key
         // into an int. The cast has to round-trip it or the key would be an int the browser
         // compares as a string and `floorOf('42')` would answer for a room nobody placed.
-        $layout = LayoutFixture::read(['floors' => [['rooms' => ['42' => ['form' => 'open']]]]]);
+        $layout = LayoutFixture::read(['floors' => [['name' => '42', 'rooms' => ['42' => ['form' => 'open']]]]]);
 
         $this->assertSame('42', $layout->floorOf('42'));
-        $this->assertSame([['floor' => '42', 'label' => null, 'rooms' => [['install' => '42', 'form' => 'open']]]], $layout->floors);
+        $this->assertSame([['floor' => '42', 'name' => '42', 'aliases' => [], 'rooms' => [['install' => '42', 'form' => 'open']]]], $layout->floors);
     }
 }

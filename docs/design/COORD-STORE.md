@@ -110,7 +110,7 @@ as placeholders because each equals a live roundtable identity:
 Both seats **declare** a name and both declarations are `checked` — card#9296's server half and
 card#9375's reporter half are live on this fleet. The sandbox's building layout (`building_layout.document`,
 read-only) composes **one** floor, *Mezzanine*, holding the `mezzanine` room alone; the `kanban` room is
-on no authored floor and takes a floor of its own (D3 § 4.6). So on the sandbox as laid out today the
+on no authored floor and was drawn on a floor of its own (D3 § 4.6 — the Unassigned floor since card#13117). So on the sandbox as laid out then the
 two seats are on **different floors**, which is the portal case of [§ 6.1](#61-what-the-floor-renders-and-what-it-no-longer-does)
 once both declare, and the desk-to-desk bird is one admin-console act away ([§ 10](#10-operator-questions) NQ3).
 

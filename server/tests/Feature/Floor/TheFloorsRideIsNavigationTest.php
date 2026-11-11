@@ -20,7 +20,7 @@ use Tests\TestCase;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ EVERY EXPECTATION IS RE-DERIVED, NEVER TRANSCRIBED: the stops from the fixture's own layout through § 4.6's
- * rule (`label ?? key`, `/floor/{key}`, key order), every phase's length from § 12's *Ride door motion*, *Loop
+ * rule (the name, `/floor/{key}`, key order), every phase's length from § 12's *Ride door motion*, *Loop
  * frame rate* and *Cab hold* rows, and the guard table below from § 4.5's phase table — so a method accepted out
  * of phase, a length that drifted from § 12, or a stop list captured at the press reds here.
  *
@@ -145,20 +145,19 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $placed = [];
 
         foreach ($layout as $floor) {
-            $floors[$floor['floor']] = $floor['label'] ?? $floor['floor'];
+            $floors[$floor['floor']] = $floor['name'];
 
             foreach ($floor['rooms'] as $room) {
                 $placed[] = $room['install'];
             }
         }
 
-        foreach ($snapshot['installs'] as $install) {
-            if (! in_array($install['install_id'], $placed, true)) {
-                $floors[$install['install_id']] = $install['install_id'];
-            }
-        }
-
         ksort($floors, SORT_STRING);
+
+        // card#13117: every reported room no floor places is on the one Unassigned floor, after the named ones.
+        if (array_diff(array_column($snapshot['installs'], 'install_id'), $placed) !== []) {
+            $floors['unassigned'] = 'Unassigned';
+        }
         $stops = [];
 
         foreach ($floors as $key => $name) {
@@ -239,7 +238,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $frames = $this->rideFrames($result);
 
         $this->assertNotSame([], $frames, 'no frame carried a ride');
-        $this->assertSame(['aimla', 'kappa', 'zeta', null], array_column($expected, 'key'), 'the fixture no longer composes the three floors this test was written over');
+        $this->assertSame(['aimla', 'kappa', 'the-annex', null], array_column($expected, 'key'), 'the fixture no longer composes the three floors this test was written over');
 
         foreach ($frames as $render) {
             $ride = $render['frame']['ride'];
@@ -459,7 +458,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $opened = array_values(array_filter($this->acts($this->floorRun(self::RIDES)), static fn ($a) => $a['act']['act'] === 'opened'));
 
         $this->assertSame([
-            ['phase' => 'leaving', 'route' => '/floor/zeta#ride'],
+            ['phase' => 'leaving', 'route' => '/floor/the-annex#ride'],
             ['phase' => 'leaving', 'route' => '/floor/kappa#ride'],
             ['phase' => 'staying', 'route' => null],
             ['phase' => 'leaving', 'route' => self::LOBBY_HREF.'#ride'],
@@ -475,7 +474,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
     {
         $user = User::factory()->twoFactorConfirmed()->create();
 
-        foreach (['/floor/zeta', '/floor/kappa', '/floor/aimla'] as $route) {
+        foreach (['/floor/the-annex', '/floor/kappa', '/floor/aimla'] as $route) {
             $this->actingAs($user)->get($route)->assertOk()->assertSee('data-floor="'.substr($route, 7).'"', false);
         }
     }
@@ -559,7 +558,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertNotSame([], $before);
         $this->assertNotSame([], $after, 'no frame carried the ride after the layout moved');
         $this->assertContains('kappa', $keys($before[0]));
-        $this->assertSame(['aimla', 'zeta', null], $keys($after[count($after) - 1]), 'a floor the layout removed is still a stop');
+        $this->assertSame(['aimla', 'the-annex', null], $keys($after[count($after) - 1]), 'a floor the layout removed is still a stop');
 
         $redirect = array_values(array_filter($result['floor_renders'], static fn ($r) => ($r['frame']['redirect'] ?? null) !== null));
 
@@ -734,7 +733,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $dir = $this->mutatedModules([$ride, 'chosen: { key: stop.key, name: stop.name, href: stop.href } };',
             'chosen: { key: stop.key, name: stop.name, href: `/floor/${encodeURIComponent(stop.name)}` } };']);
         $routes = array_column(array_column(array_filter($this->acts($this->floorRun(self::RIDES, $dir)), static fn ($a) => $a['act']['act'] === 'opened'), 'answer'), 'route');
-        $this->assertNotContains('/floor/zeta#ride', $routes, 'RED 3 (route from the name) did not bite');
+        $this->assertNotContains('/floor/the-annex#ride', $routes, 'RED 3 (route from the name) did not bite');
 
         // RED 4 — the stops captured at the press.
         $dir = $this->mutatedModules([$ride, '            stops: this.#stops(),', '            stops: (ride.stops ??= this.#stops()),']);
@@ -838,7 +837,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $result = $this->floorRun(self::REMOVED, $dir);
         $after = array_values(array_filter($this->rideFrames($result), static fn ($r) => $r['at'] >= 1500 && $r['at'] < 3000));
 
-        $this->assertSame(['aimla', 'zeta', null], array_column($after[count($after) - 1]['frame']['ride']['stops'], 'key'));
+        $this->assertSame(['aimla', 'the-annex', null], array_column($after[count($after) - 1]['frame']['ride']['stops'], 'key'));
     }
 
     private function test_green_a_stay_ends_with_no_ride_and_leaves_the_drill_down_alone_in(string $dir): void

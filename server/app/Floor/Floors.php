@@ -56,9 +56,13 @@ final class Floors
     }
 
     /**
-     * Every authored room's current version and when it was authored, WITHOUT the documents —
+     * Every LIVE room's current authored version and when it was authored, WITHOUT the documents —
      * `docs/design/FLEET-STATE.md § 8.7`'s `rooms[]`, which a client fetches on every connect. A map
      * is up to 512 KiB (§ 12), so `all()` here would read every one to answer three columns.
+     *
+     * ⛔ A RETIRED ROOM'S MAP IS LEFT OUT (card#13117). Retiring a room keeps its current map as a record, and both
+     * composers draw every authored room no floor places on the Unassigned floor (`docs/design/FLOOR.md § 4.6`), so a
+     * retired room listed here would be drawn there — where § 4.1 of the plan says a retired room is drawn nowhere.
      *
      * `updated_at` IS the current revision's `authored_at`: both writers stamp the row and the
      * revision from one `$at` (`writeCurrent()`), and the migration that added `map_version` seeded
@@ -68,7 +72,11 @@ final class Floors
      */
     public static function versions(): Collection
     {
-        return DB::table('floors')->orderBy('install_id')->get(['install_id', 'map_version', 'updated_at']);
+        return DB::table('floors')
+            ->leftJoin('installs', 'installs.install_id', '=', 'floors.install_id')
+            ->whereNull('installs.retired_at')
+            ->orderBy('floors.install_id')
+            ->get(['floors.install_id', 'floors.map_version', 'floors.updated_at']);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Floor;
 
+use App\Building\FloorSlug;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\Support\WalksAPagesImportGraph;
@@ -108,7 +109,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
             $floors = $fixture['http']['/api/building'][0]['body']['layout']['floors'];
 
             $this->assertCount(2, $floors, "[{$run}] the layout is not two floors");
-            $this->assertSame(1, count(array_filter($floors, static fn (array $f): bool => isset($f['label']))), "[{$run}] not exactly one floor is labelled");
+            $this->assertSame(1, count(array_filter($floors, static fn (array $f): bool => $f['name'] !== $f['floor'])), "[{$run}] not exactly one floor is named apart from its key");
             $acts = array_unique(array_column($fixture['lobby']['camera'], 'act'));
 
             foreach ([...self::MOVES, 'fit', 'focus_elevator', 'focus_board'] as $act) {
@@ -173,12 +174,12 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
     // ── RED — each defect planted in the shipped module it would live in, and watched failing ──
 
-    /** § 11's sixth RED: a plaque linking to `/floor/{label}`. */
-    public function test_red_the_label_in_the_link(): void
+    /** § 11's sixth RED: a plaque linking to `/floor/{name}` rather than its key, the slug of the name (card#13117). */
+    public function test_red_the_name_in_the_link(): void
     {
-        $dir = $this->mutatedModules(['../lobby/lobby-model.js', 'href: `/floor/${encodeURIComponent(floor)}`,', 'href: `/floor/${encodeURIComponent(label ?? floor)}`,']);
+        $dir = $this->mutatedModules(['../lobby/lobby-model.js', 'href: `/floor/${encodeURIComponent(floor)}`,', 'href: `/floor/${encodeURIComponent(name)}`,']);
 
-        $this->assertNotSame([], $this->plaqueDefects($this->replay(self::RUN, $dir)), 'the sixth RED (the label in the link) did not bite');
+        $this->assertNotSame([], $this->plaqueDefects($this->replay(self::RUN, $dir)), 'the sixth RED (the name in the link) did not bite');
     }
 
     /** § 11's seventh RED: the floor's desks drawn on its plaque. */
@@ -366,7 +367,7 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
     {
         $http = $this->fixture(self::RUN)['http'];
         $floors = $http['/api/building'][0]['body']['layout']['floors'];
-        $floors[] = ['floor' => 'zz-annexe', 'label' => 'the far annexe', 'rooms' => [['install' => 'zz-annexe', 'form' => 'office']]];
+        $floors[] = ['floor' => 'zz-annexe', 'name' => 'ZZ Annexe', 'aliases' => [], 'rooms' => [['install' => 'zz-annexe', 'form' => 'office']]];
         $http['/api/building'][0]['body']['layout']['floors'] = $floors;
 
         return ['http' => $http];
@@ -443,8 +444,9 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
                     $defects[] = "at {$f['at']} ms the plaque {$plaque['floor']} links to {$plaque['href']}, not its key's route";
                 }
 
-                if ($plaque['name'] !== ($plaque['label'] ?? $plaque['floor'])) {
-                    $defects[] = "at {$f['at']} ms the plaque {$plaque['floor']} does not read as its label, else its key";
+                // card#13117: a floor's key is the slug of its name, so a plaque reads as the name its link is made of.
+                if (FloorSlug::of($plaque['name']) !== $plaque['floor']) {
+                    $defects[] = "at {$f['at']} ms the plaque {$plaque['floor']} does not read as the name its address is made of";
                 }
 
                 if ($this->carriesASeat($plaque)) {
@@ -455,8 +457,8 @@ class TheBuildingCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
 
         $last = $drawn[count($drawn) - 1]['summary']['floors'];
 
-        if (count($last) < 2 || array_filter(array_column($last, 'label')) === []) {
-            $defects[] = 'the run draws no directory of two floors with one labelled';
+        if (count($last) < 2 || array_filter($last, static fn (array $p): bool => $p['name'] !== $p['floor']) === []) {
+            $defects[] = 'the run draws no directory of two floors with one named apart from its key';
         }
 
         return $defects;

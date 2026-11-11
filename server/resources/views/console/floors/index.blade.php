@@ -15,7 +15,7 @@
         <a href="{{ route('admin.layout.edit') }}">building layout</a> — its own module, with its
         own revisions, since card#9208's reversal moved it out of a deploy-time file (§ 4.6). Rooms
         sharing a <em>Floor</em> value below are drawn on one screen; a room the layout does not
-        place gets a floor of its own.
+        place is drawn on the <em>unassigned</em> floor until it is placed.
     </p>
 
     {{-- ⭐ docs/design/FLOOR.md § 14 item 28(1)(iii): every room whose current map fails the
@@ -93,9 +93,8 @@
                     </td>
                     <td>
                         @if ($row['floor'] === null)
-                            {{-- § 4.6: placed nowhere and reporting nothing, so nothing draws it. --}}
-                            <strong>on no floor</strong> — the layout places this room nowhere and
-                            the fleet reports no seat for it
+                            {{-- A retired room keeps its map as a record and is drawn nowhere (card#13117). --}}
+                            <strong>on no floor</strong> — the room is retired, and its map is kept as a record
                         @else
                             {{ $row['floor'] }}
                             <br>{{ $row['form'] }}

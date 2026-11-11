@@ -40,9 +40,9 @@ class BuildingController extends Controller
     public const API_VERSION = 1;
 
     /**
-     * `GET /api/building` — the layout, "already keyed, labelled and sorted, exactly as the page
-     * delivered them before this surface existed", and `rooms[]`: every room with an AUTHORED map and
-     * nothing else.
+     * `GET /api/building` — the layout, its floors already keyed, named and sorted (each with its `name` and
+     * `aliases` since card#13117), and `rooms[]`: every LIVE room with an AUTHORED map and nothing else
+     * (`App\Floor\Floors::versions()` says why a retired room's is left out).
      */
     public function building(): JsonResponse
     {

@@ -120,11 +120,11 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
             $this->assertSame([], $this->tallyDefects($run, $this->replay($run)), $run);
         }
 
-        $aimla = $this->plaques($this->replay('lobby_plaque'))['aimla'];
+        $aimla = $this->plaques($this->replay('lobby_plaque'))['floor-2'];
         $this->assertSame('3 agents · 4 desks', $aimla['staffing']['text']);
         $this->assertCount(4, $aimla['chips'], 'the plaque run\'s tally is four members');
 
-        $kanban = $this->plaques($this->replay('lobby_markers'))['kanban'];
+        $kanban = $this->plaques($this->replay('lobby_markers'))['the-bridge'];
         $napping = array_values(array_filter($kanban['chips'], static fn (array $c): bool => $c['recognised'] === false));
         $this->assertSame([['state' => 'napping', 'count' => 1, 'recognised' => false, 'text' => '1 unrecognised (napping)']], $napping);
         $this->assertSame($kanban['held'] - 1, $kanban['staffing']['agents'], 'the unrecognised seat is not an agent');
@@ -135,7 +135,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
     public function test_green_a_plaque_holding_no_seat_is_named_no_seats_held(): void
     {
         $scenario = $this->withoutSeatsOf($this->fixture('lobby_plaque'), ['kanban', 'kanban-bridge']);
-        $kanban = $this->plaques($this->probe($scenario)['runs'][0])['kanban'];
+        $kanban = $this->plaques($this->probe($scenario)['runs'][0])['the-bridge'];
 
         $this->assertSame(0, $kanban['held']);
         $this->assertSame('the bridge, no seats held', $kanban['accessible_name']);
@@ -150,7 +150,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
         }
 
         $cap = $this->section12($this->floorMd())['cap'];
-        $kanban = $this->plaques($this->replay('lobby_markers'))['kanban'];
+        $kanban = $this->plaques($this->replay('lobby_markers'))['the-bridge'];
 
         $this->assertCount($cap, $kanban['markers']['shown']);
         $this->assertSame('+'.($kanban['held'] - $cap).' more', $kanban['markers']['more']);
@@ -171,8 +171,8 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
             $this->assertSame([], $this->attentionDefects($run, $this->replay($run)), $run);
         }
 
-        $attention = $this->plaques($this->replay('lobby_attention'))['aimla'];
-        $plaque = $this->plaques($this->replay('lobby_plaque'))['aimla'];
+        $attention = $this->plaques($this->replay('lobby_attention'))['floor-2'];
+        $plaque = $this->plaques($this->replay('lobby_plaque'))['floor-2'];
 
         $this->assertSame(['blocked', 'context', 'long_call'], array_column($attention['attention'], 'part'));
         $this->assertSame(['aimla-review', 'aimla-ctx-b', 'aimla-long'], $this->named($attention));
@@ -186,7 +186,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
         $this->assertSame(2, count($attention['attention']) - count($plaque['attention']));
 
         $this->assertSame('aimla-dispatch — Agent running for 40m 12s',
-            $this->plaques($this->replay('lobby_dispatch'))['aimla']['attention'][1]['text']);
+            $this->plaques($this->replay('lobby_dispatch'))['floor-2']['attention'][1]['text']);
 
         foreach (['lobby_attention_quiet', 'lobby_dark_blocked'] as $run) {
             foreach ($this->plaques($this->replay($run)) as $floor => $p) {
@@ -206,9 +206,9 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
 
         $plaques = $this->plaques($this->replay('lobby_plaque'));
 
-        $this->assertSame(1, $plaques['aimla']['floor_totals']['cards'], 'two seats on card#7338 are one card, and the null ref none');
-        $this->assertSame(9, $plaques['aimla']['floor_totals']['interns']);
-        $this->assertSame('no activity yet', $plaques['kanban']['floor_totals']['last_activity']);
+        $this->assertSame(1, $plaques['floor-2']['floor_totals']['cards'], 'two seats on card#7338 are one card, and the null ref none');
+        $this->assertSame(9, $plaques['floor-2']['floor_totals']['interns']);
+        $this->assertSame('no activity yet', $plaques['the-bridge']['floor_totals']['last_activity']);
     }
 
     /** No fact invented, nothing animated: AT-D3-15's fleet totals and silence, and A17 rows alone. */
@@ -242,7 +242,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
         }
 
         $this->assertSame([
-            'aimla.floor_totals.last_activity', 'aimla.floor_totals.text',
+            'floor-2.floor_totals.last_activity', 'floor-2.floor_totals.text',
             'sola.floor_totals.last_activity', 'sola.floor_totals.text',
         ], $changed);
         $this->assertSame([], $this->totalsDefects('lobby_plaque', $this->probe($this->shifted($this->fixture('lobby_plaque'), 60_000))['runs'][0],
@@ -272,7 +272,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
         }
 
         $this->assertSame('4 agents · 4 desks',
-            $this->plaques($this->replay('lobby_plaque', $this->mutatedModules(self::AGENTS_AS_HELD)))['aimla']['staffing']['text']);
+            $this->plaques($this->replay('lobby_plaque', $this->mutatedModules(self::AGENTS_AS_HELD)))['floor-2']['staffing']['text']);
     }
 
     public function test_red_a_null_context_dereferenced_or_read_as_zero_is_caught(): void
@@ -294,7 +294,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
         $result = $this->replay('lobby_dispatch', $this->mutatedModules(self::LONG_FROM_ACTION));
 
         $this->assertNotSame([], $this->attentionDefects('lobby_dispatch', $result), 'the action RED did not bite');
-        $this->assertNotContains('long_call', array_column($this->plaques($result)['aimla']['attention'] ?? [], 'part'));
+        $this->assertNotContains('long_call', array_column($this->plaques($result)['floor-2']['attention'] ?? [], 'part'));
     }
 
     public function test_red_the_attention_line_keyed_on_activity_state_is_caught(): void
@@ -317,7 +317,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
             $result = $this->replay('lobby_plaque', $this->mutatedModules($plant));
 
             $this->assertNotSame([], $this->totalsDefects('lobby_plaque', $result), 'the cards RED did not bite: '.$plant[2]);
-            $this->assertSame($reads, $this->plaques($result)['aimla']['floor_totals']['cards']);
+            $this->assertSame($reads, $this->plaques($result)['floor-2']['floor_totals']['cards']);
         }
     }
 
@@ -326,7 +326,7 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
         $result = $this->replay('lobby_plaque', $this->mutatedModules(self::INTERNS_FROM_ARRAY));
 
         $this->assertNotSame([], $this->totalsDefects('lobby_plaque', $result), 'the interns RED did not bite');
-        $this->assertSame(8, $this->plaques($result)['aimla']['floor_totals']['interns']);
+        $this->assertSame(8, $this->plaques($result)['floor-2']['floor_totals']['interns']);
     }
 
     public function test_red_the_cap_before_the_sort_or_a_tag_from_its_own_count_is_caught(): void
@@ -421,7 +421,9 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
                 $defects[] = "{$floor}: {$plaque['staffing']['text']} over {$agents} seats drawing a character of ".count($seats).' held';
             }
 
-            $name = ($plaque['label'] ?? $floor).', '.($want === [] ? 'no seats held' : implode(' · ', $want));
+            // card#13117: the floor's name, as the layout entry carries it — `Unassigned` on the Unassigned floor.
+            $layout = array_column($scenario['http']['/api/building'][0]['body']['layout']['floors'], 'name', 'floor');
+            $name = ($layout[$floor] ?? 'Unassigned').', '.($want === [] ? 'no seats held' : implode(' · ', $want));
 
             if ($plaque['accessible_name'] !== $name) {
                 $defects[] = "{$floor}: the header's accessible name is `{$plaque['accessible_name']}`, not `{$name}`";
@@ -617,8 +619,8 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
     }
 
     /**
-     * The seats a floor's rooms hold, in room order — the layout's rooms for a placed floor, the install
-     * alone for one the layout does not place.
+     * The seats a floor's rooms hold, in room order — the layout's rooms for a placed floor, and every install the
+     * layout does not place for the Unassigned floor (card#13117).
      *
      * @return list<array<string, mixed>>
      */
@@ -626,7 +628,12 @@ class TheDirectoryPlaqueReadsWhatTheClientHoldsTest extends TestCase
     {
         $layout = $scenario['http']['/api/building'][0]['body']['layout']['floors'];
         $placed = array_column($layout, null, 'floor');
-        $rooms = isset($placed[$floor]) ? array_column($placed[$floor]['rooms'], 'install') : [$floor];
+        $unplaced = array_values(array_diff(
+            array_column($scenario['http']['/api/fleet/snapshot'][0]['body']['installs'], 'install_id'),
+            array_merge(...array_map(static fn (array $f): array => array_column($f['rooms'], 'install'), $layout)),
+        ));
+        sort($unplaced, SORT_STRING);
+        $rooms = isset($placed[$floor]) ? array_column($placed[$floor]['rooms'], 'install') : $unplaced;
         $byInstall = array_column($scenario['http']['/api/fleet/snapshot'][0]['body']['installs'], 'seats', 'install_id');
 
         return array_merge(...array_map(static fn (string $r): array => $byInstall[$r] ?? [], $rooms));

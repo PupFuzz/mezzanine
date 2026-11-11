@@ -157,6 +157,17 @@ export class Building {
         return this.#layout === null ? null : this.#layout.floors;
     }
 
+    /**
+     * The rooms the client was last told have an authored map — `rooms[]`, then each map answer and `room.map` it
+     * applied, a removal taking the room out. The browser's composition draws such a room on the Unassigned floor when
+     * no floor places it (`lobby/lobby-model.js`'s `floors()`, § 4.6), as the server's does.
+     *
+     * @returns {list<string>}
+     */
+    get authored() {
+        return [...this.#reported].filter(([, version]) => version !== null).map(([installId]) => installId);
+    }
+
     /** The `layout_version` of the layout held, or `null` when none is — part of what a walk's route reads (`floor/scene.js`). */
     get layoutVersion() {
         return this.#layout === null ? null : this.#layout.layout_version;

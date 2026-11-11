@@ -176,41 +176,48 @@ export function floorSummary(seats) {
     return stateChips(seats).map((chip) => chip.text).join(' · ');
 }
 
+/** The Unassigned floor's key — the address no named floor may take — and its name (§ 4.6, card#13117). */
+export const UNASSIGNED_FLOOR = 'unassigned';
+
+export const UNASSIGNED_NAME = 'Unassigned';
+
 /**
  * § 4.1 row 1: "one row per floor, the row being the link to the floor" — the floors the building
- * layout composes, plus one per install it does not place, floor keys ascending.
+ * layout composes, then the UNASSIGNED floor while it holds a room.
  *
- * ⭐ A ROOM IS AN INSTALL; A FLOOR IS AN OPERATOR-COMPOSED SET OF ROOMS (card#9267, § 3.1, § 4.6).
- * `layout` is the validated, normalised floors `GET /api/building` answered (D2 § 8.7): a list of
- * `{ floor, label, rooms: [{ install, form }] }`, keys already derived server-side and `label`
- * null on a floor the operator did not name (card#9273, § 4.6). What THIS function
- * adds is § 4.6's one default rule — an install the snapshot carries that no delivered floor
- * places is a floor of its own, alone, `open` — and it adds it HERE and not only on the server
- * because § 4.1's discrepancy check discovers an install AFTER the layout was fetched, and that
- * install owes a floor the layout could not have known about. The rule has a second home in
- * `App\Building\Building::compose()` for the console; `tests/fixtures/building/compose-cases.json`
- * is the one statement both are held to.
+ * ⭐ A FLOOR IS NAMED AND ITS KEY IS THE SLUG OF ITS NAME (card#13117, § 4.6). `layout` is the validated,
+ * normalised floors `GET /api/building` answered (D2 § 8.7): a list of `{ floor, name, aliases, rooms: [{ install,
+ * form }] }`, keyed server-side. What THIS function adds is § 4.6's one default rule — every room no delivered floor
+ * places, that the snapshot REPORTS or that has an AUTHORED map (`authored`, `GET /api/building`'s `rooms[]`), is
+ * drawn on the one Unassigned floor (key `unassigned`, named *Unassigned*, the house theme, sorted last, present only
+ * while it holds a room), and so is the snapshot's virtual install `unassigned` — and it adds it HERE and not only
+ * on the server because § 4.1's discrepancy check discovers an install AFTER the layout was fetched, and that install
+ * owes a floor the layout could not have known about. The rule has a second home in
+ * `App\Building\Building::compose()` for the console; `tests/fixtures/building/compose-cases.json` is the one
+ * statement both are held to.
  *
  * ⛔ THE LAYOUT SUBSCRIBES TO NOTHING AND NAMES NO SEAT (§ 4.6). A room the layout places that
  * the snapshot does not carry is drawn on its floor with `reported: false` — § 4.6's *no seats
  * reported for this room*, the client's own narration — and is never fetched for, never
  * subscribed to and never counted. ADMIT's population is the snapshot's, not the layout's.
  *
- * The sort is § 2.1 row 6's ("floors by floor id ascending") and is applied here rather than
- * trusted from the wire: a client that renders in received order is a client whose
- * order is a property of somebody else's serialiser.
+ * The sort is § 2.1 row 6's ("floors by floor id ascending", the Unassigned floor after them) and is
+ * applied here rather than trusted from the wire: a client that renders in received order is a client
+ * whose order is a property of somebody else's serialiser.
  *
  * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING, AND THIS FUNCTION IS WHERE THAT IS DECIDED (§ 9 F17). A
  * `layout` that is not a list, absent or `null`, answers `null`, never the rows of the EMPTY layout:
- * `[]` is § 4.6's legal document, which composes one floor per install, and reading a missing layout
- * as that document would draw a building out of a request that failed, which is F17's "Never". Both
- * callers here read `null` as *no building*, and a caller added later (Appendix B step 7's floor
- * route) that forgets a check of its own gets `null` from this function, never a building.
+ * `[]` is § 4.6's legal document, which draws every room on the Unassigned floor, and reading a missing
+ * layout as that document would draw a building out of a request that failed, which is F17's "Never".
+ * Both callers here read `null` as *no building*, and a caller added later that forgets a check of its
+ * own gets `null` from this function, never a building.
  *
  * `href` is § 4.4's `/floor/{floor}` route — D3's own published route, served since Appendix B
  * row 8 (card#7341 step 8), and never one minted here. § 4.1 says the row IS the link.
+ *
+ * @param {list<string>} authored the rooms with an authored map, as `wire/building.js`'s `Building#authored` holds them
  */
-export function floors(snapshot, layout, nowMs = null) {
+export function floors(snapshot, layout, nowMs = null, authored = []) {
     if (!Array.isArray(layout)) {
         return null;
     }
@@ -238,7 +245,7 @@ export function floors(snapshot, layout, nowMs = null) {
             // Carried through exactly as delivered and never re-derived — `origin` is a member
             // the server has already refused every bad form of (integers ≥ 0, `x` and `y` and
             // nothing else), and a second reading of that rule here is the drift this file's
-            // label comment names. A floor with no plan carries no `origin` at all, which is how
+            // header names. A floor with no plan carries no `origin` at all, which is how
             // the renderer tells *placed* from *arrange it by the default rule*: an invented
             // `null` here would be a third state neither runtime has.
             if (room?.origin !== undefined) {
@@ -248,11 +255,11 @@ export function floors(snapshot, layout, nowMs = null) {
             return composed;
         });
 
-        // § 4.6 (card#9273): the floor's LABEL, as the delivered document carries it — a string
-        // or nothing. The server has already refused every label it would not deliver, so this
-        // reads the member rather than re-deriving the rule; what it must not do is coerce, which
-        // would turn a delivered number into a name the operator never wrote.
-        const label = typeof floor?.label === 'string' ? floor.label : null;
+        // § 4.6 (card#13117): the floor's NAME and its former addresses, as the delivered document carries
+        // them. The server has refused every name it would not deliver, so this reads the members rather than
+        // re-deriving the rule.
+        const name = String(floor?.name);
+        const aliases = Array.isArray(floor?.aliases) ? floor.aliases.map(String) : [];
 
         // § 4.6's `theme` (card#11046, FLOOR.md § 10.6 item 5): the name the delivered entry carries, or
         // null for the house theme. Read as the server delivered it — the server refused a non-string at
@@ -267,41 +274,42 @@ export function floors(snapshot, layout, nowMs = null) {
         // `hallway`, or neither" (§ 4.6's reader table), and it reads it HERE rather than going
         // back to the raw document, because a second composition of one floor is two answers to
         // *which rooms are on it*.
-        rows.push(plate(String(floor?.floor), label, rooms, held, floor?.hallway ?? null, theme, nowMs));
+        rows.push(plate(String(floor?.floor), name, aliases, rooms, held, floor?.hallway ?? null, theme, nowMs));
     }
 
-    for (const install_id of Object.keys(held)) {
-        // An implicit floor has no layout entry to carry a label (§ 4.6, card#9273), so it reads
-        // as its key — the `install_id` the wire already carries, which is a name and not a
-        // placeholder.
-        if (!placed.has(install_id)) {
-            // An implicit floor is one room and no plan at all (§ 4.6): no `origin` on its room and
-            // no `hallway` on it, because "a corridor with no rooms placed along it is a picture of
-            // nothing" and nobody placed this one.
-            rows.push(plate(install_id, null, [{ install_id, form: 'open', reported: true }], held, null, null, nowMs));
-        }
+    rows.sort((a, b) => (a.floor < b.floor ? -1 : a.floor > b.floor ? 1 : 0));
+
+    // The Unassigned floor: every room nobody placed that the client can know of, by key. One room per id and no
+    // plan at all — no `origin` and no `hallway` — because nobody placed these.
+    const unplaced = [...new Set([...Object.keys(held), ...authored])]
+        .filter((install_id) => !placed.has(install_id))
+        .sort()
+        .map((install_id) => ({ install_id, form: 'open', reported: install_id in held }));
+
+    if (unplaced.length > 0) {
+        rows.push(plate(UNASSIGNED_FLOOR, UNASSIGNED_NAME, [], unplaced, held, null, null, nowMs));
     }
 
-    return rows.sort((a, b) => (a.floor < b.floor ? -1 : a.floor > b.floor ? 1 : 0));
+    return rows;
 }
 
 /**
- * One floor row — since card#12113 the directory's PLAQUE: its key, its label, the NAME it reads as,
+ * One floor row — since card#12113 the directory's PLAQUE: its key, its NAME, its former addresses,
  * its rooms, the link, and every row § 4.1's table gives the plaque, each over the seats the client
  * holds for EVERY install the floor's rooms name (§ 2.1 row 5), in room order, and the corrected clock
  * `nowMs` (`null` before the client has one, which draws no age and asks no age threshold).
  *
- * ⛔ `name` IS RENDERED AND `floor` IS ROUTED, AND THE TWO ARE SEPARATE MEMBERS FOR THAT REASON
- * (§ 4.6, card#9273). `href` is the KEY whatever the label says, and so is the sort in `floors()`
- * and the cab's stop in `building-model.js` — a label is display text, and the moment anything
- * looked one up by it, editing a label would move a viewer's floor.
+ * ⭐ `name` IS RENDERED AND `floor` IS ROUTED (§ 4.6): the key is the slug of the name, computed by the
+ * server and delivered — `href`, the sort in `floors()` and the cab's stop in `building-model.js` read the
+ * key, and every surface that names the floor reads `name`. `aliases` are the addresses the floor route
+ * redirects from (`floor/floor-screen.js`'s `resolveRoute()`).
  *
  * ⛔ THE ROW CARRIES NO SEAT OBJECT, only what is drawn from one (§ 4.1: "the lobby still draws no
  * desk"). A marker names its seat in its accessible name and carries no `seat_id` member of its own,
  * so a plate that grew a list of desks is still the defect
  * `TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` looks for.
  */
-function plate(floor, label, rooms, held, hallway, theme, nowMs) {
+function plate(floor, name, aliases, rooms, held, hallway, theme, nowMs) {
     const seats = rooms.flatMap((room) => held[room.install_id] ?? []);
     // § 4.1: a seat is named by its `seat_id`, on a floor of any number of rooms — a live `seat_id` is unique
     // site-wide (D2 § 8.2.1).
@@ -310,12 +318,10 @@ function plate(floor, label, rooms, held, hallway, theme, nowMs) {
     const row = {
         floor,
         hallway,
-        label,
-        // § 4.6 (card#11046): the theme the entry names, or null — an implicit floor's is always null.
+        name,
+        aliases,
+        // § 4.6 (card#11046): the theme the entry names, or null — the Unassigned floor's is always null.
         theme,
-        // § 4.6 (card#9273): "its label when the layout gives it one, else its key — the key is
-        // honest and no placeholder is invented".
-        name: label ?? floor,
         rooms,
         href: `/floor/${encodeURIComponent(floor)}`,
         summary: floorSummary(seats),
@@ -743,7 +749,7 @@ export function startFailure(error) {
 /**
  * § 9 F17's cold start: "there is no layout to keep, so under that statement it lists the snapshot's
  * installs as rooms with **no floor claimed**, each a link to `/floor/{install_id}`". No floor, no key,
- * no label and no summary is derived — composing is exactly what the failed document was needed for.
+ * no name and no summary is derived — composing is exactly what the failed document was needed for.
  * `held` is carried so the lobby's held count still counts every seat the client holds.
  */
 function unclaimedRooms(snapshot) {
@@ -778,11 +784,11 @@ function unclaimedRooms(snapshot) {
  * ⛔ NO LAYOUT HELD COMPOSES NO BUILDING (§ 9 F17). `floors()` decides it and answers `null`, and
  * that `null` is what takes the uncomposed render here: F17's cold-start list, and no floors.
  */
-export function lobbyModel(snapshot, layout, layoutFailure = null, nowMs = null) {
+export function lobbyModel(snapshot, layout, layoutFailure = null, nowMs = null, authored = []) {
     // ONE pass over the installs, and the held count summed from the same rows the lobby
     // renders. Calling `heldSeats()` here as well would build the summaries twice and open the
     // one gap that matters: two counts of one population that can disagree.
-    const composed = floors(snapshot, layout, nowMs);
+    const composed = floors(snapshot, layout, nowMs, authored);
     const rows = composed ?? [];
     const unclaimed = composed === null ? unclaimedRooms(snapshot) : [];
     const held = [...rows, ...unclaimed].reduce((n, row) => n + row.held, 0);

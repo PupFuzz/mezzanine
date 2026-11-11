@@ -68,10 +68,11 @@ trait DrivesTheFloorScreen
     }
 
     /**
-     * The FIRST frame that drew one room — which is not the first frame of a run: § 4.4's entry
-     * fetches the layout, so the frames before it answered compose nothing (§ 9 F17), and a test
-     * comparing *before* against *after* must compare two composed floors or it is comparing a
-     * composition with its own absence.
+     * The FIRST frame that drew one room over its seats — which is not the first frame of a run: § 4.4's entry
+     * fetches the layout, so the frames before it answered compose nothing (§ 9 F17); and a floor the layout PLACES
+     * is drawn with no seat until the snapshot applies (every fixture floor since card#13117, which places its rooms
+     * as a migrated store does). A test comparing *before* against *after* must compare two floors drawn over seats,
+     * or it is comparing a composition with its own absence.
      *
      * @param  array<string, mixed>  $result
      * @return array<string, mixed>
@@ -80,7 +81,7 @@ trait DrivesTheFloorScreen
     {
         foreach ($result['floor_renders'] as $render) {
             foreach ($render['frame']['rooms'] ?? [] as $room) {
-                if (($room['install_id'] ?? null) === $installId && array_key_exists('desks', $room)) {
+                if (($room['install_id'] ?? null) === $installId && ($room['desks'] ?? []) !== []) {
                     return $render['frame'];
                 }
             }

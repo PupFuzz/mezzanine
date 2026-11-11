@@ -14,8 +14,8 @@
     <p>
         @if ($version === 0)
             <strong>No layout has ever been saved</strong>, which is a meaningful state and not an
-            empty one: every install renders on a floor of its own, alone, in the <code>open</code>
-            form — exactly the building this deployment drew before floors could be composed.
+            empty one: every room with a seat or a map is drawn on the <em>Unassigned</em> floor,
+            in the <code>open</code> form, until a floor here places it.
         @else
             Current: <strong>revision {{ $version }}</strong>, saved <x-utc-time :at="$updatedAt" /> by
             {{ $updatedBy }}. <a href="{{ route('admin.layout.revisions') }}">Revisions, diffs and
@@ -38,18 +38,19 @@
     <h2>What goes in it</h2>
 
     <p>
-        A <code>floors</code> list. Each entry is a record carrying its <code>rooms</code> — a
-        mapping of <code>install_id</code> to that room's record, <code>{"form": "open"}</code> or
-        <code>{"form": "office"}</code> — and optionally a <code>label</code>, the name a viewer
-        sees. On a <strong>planned</strong> floor each room also carries an <code>origin</code>,
+        A <code>floors</code> list. Each entry is a record carrying its <code>name</code> — what a viewer
+        reads, and the floor's web address — and its <code>rooms</code>: a mapping of <code>install_id</code>
+        to that room's record, <code>{"form": "open"}</code> or <code>{"form": "office"}</code>. It may carry
+        <code>aliases</code>, the addresses it had before a rename. On a <strong>planned</strong> floor each
+        room also carries an <code>origin</code>,
         where its top-left corner is drawn, and the floor may carry a <code>hallway</code>: a Tiled
         document for the space no room occupies.
     </p>
 
     <pre>{
     "floors": [
-        { "rooms": { "aimla": { "form": "open" } } },
-        { "label": "the solos",
+        { "name": "aimla", "rooms": { "aimla": { "form": "open" } } },
+        { "name": "The Solos", "aliases": ["sola"],
           "rooms": { "sola": { "form": "office", "origin": { "x": 0,   "y": 160 } },
                      "zeta": { "form": "office", "origin": { "x": 288, "y": 160 } } } }
     ]
@@ -57,15 +58,21 @@
 
     <ul>
         <li>
-            <strong>A floor has no id and you cannot give it one.</strong> Its key is derived — the
-            lexically least <code>install_id</code> on it — so floor keys and install ids can never
-            collide in one link namespace. A <code>label</code> is what a person reads and is never
-            a key: editing one moves no floor and breaks no link.
+            <strong>A floor's web address is its name.</strong> <code>The Solos</code> is at
+            <code>/floor/the-solos</code>: accents folded, letters lowered, every run of anything but
+            a–z and 0–9 one hyphen. Two floors whose names make one address are refused, and so is a name
+            with no letter or digit a–z 0–9, and the name <code>Unassigned</code>, which is taken.
         </li>
         <li>
-            <strong>An install this document does not place still renders</strong>, on a floor of
-            its own, alone, <code>open</code>. So this is a departure from a default and never a
-            list that has to be complete: provisioning an install needs no save here to draw it.
+            <strong>A rename keeps the old address working only if you keep it.</strong> Put the old
+            address in <code>aliases</code> and its links redirect to the floor; leave it out and they
+            reach nothing. An alias is never another floor's current address, and one address is in one
+            floor's list at most: to give a former address to another floor, take it out of the first
+            floor's list in the same save. A link naming a room still reaches the floor that holds it.
+        </li>
+        <li>
+            <strong>A room this document does not place still renders</strong>, on the
+            <em>Unassigned</em> floor, until you place it. So a new room needs no save here to be drawn.
         </li>
         <li>
             <strong>Position lives here; size lives in the room's map.</strong> An
@@ -80,7 +87,7 @@
             {!! collect($themes)->map(fn (string $theme): string => '<code>'.e($theme).'</code>')->implode(', ') !!}.
             A floor that names none is drawn in the house design, <code>{{ $houseTheme }}</code>, and
             every room on the floor is drawn in the floor's design. For example
-            <code>{ "theme": "{{ $houseTheme }}", "rooms": { "aimla": { "form": "open" } } }</code>. A
+            <code>{ "name": "aimla", "theme": "{{ $houseTheme }}", "rooms": { "aimla": { "form": "open" } } }</code>. A
             design is only the room's look: every desk, fact and notice is where it is in any other.
             A name this build does not ship is refused at the save, naming the ones it does.
         </li>

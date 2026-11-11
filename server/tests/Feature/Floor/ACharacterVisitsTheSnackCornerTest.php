@@ -33,6 +33,7 @@ use Tests\TestCase;
  */
 class ACharacterVisitsTheSnackCornerTest extends TestCase
 {
+    use ReadsTheDrawnScenes;
     use DrivesTheFloorScreen;
 
     private const IMPL_1 = 'aimla-impl-1';
@@ -71,10 +72,6 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     }
 
     /** @return list<array<string, mixed>> the renders and refreshes that drew a scene */
-    private function drawn(array $result): array
-    {
-        return array_values(array_filter($result['floor_renders'], static fn (array $r): bool => ($r['frame']['scene'] ?? null) !== null));
-    }
 
     /** @return list<array<string, mixed>> the snack trips a frame draws (A25 effects with frames), of one walker where named */
     private function trips(array $frame, ?string $walker = null): array

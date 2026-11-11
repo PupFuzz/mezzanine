@@ -90,7 +90,7 @@ export const NO_SEATS_REPORTED = 'no seats reported for this room';
 /**
  * One composed floor: its rooms placed, its desks slotted, its band, its extent, its overflow row and its notices.
  *
- * @param {object} floor one row of `lobby/lobby-model.js`'s `floors()` — `{ floor, label, name, theme, hallway, rooms }`
+ * @param {object} floor one row of `lobby/lobby-model.js`'s `floors()` — `{ floor, name, aliases, theme, hallway, rooms }`
  * @param {object} building a `wire/building.js` `Building`, read through `room()` and `mapless()`
  * @param {Map<string, list<object>>} seatsByRoom the held seats by install (`lobby-model.js`'s `roomsOf()`)
  * @returns {{planned: boolean, hallway: object|null, extent: object|null, band: object|null, rooms: list<object>,

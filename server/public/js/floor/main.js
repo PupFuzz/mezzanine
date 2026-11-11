@@ -169,9 +169,12 @@ function routeOf(floor, seat) {
         : `/floor/${encodeURIComponent(floor)}/${encodeURIComponent(seat)}`;
 }
 
-/** The floor segment the URL carries now — the route's own, until a redirect replaces the page. */
+/**
+ * The floor segment the page's URLs carry: the drawn floor's own key once a frame has resolved one (§ 4.4 — an
+ * address typed in another case reads canonically from then on), else the route's segment as served.
+ */
 function floorSegment() {
-    return root.dataset.floor;
+    return lastFrame?.floor?.key ?? root.dataset.floor;
 }
 
 /** The seat segment the URL carries now, or `null` on the floor alone. */
@@ -271,7 +274,8 @@ function paint(frame) {
         return;
     }
 
-    // The seat segment follows the screen's: a panel a retirement closed takes it off the URL.
+    // The seat segment follows the screen's: a panel a retirement closed takes it off the URL. The floor segment is
+    // the drawn floor's key (§ 4.4, card#13117), so `/floor/The-Nook` reads `/floor/the-nook` once it is drawn.
     const route = routeOf(floorSegment(), frame.seat);
 
     if (window.location.pathname !== route) {
@@ -304,8 +308,8 @@ function paint(frame) {
     say('floor-signin-prompt', failure.sign_in?.prompt ?? null);
     say('floor-not-live', failure.sign_in?.label ?? null);
 
-    // § 4.6's one rendering rule, `label ?? key`, is the screen's; before a floor is composed the
-    // heading names the segment the route was entered on.
+    // § 4.6: the floor's name, as the screen carries it; before a floor is composed the heading names the
+    // segment the route was entered on.
     el('floor-name').textContent = frame.floor === null ? `The floor ${root.dataset.floor}` : frame.floor.name;
 
     // § 6.5: a room with no value is drawn as having none — "unset", never a plausible time.

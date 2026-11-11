@@ -153,15 +153,19 @@ function data(floors) {
   const layout = run.http['/api/building'][0].body.layout.floors;
   const installs = [...snapshot.installs];
 
-  // The long directory: the fixture's installs repeated under new keys until it holds `floors` floors, each its own floor.
+  // The long directory: the fixture's installs repeated under new keys until it holds `floors` floors, each placed on a
+  // floor of its own by name — a room no floor places is on the one Unassigned floor (card#13117).
+  const placed = [...layout];
+
   for (let i = 0; installs.length < floors + 1; i += 1) {
     const src = snapshot.installs[i % snapshot.installs.length];
     const id = `${src.install_id}-${String(i).padStart(2, '0')}`;
 
     installs.push({ ...src, install_id: id, seats: src.seats.map((s) => ({ ...s, install_id: id })) });
+    placed.push({ floor: id, name: id, aliases: [], rooms: [{ install: id, form: 'open' }] });
   }
 
-  return { snapshot: { ...snapshot, installs: floors <= 3 ? snapshot.installs : installs }, layout, now: Date.parse(snapshot.server_time) + 1000 };
+  return { snapshot: { ...snapshot, installs: floors <= 3 ? snapshot.installs : installs }, layout: floors <= 3 ? layout : placed, now: Date.parse(snapshot.server_time) + 1000 };
 }
 
 /** The lobby's surface and its two boxes, as the Blade page declares them — its comments dropped — under `plant`. */

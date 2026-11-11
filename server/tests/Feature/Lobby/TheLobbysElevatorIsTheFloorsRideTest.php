@@ -183,8 +183,8 @@ class TheLobbysElevatorIsTheFloorsRideTest extends TestCase
 
     public function test_red_the_stops_captured_at_the_press(): void
     {
-        $dir = $this->mutatedModules([self::SCREEN, '        const stops = () => plates(this.#body(), this.#building.floors);',
-            '        const stops = (() => { let held; return () => (held ??= plates(this.#body(), this.#building.floors)); })();']);
+        $dir = $this->mutatedModules([self::SCREEN, '        const stops = () => plates(this.#body(), this.#building.floors, null, this.#building.authored);',
+            '        const stops = (() => { let held; return () => (held ??= plates(this.#body(), this.#building.floors, null, this.#building.authored)); })();']);
 
         $this->assertNotSame([], $this->stopDefects($this->replay(self::RIDE, $dir)), 'RED (the stops captured at the press) did not bite');
     }
@@ -466,7 +466,7 @@ class TheLobbysElevatorIsTheFloorsRideTest extends TestCase
         $opened = array_values(array_filter($result['ride_acts'], static fn (array $a): bool => $a['act']['act'] === 'opened'));
         $answers = array_map(static fn (array $a): ?array => $a['answer'], $opened);
 
-        if ($answers !== [['phase' => 'leaving', 'route' => '/floor/aimla#ride'], ['phase' => 'staying', 'route' => null], ['phase' => 'staying', 'route' => null]]) {
+        if ($answers !== [['phase' => 'leaving', 'route' => '/floor/floor-2#ride'], ['phase' => 'staying', 'route' => null], ['phase' => 'staying', 'route' => null]]) {
             $defects[] = 'opened() did not route the floor to its plaque with #ride and the lobby, and Escape, to a stay: '.json_encode($answers);
         }
 

@@ -28,8 +28,8 @@
  * screen up).
  *
  * ⛔ THE COMPOSITION IS `lobby/lobby-model.js`'s `floors()` AND NOT A SECOND ONE. § 4.6 states its
- * one client-side rule — an install the snapshot carries that no delivered floor places is a floor
- * of its own, alone, `open` — and gives it two homes held to one fixture
+ * one client-side rule — a room no delivered floor places, that the snapshot reports or that has an
+ * authored map, is drawn on the Unassigned floor — and gives it two homes held to one fixture
  * (`App\Building\Building::compose()` and `floors()`). A third here would be a third answer to
  * *which rooms are on this floor*; what this screen adds is the GEOMETRY — `floor/floor-compose.js`'s
  * `composeFloor()` over `floor/floor-layout.js`'s functions, which neither of those two computes, and which
@@ -108,23 +108,26 @@ import { keyOf } from '../wire/seat-key.js';
 export const LAST_KNOWN_LAYOUT = 'last known layout';
 
 /**
- * § 4.4's floor segment, resolved against the composed floors: the floor it names, the floor to
- * REDIRECT to when it names a room that is not its floor's key, or neither.
+ * § 4.4's floor segment, resolved against the composed floors by ONE precedence (card#13117, § 4.4):
+ * **current slug > alias > room key**. A segment equal to a floor's key opens it; else equal to a former
+ * address in a floor's `aliases`, it REDIRECTS to that floor; else naming a room on a floor, it redirects to
+ * the floor holding the room; else it names nothing. So a floor the operator named `sola` takes `/floor/sola`
+ * from the room `sola`'s redirect: a name somebody chose outranks a key nobody chose.
  *
- * ⛔ THE SEGMENT IS A KEY AND NEVER A LABEL (card#9273). Nothing here matches on `label`: a label is
- * edited freely and no published link, bookmark or cab position may move when one is.
+ * The segment is lowered first, so an address typed from a plaque (`/floor/The-Nook`) reaches its floor; the
+ * page then shows the floor's own key in the address bar (`floor/main.js`).
  */
 export function resolveRoute(segment, composed) {
-    const floor = composed.find((row) => row.floor === segment);
+    const typed = String(segment).toLowerCase();
+    const floor = composed.find((row) => row.floor === typed);
 
     if (floor !== undefined) {
         return { floor, redirect: null };
     }
 
-    const holder = composed.find((row) => row.rooms.some((room) => room.install_id === segment));
+    const holder = composed.find((row) => row.aliases.includes(typed))
+        ?? composed.find((row) => row.rooms.some((room) => room.install_id === typed));
 
-    // § 4.4 row 3: a segment naming a room that is not its floor's id redirects to the floor that
-    // holds the room — "no link dies when the operator composes a floor, or re-keys one".
     return holder === undefined
         ? { floor: null, redirect: null }
         : { floor: null, redirect: holder.floor };
@@ -179,7 +182,7 @@ export class FloorScreen {
 
     #options;
 
-    /** § 4.4's `{floor}` segment this screen was entered on — a key, never a label. */
+    /** § 4.4's `{floor}` segment this screen was entered on, as typed — resolved by `resolveRoute()`. */
     #segment;
 
     /**
@@ -281,7 +284,7 @@ export class FloorScreen {
         this.#room = new RoomClock(clock, options.local_time);
 
         // The cab's stops — the plaques, which the ride offers and whose floors the door view draws.
-        const stops = () => plates(this.#snapshotShape(), this.#building.floors);
+        const stops = () => plates(this.#snapshotShape(), this.#building.floors, null, this.#building.authored);
 
         this.#ride = new Ride({
             clock,
@@ -603,7 +606,7 @@ export class FloorScreen {
 
     /** The composed floors the client holds, or `null` when no layout request has ever succeeded. */
     #composed() {
-        return floors(this.#snapshotShape(), this.#building.floors);
+        return floors(this.#snapshotShape(), this.#building.floors, null, this.#building.authored);
     }
 
     /**
@@ -1210,9 +1213,7 @@ export class FloorScreen {
             last_known_layout: failure !== null ? LAST_KNOWN_LAYOUT : null,
             floor: Object.freeze({
                 key: floor.floor,
-                label: floor.label,
-                // § 4.6's one rendering rule: `label ?? key`, decided once by `floors()` and read
-                // here rather than restated.
+                // § 4.6: the floor's name, as `floors()` carries it.
                 name: floor.name,
                 // § 4.6's `theme` (card#11046): the name the layout entry carries, or null — the scene
                 // resolves it against the theme registry (FLOOR.md § 10.6 item 5, § 9 F23).
