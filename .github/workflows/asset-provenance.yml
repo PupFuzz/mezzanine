@@ -76,3 +76,9 @@ jobs:
       # the tree. It runs `state-chip-colours.py --check` over the themes' surfaces, so Python is on the path too.
       - name: Theme gates self-test
         run: node tools/floor-themes/selftest.mjs
+
+      # The 3-D floor's kind map (card#13033 stage 2, the plan's § 9 slice 1): every standing kind and desk part of
+      # the theme registry has exactly one disposition — a kit file, the house theme's `piece3d`, or `missing` — and
+      # the kit's committed `.glb` files are exactly the ones the map names. Its plants run on every run.
+      - name: Kind map self-test
+        run: node tools/floor-models/selftest.mjs

@@ -47,6 +47,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import zlib
 from pathlib import Path
 
 GATE = Path(__file__).resolve().parent / "asset-provenance.py"
@@ -696,6 +697,75 @@ case("GID 14 — the same map, the same size, one different tile — DOES trip c
      "be reasoned against, and it is noise",
      1, "exceeds the 1024 B ceiling", tiled_files(**{"resources/floor/aimla.tmj": REDS}),
      tiled_rows())
+
+print("\n13b. GATE 2 clause 4 — a .glb is read as the container it is (card#13033 stage 2)")
+
+
+def png(w: int, h: int) -> bytes:
+    """A real PNG of w × h opaque pixels: signature, IHDR, one IDAT, IEND — each chunk with its CRC."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    rows = b"".join(b"\x00" + b"\x80\x60\x40\xff" * w for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+def glb(embed: list[bytes] = (), magic: bytes = b"glTF", version: int = 2, json_chunk: bytes | None = None,
+        **doc_extra) -> bytes:
+    """A GLB built to the glTF 2.0 container rules: every image in `embed` embedded in the BIN chunk through a
+    bufferView of buffer 0, `KHR_materials_unlit` named in extensionsUsed as Kenney's kit names it, and
+    `doc_extra` merged over the document — so a RED states only the one thing it perturbs."""
+    binary, views, imgs = b"", [], []
+    for i, data in enumerate(embed):
+        views.append({"buffer": 0, "byteOffset": len(binary), "byteLength": len(data)})
+        imgs.append({"bufferView": i, "mimeType": "image/png"})
+        binary += data + b"\x00" * (-len(data) % 4)
+    doc = {"asset": {"version": "2.0"}, "buffers": [{"byteLength": len(binary)}], "bufferViews": views,
+           "images": imgs, "extensionsUsed": ["KHR_materials_unlit"], **doc_extra}
+    j = json_chunk if json_chunk is not None else json.dumps(doc, separators=(",", ":")).encode()
+    j += b" " * (-len(j) % 4)
+    chunks = struct.pack("<I4s", len(j), b"JSON") + j
+    if binary:
+        chunks += struct.pack("<I4s", len(binary), b"BIN\x00") + binary
+    return magic + struct.pack("<II", version, 12 + len(chunks)) + chunks
+
+
+MODEL = "resources/floor/models/kit/desk.glb"
+MODEL_ROWS = BASE + [row(MODEL, origin="licensed", url="https://kenney.nl/assets/furniture-kit", author="Kenney",
+                         spdx="CC0-1.0", retrieved="2026-11-11")]
+
+
+def model_case(name: str, want_code: int, want_text: str | None, data: bytes) -> None:
+    case(name, want_code, want_text, {**FILES, MODEL: data}, MODEL_ROWS)
+
+
+model_case("CONTROL — a GLB with one embedded 2×2 PNG and KHR_materials_unlit used PASSES clause 4, and the "
+           "gate prints the image's size beside the row that covers it",
+           0, "embedded image 0, a 2×2 px PNG, covered by this file's own row", glb([png(2, 2)]))
+model_case("CONTROL — Kenney's kit's own shape, no image at all, passes", 0, PASS, glb())
+model_case("clause 4 RED 1 — an external buffer uri", 1, "buffer 0 names a uri",
+           glb(buffers=[{"uri": "desk.bin", "byteLength": 8}]))
+model_case("clause 4 RED 2 — an external image uri", 1, "image 0 names a uri",
+           glb(images=[{"uri": "wood.png", "mimeType": "image/png"}]))
+model_case("clause 4 RED 3 — an embedded image that is not a PNG, though it is DECLARED image/png: judged on the bytes",
+           1, "image 0 is not a PNG", glb([b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 32]))
+model_case("clause 4 RED 4 — an embedded PNG over 1,024 px on one side", 1, "is 1025×8 px, over the 1024 px",
+           glb([png(1025, 8)]))
+model_case("clause 4 RED 5 — more images than GLB_IMAGES_MAX", 1, "more than GLB_IMAGES_MAX",
+           glb([png(2, 2)] * 5))
+model_case("clause 4 RED 6 — an extensionsRequired entry, even one the kit merely USES", 1, "declares extensionsRequired",
+           glb(extensionsRequired=["KHR_materials_unlit"]))
+model_case("clause 4 RED 7 — a compression extension named in extensionsUsed", 1, "names the compression extension",
+           glb(extensionsUsed=["KHR_materials_unlit", "KHR_draco_mesh_compression"]))
+model_case("clause 4 RED 8 — a non-GLB renamed .glb (a PNG's bytes)", 1, "is not a GLB", png(2, 2))
+model_case("clause 4 RED 9 — a GLB of version 1, the container clause 4 does not read", 1, "is a GLB of version 1",
+           glb(version=1))
+model_case("clause 4 RED 10 — a JSON chunk that does not parse is a red, never a skip", 1,
+           "its JSON chunk does not parse", glb(json_chunk=b'{"asset": {"version": "2.0"'))
+model_case("clause 4 RED 11 — a GLB cut short of the length its header declares", 1,
+           "its header declares", glb([png(2, 2)])[:-8])
+model_case("clause 4 RED 12 — an image whose bufferView names no view of the file's own bytes", 1,
+           "image 0 has no bytes inside the file", glb(images=[{"bufferView": 3, "mimeType": "image/png"}]))
 
 print("\n14. UNMEASURABLE (exit 2) — every state the gate cannot see its population in")
 case("nothing under any asset tree — an empty measurement is not a clean one",

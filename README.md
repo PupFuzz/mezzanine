@@ -539,7 +539,8 @@ draws the wall, the windows, the floor, the scenery and every desk's furniture a
 (`docs/design/FLOOR.md § 10.6`, card#11046), and the house theme is the room the operator chose. The CC0
 tiles that stood in for it from 2026-09-12 (Kenney's Furniture Kit, a bridge chosen explicitly as a
 stand-in) left the tree when it landed; their record stays in git and in `docs/PLAN.md § 0`'s D-07
-appends.
+appends. The 3-D floor (card#13033 stage 2) takes its furniture models from the same kit: its `.glb` files
+(CC0) are under `resources/floor/models/`, each with its row in `docs/ATTRIBUTION.md`.
 
 The characters are **first-party**: original animal, vegetable and fruit creatures drawn by the code in
 `resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the

@@ -6248,7 +6248,7 @@ character tree at all — which was the mechanised form of *the sprites are gene
 false about the product being built, and a gate asserting something false is worse than no gate: the
 next reader trusts its green. What replaces it is **not** a relaxed version of the absence. It is the
 claim Gate 1 needs in order to mean anything — *every asset is a file with a path, so every asset has
-a row*. Three clauses, and the **allowlist shape** the old text argued for at length is unchanged and
+a row*. Its clauses follow, and the **allowlist shape** the old text argued for at length is unchanged and
 is the reason this gate is still worth having: a denylist can only refuse the copies someone thought
 to enumerate, and every classifier written as a list of image extensions passes the format nobody
 anticipated. So the gate is an **allowlist**, and it fails on anything no clause admits.
@@ -6271,14 +6271,15 @@ with what it contains; measured on a correct, CSV-only map set with no base64 an
 files RED, not one of them for an embedded-bytes reason.**
 
 1. **File types.** Every file under `resources/` carries one of **`.ts`, `.js`, `.md`, `.svg`,
-   `.png`, `.tmx`, `.tmj`, `.tsx`, `.tsj`** — and, from the slice of `docs/design/plan-13033-stage2-3d-floor.md`
-   that lands the gate's fourth clause below, **`.glb`** (the operator's answer Q1 A of 2026-11-11,
-   [§ 14](#14-open-questions-for-the-review-loop) item 49) — and each member is here for a stated reason, because an
+   `.png`, `.tmx`, `.tmj`, `.tsx`, `.tsj`, `.glb`** — `.glb` admitted by the operator's answer Q1 A of 2026-11-11
+   ([§ 14](#14-open-questions-for-the-review-loop) item 49) with the gate's fourth clause below, landed by slice 1 of
+   `docs/design/plan-13033-stage2-3d-floor.md` — and each member is here for a stated reason, because an
    allowlist whose members have no reasons is a denylist that has not noticed yet:
    - **`.glb`** — glTF binary, the one model format for the 3-D floor's furniture (Kenney's Furniture Kit, CC0),
      admitted under a **fourth clause of its own**: the file is read as a GLB (the `glTF` magic, version 2, a JSON
      chunk) and its JSON held to — every buffer embedded, no `uri`; every image embedded, a PNG whose width and height
-     are at most 1,024 px, at most a bounded count per file, each covered by the file's own manifest row (an image
+     are at most 1,024 px, at most `GLB_IMAGES_MAX` per file (`bin/asset-provenance.py`, where it is pinned with its
+     reason), each covered by the file's own manifest row (an image
      inside a `.glb` is part of the file the row names, so the row's licence and sha256 are its); `extensionsRequired`
      absent or empty; no compression extension named. A file failing any of those is refused by name, and the gate's
      self-test carries a RED for each.
@@ -9779,9 +9780,10 @@ there: not *is there art*, but **does every asset declare where it came from**.*
   [§ 10.2](#102-characters-original-creatures-drawn-by-code) obliges;
   a tree holding no port — the shipped one, once row 19 lands — owes no lineage file and passes without one;
   and every file under **`resources/`** carries an admitted extension, no embedded image
-  bytes, and — for any Tiled artifact — CSV layer data with its tileset image referenced by path —
-  Gate 2's three clauses, asserted here rather than at step 0, because a tree that does not
-  exist yet satisfies all three for free.
+  bytes, and — for any Tiled artifact — CSV layer data with its tileset image referenced by path, and — for
+  any `.glb` — its buffers and images embedded, each image a PNG within clause 1's bounds, and no required or
+  compression extension — Gate 2's clauses, asserted here rather than at step 0, because a tree that does not
+  exist yet satisfies every one of them for free.
 - **RED — the lineage half:** in a tree holding a port, drop the **commit SHA** from
   `resources/characters/LINEAGE.md`, leaving the repository URL → the lineage check fails naming the
   missing field; and **delete the lineage file outright** → it fails naming the file as missing — a port

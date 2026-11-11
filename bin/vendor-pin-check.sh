@@ -33,7 +33,7 @@
 # private, and a public runner cannot clone it. What stands in for it is the sha — any body
 # edit reds and a human reads the diff. So a green here means "the body is what this repo last
 # DECLARED", never "the body matches upstream". Said plainly rather than left to be inferred.
-# One set is the exception: `server/public/js/vendor/three/*.js` declare NO local edit, so each
+# One set is the exception: `server/public/js/vendor/three/**/*.js` declare NO local edit, so each
 # body IS the published file and its pin is the digest jsDelivr publishes for it — for those rows a
 # green does mean "the body matches upstream", re-derivable offline from each file's own header.
 #
@@ -106,6 +106,12 @@ MANIFEST=(
   "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|2c82aab9280da78d93fc8423ba5050915e067edd42b9104eef316c60be2a4241|#"
   "server/public/js/vendor/three/three.module.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|104f56145899722094556490d787aae0617cc2fc3382f31df02d724ea1aee341|//"
   "server/public/js/vendor/three/three.core.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|613e370f76638fdef83926642bf256dc9615684922de1ce1f63a8583e5d78578|//"
+  "server/public/js/vendor/three/examples/jsm/loaders/GLTFLoader.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|532ac726e120039acbcd6cf54328c57acbf7b438176afaa6951257126d11bff1|//"
+  "server/public/js/vendor/three/examples/jsm/utils/BufferGeometryUtils.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|7bda2a8ba836b2bcf67cb938d4b9e1bb5d1b1bc616817103ed858c0b58296ce7|//"
+  "server/public/js/vendor/three/examples/jsm/utils/SkeletonUtils.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|b1632a703206c3d830de9fcbe515696770d04b71a15ee6b50afa6d2c3298c86f|//"
+  "server/public/js/vendor/three/examples/jsm/renderers/CSS2DRenderer.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|256abfc6ae1aa20eb83c10d7a0e26534527df65872e4d52da6354bee78288c34|//"
+  "server/public/js/vendor/three/examples/jsm/loaders/SVGLoader.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|29e202f504123d6c12d3f98d23be140cedfa181ced63ba6b1279ede060c5c836|//"
+  "server/public/js/vendor/three/examples/jsm/controls/OrbitControls.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|e7fca2fe9e7670a828af9b28084669a5909445b7f36f1f26cee9bf8f2961c32c|//"
 )
 
 # --- The declared local edits: <repo-relative path>|<what the site is>|<unbroken fragment>
@@ -145,6 +151,12 @@ FRAGMENTS=(
 VERSIONS=(
   "server/public/js/vendor/three/three.module.js|server/package-lock.json|node_modules/three"
   "server/public/js/vendor/three/three.core.js|server/package-lock.json|node_modules/three"
+  "server/public/js/vendor/three/examples/jsm/loaders/GLTFLoader.js|server/package-lock.json|node_modules/three"
+  "server/public/js/vendor/three/examples/jsm/utils/BufferGeometryUtils.js|server/package-lock.json|node_modules/three"
+  "server/public/js/vendor/three/examples/jsm/utils/SkeletonUtils.js|server/package-lock.json|node_modules/three"
+  "server/public/js/vendor/three/examples/jsm/renderers/CSS2DRenderer.js|server/package-lock.json|node_modules/three"
+  "server/public/js/vendor/three/examples/jsm/loaders/SVGLoader.js|server/package-lock.json|node_modules/three"
+  "server/public/js/vendor/three/examples/jsm/controls/OrbitControls.js|server/package-lock.json|node_modules/three"
 )
 
 # The ONE spelling of the body rule, `lead` being the row's comment leader, matched literally.

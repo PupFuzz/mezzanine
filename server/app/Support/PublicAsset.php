@@ -34,6 +34,14 @@ final class PublicAsset
     /** The extensions a file under `public/` is served as JavaScript by, so the ones a module can be. */
     public const MODULE_EXTENSIONS = ['js', 'mjs'];
 
+    /**
+     * The import map's BARE keys, each the module under `public/` it resolves to (card#13033 stage 2, the plan's § 5).
+     * The vendored Three.js addons under `js/vendor/three/examples/jsm/` import `'three'` as upstream publishes them,
+     * unedited, so the map resolves that one name — to `url()`'s versioned URL of the entry and never a bare path, which
+     * would load a second, unversioned copy of the library beside the one the pages import by relative path.
+     */
+    public const BARE_MODULES = ['three' => 'js/vendor/three/three.module.js'];
+
     /** `public/{$path}`'s URL, versioned by the file's modification time. A missing file is an error. */
     public static function url(string $path): string
     {
@@ -41,7 +49,8 @@ final class PublicAsset
     }
 
     /**
-     * The page's import map: every module under `public/`, by its URL, mapped to `url()`'s answer for it.
+     * The page's import map: every module under `public/`, by its URL, mapped to `url()`'s answer for it, and each of
+     * `BARE_MODULES` by its name, mapped to `url()`'s answer for the file it names.
      *
      * @return array{imports: array<string, string>}
      */
@@ -62,6 +71,10 @@ final class PublicAsset
 
         foreach ($paths as $path) {
             $imports[asset($path)] = self::url($path);
+        }
+
+        foreach (self::BARE_MODULES as $name => $path) {
+            $imports[$name] = self::url($path);
         }
 
         return ['imports' => $imports];

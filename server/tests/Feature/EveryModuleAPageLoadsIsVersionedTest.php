@@ -18,6 +18,10 @@ use Tests\TestCase;
  * import map, before any module script, naming EVERY module file under `public/` by its URL and mapping it
  * to that URL with `?v=` the file's mtime; and every module script's `src` is such a URL. The population is
  * the files on disk, walked here — never the map's own list — so a module the map leaves out reds by name.
+ * The map's one BARE key, `three` (card#13033 stage 2), resolves to the versioned URL of the vendored entry on disk,
+ * and the map holds no key that is neither a module's URL nor that name. No module outside the vendored addons imports
+ * any name bare — the pages' own code imports the library by relative path — and the addons are read importing `three`;
+ * a further bare name inside an addon is not judged here (`bareImportDefects()` says why).
  * That the browser applies the map to relative and dynamic imports alike is the platform's (the HTML
  * standard's import-map resolution); it is not something a check without a browser can hold.
  *
@@ -34,6 +38,15 @@ class EveryModuleAPageLoadsIsVersionedTest extends TestCase
     use RefreshDatabase;
 
     private const PROBE = 'js/zz-card-12158-probe.js';
+
+    /**
+     * The ONE bare name the map admits, and the module it must resolve to — spelled here, not read from
+     * `PublicAsset::BARE_MODULES`, so an edit to the map's list is a change this test sees rather than one it adopts.
+     */
+    private const BARE = ['three' => 'js/vendor/three/three.module.js'];
+
+    /** The only modules that import a name bare: the vendored addons, `three`, as upstream publishes them. */
+    private const BARE_IMPORTERS = 'js/vendor/three/examples/';
 
     public function test_every_page_loads_every_module_under_public_by_a_versioned_url(): void
     {
@@ -59,6 +72,16 @@ class EveryModuleAPageLoadsIsVersionedTest extends TestCase
 
             $this->assertSame([], $this->revalidationDefects((string) $response->headers->get('Cache-Control')), $specifier);
         }
+    }
+
+    public function test_only_the_vendored_addons_import_a_name_bare(): void
+    {
+        $sources = $this->sourcesOnDisk();
+        $importers = array_filter($sources, fn (string $source, string $path) => str_starts_with($path, self::BARE_IMPORTERS)
+            && in_array('three', array_column(ModuleSpecifiers::of($source), 'specifier'), true), ARRAY_FILTER_USE_BOTH);
+
+        $this->assertNotSame([], $importers, 'no vendored addon was read importing `three` — the walk has stopped reading them, and a clean result would mean nothing');
+        $this->assertSame([], $this->bareImportDefects($sources));
     }
 
     public function test_the_checks_bite(): void
@@ -100,6 +123,27 @@ class EveryModuleAPageLoadsIsVersionedTest extends TestCase
 
         // No map at all.
         $this->assertArrayHasKey('map', $this->moduleDefects(str_replace($mapTag, '', $html), $population), 'CONTROL (no import map) did not bite');
+
+        // The bare `three` left out, sent to the entry's bare (unversioned) URL, and a bare name nobody admitted.
+        $map = $this->mapOf($html);
+        $this->assertArrayHasKey('three', $map, 'the bare-name controls\' anchor is gone');
+        unset($map['three']);
+        $this->assertArrayHasKey('map-bare', $this->moduleDefects($this->withMap($html, $map), $population), 'CONTROL (no bare `three`) did not bite');
+        $map['three'] = asset(self::BARE['three']);
+        $this->assertArrayHasKey('map-bare', $this->moduleDefects($this->withMap($html, $map), $population), 'CONTROL (a bare `three` sent to an unversioned URL) did not bite');
+        $map = $this->mapOf($html);
+        $map['lodash'] = asset('js/lobby/main.js');
+        $this->assertArrayHasKey('map-extra', $this->moduleDefects($this->withMap($html, $map), $population), 'CONTROL (a bare name the map does not admit) did not bite');
+
+        // A page module importing `three` bare, and a module importing a bare name the map does not resolve.
+        $sources = $this->sourcesOnDisk();
+        $this->assertSame([], $this->bareImportDefects($sources), 'the shipped modules are not clean — the controls below prove nothing');
+        $planted = $sources;
+        $planted['js/floor/main.js'] = "import { Vector3 } from 'three';\n".$sources['js/floor/main.js'];
+        $this->assertNotSame([], $this->bareImportDefects($planted), 'CONTROL (a page module importing `three` bare) did not bite');
+        $planted = $sources;
+        $planted['js/floor/main.js'] = "import { pick } from 'lodash';\n".$sources['js/floor/main.js'];
+        $this->assertNotSame([], $this->bareImportDefects($planted), 'CONTROL (a bare name the map does not resolve) did not bite');
 
         // A module added to public/ after the page was rendered: the walk sees it, so the old page reds — and
         // the page rendered now maps it, so the map is read from the tree and not from a list.
@@ -198,7 +242,68 @@ class EveryModuleAPageLoadsIsVersionedTest extends TestCase
             }
         }
 
+        foreach (array_diff_key($map, $byUrl, self::BARE) as $key => $target) {
+            $defects['map-extra'] = "the import map names `{$key}`, which is neither a module under public/ nor a bare name it admits";
+        }
+
+        foreach (self::BARE as $name => $path) {
+            $want = array_key_exists($path, $population) ? asset($path).'?v='.$population[$path] : null;
+
+            if ($want === null || ($map[$name] ?? null) !== $want) {
+                $defects['map-bare'] = "the import map sends `{$name}` to `".($map[$name] ?? 'nothing')."` — not the versioned URL of `{$path}` on disk";
+            }
+        }
+
         return $defects;
+    }
+
+    /**
+     * Every bare specifier a module of this repository's own imports — `three` included, which the pages' code imports
+     * by relative path, and any other name, which nothing in the map resolves.
+     *
+     * ⚠ THE VENDORED ADDONS ARE NOT JUDGED HERE. `ModuleSpecifiers` keeps a string or template literal whole and reads an
+     * import-shaped run inside one as an import (its header: the direction that errs is a false red), and upstream's
+     * `GLTFLoader.js` carries one — a warning reading *from "srgb-linear"*. That they import `three` is held by the
+     * positive read in the test above; a further bare name in an addon is left to the browser leg that loads them.
+     *
+     * @param  array<string, string>  $sources  module path under `public/` => its source
+     * @return list<string>
+     */
+    private function bareImportDefects(array $sources): array
+    {
+        $defects = [];
+
+        foreach ($sources as $path => $source) {
+            if (str_starts_with($path, self::BARE_IMPORTERS)) {
+                continue;
+            }
+
+            foreach (ModuleSpecifiers::of($source) as $import) {
+                $specifier = $import['specifier'];
+
+                if ($specifier === null || $import['followable'] || str_starts_with($specifier, '/') || preg_match('/^[A-Za-z][A-Za-z0-9+.-]*:/', $specifier) === 1) {
+                    continue;
+                }
+
+                $defects[] = array_key_exists($specifier, self::BARE)
+                    ? "{$path} imports `{$specifier}` bare — only the vendored addons under ".self::BARE_IMPORTERS.' may'
+                    : "{$path} imports `{$specifier}` bare, and the import map admits no such name";
+            }
+        }
+
+        return $defects;
+    }
+
+    /** @return array<string, string> every module under `public/`, by its path there, with its source */
+    private function sourcesOnDisk(): array
+    {
+        $sources = [];
+
+        foreach (array_keys($this->modulesOnDisk()) as $path) {
+            $sources[$path] = (string) file_get_contents(public_path($path));
+        }
+
+        return $sources;
     }
 
     /** @return array<string, string> */

@@ -60,7 +60,8 @@ final class FloorAssets
      * widening the clause without widening this map — or the reverse — reds by name.
      *
      * ⚠ `.tsx` is Tiled's tileset XML here (§ 10.1's own ⚠), so it is served as XML and never as
-     * a script; `.ts` is the generator's source and no browser runs it, so it is served as text.
+     * a script; `.ts` is the generator's source and no browser runs it, so it is served as text. `.glb` is glTF
+     * binary, the 3-D floor's model format, served as the type IANA registers for it.
      */
     public const SERVED = [
         '.ts' => 'text/plain; charset=utf-8',
@@ -72,6 +73,7 @@ final class FloorAssets
         '.tmj' => 'application/json',
         '.tsx' => 'application/xml',
         '.tsj' => 'application/json',
+        '.glb' => 'model/gltf-binary',
     ];
 
     /** One tree's root, whether or not it exists on this checkout. The floor's by default. */

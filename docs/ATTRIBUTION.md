@@ -100,6 +100,21 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane/globe.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `0a09bfaa1e4ca023809a7deda5afa0b79110efe2daea2709eec32ca9d17385e1` |
 | `resources/floor/tiles/floor-plane/water-cooler.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `f4677b63a1c80497156d9e48cc5643e7b0a37f4c4994bc48b2e7446e12650ab6` |
 | `resources/floor/tiles/floor-plane/whiteboard.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `3e695bde0dcaec0e978b622b00927e618f43b089796b399523bd28b53d4e5753` |
+| `resources/floor/models/kenney-furniture-kit/map.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `f090efe2b38974b5f2a84ab36ec28dc7936bc4e076bd01aeaa987554a86f68ac` |
+| `resources/floor/models/kenney-furniture-kit/bookcaseOpen.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `750702218d68c062b15dfef6ab06a4014d1cfa8bd05f02e57c53b7e13bec157c` |
+| `resources/floor/models/kenney-furniture-kit/books.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `b8dc56e5d29f6fc1f4727fccb1b9642627fee9942c48060a00034e98df02701c` |
+| `resources/floor/models/kenney-furniture-kit/chairDesk.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `46406619186034cbe92b19b79a5f1a8e3f442a17a70a7524ef2c0ad0f35095c6` |
+| `resources/floor/models/kenney-furniture-kit/coatRackStanding.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `d8231c22dab63ceb9fc8678f6c8ceafc62afa8726b51a73b4ce349043d3cdc91` |
+| `resources/floor/models/kenney-furniture-kit/computerScreen.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `5942cbad29a2d2b956619569926e81d50a4174403d592fece6556e57632dc643` |
+| `resources/floor/models/kenney-furniture-kit/desk.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `0164fe828f028b321730fb8c74502e353583f751be74da1682d42fff7d3c5a42` |
+| `resources/floor/models/kenney-furniture-kit/lampRoundFloor.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `50fe1b5b588edf15bfa9cc880f71a02a4fda6036350b24733d0ef4de5cc5e908` |
+| `resources/floor/models/kenney-furniture-kit/lampRoundTable.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `75bb644caaa3da003b4fcad7a931722dd61cd2858aab70cf660021d5061fa1b2` |
+| `resources/floor/models/kenney-furniture-kit/loungeChair.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `ddfe6bc4b3451bca61666d7b614552d6ed2a03d82fc76244b72ae3155874dc6c` |
+| `resources/floor/models/kenney-furniture-kit/loungeSofa.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `1886b811c0d3ad0d8525a4fd43adf4112c497c8e0ed906f06877ca3517f4c7dd` |
+| `resources/floor/models/kenney-furniture-kit/pillow.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `6fae7c190d0b676ef3efd35e5178cef21dffb5c80e1257d8b537ad424da0e5f6` |
+| `resources/floor/models/kenney-furniture-kit/pottedPlant.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `5b760eda2766f75fda36b2c5df652a1662f82981ef64cd8fa7fe7bcd386b3a15` |
+| `resources/floor/models/kenney-furniture-kit/table.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `ff1a94498d023957f4bc3ff6f55a7a82977d336dbf01a573b3364f03afe5ff61` |
+| `resources/floor/models/kenney-furniture-kit/tableCoffee.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `e38bea760fbd514efbb75528d09b4752c91af44677bbb97e6d4386c263525179` |
 <!-- asset-manifest:end -->
 
 **Why first-party files are listed too.** The character tree's three files — `creatures.js`,
@@ -148,12 +163,15 @@ SOFTWARE.
 
 **Gate 2 runs over ALL of `resources/`, not just the character tree** (card#7913) — the same
 population Gate 1 walks — and gained a **third clause** for the Tiled formats: layer data stored
-plainly as CSV, and **no embedded tileset image**. [`FLOOR.md § 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates)
+plainly as CSV, and **no embedded tileset image** — and, with card#13033 stage 2, a **fourth clause** for
+`.glb` models: every buffer and image carried inside the file, so the file's own row covers each.
+[`FLOOR.md § 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates)
 owns the clauses and the admitted file types, and this file does not restate them.
 
 ## The floor — first-party since card#11046's row 22
 
-**Every `resources/floor/` row is `first-party` / `MIT`.** The bridge tileset that stood here from
+**Every `resources/floor/` row is `first-party` / `MIT` except the 3-D floor's furniture models**, which are
+Kenney's CC0 kit, below. The bridge tileset that stood here from
 **2026-09-12** — Kenney's CC0 **Furniture Kit**, chosen by the operator *explicitly as a bridge to
 first-party vector art* — left the tree with its rows and its `LINEAGE.md` at
 [`FLOOR.md`](design/FLOOR.md) Appendix B row 22 (card#11046), when the art it bridged to landed: the
@@ -179,6 +197,29 @@ export settings, and both fail the build if they are wrong.
 brought into the tree — and `bin/asset-provenance.selftest.py` keeps it as a control **and** two REDs of
 its own.
 
+## The 3-D floor's furniture — Kenney's Furniture Kit, since card#13033 stage 2
+
+`resources/floor/models/kenney-furniture-kit/` holds `.glb` files from Kenney's **Furniture Kit**
+(<https://kenney.nl/assets/furniture-kit>), the operator's answer Q1 A of 2026-11-11
+([`FLOOR.md` § 14](design/FLOOR.md#14-open-questions-for-the-review-loop) item 49): the 3-D floor's furniture from
+the kit, recoloured per theme, and a first-party piece for each kind it lacks. Each file is a `licensed` /
+`CC0-1.0` row above. CC0 is a public-domain dedication and obliges no notice; Kenney asks for credit and does not
+require it, and this paragraph gives it.
+
+- **The terms, as the archive states them** — its root `License.txt`, *Furniture Kit (2.0)*, *Creation date:
+  20-10-2018 16:21*: *"License: (Creative Commons Zero, CC0)"*, then
+  `http://creativecommons.org/publicdomain/zero/1.0/`, then *"This content is free to use in personal, educational
+  and commercial projects."* The kit's page states *"Creative Commons CC0"*.
+- **The archive** — `kenney_furniture-kit.zip`, retrieved 2026-11-11 from the page's download, sha256
+  `e67652d0932cee41683f74711c03d3e192a2af9979ef8e6b237711f5482d46b0`. It carries each model as DAE, FBX, glTF binary,
+  OBJ and STL (`Models/GLTF format/` holds the `.glb` set), plus isometric and side renders as PNG.
+- **What was taken** — only the `.glb` files the kind map (`map.js`, beside them) names, byte for byte, under
+  their upstream names. Their materials are named flat colours (`baseColorFactor`): no textures, no images and no
+  vertex colours — the form the design's recolour reads (`plan-13033-stage2-3d-floor.md` § 3.4).
+- **What was deliberately not taken** — every other model, every other format, and the renders: the map names
+  what the floor stands, and an unmapped file is a file nobody draws (`tools/floor-models/selftest.mjs` holds the
+  directory to the map both ways).
+
 ## Third-party code under `server/public/js/vendor/`
 
 Code a page loads, not an asset, so it has no manifest row: the gate's trees are `resources/` alone.
@@ -189,6 +230,11 @@ Code a page loads, not an asset, so it has no manifest row: the gate's trees are
   version and the upstream sha256, and `bin/vendor-pin-check.sh` pins each body and holds the
   header's version equal to `server/package-lock.json`'s. The design is
   [`plan-13033-3d-view.md § 5`](design/plan-13033-3d-view.md#5-threejs--where-it-comes-from-how-it-is-pinned-how-it-is-attributed).
+  The addons the 3-D floor uses (card#13033 stage 2) are the same package at the same version, under
+  `vendor/three/examples/jsm/` at their upstream paths — `loaders/GLTFLoader.js`, `utils/BufferGeometryUtils.js`,
+  `utils/SkeletonUtils.js`, `renderers/CSS2DRenderer.js`, `loaders/SVGLoader.js`, `controls/OrbitControls.js` —
+  under the same `LICENSE`, each pinned the same way; the design is
+  [`plan-13033-stage2-3d-floor.md § 5`](design/plan-13033-stage2-3d-floor.md#5-the-libraries--vendoring-pinning-attribution).
 
 ## What a green gate does not mean
 

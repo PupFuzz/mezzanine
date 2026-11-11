@@ -24,13 +24,13 @@ WHAT IT DOES.
 
   Gate 2 — every asset is a file Gate 1 can see.  Over the SAME population Gate 1 walks — ALL of
   the repo-root resources/, not the character tree it was scoped to until 2026-08-27 — the gate
-  is an ALLOWLIST, in three clauses, exactly as section 10.1 argues it must be:
-    1. every file carries one of .ts / .js / .md / .svg / .png / .tmx / .tmj / .tsx / .tsj, so a
+  is an ALLOWLIST, in the numbered clauses below, exactly as section 10.1 argues it must be:
+    1. every file carries one of .ts / .js / .md / .svg / .png / .tmx / .tmj / .tsx / .tsj / .glb, so a
        format nobody anticipated is refused rather than merely a format somebody listed. (.svg
        because the ratified art direction is vector-first and section 4.5 requires resolution
        independence; .png as the one lossless raster, which the Tiled tilesets of section 10.3
        already ship in; the four Tiled formats because section 10.3 makes Tiled the map format,
-       and a map is an asset like any other.)
+       and a map is an asset like any other; .glb as the 3-D floor's model format, card#13033 stage 2.)
        ⚠ .tsx IS AMBIGUOUS EVERYWHERE EXCEPT HERE: it is Tiled's Tileset XML in this list and
        TypeScript-JSX in the rest of the world. Under resources/ only the first meaning is in
        play — this repository's React-free generator is .js/.ts — so the collision is harmless
@@ -53,6 +53,11 @@ WHAT IT DOES.
        reasoning about how long it is, so clause 2 needs no exemption and a correct map carries
        no base64 run at all. Its second half is the true positive: an embedded tileset image is
        image bytes inside a map with no path and no row, which is precisely clause 2's subject.
+    4. every .glb is a GLB (the `glTF` magic, version 2, a JSON chunk) whose buffers are all embedded,
+       whose images are all embedded PNGs no larger than GLB_IMAGE_MAX_PX a side and no more than
+       GLB_IMAGES_MAX, with `extensionsRequired` absent or empty and no compression extension in
+       `extensionsUsed`. An embedded image is part of the file its row names, and is printed with its
+       size. Read from the structure the file declares, and the image's format from its own bytes.
 
   UNTIL card#7913 GATE 2 RAN OVER THE CHARACTER TREE ONLY, while Gate 1 already ran over all of
   resources/. That was correct while Gate 2 asserted an absence peculiar to that tree; it was a
@@ -111,7 +116,8 @@ WHAT IT DOES NOT DO, said out loud so nobody reads a green as more than it is:
   * IT TRUSTS THE EXTENSION.  Clause 1 classifies by suffix and sniffs no magic bytes, so an
     .avif renamed to .png passes it. That is a known gap rather than an oversight: clause 1
     exists to refuse the format nobody anticipated, not to defeat somebody deliberately hiding
-    one, and the line above already concedes the deliberate case.
+    one, and the line above already concedes the deliberate case. (A file renamed .glb is refused
+    anyway: clause 4 reads the GLB magic, because it cannot judge a model without reading it as one.)
   * It cannot refuse a generator that FETCHES upstream art at run time. Nothing that inspects
     a tree can. Section 10.1 names this residue; the lineage file's deliberate-omissions
     section and human review are what stand against it.
@@ -137,9 +143,13 @@ WHAT IT DOES NOT DO, said out loud so nobody reads a green as more than it is:
     run of it is not a run of this alphabet. A gate that reds on correct work gets switched
     off, which costs more than the gate was ever worth. The selftest carries the discriminating
     pair — a complex first-party SVG passes, an SVG with an inlined data:image blob fails.
-  * Clause 2 skips BINARY admitted formats (.png). The clause reasons about a file that is a
+  * Clause 2 skips BINARY admitted formats (.png, .glb). The clause reasons about a file that is a
     CONTAINER for an undeclared asset; a raster file is not a container for one, it IS the
-    asset, and it has a row of its own.
+    asset, and it has a row of its own. A .glb IS a container, and clause 4 judges it instead.
+  * Clause 4's compression refusal is a NAMED set (GLB_COMPRESSION_EXTENSIONS). An extension outside
+    it named only in `extensionsUsed` passes; anything a loader cannot read the file without belongs in
+    `extensionsRequired`, which clause 4 refuses whatever it names. And clause 4 reads an embedded
+    image's FORMAT and SIZE, not its pixels: what it shows is the row's claim and review's job.
   * Clause 2 matches a data URI (a MIME subtype followed by `;` or `,`), not the bare string
     `data:image/` — otherwise the lineage file could not write down the rule it lives under.
   * Clause 3 reads STRUCTURE, not pixels. It can say that a map's layer data is stored plainly
@@ -165,6 +175,7 @@ import argparse
 import hashlib
 import json
 import re
+import struct
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -208,10 +219,37 @@ ASSET_TREES = ("resources",)
 #   formats are text for the same reason and one more: clause 3 has to READ them.
 ASSET_TEXT_EXTENSIONS = frozenset({".ts", ".js", ".md", ".svg", ".tmx", ".tmj", ".tsx", ".tsj"})
 #   BINARY: admitted by clause 1, skipped by clause 2. A raster file is not a container for an
-#   undeclared asset; it IS the asset, and it carries a manifest row of its own.
-ASSET_BINARY_EXTENSIONS = frozenset({".png"})
+#   undeclared asset; it IS the asset, and it carries a manifest row of its own. A `.glb` IS a container
+#   — its buffers and images travel inside it — and clause 4 reads what it contains from the structure it
+#   declares, because clause 2's byte heuristic over a binary buffer measures noise.
+ASSET_BINARY_EXTENSIONS = frozenset({".png", ".glb"})
 ASSET_EXTENSIONS = ASSET_TEXT_EXTENSIONS | ASSET_BINARY_EXTENSIONS
 BASE64_MAX_BYTES = 1024
+
+# Clause 4's population and its bounds — FLOOR section 10.1 clause 1's `.glb` bullet, and the design
+# (docs/design/plan-13033-stage2-3d-floor.md section 3.2) that derives them. The container format is the
+# Khronos glTF 2.0 specification's GLB: a 12-byte header (the magic, the version, the total length), then a
+# JSON chunk, then an optional BIN chunk holding the buffer the file carries inside itself.
+GLB_EXTENSION = ".glb"
+GLB_MAGIC = b"glTF"
+GLB_VERSION = 2
+GLB_CHUNK_JSON = b"JSON"
+GLB_CHUNK_BIN = b"BIN\x00"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# The largest width and height an embedded image may have, read off its PNG header.
+GLB_IMAGE_MAX_PX = 1024
+# At most this many images per file. Pinned, with its reason: a furniture piece carries one palette image or
+# none, so a file with more is not a furniture piece (the plan's section 8 item 3). Kenney's kit carries none.
+GLB_IMAGES_MAX = 4
+# The extensions whose payload needs a decoder this repository does not vendor (DRACO, Meshopt, KTX2). A NAMED
+# set, and its residue is stated in the module docstring: an extension outside it, named in `extensionsUsed`
+# only, passes — anything a loader cannot read without is `extensionsRequired`, which clause 4 refuses whole.
+GLB_COMPRESSION_EXTENSIONS = frozenset({
+    "KHR_draco_mesh_compression",
+    "EXT_meshopt_compression",
+    "KHR_meshopt_compression",
+    "KHR_texture_basisu",
+})
 
 # Clause 3's population, split by how it has to be PARSED rather than by what it means. `.tmx` and
 # `.tmj` are maps, `.tsx` and `.tsj` are tilesets, and the clause makes no use of that distinction:
@@ -706,12 +744,145 @@ def gate2_clause3(rel: str, ext: str, raw: bytes) -> None:
         _tiled_json(rel, raw)
 
 
+# --- gate 2 clause 4: the .glb models ----------------------------------------------------------------
+# A `.glb` is a container, and what it may contain is read off the structure it declares about itself —
+# the GLB header and chunks, and its JSON's `buffers`, `images`, `extensionsRequired` and `extensionsUsed`
+# — plus the one fact the JSON cannot be trusted with: what an embedded image IS, read off its bytes.
+#
+#   (i)   every buffer embedded: no `uri`. An external buffer is bytes with no path under this tree's
+#         gates and no row of their own.
+#   (ii)  every image embedded (a `bufferView`, no `uri`), at most GLB_IMAGES_MAX of them, each a PNG no
+#         wider or taller than GLB_IMAGE_MAX_PX. An embedded image is part of the file the row names, so
+#         the row's licence and sha256 are its; each is printed with its size so a reader sees what the row
+#         is vouching for.
+#   (iii) `extensionsRequired` absent or empty.
+#   (iv)  no `extensionsUsed` member in GLB_COMPRESSION_EXTENSIONS.
+#
+# A file this clause cannot read as a GLB is a RED, never a skip — clause 3's rule, for clause 3's reason.
+
+def _clause4(rel: str, msg: str) -> None:
+    fail("GATE 2 clause 4", f"{rel}: {msg}")
+
+
+def _unreadable(rel: str, why: str) -> None:
+    _clause4(rel, f"is not a readable GLB: {why} — clause 4 therefore cannot establish what the file embeds, "
+                  "which is a red: a file admitted by clause 1 and understood by nothing is not a file Gate 1 "
+                  "can see")
+
+
+def _glb_chunks(rel: str, raw: bytes) -> tuple[dict, bytes] | None:
+    """The GLB's JSON document and its BIN chunk's bytes (empty when it carries none), or None — refused."""
+    if raw[:4] != GLB_MAGIC:
+        _clause4(rel, f"is not a GLB: it does not open with the {GLB_MAGIC.decode()!r} magic — a file renamed "
+                      "`.glb` is refused by name, because clause 4 can establish nothing about bytes that are "
+                      "not the format it reads")
+        return None
+    if len(raw) < 20:
+        _unreadable(rel, "it ends inside its own header")
+        return None
+    version, length = struct.unpack_from("<II", raw, 4)
+    if version != GLB_VERSION:
+        _clause4(rel, f"is a GLB of version {version}, not {GLB_VERSION} — clause 4 reads glTF 2.0's container only")
+        return None
+    if length != len(raw):
+        _unreadable(rel, f"its header declares {length} B and the file is {len(raw)} B")
+        return None
+    chunk_len, chunk_type = struct.unpack_from("<I4s", raw, 12)
+    if chunk_type != GLB_CHUNK_JSON or 20 + chunk_len > len(raw):
+        _unreadable(rel, "its first chunk is not a JSON chunk inside the file")
+        return None
+    try:
+        doc = json.loads(raw[20:20 + chunk_len].decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        _unreadable(rel, f"its JSON chunk does not parse ({e})")
+        return None
+    if not isinstance(doc, dict):
+        _unreadable(rel, "its JSON chunk is not an object")
+        return None
+    at = 20 + chunk_len
+    binary = b""
+    if at + 8 <= len(raw):
+        bin_len, bin_type = struct.unpack_from("<I4s", raw, at)
+        if bin_type == GLB_CHUNK_BIN:
+            binary = raw[at + 8:at + 8 + bin_len]
+    return doc, binary
+
+
+def _members(doc: dict, key: str) -> list:
+    value = doc.get(key, [])
+    return value if isinstance(value, list) else [value]
+
+
+def _png_size(data: bytes) -> tuple[int, int] | None:
+    """A PNG's width and height off its IHDR chunk, or None when the bytes are not a PNG."""
+    if len(data) < 24 or data[:8] != PNG_SIGNATURE or data[12:16] != b"IHDR":
+        return None
+    return struct.unpack_from(">II", data, 16)
+
+
+def gate2_clause4(rel: str, raw: bytes) -> None:
+    read = _glb_chunks(rel, raw)
+    if read is None:
+        return
+    doc, binary = read
+
+    buffers = _members(doc, "buffers")
+    for i, buf in enumerate(buffers):
+        if isinstance(buf, dict) and "uri" in buf:
+            _clause4(rel, f"buffer {i} names a uri ({str(buf['uri'])[:60]!r}) — clause 4 requires every buffer "
+                          "embedded in the file's own BIN chunk, because an external buffer is bytes with no "
+                          "path under this tree's gates and no row")
+
+    images = _members(doc, "images")
+    if len(images) > GLB_IMAGES_MAX:
+        _clause4(rel, f"embeds {len(images)} images, more than GLB_IMAGES_MAX = {GLB_IMAGES_MAX} — a furniture "
+                      "piece carries one palette image or none")
+    views = _members(doc, "bufferViews")
+    # Only buffer 0 can live in the BIN chunk (the GLB container's rule), and only when it names no uri.
+    stored = bool(buffers) and isinstance(buffers[0], dict) and "uri" not in buffers[0]
+    for i, img in enumerate(images):
+        img = img if isinstance(img, dict) else {}
+        if "uri" in img:
+            _clause4(rel, f"image {i} names a uri ({str(img['uri'])[:60]!r}) — clause 4 requires every image "
+                          "embedded through a bufferView, so the file's row covers it")
+            continue
+        at = img.get("bufferView")
+        view = views[at] if isinstance(at, int) and 0 <= at < len(views) else None
+        if not (stored and isinstance(view, dict) and view.get("buffer") == 0):
+            _clause4(rel, f"image {i} has no bytes inside the file — its bufferView does not name a view of the "
+                          "file's own BIN chunk, so clause 4 cannot read what it is")
+            continue
+        start = view.get("byteOffset", 0)
+        data = binary[start:start + view.get("byteLength", 0)]
+        size = _png_size(data)
+        if size is None:
+            _clause4(rel, f"image {i} is not a PNG — its bytes do not open with the PNG signature and an IHDR "
+                          f"chunk (declared {img.get('mimeType')!r}); clause 4 admits PNG images only, judged on "
+                          "the bytes and never on the declared type")
+            continue
+        w, h = size
+        if w > GLB_IMAGE_MAX_PX or h > GLB_IMAGE_MAX_PX:
+            _clause4(rel, f"image {i} is {w}×{h} px, over the {GLB_IMAGE_MAX_PX} px clause 4 admits on either side")
+            continue
+        notes.append(f"{rel}: embedded image {i}, a {w}×{h} px PNG, covered by this file's own row")
+
+    required = doc.get("extensionsRequired")
+    if required:
+        _clause4(rel, f"declares extensionsRequired {required!r} — clause 4 admits a file every loader can read "
+                      "without an extension, so the list must be absent or empty")
+
+    compressed = sorted(GLB_COMPRESSION_EXTENSIONS & {e for e in _members(doc, "extensionsUsed") if isinstance(e, str)})
+    if compressed:
+        _clause4(rel, f"names the compression extension(s) {compressed} in extensionsUsed — their payload needs a "
+                      "decoder this repository does not vendor")
+
+
 # --- gate 2 --------------------------------------------------------------------------------------
 
 def gate2(assets: list[str]) -> None:
     # Gate 2's population IS Gate 1's population. No `startswith` filter, and no second tree
     # constant to forget to widen — see the ASSET_TEXT_EXTENSIONS comment.
-    classified = read = parsed = 0
+    classified = read = parsed = models = 0
     for rel in assets:
         ext = Path(rel).suffix
         classified += 1
@@ -732,7 +903,10 @@ def gate2(assets: list[str]) -> None:
         if ext in ASSET_BINARY_EXTENSIONS:
             # Admitted by clause 1, skipped by clause 2 on purpose: clause 2 hunts an asset
             # embedded inside a CONTAINER, and a raster file is not a container for one — it is
-            # the asset, and it has a row.
+            # the asset, and it has a row. A `.glb` is a container, and clause 4 reads it.
+            if ext == GLB_EXTENSION:
+                models += 1
+                gate2_clause4(rel, (REPO / rel).read_bytes())
             continue
         raw = (REPO / rel).read_bytes()
         read += 1
@@ -764,7 +938,7 @@ def gate2(assets: list[str]) -> None:
     # nothing must say so rather than ride out on the gate's green.
     notes.append(
         f"gate 2: {classified} file(s) classified by clause 1 · {read} text-bearing file(s) read "
-        f"by clause 2 · {parsed} Tiled artifact(s) parsed by clause 3"
+        f"by clause 2 · {parsed} Tiled artifact(s) parsed by clause 3 · {models} .glb model(s) read by clause 4"
     )
 
 
