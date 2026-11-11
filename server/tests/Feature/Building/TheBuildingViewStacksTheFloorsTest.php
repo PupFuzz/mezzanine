@@ -11,7 +11,8 @@ use Tests\TestCase;
  * Appendix B row 47 (card#13033 slice 3; the derivation is `docs/design/plan-13033-3d-view.md` § 8 items 2 and 3): the
  * building screen (`building/building-screen.js`) over the harness's `building` entry, the stack model
  * (`building/stack-model.js`) through `stack-model-probe.mjs`, and the 3-D acts (`building/building-acts.js`) through
- * `building-acts-probe.mjs`.
+ * `building-acts-probe.mjs`; and what the stage shows before the first stack (`building-screen.js`'s `stagePhase()`)
+ * through `stage-phase-probe.mjs`.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE RUN IS `fixtures/fx-camera.json`'s `building_stack` (its note states it), entered at `/building`; the floor
@@ -139,10 +140,10 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
     /** @return array<string, array{0: string}> */
     public static function modelLegs(): array
     {
-        return array_combine($legs = ['storey', 'focus', 'paths', 'corner', 'snap', 'cull', 'rest'], array_map(static fn (string $l): array => [$l], $legs));
+        return array_combine($legs = ['storey', 'focus', 'paths', 'corner', 'entries', 'snap', 'cull', 'rest'], array_map(static fn (string $l): array => [$l], $legs));
     }
 
-    /** Plan § 8 item 3: the storey, the focus pose, the paths, the corner, the snap table, the cull and the rest. */
+    /** Plan § 8 item 3: the storey, the focus pose, the paths, the corner, the floor entries' place, the snap table, the cull and the rest. */
     #[\PHPUnit\Framework\Attributes\DataProvider('modelLegs')]
     public function test_green_the_stack_models_leg(string $leg): void
     {
@@ -178,6 +179,12 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
     public function test_green_each_floor_is_repainted_at_most_once_an_interval(): void
     {
         $this->assertSame([], $this->pictureProbe($this->buildingDir($this->jsRoot()))['legs']['interval']);
+    }
+
+    /** What the stage shows as the page starts, draws, loses its stack and runs without WebGL 2 (`stagePhase()`). */
+    public function test_green_the_stage_shows_the_placeholder_until_the_first_stack(): void
+    {
+        $this->assertSame([], $this->phaseProbe($this->buildingDir($this->jsRoot()))['legs']['phase']);
     }
 
     /** Plan § 8 item 3: the acts, under stand-in gestures and a stub clock, and the mute over a stream that outlives the glide. */
@@ -301,6 +308,55 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $dir = $this->mutatedModules([self::MODEL, 'return slab === null || culled.size === 0 ?', 'return slab === null || culled.size !== 0 ?']);
 
         $this->assertNotSame([], $this->modelProbe($this->buildingDir(dirname($dir)))['legs']['cull'], 'the fifteenth RED (the link that lies) did not bite');
+    }
+
+    /** The notices over the slabs: a floor entry centred over its slab's corner, as the overview drew it before card#13033's polish. */
+    public function test_red_the_notices_over_the_slabs(): void
+    {
+        $dir = $this->mutatedModules([self::MODEL,
+            '        const x = left ? Math.min(anchor.x, ...rows.map((r) => r.x)) - ENTRY_GAP - w : Math.max(anchor.x, ...rows.map((r) => r.x + r.w)) + ENTRY_GAP;',
+            '        const x = anchor.x - w / 2;']);
+
+        $this->assertNotSame([], array_filter($this->modelProbe($this->buildingDir(dirname($dir)))['legs']['entries'], static fn (string $d): bool => str_contains($d, 'notices are drawn over')),
+            'the RED (the notices over the slabs) did not bite for its reason');
+    }
+
+    /** The notices drawn where they do not fit: the cull dropped, so a narrow stage writes them over the stack. */
+    public function test_red_the_notices_drawn_where_they_do_not_fit(): void
+    {
+        $dir = $this->mutatedModules([self::MODEL,
+            '        if (full.x >= 0 && full.x + full.w <= surface.width && ![...boxes].some(([key, box]) => key !== slab.floor && overlaps(box, full))) {',
+            '        if (true) {']);
+
+        $this->assertNotSame([], array_filter($this->modelProbe($this->buildingDir(dirname($dir)))['legs']['entries'], static fn (string $d): bool => str_contains($d, 'notices are drawn over') || str_contains($d, 'past the stage')),
+            'the RED (the notices drawn where they do not fit) did not bite for its reason');
+    }
+
+    /** The bare list before the first frame: the page in flow from the start, as it was before card#13033's polish. */
+    public function test_red_the_bare_list_before_the_first_frame(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "    return frame === null || frame.layout === 'pending' || !art ? 'drawing' : 'list';", "    return 'list';"]);
+
+        $this->assertNotSame([], array_filter($this->phaseProbe($this->buildingDir(dirname($dir)))['legs']['phase'], static fn (string $d): bool => str_contains($d, 'not "drawing"')),
+            'the RED (the bare list before the first frame) did not bite for its reason');
+    }
+
+    /** The placeholder that never ends: a building that cannot be drawn still claiming to be drawing. */
+    public function test_red_the_placeholder_that_never_ends(): void
+    {
+        $dir = $this->mutatedModules([self::SCREEN, "    return frame === null || frame.layout === 'pending' || !art ? 'drawing' : 'list';", "    return 'drawing';"]);
+
+        $this->assertNotSame([], array_filter($this->phaseProbe($this->buildingDir(dirname($dir)))['legs']['phase'], static fn (string $d): bool => str_contains($d, 'not "list"')),
+            'the RED (the placeholder that never ends) did not bite for its reason');
+    }
+
+    /** The status line read as "floor <name>": the floor's name prefixed, as the focus heading read before card#13033's polish. */
+    public function test_red_the_status_line_that_prefixes_the_name(): void
+    {
+        $dir = $this->mutatedModules([self::MODEL, ': stack.slabs.find((slab) => slab.floor === live.pose.floor).name;', ': `floor ${stack.slabs.find((slab) => slab.floor === live.pose.floor).name}`;']);
+
+        $this->assertNotSame([], array_filter($this->modelProbe($this->buildingDir(dirname($dir)))['legs']['rest'], static fn (string $d): bool => str_contains($d, "the floor's name alone")),
+            'the RED (the status line that prefixes the name) did not bite for its reason');
     }
 
     /** The review's G1: an unsized stage — a collapsed or hidden one — built into a stack, whose poses then have no aspect. */
@@ -446,6 +502,12 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $glyph = $this->fixture(self::RUN)['building']['scene']['measurer']['glyph_w']['name'];
 
         return $this->boundedProbe(['cull' => ['extent' => $aimla['scene']['extent'], 'labels' => $aimla['labels'], 'glyph_w' => $glyph]], $dir, __DIR__.'/stack-model-probe.mjs');
+    }
+
+    /** The stage phase's probe. @return array<string, mixed> */
+    private function phaseProbe(string $dir): array
+    {
+        return $this->boundedProbe([], $dir, __DIR__.'/stage-phase-probe.mjs');
     }
 
     /** The floor picture's probe. @return array<string, mixed> */

@@ -101,6 +101,9 @@ const READ = `(() => {
   return {
     view: stage.dataset.view ?? null,
     gliding: stage.dataset.gliding ?? null,
+    phase: stage.dataset.phase ?? null,
+    drawing: !document.getElementById('building-drawing').hidden,
+    listDrawn: !document.getElementById('building-floors').classList.contains('visually-hidden'),
     stage: rect(stage),
     surface: { width: stage.clientWidth, height: stage.clientHeight },
     statement: document.getElementById('building-webgl').hidden ? null : document.getElementById('building-webgl').textContent,
@@ -112,6 +115,8 @@ const READ = `(() => {
     floors: [...document.querySelectorAll('#building-floors > li.building-floor')].map((li, level) => ({
       floor: li.dataset.floor, level, name: li.querySelector('.building-floor-head > a').textContent,
       home: li.querySelector('.building-floor-head').dataset.home ?? null, transform: li.querySelector('.building-floor-head').style.transform,
+      head: rect(li.querySelector('.building-floor-head')),
+      notices: (() => { const n = li.querySelector('.building-notices'); return !n.hidden && !n.classList.contains('visually-hidden'); })(),
       culled: li.querySelector('.building-floor-head > a').classList.contains('visually-hidden'),
       desks: [...li.querySelectorAll('a.building-desk')].map((a) => ({ key: a.dataset.desk, home: a.dataset.home ?? null, culled: a.classList.contains('visually-hidden'),
         hidden: a.hidden, display: getComputedStyle(a).display, rect: rect(a) })),
@@ -131,15 +136,35 @@ function stackOf(r) {
   return M.stackModel(rows, extents, '/dashboard', r.surface);
 }
 
-/** Where the page's stack is under node is where the page drew it: each floor label's docked point within a pixel. */
+/**
+ * Where the page's stack is under node is where the page drew it: each floor entry's bottom edge level with its slab's
+ * corner within a pixel, where the entry is not held inside the stage's top.
+ */
 function stackDefects(r, stack) {
   const d = [];
   if (stack === null) return ['CONTROL — the page\'s floors and stage re-derive no stack under node'];
   const camera = M.overviewPose(stack, r.surface, 0);
   for (const f of r.floors.filter((x) => x.floor !== '')) {
-    const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(f.transform);
     const p = M.projectPoint(camera, r.surface, M.labelCorner(stack.slabs.find((s) => s.floor === f.floor), 0));
-    if (m === null || Math.hypot(Number(m[1]) - p.x, Number(m[2]) - p.y) > 1) d.push(`CONTROL — ${f.floor}'s label is docked at ${f.transform}, not at the node stack's (${p.x.toFixed(1)}, ${p.y.toFixed(1)}): the re-derived stack is not the page's`);
+    const bottom = f.head.y - r.stage.y + f.head.h;
+    if (f.head.y - r.stage.y > 0.5 && Math.abs(bottom - p.y) > 1) d.push(`CONTROL — ${f.floor}'s entry stands with its bottom at ${bottom.toFixed(1)}, not at the node stack's corner ${p.y.toFixed(1)}: the re-derived stack is not the page's`);
+  }
+  return d;
+}
+
+/** No floor's notices drawn over a slab of the node stack (card#13033's polish), and at least one floor's drawn to read. */
+function noticeDefects(r, stack) {
+  if (stack === null) return [];
+  const camera = M.overviewPose(stack, r.surface, 0);
+  const drawn = r.floors.filter((f) => f.notices);
+  if (drawn.length === 0) return ['CONTROL — no floor\'s notices are drawn at the overview, so the overlap read nothing'];
+  const d = [];
+  for (const f of drawn) {
+    const box = { x: f.head.x - r.stage.x, y: f.head.y - r.stage.y, w: f.head.w, h: f.head.h };
+    for (const slab of [...stack.slabs, stack.ground]) {
+      const rect = M.slabRect(slab, camera, r.surface);
+      if (rect !== null && intersect(box, rect)) d.push(`${f.floor}'s notices are drawn over ${slab.floor ?? 'the ground'}'s slab`);
+    }
   }
   return d;
 }
@@ -184,12 +209,14 @@ const MAIN = 'js/building/main.js';
 const MODEL = 'js/building/stack-model.js';
 
 const ROWS = {
-  still: row('the page starts and draws: no exception, the stream asked for, a WebGL 2 canvas, one nameplate-free picture per composed floor in the page\'s own pixels, the list docked, the desk labels culled at the overview, and the painter\'s failure on the strip', [
+  still: row('the page starts and draws: no exception, the stream asked for, a WebGL 2 canvas, one nameplate-free picture per composed floor in the page\'s own pixels, the list docked, the desk labels culled at the overview, no floor\'s notices over a slab, the placeholder gone, and the painter\'s failure on the strip', [
     ['the token inlining dropped', { plant: [{ file: PICTURE, from: ' style="${attribute(style)}"', to: '' }] }],
     ['the nameplate painted twice', { plant: [{ file: PICTURE, from: "                    omit: new Set(['nameplate']),\n", to: '' }] }],
     ['a floor dropped from the pictures', { plant: [{ file: PICTURE, from: '            for (const { row, scene } of drawn) {', to: '            for (const { row, scene } of drawn.slice(1)) {' }] }],
     ['WebGL disabled', { args: ['--disable-3d-apis'] }],
     ['the painter\'s failure routed nowhere', { plant: [{ file: PICTURE, from: '                    failed: art.failed,\n', to: '                    failed: () => {},\n' }] }],
+    ['the notices centred over the slab\'s corner', { plant: [{ file: MODEL, from: '        const x = left ? Math.min(anchor.x, ...rows.map((r) => r.x)) - ENTRY_GAP - w : Math.max(anchor.x, ...rows.map((r) => r.x + r.w)) + ENTRY_GAP;', to: '        const x = anchor.x - w / 2;' }] }],
+    ['the placeholder left standing', { plant: [{ file: MAIN, from: "    el('building-drawing').hidden = phase !== 'drawing';", to: "    el('building-drawing').hidden = false;" }] }],
   ], async (chrome, c) => {
     const s = await open(chrome, c);
     try {
@@ -231,14 +258,44 @@ const ROWS = {
       }
       if (r.floors.flatMap((f) => f.desks).length === 0) d.push('CONTROL — the page lists no desk label to read');
       if (r.art !== ART_FAILED) d.push(`the strip's art line reads ${JSON.stringify(r.art)}, not ${JSON.stringify(ART_FAILED)} — the theme's thrown band reached no strip`);
-      d.push(...stackDefects(r, stackOf(r)));
-      if (argOf('--out') !== null && c.plant === undefined) writeFileSync(argOf('--out'), Buffer.from((await s.b.page('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+      d.push(...stackDefects(r, stackOf(r)), ...noticeDefects(r, stackOf(r)));
+      if (r.phase !== 'stage' || r.drawing || !r.listDrawn) d.push(`the drawn stage is in phase ${r.phase}, the placeholder ${r.drawing ? 'shown' : 'hidden'}, the list ${r.listDrawn ? 'drawn' : 'visually hidden'}`);
+      if (argOf('--out') !== null && c.plant.length === 0 && c.args.length === 0) writeFileSync(argOf('--out'), Buffer.from((await s.b.page('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
       return { defects: d, facts: { view: r.view, pictures: r.pictures, art: r.art, chip } };
     } finally { s.close(); }
   }),
 
+  first: row('before the first stack the stage shows the placeholder and never the bare list, the list in the accessibility tree throughout, until the stack stands', [
+    ['the bare list before the first frame', { plant: [{ file: 'js/building/building-screen.js', from: "    return frame === null || frame.layout === 'pending' || !art ? 'drawing' : 'list';", to: "    return 'list';" }] }],
+  ], async (chrome, c) => {
+    const srv = await serve({ run: RUN, ...c, plant: [THROWING_THEME, ...(c.plant ?? [])] });
+    const b = await browser(chrome, 1280, 800, 'never', { media: c.media ?? REDUCE, args: c.args ?? [] });
+    try {
+      await b.page('Runtime.enable');
+      await b.page('Page.navigate', { url: `${srv.base}/building` });
+      // Sampled from the navigation until the stack stands: the page's own state at each sample, never a later reading.
+      const SAMPLE = "(() => { const s = document.getElementById('building-stage'); if (s === null) return null; const l = document.getElementById('building-floors'); return { phase: s.dataset.phase ?? null, drawing: !document.getElementById('building-drawing').hidden, listDrawn: !l.classList.contains('visually-hidden'), listed: l.isConnected && getComputedStyle(l).display !== 'none' }; })()";
+      const samples = [];
+      for (const end = Date.now() + 20000; Date.now() < end; await sleep(20)) {
+        const x = await b.evaluate(SAMPLE).catch(() => null);
+        if (x === null) continue;
+        samples.push(x);
+        if (x.phase === 'stage') break;
+      }
+      const d = [];
+      const before = samples.filter((x) => x.phase !== 'stage');
+      if (samples.at(-1)?.phase !== 'stage') d.push(`the stack never stood: the last sample reads ${JSON.stringify(samples.at(-1) ?? null)}`);
+      if (!before.some((x) => x.drawing)) d.push('CONTROL — no sample before the stack stood saw the placeholder, so the row read nothing');
+      const bare = before.find((x) => x.listDrawn || !x.drawing);
+      if (bare !== undefined) d.push(`before the stack stood the stage showed ${JSON.stringify(bare)} — the bare list, or no placeholder`);
+      if (samples.some((x) => !x.listed)) d.push('the list left the accessibility tree (display none) before the stack stood');
+      return { defects: d, facts: { samples: samples.length, before: before.length, phases: [...new Set(samples.map((x) => x.phase))] } };
+    } finally { b.close(); srv.close(); }
+  }),
+
   'no-webgl': row('without WebGL 2 the list is the page: § 7\'s statement, no canvas, no camera row, no picture, the list in flow', [
     ['the WebGL check inverted', { plant: [{ file: MAIN, from: "if (document.createElement('canvas').getContext('webgl2') === null) {", to: "if (document.createElement('canvas').getContext('webgl2') !== null) {" }] }],
+    ['the list left hidden without WebGL 2', { plant: [{ file: MAIN, from: "    say('building-webgl', NO_WEBGL);\n    showPhase();\n", to: "    say('building-webgl', NO_WEBGL);\n" }] }],
   ], async (chrome, c) => {
     const s = await open(chrome, c);
     try {
@@ -249,6 +306,7 @@ const ROWS = {
       if (!r.rowHidden) d.push('the camera row is shown');
       if (r.scenes.length > 0) d.push(`${r.scenes.length} picture(s) were painted`);
       if (r.floors.length === 0) d.push('the list holds no floor');
+      if (r.phase !== 'list' || r.drawing || !r.listDrawn) d.push(`without WebGL 2 the stage is in phase ${r.phase}, the placeholder ${r.drawing ? 'shown' : 'hidden'}, the list ${r.listDrawn ? 'drawn' : 'visually hidden'}`);
       for (const f of r.floors) if (f.home === 'stage') d.push(`${f.floor || 'the ground'}'s entry is docked on a stage that is not drawn`);
       return { defects: d, facts: { statement: r.statement } };
     } finally { s.close(); }

@@ -29,7 +29,9 @@
  * stack, which every wire gate reads as framing nothing.
  *
  * ⛔ WITHOUT WebGL 2 THE LIST IS THE PAGE (§ 7): the statement is shown, the canvas and the camera row stay hidden, and
- * no picture is painted.
+ * no picture is painted. WITH it, the page's *Drawing the building…* placeholder stands in the stage until the first stack
+ * does, the list visually hidden and still read (`building-screen.js`'s `stagePhase()` decides which; `showPhase()` is its
+ * one writer).
  */
 
 import { livePage } from '../wire/live-page.js';
@@ -39,7 +41,7 @@ import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
 import { glideMs } from '../wire/camera.js';
 import { loadArt, measurer } from '../floor/painter.js';
 import { artInputs } from '../floor/floor-compose.js';
-import { NO_WEBGL, startBuildingScreen } from './building-screen.js';
+import { NO_WEBGL, stagePhase, startBuildingScreen } from './building-screen.js';
 import { buildingActs } from './building-acts.js';
 import { betweenPoses, liveView, poseCamera, samePose, snap, textureScale, viewStatus } from './stack-model.js';
 import { floorPictures } from './floor-picture.js';
@@ -97,9 +99,20 @@ function surface() {
 
 /**
  * The stack as last stood, `null` while nothing is drawn; the camera last applied; the pictures last painted, and the
- * raster scale each floor was painted at.
+ * raster scale each floor was painted at; the last building frame, and whether the art modules have answered — what the
+ * stage's phase reads.
  */
-const live = { stack: null, shown: null, pictures: new Map(), scales: new Map(), shape: null };
+const live = { stack: null, shown: null, pictures: new Map(), scales: new Map(), shape: null, frame: null, art: false };
+
+/** The stage's phase onto the page (`stagePhase()`): the placeholder, whether the list is drawn, and the canvas. */
+function showPhase() {
+    const phase = stagePhase({ webgl: paint !== null, art: live.art, frame: live.frame, stack: live.stack });
+
+    stage.dataset.phase = phase;
+    el('building-drawing').hidden = phase !== 'drawing';
+    el('building-floors').classList.toggle('visually-hidden', phase === 'drawing');
+    canvas.hidden = phase !== 'stage';
+}
 
 /** A floor's raster scale at a view (§ 3.2 step 8): the focused floor's at its pose, every other's 1. */
 function scaleOf(stack, at, floor) {
@@ -226,18 +239,17 @@ function shapeOf(stack) {
  */
 function stand(stack) {
     live.stack = stack;
+    showPhase();
 
     el('building-camera-row').hidden = stack === null;
 
     if (stack === null) {
-        canvas.hidden = true;
         labels.dock('flow');
         offerKeys(stage, zoomButtons, acts.camera(), SHORTCUTS);
 
         return;
     }
 
-    canvas.hidden = false;
     labels.dock('stage');
     paint.resize(stack.surface);
     paint.build(stack, live.pictures);
@@ -268,6 +280,8 @@ function stand(stack) {
 /** One building frame onto the page. */
 async function draw(frame) {
     const strip = frame.strip;
+
+    live.frame = frame;
 
     say('building-feed', `feed: ${strip.feed}`);
     say('building-resyncs', strip.resyncs);
@@ -351,6 +365,7 @@ const page = window.getComputedStyle(document.documentElement);
 
 if (document.createElement('canvas').getContext('webgl2') === null) {
     say('building-webgl', NO_WEBGL);
+    showPhase();
 } else {
     paint = stackPaint(canvas, {
         slab: page.getPropertyValue('--house-trim').trim(),
@@ -379,6 +394,8 @@ const screen = startBuildingScreen(client, pageFetch, clock, log, draw, {
 // The art modules, by the asset route: the screen draws no scene until they answer, and every floor's painter reports
 // an asset it could not draw back to the screen (§ 9 F14).
 loadArt().then(({ furniture, characters, registry, themes, failed }) => {
+    live.art = true;
+
     if (paint !== null) {
         pictures = floorPictures(document, el('building-pictures'), {
             characters,

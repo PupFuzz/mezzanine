@@ -611,6 +611,85 @@ export function labelCorner(slab, azimuth) {
     return { x: sx > EPS ? x + w : x, y: topOf(slab), z: cz < -EPS ? z : z + d };
 }
 
+/** The space between a floor entry and the slabs it stands beside, CSS px. */
+export const ENTRY_GAP = 8;
+
+/**
+ * A slab's rectangle on the stage: the bounding rectangle of its eight corners projected, `{ x, y, w, h }` in CSS px — or
+ * `null` when a corner is not in front of the camera. That is reachable: at a focus pose the camera stands just under the
+ * storey above, so the slabs two or more storeys up have corners behind it — above the camera's eye and out of the frame.
+ */
+export function slabRect(slab, camera, surface) {
+    const { x, y, z, w, h, d } = slab.box;
+    const points = [x, x + w].flatMap((px) => [y, y + h].flatMap((py) => [z, z + d].map((pz) => projectPoint(camera, surface, { x: px, y: py, z: pz }))));
+
+    if (points.some((p) => !(p.depth > 0))) {
+        return null;
+    }
+
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+
+    return { x: left, y: top, w: Math.max(...xs) - left, h: Math.max(...ys) - top };
+}
+
+/**
+ * Where each floor entry — the floor's link and its notices — stands on the stage under a camera (§ 3.4): BESIDE the
+ * stack, never over a slab. Its bottom edge is level with its anchor (`labelCorner()` projected), held inside the stage's
+ * height; it stands on the side of its own slab the anchor is on, clear by `ENTRY_GAP` of every slab whose rectangle
+ * shares any of its rows — its own included, so a notice is never written over a picture.
+ *
+ * ⛔ THE NOTICES ARE DRAWN ONLY WHERE THEY FIT. Every entry is first placed as its link alone; then, in the directory's
+ * order, an entry whose notices would be pushed past the stage's side, or meet another entry as it stands, stays its link
+ * alone and its notices are culled — kept in the list and the accessibility tree, as a culled desk label is. That is
+ * reachable on any stage the stack fills across (a narrow window: the room beside the stack falls toward nothing) and at
+ * a focus pose, where the floor fills the stage less a label's margin by design. A link pushed past the stage's side is
+ * held at that side, so the keyboard's focus on it stays in view; there it may overlap a slab's edge, and it carries no
+ * notice. The ground's entry is placed by the same rule and has no notices to cull.
+ *
+ * @param {object} stack `stackModel()`'s
+ * @param {{position: object, target: object, fov: number}} camera a pose or a glide's step
+ * @param {function(object): {entry: {w: number, h: number}, link: {w: number, h: number}}} sizeOf an entry's box with its
+ *        notices and its link's alone, CSS px, by its slab (the ground's included)
+ * @returns {Map<string|null, {x: number, y: number, w: number, h: number, notices: boolean}>} by floor key, the ground's
+ *          under `null`; `notices` whether the entry's notices are drawn
+ */
+export function floorEntryBoxes(stack, camera, surface, sizeOf) {
+    const azimuth = Math.atan2(camera.position.x - stack.axis.x, camera.position.z - stack.axis.z);
+    const slabs = [...stack.slabs, stack.ground];
+    const rects = new Map(slabs.map((slab) => [slab, slabRect(slab, camera, surface)]));
+    const occupied = [...rects.values()].filter((r) => r !== null);
+    const beside = (slab, { w, h }) => {
+        const anchor = projectPoint(camera, surface, labelCorner(slab, azimuth));
+        const own = rects.get(slab);
+        const left = own === null || anchor.x <= own.x + own.w / 2;
+        const y = Math.min(Math.max(0, anchor.y - h), surface.height - h);
+        const rows = occupied.filter((r) => r.y < y + h && y < r.y + r.h);
+        const x = left ? Math.min(anchor.x, ...rows.map((r) => r.x)) - ENTRY_GAP - w : Math.max(anchor.x, ...rows.map((r) => r.x + r.w)) + ENTRY_GAP;
+
+        return { x, y, w, h };
+    };
+    // Every entry as its link alone, held inside the stage's sides; then, in the directory's order, each entry's notices
+    // where the whole entry stands inside the stage and meets no other entry as it stands.
+    const boxes = new Map(slabs.map((slab) => {
+        const link = beside(slab, sizeOf(slab).link);
+
+        return [slab.floor, Object.freeze({ ...link, x: Math.min(Math.max(0, link.x), surface.width - link.w), notices: false })];
+    }));
+
+    for (const slab of slabs) {
+        const full = beside(slab, sizeOf(slab).entry);
+
+        if (full.x >= 0 && full.x + full.w <= surface.width && ![...boxes].some(([key, box]) => key !== slab.floor && overlaps(box, full))) {
+            boxes.set(slab.floor, Object.freeze({ ...full, notices: true }));
+        }
+    }
+
+    return boxes;
+}
+
 /**
  * A scene point on a slab, in world units — the one scene-px-to-world map (§ 3.4): the drawing's bottom edge at the
  * slab's front, its top toward the back, its left at the slab's left.
@@ -697,13 +776,13 @@ export function labelsShown(view, labelsByFloor, boxes, leader) {
 }
 
 /**
- * The camera row's status line on arrival (§ 3.3): what the view rests on — the whole building, or a floor by its name.
- * A name and no figure.
+ * The camera row's status line on arrival (§ 3.3): what the view rests on — the whole building, or the floor's name
+ * alone, as the directory and the floor page's heading read it. A name and no figure.
  */
 export function viewStatus(view, stack) {
     const live = liveView(view, stack);
 
-    return live.pose === 'overview' ? 'the whole building' : `floor ${stack.slabs.find((slab) => slab.floor === live.pose.floor).name}`;
+    return live.pose === 'overview' ? 'the whole building' : stack.slabs.find((slab) => slab.floor === live.pose.floor).name;
 }
 
 /**

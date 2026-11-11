@@ -1272,8 +1272,9 @@ main > section.lobby {
  * derived from the stage's size (`building/stack-model.js`), so a stage sized only once drawn would never be drawn.
  *
  * WHERE AN ENTRY STANDS IS ITS OWN `data-home` (`public/js/building/labels.js`'s `dock()`, its one writer): `flow`, the
- * floors' list in the stage as a plain list — before the first stack, and the whole page without WebGL 2 — or `stage`,
- * each entry a label over the canvas at its anchor's projection (an inline `transform`, `place()`'s). A desk label's box
+ * floors' list in the stage as a plain list — the whole page without WebGL 2; before the first stack it is there too,
+ * `.visually-hidden` under the *Drawing the building…* placeholder (`stagePhase()`) — or `stage`, each entry a label over
+ * the canvas: a floor's beside the stack, a desk's at its anchor's projection (an inline `transform`, `place()`'s). A desk label's box
  * — its font, padding, border and height — is the model's (`--label-*`, written from `stack-model.js`), so the cull's
  * measured boxes are the boxes drawn; its colours are the painter's own plate tokens.
  */
@@ -1321,6 +1322,17 @@ main > section.lobby {
     position: relative;
     overflow: auto;
     background: radial-gradient(ellipse at center, var(--ground) 0%, var(--ground-deep) 75%);
+}
+
+/* The placeholder while the first stack is drawn (`stagePhase()`'s `drawing`): centred in the stage. */
+#building-drawing {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    color: var(--dim);
 }
 
 #building-canvas {

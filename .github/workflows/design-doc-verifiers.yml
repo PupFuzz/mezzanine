@@ -83,8 +83,9 @@
 #       way (card#11795): absent for the same reason. Its `starts` row is the `browser-smoke` job.
 #   `sleeper-zs.browser.mjs` — the same browser, resolved the same way (card#12187): absent for
 #       the same reason.
-#   `building-view.browser.mjs --selftest`, its `tab`, `press`, `boxes` and `stream` rows — the same browser
-#       (card#13033): each times a glide, a keyboard path or a wheel stream, which nobody has measured on a runner.
+#   `building-view.browser.mjs --selftest`, its `tab`, `press`, `boxes`, `stream` and `first` rows — the same browser
+#       (card#13033): each times a glide, a keyboard path, a wheel stream or the page's start, which nobody has
+#       measured on a runner.
 #       Its `still` and `no-webgl` rows are the `browser-smoke` job's.
 #
 # ⛔ NONE IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this

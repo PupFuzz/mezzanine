@@ -22,7 +22,11 @@
         (`Tests\Feature\Building\BuildingPageWiringTest`): a `getElementById` answering `null` is a silent no-op.
 
         ⛔ EVERY PLACEHOLDER SAYS IT IS WAITING (the lobby's rule): before the first snapshot and layout the floors' list
-        is one WAITING line, and the stage, its camera row and its hint are not offered.
+        is one WAITING line, and the stage, its camera row and its hint are not offered. Until the first stack stands, the
+        stage shows *Drawing the building…* (`#building-drawing`) and the list is visually hidden and still read; without
+        WebGL 2, or when everything has answered and there is nothing to stack, the list is shown in flow
+        (`public/js/building/building-screen.js`'s `stagePhase()`). The markup starts in the drawing phase, so the bare
+        list never flashes before the page's module runs.
 
         ⭐ THE STAGE (`#building-stage`) is the one element the camera's wires listen on and the one tab stop — offered by
         `public/js/wire/camera-keys.js`'s `offerKeys()` only while the stack is drawn, so the markup offers none of it. It
@@ -77,8 +81,9 @@
 
         <div class="floor-stage building-stage">
             <div id="building-stage" role="group" aria-label="the building drawing">
+                <p id="building-drawing">Drawing the building…</p>
                 <canvas id="building-canvas" aria-hidden="true" hidden></canvas>
-                <ul id="building-floors" aria-labelledby="building-floors-heading">
+                <ul id="building-floors" class="visually-hidden" aria-labelledby="building-floors-heading">
                     <li>waiting for the fleet snapshot</li>
                 </ul>
             </div>
