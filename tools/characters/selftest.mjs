@@ -77,7 +77,7 @@ const all = [
 ];
 for (const [kind, inst, key] of all) {
   try {
-    const frames = kind === 'seat' ? [C.standingFrame(inst, key), ...C.walkFrames(inst, key)] : [C.chibiFrame(inst, key), ...C.internFrames(inst, key).frames];
+    const frames = kind === 'seat' ? [C.standingFrame(key), ...C.walkFrames(key)] : [C.chibiFrame(key), ...C.internFrames(key).frames];
     docs.set(`${kind}:${inst}/${key}`, frames);
     drawn++;
   } catch (e) { threw.push(`${inst}/${key}: ${e.message}`); }
@@ -85,8 +85,8 @@ for (const [kind, inst, key] of all) {
 check(threw.length === 0, `${drawn} keys drew and none threw${threw.length ? ` — threw: ${threw.slice(0, 3).join('; ')}` : ''}`);
 const fresh = await import(pathToFileURL(join(TREE, 'index.js')).href + '?fresh');
 const twiceBad = all.filter(([kind, inst, key]) => kind === 'seat'
-  ? C.standingFrame(inst, key) !== fresh.standingFrame(inst, key)
-  : C.chibiFrame(inst, key) !== fresh.chibiFrame(inst, key) || C.internFrames(inst, key).frames.join() !== fresh.internFrames(inst, key).frames.join());
+  ? C.standingFrame(key) !== fresh.standingFrame(key)
+  : C.chibiFrame(key) !== fresh.chibiFrame(key) || C.internFrames(key).frames.join() !== fresh.internFrames(key).frames.join());
 check(twiceBad.length === 0, `every key draws byte-identical markup again, from a fresh module load${twiceBad.length ? ` — differs: ${twiceBad[0].join(' ')}` : ''}`);
 
 // ---- 2. the space is the document's (a guard: FLOOR.md § 10.4's table against the closed lists) ----
@@ -262,7 +262,7 @@ section('3. every member of every closed list is drawn by some key of the synthe
 function coverage(drawFn) {
   const fields = { [C.SPECIES_FIELD]: KEYS, eyes: C.EYES, mouth: C.MOUTHS, blush: C.BLUSH, brows: C.BROWS, size: C.SIZES, stout: C.STOUT, tilt: C.TILTS, acc1: C.ACCENTS, acc2: C.ACCENTS };
   const seen = Object.fromEntries(Object.keys(fields).map((f) => [f, new Set()]));
-  const keys = [...synthetic, ...desks.map((d) => d.seat)].map(([i, s]) => `${i}/${s}`);
+  const keys = [...synthetic, ...desks.map((d) => d.seat)].map(([, s]) => s);
   for (let n = 0; n < 2000; n++) keys.push(`reach/${n}`);
   for (const key of keys) for (const [f, list] of Object.entries(fields)) seen[f].add(JSON.stringify(list[drawFn(key, f) % list.length]));
   return Object.entries(fields).map(([f, list]) => [f, seen[f].size, new Set(list.map((x) => JSON.stringify(x))).size]);
@@ -280,14 +280,14 @@ const literal = readFileSync(join(TREE, 'creatures.js'), 'utf8').match(/^export 
 const literalKeys = literal === null ? null : [...literal[1].matchAll(/'([a-z0-9_-]+)'/g)].map((m) => m[1]);
 check(JSON.stringify(literalKeys) === JSON.stringify(Object.keys(C.SPECIES)) && JSON.stringify(KEYS) === JSON.stringify(literalKeys),
   `SPECIES_KEYS is one literal line (the server's reader parses it) and equals the drawn species, in order (${literalKeys?.length ?? 'no'} keys)`);
-const delivered = (inst, seat) => KEYS[(KEYS.indexOf(C.speciesOf(`${inst}/${seat}`)) + 1) % KEYS.length];
+const delivered = (inst, seat) => KEYS[(KEYS.indexOf(C.speciesOf(seat)) + 1) % KEYS.length];
 const OWN = ['eyes', 'mouth', 'blush', 'brows', 'size', 'stout', 'tilt', 'acc1', 'acc2'];
 let bodyBad = [], ownBad = [];
 for (const [i, s] of [...synthetic, ...desks.map((d) => d.seat)]) {
-  const sp = delivered(i, s), key = `${i}/${s}`;
-  const frames = [C.standingFrame(i, s, sp), ...C.walkFrames(i, s, sp)];
+  const sp = delivered(i, s), key = s;
+  const frames = [C.standingFrame(s, sp), ...C.walkFrames(s, sp)];
   const want = [C.frameDocument(key, { species: sp, phase: 0 }), ...[0, 1, 2].map((phase) => C.frameDocument(key, { species: sp, phase }))];
-  if (frames.join() !== want.join() || frames[0] === C.standingFrame(i, s) || C.describe(key, sp).species !== sp) bodyBad.push(key);
+  if (frames.join() !== want.join() || frames[0] === C.standingFrame(s) || C.describe(key, sp).species !== sp) bodyBad.push(key);
   const forced = C.recipe(key, sp), own = C.recipe(key);
   if (OWN.some((f) => forced[f] !== own[f])) ownBad.push(key);
 }
@@ -295,16 +295,16 @@ check(bodyBad.length === 0, `every synthetic seat delivered a species apart from
 check(ownBad.length === 0, `forcing the body moves no other field of the key's draw (${OWN.join(', ')})${ownBad.length ? ` — moved: ${ownBad.slice(0, 3).join(', ')}` : ''}`);
 const [di, ds] = synthetic[0];
 const sleepSp = delivered(di, ds);
-const slept = C.poseFrames(di, ds, { pose: 'asleep', deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }], species: sleepSp });
-check(slept.frames[0] === C.sleepDocument(`${di}/${ds}`, { species: sleepSp, frame: 0, deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }] }),
+const slept = C.poseFrames(ds, { pose: 'asleep', deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }], species: sleepSp });
+check(slept.frames[0] === C.sleepDocument(ds, { species: sleepSp, frame: 0, deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }] }),
   'a sleeping desk is drawn asleep in the delivered species');
 let unheld = null;
-try { C.standingFrame(di, ds, 'no-such-species'); } catch (e) { unheld = e; }
+try { C.standingFrame(ds, 'no-such-species'); } catch (e) { unheld = e; }
 check(unheld instanceof RangeError && /no-such-species/.test(unheld.message), `a species the tree does not hold is a throw naming it — the painter's F14 — never the key's own body${unheld ? '' : ' (it drew one)'}`);
 
 // ---- 5. collisions, measured (FLOOR.md § 10.4, § 12's *Full-drawing collisions*) ----
 section('5. collisions: no two keys draw the same document, each in the frame it is drawn in');
-const collisions = (keys) => { const seen = new Map(); let n = 0; for (const [i, s] of keys) { const d = C.standingFrame(i, s); if (seen.has(d)) n++; seen.set(d, s); } return n; };
+const collisions = (keys) => { const seen = new Map(); let n = 0; for (const [i, s] of keys) { const d = C.standingFrame(s); if (seen.has(d)) n++; seen.set(d, s); } return n; };
 const rosterCollisions = collisions(roster.map((s) => [s.install_id, s.seat_id]));
 const fleetCollisions = collisions(synthetic);
 measure(`full-drawing collisions: committed roster ${rosterCollisions} over ${roster.length} seats; synthetic roster ${fleetCollisions} over ${FLEET} seats (seed ${SEED})`);
@@ -317,10 +317,10 @@ let sameBody = 0, deskDup = 0, chibiBad = 0, bodyRepeat = 0, bodyColourRepeat = 
 for (const { seat, interns } of desks) {
   // The seat's DELIVERED body (card#12443), apart from its key's own draw: the one an intern must not wear.
   const seatSpecies = delivered(...seat);
-  const bodies = interns.map((k) => C.recipe(`${seat[0]}/${k}`, C.internSpeciesOf(`${seat[0]}/${k}`, seatSpecies)));
+  const bodies = interns.map((k) => C.recipe(k, C.internSpeciesOf(k, seatSpecies)));
   sameBody += bodies.filter((r) => r.species === seatSpecies).length;
-  const drawings = [C.standingFrame(...seat, seatSpecies), ...interns.map((k) => C.chibiFrame(seat[0], k, seatSpecies))];
-  chibiBad += interns.filter((k, n) => drawings[n + 1] !== C.frameDocument(`${seat[0]}/${k}`, { chibi: true, species: bodies[n].species })).length;
+  const drawings = [C.standingFrame(seat[1], seatSpecies), ...interns.map((k) => C.chibiFrame(k, seatSpecies))];
+  chibiBad += interns.filter((k, n) => drawings[n + 1] !== C.frameDocument(k, { chibi: true, species: bodies[n].species })).length;
   if (new Set(drawings).size < drawings.length) deskDup++;
   if (new Set(bodies.map((r) => r.species)).size < bodies.length) bodyRepeat++;
   if (new Set(bodies.map((r) => `${r.species}/${r.pal}`)).size < bodies.length) bodyColourRepeat++;
@@ -337,7 +337,7 @@ for (const sp of KEYS) {
     check(g.share >= C.CHIBI_HEAD_SHARE, `${sp}${v ? ` (${v})` : ''}: the chibi head takes ${g.share.toFixed(3)} of the drawn height (least ${C.CHIBI_HEAD_SHARE})`);
   }
 }
-const chibiRoot = C.chibiFrame('desk-0', desks[0].interns[0]).match(/^<svg[^>]*>/)[0];
+const chibiRoot = C.chibiFrame(desks[0].interns[0]).match(/^<svg[^>]*>/)[0];
 const vb = C.CHIBI_VIEWBOX;
 check(chibiRoot.includes(`viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}"`) && vb.y + vb.h >= 188,
   `the chibi frame's viewBox is CHIBI_VIEWBOX and holds the foot line (${vb.x} ${vb.y} ${vb.w} ${vb.h}); § 7b holds it to the intern's overdraw`);
@@ -373,11 +373,11 @@ measure(`laptop repeat rates at the cap of ${CAP} (gate nothing): a repeated she
 // THE FRAMES: the still, then INTERN_LOOP loop frames — centre, left, centre, right — so frames 1 and 3 are the still
 // (the centre) and 2 and 4 lean opposite ways; the still carries the laptop and the plain chibi frame does not.
 const [ii, ik] = ['desk-0', desks[0].interns[0]];
-const IF = C.internFrames(ii, ik);
+const IF = C.internFrames(ik);
 check(IF.loopFrom === 1 && IF.frames.length === 1 + C.INTERN_LOOP, `internFrames draws the still and ${C.INTERN_LOOP} loop frames, loopFrom 1 (got ${IF.frames.length} documents, loopFrom ${IF.loopFrom})`);
 check(IF.frames[1] === IF.frames[0] && IF.frames[3] === IF.frames[0] && IF.frames[2] !== IF.frames[0] && IF.frames[4] !== IF.frames[0] && IF.frames[2] !== IF.frames[4],
   'the loop is centre, left, centre, right: its centre frames are the still and its two sway frames differ from it and from each other');
-check(/data-part="lid"/.test(IF.frames[0]) && !/data-part="lid"/.test(C.chibiFrame(ii, ik)), 'the still carries the laptop; the plain chibi frame does not');
+check(/data-part="lid"/.test(IF.frames[0]) && !/data-part="lid"/.test(C.chibiFrame(ik)), 'the still carries the laptop; the plain chibi frame does not');
 let swayRefused = 0;
 for (const bad of [-1, C.INTERN_LOOP, 0.5]) { try { C.frameDocument('sway/x', { chibi: true, laptop: true, sway: bad }); } catch { swayRefused++; } }
 try { C.frameDocument('sway/x', { sway: 1 }); } catch { swayRefused++; }
@@ -600,7 +600,7 @@ for (const sp of KEYS) {
 }
 check(walkBad.length === 0, `every species draws three distinct walk phases${walkBad.length ? ` — not: ${walkBad.join(', ')}` : ''}`);
 const anySeat = roster[0];
-check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(anySeat.install_id, anySeat.seat_id), "the walk's phase 0 is the standing frame");
+check(C.walkFrames(anySeat.seat_id)[0] === C.standingFrame(anySeat.seat_id), "the walk's phase 0 is the standing frame");
 
 // ---- 7b. the sleeper (card#12159; § 10.4's frame contract item 4) — what a pose draws ----
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
@@ -624,7 +624,7 @@ const odUnits = { x: (overdraw.x - sitter.x) * FRAME_UNITS_PER_PX, y: (overdraw.
 // to 1e-9: the overdraw's px times a non-integer units-per-px is a float product, which the frame's own sum need not equal bit for bit
 check(['x', 'y', 'w', 'h'].every((k) => Math.abs(odUnits[k] - C.SEAT_VIEWBOX[k]) < 1e-9), `the character's overdraw in frame units (${JSON.stringify(odUnits)}) is SEAT_VIEWBOX (${JSON.stringify(C.SEAT_VIEWBOX)}), the frame of every seat document`);
 const seatVb = `viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBOX.w} ${C.SEAT_VIEWBOX.h}"`;
-check([C.standingFrame(roster[0].install_id, roster[0].seat_id), ...C.walkFrames(roster[0].install_id, roster[0].seat_id)].every((d) => d.includes(seatVb)),
+check([C.standingFrame(roster[0].seat_id), ...C.walkFrames(roster[0].seat_id)].every((d) => d.includes(seatVb)),
   `the standing frame and every walk frame are drawn in SEAT_VIEWBOX (${seatVb}), the sleeper's widened, raised frame (card#12259)`);
 // The tree states the intern's rect and gap (it cannot import the floor); held equal to the floor's own.
 check(C.CHIBI_STOOL.w === STOOL_W && C.CHIBI_STOOL.h === STOOL_H && C.CHIBI_STOOL.frame === STOOL_FRAME,
@@ -659,11 +659,11 @@ const least = leastBoxHeight(FURNITURE_BOX.width, { w: C.SCENE_W, h: C.SCENE_H }
 check(FURNITURE_BOX.height === least,
   `furniture-box.js's height (${FURNITURE_BOX.height}) is leastBoxHeight() for its width (${least}) — the box is the desk's need, not a guess`);
 const [si, ss] = [anySeat.install_id, anySeat.seat_id];
-const asleep = C.poseFrames(si, ss, { pose: 'asleep', deskTop: DESK_TOP, clear: CLEAR });
-const own = C.sleepFrames(si, ss, DESK_TOP, CLEAR);
+const asleep = C.poseFrames(ss, { pose: 'asleep', deskTop: DESK_TOP, clear: CLEAR });
+const own = C.sleepFrames(ss, DESK_TOP, CLEAR);
 check(asleep.loopFrom === 1 && asleep.frames.length === 1 + C.SLEEP_LOOP && asleep.frames.join() === own.frames.join() && own.loopFrom === 1,
   `asleep draws the sleeper's still and its ${C.SLEEP_LOOP} loop frames, loopFrom 1 (got ${asleep.frames?.length} documents, loopFrom ${asleep.loopFrom})`);
-check(asleep.frames[0] !== C.standingFrame(si, ss) && /data-pose="asleep"/.test(asleep.frames[0]), 'the sleeper is not the standing frame');
+check(asleep.frames[0] !== C.standingFrame(ss) && /data-pose="asleep"/.test(asleep.frames[0]), 'the sleeper is not the standing frame');
 // Every pose the desk model names (desk-poses.js's DESK, and A4's think pose, which desk-render.js keeps unexported)
 // but the sleeper and the empty chair, which draws no character.
 const { DESK } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'desk', 'desk-poses.js')).href);
@@ -673,20 +673,20 @@ const posed = [...new Map([...Object.values(DESK), { pose: 'leaning-back', glyph
   .filter((d) => d.pose !== 'asleep' && d.pose !== 'empty-chair').map((d) => [`${d.pose}/${d.glyph}`, d])).values()];
 const unmarked = posed.filter((d) => !C.EXPRESSIONS[C.expressionOf(d.pose, d.glyph)].marker);
 const walkBadPose = unmarked.filter(({ pose, glyph }) => {
-  const p = C.poseFrames(si, ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR }), expression = C.expressionOf(pose, glyph);
-  const walk = [0, 1, 2].map((phase) => C.frameDocument(C.seatKey(si, ss), { phase, expression }));
-  return !(p.loopFrom === 0 && p.frames.join() === walk.join() && (expression !== 'neutral' || p.frames.join() === C.walkFrames(si, ss).join()));
+  const p = C.poseFrames(ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR }), expression = C.expressionOf(pose, glyph);
+  const walk = [0, 1, 2].map((phase) => C.frameDocument(C.seatKey(ss), { phase, expression }));
+  return !(p.loopFrom === 0 && p.frames.join() === walk.join() && (expression !== 'neutral' || p.frames.join() === C.walkFrames(ss).join()));
 });
 check(unmarked.length > 0 && walkBadPose.length === 0,
   `every unmarked pose (${unmarked.map((d) => `${d.pose}/${d.glyph} → ${C.expressionOf(d.pose, d.glyph)}`).join(', ')}) draws the walk in its expression, the neutral one the walk itself, { frames, loopFrom: 0 }${walkBadPose.length ? ` — not: ${walkBadPose.map((d) => d.pose).join(', ')}` : ''}`);
-const faces = new Set(unmarked.filter((d) => C.expressionOf(d.pose, d.glyph) !== 'neutral').map((d) => C.poseFrames(si, ss, { pose: d.pose, glyph: d.glyph, deskTop: DESK_TOP, clear: CLEAR }).frames[0]));
-check(faces.size === new Set(unmarked.map((d) => C.expressionOf(d.pose, d.glyph)).filter((x) => x !== 'neutral')).size && ![...faces].includes(C.standingFrame(si, ss)),
+const faces = new Set(unmarked.filter((d) => C.expressionOf(d.pose, d.glyph) !== 'neutral').map((d) => C.poseFrames(ss, { pose: d.pose, glyph: d.glyph, deskTop: DESK_TOP, clear: CLEAR }).frames[0]));
+check(faces.size === new Set(unmarked.map((d) => C.expressionOf(d.pose, d.glyph)).filter((x) => x !== 'neutral')).size && ![...faces].includes(C.standingFrame(ss)),
   `each expressed pose draws its own face, none of them the neutral standing frame (${faces.size} distinct)`);
 let edgeRefused = 0;
-for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(si, ss, bad, CLEAR); } catch { edgeRefused++; } }
+for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(ss, bad, CLEAR); } catch { edgeRefused++; } }
 check(edgeRefused === 4, "a sleeper with no desk edge inside its frame is refused, never drawn against a guessed one");
 let clearRefused = 0;
-for (const bad of [undefined, [], CLEAR.filter((c) => c.name !== 'props')]) { try { C.sleepFrames(si, ss, DESK_TOP, bad); } catch { clearRefused++; } }
+for (const bad of [undefined, [], CLEAR.filter((c) => c.name !== 'props')]) { try { C.sleepFrames(ss, DESK_TOP, bad); } catch { clearRefused++; } }
 check(clearRefused === 3, "a sleeper handed no clear rects, or none for the desk's props, is refused, never drawn against guessed furniture");
 let docRefused = 0;
 for (const bad of [-1, C.SLEEP_LOOP + 1, 0.5]) { try { C.sleepDocument('sleep/x', { frame: bad, deskTop: DESK_TOP, clear: CLEAR }); } catch { docRefused++; } }
@@ -741,7 +741,7 @@ const markedPoses = otherPoses.filter((pose) => MARKED.includes(C.expressionOf(p
 const pulseBad = [];
 for (const pose of markedPoses) {
   const glyph = pose === 'present' ? 'question' : null;
-  const p = C.poseFrames(si, ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR });
+  const p = C.poseFrames(ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR });
   const want = [3, ...Array.from({ length: C.SLEEP_LOOP }, (_, n) => C.zLevels(n)[0])];
   const got = (p.frames ?? []).map(levelOf);
   if (p.loopFrom !== 1 || JSON.stringify(got) !== JSON.stringify(want)) pulseBad.push(`${pose}: loopFrom ${p.loopFrom}, marker levels ${JSON.stringify(got)} for ${JSON.stringify(want)}`);

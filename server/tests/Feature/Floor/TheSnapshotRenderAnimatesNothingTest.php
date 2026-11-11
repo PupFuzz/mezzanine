@@ -73,7 +73,7 @@ class TheSnapshotRenderAnimatesNothingTest extends TestCase
             $this->assertSame($episodes, array_unique($episodes), "[{$run}] two REST-apply entries share an episode");
 
             foreach ($entered as $row) {
-                $key = "{$row['install_id']}/{$row['seat_id']}";
+                $key = $row['seat_id'];
                 $object = $this->objectAtVersion($run, $key, $row['cause']);
 
                 $this->assertNotNull($object, "[{$run}] {$key}'s entry names a version no REST body carried");
@@ -92,13 +92,13 @@ class TheSnapshotRenderAnimatesNothingTest extends TestCase
     public function test_the_discovered_desk_renders_the_post_delta_object(): void
     {
         $result = $this->deskRun('leg_c');
-        $desk = $this->lastFrame($result)['desks']['aimla-win/win-1'] ?? null;
+        $desk = $this->lastFrame($result)['desks']['win-1'] ?? null;
 
         $this->assertNotNull($desk, 'the discovered install\'s desk was never drawn');
 
         $scenario = $this->fixture('leg_c');
         $discovery = $this->servedSeat($scenario['http']['/api/fleet/snapshot'][1]['body'], 'win-1');
-        $final = $scenario['final']['aimla-win/win-1'];
+        $final = $scenario['final']['win-1'];
 
         $this->assertNotSame($discovery['context']['used_pct'], $final['context']['used_pct'],
             'the discovery snapshot and the post-delta object agree on the gauge, so this test cannot tell them apart');
@@ -171,7 +171,7 @@ class TheSnapshotRenderAnimatesNothingTest extends TestCase
         foreach ($this->fixture($run)['http'] as $responses) {
             foreach ($responses as $response) {
                 foreach ($this->seatsIn($response['body'] ?? null) as $seat) {
-                    if ("{$seat['install_id']}/{$seat['seat_id']}" === $key && $seat['state_version'] === $version) {
+                    if ($seat['seat_id'] === $key && $seat['state_version'] === $version) {
                         return $seat;
                     }
                 }

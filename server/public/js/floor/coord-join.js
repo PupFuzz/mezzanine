@@ -1,7 +1,7 @@
 /**
  * THE JOIN — D2 § 8.3.3 rule 1's two ARMS, built from the seat population this client already holds:
- * the INSTALL arm, one room's `protocol_agent_name` → `seat_id` map (`buildJoin()`), and since card#12239
- * the FLEET arm, every install's `roundtable_agent_name` → `install_id/seat_id` map (`buildFleetJoin()`),
+ * the INSTALL arm, one room's `protocol_agent_name` → `keyOf()` key map (`buildJoin()`), and since card#12239
+ * the FLEET arm, every install's `roundtable_agent_name` → `keyOf()` key map (`buildFleetJoin()`),
  * selected by a coordination object's `scope`. Both are one primitive (`joinArm()`) with a different
  * declaration, resolving set and key. `docs/design/FLEET-STATE.md § 8.3.3` rules 1 and 2, and
  * `docs/design/FLOOR.md § 5.7` property 1's render. Appendix B row 7, card#7341 step 7.
@@ -34,6 +34,8 @@
  * only seat in the room*. A name that merely EQUALS a `seat_id` it was never declared on is absent
  * from the returned map, so `resolve()` answers unresolved for it without having to know why.
  */
+
+import { keyOf } from '../wire/seat-key.js';
 
 /** D2 § 8.2.1's check states that RESOLVE on the INSTALL arm — rule 2, and the whole of it. */
 const RESOLVING_CHECKS = Object.freeze(['checked', 'unchecked']);
@@ -137,15 +139,15 @@ export function buildJoin(seats) {
         name: 'protocol_agent_name',
         check: 'protocol_agent_name_check',
         resolving: RESOLVING_CHECKS,
-        key: (seat) => seat.seat_id,
+        key: keyOf,
     });
 }
 
 /**
  * Build the building's FLEET-arm join (D2 § 8.3.3 rule 1, `fleet`-scope objects, card#12239): every
  * seat of EVERY install the client holds, keyed by its declared `roundtable_agent_name`, resolving
- * `checked` alone, with duplicates counted across installs. A resolved name maps to the seat's full
- * `install_id/seat_id` key, because the arm spans rooms.
+ * `checked` alone, with duplicates counted across installs. A resolved name maps to the seat's
+ * `keyOf()` key, as the install arm's does — the key names a seat in any room.
  *
  * ⛔ THE ARMS NEVER CROSS: nothing here reads `protocol_agent_name`, so a fleet-scope name is never
  * looked up among protocol agent names, however alike the strings.
@@ -157,7 +159,7 @@ export function buildFleetJoin(seats) {
         name: 'roundtable_agent_name',
         check: 'roundtable_agent_name_check',
         resolving: FLEET_RESOLVING_CHECKS,
-        key: (seat) => `${seat.install_id}/${seat.seat_id}`,
+        key: keyOf,
     });
 }
 

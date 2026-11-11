@@ -2,8 +2,8 @@
 // its key, and these are the functions that make it one.
 //
 // THE RULE (`docs/design/FLOOR.md` section 3.1 and section 10.2): a character is seeded from
-// `(install_id, seat_id)` — the same pair that keys the desk — so a seat looks identical on
-// every browser and every reload. No random draw and no localStorage. ONE field is stored, and
+// its `seat_id` — the same key the desk is keyed by, and never the room the seat is drawn in,
+// which the console can change — so a seat looks identical on every browser and every reload. No random draw and no localStorage. ONE field is stored, and
 // it is the server's, not this tree's: the seat's SPECIES, its body, allocated by the server at
 // the seat's creation and delivered as `character.species` (card#12443, `docs/design/FLEET-STATE.md`
 // § 6.13); the painter hands it to the tree, and `App\Characters\Draw` is the server's port of
@@ -38,13 +38,12 @@ export function fnv1a32(s) {
 }
 
 /**
- * The string section 3.2 hashes: `install_id + "/" + seat_id`.
- * @param {string} installId @param {string} seatId @returns {string}
+ * The string section 3.2 hashes: the `seat_id` (or an intern key, `seat~<call_id>`, in its place).
+ * @param {string} seatId @returns {string}
  */
-export function seatKey(installId, seatId) {
-  if (typeof installId !== 'string' || installId === '') throw new TypeError('install_id must be a non-empty string');
+export function seatKey(seatId) {
   if (typeof seatId !== 'string' || seatId === '') throw new TypeError('seat_id must be a non-empty string');
-  return `${installId}/${seatId}`;
+  return seatId;
 }
 
 /**

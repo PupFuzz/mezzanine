@@ -85,7 +85,7 @@ const planeOf = (id, walls, withDoc = true) => ({
 const { FURNITURE_BOX: BOX } = await import(pathToFileURL(join(HERE, '..', '..', '..', '..', 'resources', 'floor', 'furniture-box.js')).href);
 const FURNITURE = [['chair', 'chair'], ['desk-sprite', 'desk'], ['monitor-frame', 'monitorFrame'], ['desk-props', 'deskProps'], ['side-table', 'sideTable']];
 const deskOf = (seat, i) => {
-    const set = `theme:studio/desk:aimla/${seat}`;
+    const set = `theme:studio/desk:${seat}`;
 
     return {
         key: `aimla/${seat}`, install_id: 'aimla', seat_id: seat, placeholder: false, lighting: 'full', bubble: null, held: null,
@@ -161,7 +161,7 @@ function paint(scene, painter = null) {
         defects.push(`aimla-impl-1's set threw in one document and still drew ${lost.length} of the others — a half-drawn set`);
     }
 
-    if (JSON.stringify(reported) !== JSON.stringify(['theme:studio/desk:aimla/aimla-impl-1'])) {
+    if (JSON.stringify(reported) !== JSON.stringify(['theme:studio/desk:aimla-impl-1'])) {
         defects.push(`the painter reported ${JSON.stringify(reported)}, not aimla-impl-1's set alone`);
     }
 

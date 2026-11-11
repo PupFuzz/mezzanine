@@ -291,7 +291,7 @@ trait DrivesTheFleetClientModule
 
         foreach ($this->fixture($run)['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
             foreach ($install['seats'] as $seat) {
-                $seats["{$seat['install_id']}/{$seat['seat_id']}"] = $seat;
+                $seats[$seat['seat_id']] = $seat;
             }
         }
 

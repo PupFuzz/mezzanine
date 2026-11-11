@@ -26,7 +26,7 @@ class TheInternListIsUncappedWhereTheSideTableIsCappedTest extends TestCase
 
     private const RUN = 'panel_interns';
 
-    private const KEY = 'aimla/aimla-interns';
+    private const KEY = 'aimla-interns';
 
     /** AT-D3-4's first RED — the invented title, on the desk and in the panel. */
     private const INVENTED_TITLE = [

@@ -183,7 +183,7 @@ class TheDeskIsReLaidTest extends TestCase
             // 22 px, the trail's least reach (`TRAIL_REACH`), written as its figure so the plant reads alone
             'the trail at its least reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - 22),', 'does not reach the bubble'],
             // the seat's ruling of the same day: the trail starts at the character's drawn head, not its frame's top
-            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return { crest: ctx.crest(installId, model.seat_id, at), clear: ctx.headClear(installId, model.seat_id, at) };', '        return { crest: 0, clear: ctx.headClear(installId, model.seat_id, at) };', 'does not reach the head'],
+            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return { crest: ctx.crest(model.seat_id, at), clear: ctx.headClear(model.seat_id, at) };', '        return { crest: 0, clear: ctx.headClear(model.seat_id, at) };', 'does not reach the head'],
             // card#12446 (the operator's *"The bubble can also be lowered"*): a bubble left where card#12444 set it, at the
             // character's frame whatever its face, is not set as low as the face allows
             'the bubble not lowered to the face' => ['../floor/desk-layout.js', '    const bottom = head === null', '    const bottom = head === null || true', 'not set on its character'],

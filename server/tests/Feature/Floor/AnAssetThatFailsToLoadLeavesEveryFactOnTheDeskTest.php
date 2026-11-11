@@ -103,8 +103,8 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $result = $this->floorRun(self::DESK_SET_FAILS);
         $scene = $this->lastScene($result, self::DESK_SET_FAILS);
 
-        $this->assertSame([], $this->placeholderDefects($scene, ['aimla/aimla-pm']));
-        $this->assertSame(['theme:studio/desk:aimla/aimla-pm'], $scene['failed']);
+        $this->assertSame([], $this->placeholderDefects($scene, ['aimla-pm']));
+        $this->assertSame(['theme:studio/desk:aimla-pm'], $scene['failed']);
         $this->assertNotNull($scene['band_docs'], 'one desk\'s set failing cost the band its theme');
         $this->assertSame($this->f14Line(), $this->lastFloor($result)['strip']['art']);
         $this->assertSame([], $this->logDefects($result));
@@ -116,7 +116,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $scene = $this->lastScene($result, self::CHARACTER_FAILS);
         $intact = $this->sceneOf(self::INTACT);
 
-        $this->assertSame([], $this->placeholderDefects($scene, ['aimla/aimla-pm']));
+        $this->assertSame([], $this->placeholderDefects($scene, ['aimla-pm']));
         $this->assertNotSame([], $scene['scenery'], 'the room\'s scenery is not drawn');
         $this->assertCount(count($intact['scenery']), $scene['scenery'], 'one seat\'s character failing cost the room scenery');
         $this->assertSame($this->f14Line(), $this->lastFloor($result)['strip']['art']);
@@ -151,9 +151,9 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $plants = [
             'the whole desk drawn as the placeholder' => ['../floor/scene.js',
                 'return set === null || failed.has(set) || (desk.character && failed.has(character));',
-                'return set === null || failed.has(set) || (desk.character && failed.has(character)) || desk.side_table.stools.some((s) => failed.has(`intern:${desk.install_id}/${desk.seat_id}~${s.call_id}`));'],
+                'return set === null || failed.has(set) || (desk.character && failed.has(character)) || desk.side_table.stools.some((s) => failed.has(`intern:${desk.seat_id}~${s.call_id}`));'],
             'every intern of the desk falling back' => ['../floor/desk-layout.js',
-                'art: !ctx.failed.has(asset),', 'art: ![...ctx.failed].some((id) => id.startsWith(`intern:${desk.install_id}/${desk.seat_id}~`)),'],
+                'art: !ctx.failed.has(asset),', 'art: ![...ctx.failed].some((id) => id.startsWith(`intern:${desk.seat_id}~`)),'],
             'the failure ignored' => ['../floor/desk-layout.js', 'art: !ctx.failed.has(asset),', 'art: true,'],
             'the strip silent about an intern' => ['../floor/scene.js', "            if (e.kind === 'stool') {\n                used.add(e.asset);",
                 "            if (e.kind === 'stool') {\n                void e;"],
@@ -177,7 +177,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
 
         foreach ($scene['desks'] as $desk) {
             foreach ($this->elementsOf($desk, 'stool') as $e) {
-                $asset = "intern:{$desk['install_id']}/{$desk['seat_id']}~{$e['call_id']}";
+                $asset = "intern:{$desk['seat_id']}~{$e['call_id']}";
 
                 if ($e['art'] === in_array($asset, $failed, true)) {
                     $defects[] = $e['art'] ? "{$asset} failed and is still drawn as its sprite" : "{$asset} fell back with nothing failed for it";
@@ -224,7 +224,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
             "    if (ctx.placeholder) {\n        rect('placeholder', null, R.placeholder);\n",
             "    if (ctx.placeholder) {\n        return { elements: [{ kind: 'placeholder', member: null, x: 0, y: 0, w: 1, h: 1 }], bubble: null };\n"]);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla-pm']),
             'RED (the blank desk) did not fail');
     }
 
@@ -257,7 +257,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
             'return set === null || failed.has(set) ||',
             'return set === null || [...failed].some((id) => id.startsWith(`theme:${theme.name}/desk:`)) ||']);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::DESK_SET_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::DESK_SET_FAILS, $dir), ['aimla-pm']),
             'RED (one desk\'s set failing every desk) did not fail');
     }
 
@@ -275,7 +275,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
             'row.forEach((badge, i) => {', '(ctx.placeholder ? [] : row).forEach((badge, i) => {']);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla-pm']),
             'RED (the badge row dropped with the art) did not fail');
     }
 
@@ -286,7 +286,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
             "    rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n\n    if (desk.monitor.lit !== 'off') {",
             "    if (!ctx.placeholder) rect('monitor', 'monitor', R.monitor, { lit: desk.monitor.lit });\n\n    if (desk.monitor.lit !== 'off' && !ctx.placeholder) {"]);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla-pm']),
             'RED (the monitor dropped with the art) did not fail');
     }
 
@@ -296,7 +296,7 @@ class AnAssetThatFailsToLoadLeavesEveryFactOnTheDeskTest extends TestCase
         $dir = $this->mutatedModules(['../floor/desk-layout.js',
             '    return { elements, bubble: desk.bubble };', '    return { elements, bubble: ctx.placeholder ? null : desk.bubble };']);
 
-        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla/aimla-pm']),
+        $this->assertNotSame([], $this->placeholderDefects($this->sceneOf(self::THEME_FAILS, $dir), ['aimla-pm']),
             'RED (the bubble dropped with the art) did not fail');
     }
 

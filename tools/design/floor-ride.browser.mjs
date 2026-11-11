@@ -760,7 +760,7 @@ const ROWS = {
       const SAMPLE_MS = 15500;
       await s.page('Page.addScriptToEvaluateOnNewDocument', { source: WALKER_SAMPLER(SAMPLE_MS) });
       await s.open('/floor/aimla');
-      await s.ev(`(() => { const d = document.querySelector('#floor-drawing [data-key="aimla/aimla-impl-1"]'); d.focus(); window.__walkers.focusAt = performance.now() - window.__walkers.t0; return true; })()`);
+      await s.ev(`(() => { const d = document.querySelector('#floor-drawing [data-key="aimla-impl-1"]'); d.focus(); window.__walkers.focusAt = performance.now() - window.__walkers.t0; return true; })()`);
       await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 8000, 'the page never reached the end of the sample');
       const all = await s.ev('window.__walkers.samples');
       const focusAt = await s.ev('window.__walkers.focusAt');
@@ -785,7 +785,7 @@ const ROWS = {
         // The desks' order is read once the page has settled (focus placed), and must never change after it.
         if (deskOrder === null && fr.t > focusAt) deskOrder = fr.desks.map((x) => x.key).join(' ');
         if (deskOrder !== null && fr.desks.map((x) => x.key).join(' ') !== deskOrder) { d.push(`at ${Math.round(fr.t)} ms the desks were re-ordered: ${fr.desks.map((x) => x.key).join(' ')}`); break; }
-        if (fr.t > focusAt + 20 && fr.focus !== 'aimla/aimla-impl-1') { d.push(`at ${Math.round(fr.t)} ms focus is on ${fr.focus}, not the desk it was placed on`); break; }
+        if (fr.t > focusAt + 20 && fr.focus !== 'aimla-impl-1') { d.push(`at ${Math.round(fr.t)} ms focus is on ${fr.focus}, not the desk it was placed on`); break; }
         const bad = [];
         for (const w of fr.walkers.filter((x) => x.shown)) {
           for (const desk of fr.desks) {

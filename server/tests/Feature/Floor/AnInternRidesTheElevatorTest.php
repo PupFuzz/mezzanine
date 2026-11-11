@@ -28,11 +28,11 @@ class AnInternRidesTheElevatorTest extends TestCase
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
-    private const IMPL_1 = 'aimla/aimla-impl-1';
+    private const IMPL_1 = 'aimla-impl-1';
 
-    private const IMPL_2 = 'aimla/aimla-impl-2';
+    private const IMPL_2 = 'aimla-impl-2';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
     private const BASE = 31107;
 
@@ -104,14 +104,14 @@ class AnInternRidesTheElevatorTest extends TestCase
     private function rows(array $result, string $key, array $ids): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'edge'
-            && in_array($r['animation_id'], $ids, true) && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && in_array($r['animation_id'], $ids, true) && $r['seat_id'] === $key));
     }
 
     /** @return list<array<string, mixed>> the held rows of one id for one seat */
     private function heldRows(array $result, string $key, string $id): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'held'
-            && $r['animation_id'] === $id && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && $r['animation_id'] === $id && $r['seat_id'] === $key));
     }
 
     private function drawn(array $result): array
@@ -991,7 +991,7 @@ class AnInternRidesTheElevatorTest extends TestCase
         $press = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'press'))[0];
         $this->assertSame('low', $press['plate'], 'the intern does not press the low call plate');
 
-        $probe = $this->probe(['mode' => 'spots', 'open' => [0, 5], 'count' => 2], null, __DIR__.'/walk-probe.mjs');
+        $probe = $this->probe(['mode' => 'spots', 'open' => [4, 5], 'count' => 2], null, __DIR__.'/walk-probe.mjs');
         $seat = array_values(array_filter($frame['scene']['effects'], static fn ($e) => $e['animation_id'] === 'A2' && ($e['frames'] ?? 0) > 0))[0];
         $seatSpot = array_values(array_filter($seat['legs'], static fn ($l) => ($l['why'] ?? null) === 'wait'))[0]['at'];
         $internSpot = array_values(array_filter($legs, static fn ($l) => ($l['why'] ?? null) === 'wait'))[0]['at'];

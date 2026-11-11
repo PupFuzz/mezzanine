@@ -182,7 +182,7 @@ class EveryStateIsLegibleWithoutMotionTest extends TestCase
             foreach ($result['animation_log'] as $row) {
                 $this->assertSame('entered', $row['phase'], "[{$run}] a fixture applying no delta wrote a {$row['phase']} row");
 
-                $key = "{$row['install_id']}/{$row['seat_id']}";
+                $key = $row['seat_id'];
                 $seat = $this->finalSeats($result)[$key];
 
                 $this->assertSame($this->predictedRowFor($seat, $row['animation_id']), $row['animation_id'],

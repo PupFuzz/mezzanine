@@ -149,7 +149,7 @@ trait DrivesTheFloorScreen
     }
 
     /**
-     * § 3.2's worked assignment, READ OUT OF THE DOCUMENT: `install/seat => slot`, the modulus the
+     * § 3.2's worked assignment, READ OUT OF THE DOCUMENT: `seat_id => slot`, the modulus the
      * table is stated over, and the reserved desk's holder — the row whose Probes cell reads `role`.
      *
      * ⛔ THE MODULUS IS PARSED FROM THE TABLE'S OWN HEADER, because that is where § 3.2 states `S`

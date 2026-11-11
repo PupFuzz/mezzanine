@@ -25,6 +25,7 @@
 
 import { COORD_ROUND_MEMBERS, COORD_ROUND_MESSAGE } from './coord-members.js';
 import { NO_DECLARING_SEAT, UNCHECKED_WORDS, reasonWords } from '../floor/coord-join.js';
+import { roomOf } from '../wire/seat-key.js';
 import { clockTime } from '../wire/clock.js';
 
 /**
@@ -264,7 +265,7 @@ export const FLEET_SCOPE = 'fleet';
 /**
  * The FLEET-scope posts of D2 § 8.3.3, rendered for ONE floor (card#12239; COORD-STORE.md § 6.1, D3 § 5.7
  * property 3). Every name joins through the fleet arm — `floor/coord-join.js`'s `buildFleetJoin()`, whose
- * map is name → `install_id/seat_id` — and each resolved end is then a desk ON THIS FLOOR (its key is in
+ * map is name → `keyOf()` key — and each resolved end is then a desk ON THIS FLOOR (its key is in
  * `options.here`) or a desk on another floor of the building. An end with no desk anchors nothing.
  *
  * Per post, the rules the operator ruled and nothing else:
@@ -352,11 +353,12 @@ export function fleetAnimations(round, here) {
  *   - a fleet-scope post (`room` null): A19 once per traveller, A20 once, in the ORIGIN's room — and
  *     A22 once for a departure (the origin's room) and once per arrival (each destination's room).
  *
- * A fleet-scope end is an `install_id/seat_id` key, so its room is the key's first half.
+ * A fleet-scope end is a `keyOf()` key, which carries no room: its room is the held seat's (`roomOf()`), so
+ * `held` — the page's held seats by key — is read for a fleet-scope post and ignored for a room-scope one.
  */
-export function edgesOf(round, room = null) {
-    const roomOf = (key) => (room !== null ? room : key.split('/')[0]);
-    const origin = round.origin.agent?.resolved ? roomOf(round.origin.agent.seat_id) : null;
+export function edgesOf(round, room, held) {
+    const roomOfEnd = (key) => (room !== null ? room : roomOf(key, held));
+    const origin = round.origin.agent?.resolved ? roomOfEnd(round.origin.agent.seat_id) : null;
     const travellers = room !== null ? round.targets.desks : round.travellers;
     const out = [];
 
@@ -375,7 +377,7 @@ export function edgesOf(round, room = null) {
     }
 
     for (const key of room === null ? round.portal.arrivals : []) {
-        out.push(Object.freeze({ animation_id: 'A22', install_id: roomOf(key) }));
+        out.push(Object.freeze({ animation_id: 'A22', install_id: roomOfEnd(key) }));
     }
 
     return Object.freeze(out);

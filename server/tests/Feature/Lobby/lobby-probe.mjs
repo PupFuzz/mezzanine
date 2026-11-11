@@ -17,7 +17,7 @@
  * stdout — JSON: `{ "render_states": [...], "model": {...}, "plates": [...] | null,
  *                   "primitives": { "floors": [...], "plates": [...] } | null, "notices": [...],
  *                   "directory": { "marker_cap", "context_attention_pct", "long_call_ms",
- *                                  "context_candidates": [<install_id/seat_id>, …] | null },
+ *                                  "context_candidates": [<seat_id>, …] | null },
  *                   "scenario": [<one record per step>] | null }`
  *
  * THE SCENARIO drives the shipped lobby entry — `lobby-screen.js` over the client protocol
@@ -81,7 +81,7 @@ console.log(JSON.stringify({
     // § 4.1's two ratified sentences, worded for each `(held, total)` pair named here.
     notices: (payload.notices ?? []).map(([held, total]) => model.discrepancyNotice(held, total)),
     // The directory plaque's § 12 figures as the module carries them (card#12113), and § 4.1's (b)
-    // population over the seats named here, as `install_id/seat_id` — AT-D3-27's reading of the
+    // population over the seats named here, as `seat_id` — AT-D3-27's reading of the
     // population a threshold is asked of, which the attention line alone cannot show.
     directory: {
         marker_cap: model.MARKER_CAP,
@@ -89,7 +89,7 @@ console.log(JSON.stringify({
         long_call_ms: model.LONG_CALL_MS,
         context_candidates: payload.context_candidates === undefined
             ? null
-            : model.contextCandidates(payload.context_candidates).map((s) => `${s.install_id}/${s.seat_id}`),
+            : model.contextCandidates(payload.context_candidates).map((s) => s.seat_id),
     },
     scenario: payload.scenario === undefined ? null : await runScenario(payload.scenario),
 }, null, 2));

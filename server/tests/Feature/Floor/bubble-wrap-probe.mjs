@@ -7,7 +7,7 @@
  * beside it, so a planted control re-mints its defect in the real `placeBubbles()`, `wrap()` and `trailCircles()`.
  *
  * Each case is one desk set where `bubbleSeat()` sets it — with no tree answer (`head` null), or with the head the case
- * states — handed to `placeBubbles()` as `placeDesk()` hands it, each in a room of its own so no two are parted.
+ * states — handed to `placeBubbles()` as `placeDesk()` hands it, each a seat of its own so no two are parted.
  *
  * stdin  — JSON: `{ "measurer": {glyph_w, line_h}, "box": {width, height}, "character": {w, h},
  *                   "cases": [{ "text", "source", "head": {face, mark}|null, "crest" }] }`
@@ -39,9 +39,9 @@ const desks = payload.cases.map((c, i) => {
     const seat = layout.bubbleSeat(box, character, c.head ?? null, c.crest ?? 0);
 
     return {
-        key: `room-${i}/seat`,
-        install_id: `room-${i}`,
-        seat_id: 'seat',
+        key: `seat-${i}`,
+        install_id: 'aimla',
+        seat_id: `seat-${i}`,
         box: { x: at.x, y: at.y, w: box.width, h: box.height },
         anchor_x: at.x + layout.characterCentre(box, character),
         bubble_bottom: at.y + seat.bottom,

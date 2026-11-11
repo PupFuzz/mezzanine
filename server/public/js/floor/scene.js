@@ -34,10 +34,11 @@ import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf }
 import { floorTheme } from './floor-theme.js';
 import { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles, sceneryInput } from './map-tiles.js';
 import { tilesetUrl } from './tileset.js';
-import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
+import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
+import { keyOf } from '../wire/seat-key.js';
 import { SNACK_LINES } from './snack-lines.js';
 
 // The pure readers a page without this module's scene machinery also needs (the cab's door view, card#12987) live
@@ -995,7 +996,7 @@ export const INTERN_SIZE = Object.freeze({ w: STOOL_W, h: STOOL_H });
  * no band, or no open route, the row is drawn without its walk: no legs, frames 0 (walk note item 7).
  */
 function walkEffect(base, id, anchor, door, call, motion, character, box, walking, start = null) {
-    const key = `${base.install_id}/${base.seat_id}`;
+    const key = keyOf(base);
     const none = (narrate) => noWalk(base, id, walking, narrate);
 
     if (!motion || anchor === null || door === null) {
@@ -1115,7 +1116,7 @@ function seatWalk(base, id, walking, character, box, parts) {
  * touched the walk it replaces (`floor/in-flight.js`).
  */
 function seatTurn(base, id, flying, anchor, door, call, character, box, walking) {
-    const key = `${base.install_id}/${base.seat_id}`;
+    const key = keyOf(base);
     const routeTo = seatRoutes(walking, key, anchor);
     const turned = turnRound(flying, {
         // The row says where the person goes — an A1 to its desk, an A2 to the elevator — whatever shape the walk turned from.
@@ -1429,7 +1430,7 @@ export function buildScene(frame, input) {
     // § 9 F14: a desk draws its placeholder when its art cannot be drawn — the floor's theme held by
     // nothing, its furniture set reported failed (all or nothing, § 10.6 item 8), or its character's.
     const artFor = (desk) => {
-        const character = `character:${desk.install_id}/${desk.seat_id}`;
+        const character = characterAsset(desk);
         const set = theme.drawn ? furnitureAsset(theme.name, desk) : null;
 
         if (desk.character) {
@@ -2169,7 +2170,7 @@ export function slotOrigin(slot, box) {
  * as the placeholder), `{ crest: 0, clear: null }`: the rect's top, the line the tallest crest reaches, and a bubble set
  * as high as any seat's (`bubbleSeat()`).
  */
-function headOf(model, installId, elements, ctx) {
+function headOf(model, elements, ctx) {
     const character = elements.find((e) => e.kind === 'character');
     const none = { crest: 0, clear: null };
 
@@ -2180,7 +2181,7 @@ function headOf(model, installId, elements, ctx) {
     const at = { pose: character.pose, glyph: character.glyph, species: character.species, clear: character.clear };
 
     try {
-        return { crest: ctx.crest(installId, model.seat_id, at), clear: ctx.headClear(installId, model.seat_id, at) };
+        return { crest: ctx.crest(model.seat_id, at), clear: ctx.headClear(model.seat_id, at) };
     } catch {
         return none;
     }
@@ -2192,7 +2193,7 @@ function headOf(model, installId, elements, ctx) {
  */
 export function placeDesk(model, key, installId, slot, at, ctx, extra) {
     const { elements, bubble } = deskLayout(model, ctx);
-    const head = headOf(model, installId, elements, ctx);
+    const head = headOf(model, elements, ctx);
     const seat = bubbleSeat(ctx.box, ctx.character, head.clear, head.crest);
     // A character's or an intern's overdraw (§ 10.4's frame contract) moves with its element; a sleeper's clear rects are frame units and do not.
     const moved = elements.map((e) => Object.freeze({
@@ -2285,7 +2286,7 @@ export function placeBubbles(desks, measure, W, delivered) {
     }
 
     const placed = bubbleLayout(wanted, (text, bubble) => bubble.size);
-    const bySeat = new Map(placed.map((rect) => [`${rect.install_id}/${rect.seat_id}`, rect]));
+    const bySeat = new Map(placed.map((rect) => [keyOf(rect), rect]));
 
     for (const desk of desks) {
         // The trail is the bubble's: a desk with no bubble draws none, and keeps no copy of where it would start.
@@ -2294,13 +2295,13 @@ export function placeBubbles(desks, measure, W, delivered) {
         delete desk.trail_foot;
         delete desk.bubble_bottom;
 
-        const want = wanted.find((b) => b.install_id === desk.install_id && b.seat_id === desk.seat_id);
+        const want = wanted.find((b) => keyOf(b) === keyOf(desk));
 
         if (want === undefined) {
             continue;
         }
 
-        const rect = bySeat.get(`${desk.install_id}/${desk.seat_id}`);
+        const rect = bySeat.get(keyOf(desk));
 
         desk.bubble = Object.freeze({
             x: rect.x,
@@ -2759,7 +2760,7 @@ function slotFoot(desk, slot, box, character) {
  * interns leaving on one delta wait apart and every viewer agrees.
  */
 function internWalks(row, base, frame, interns, band, moving, character, box, walking) {
-    const seat = `${row.install_id}/${row.seat_id}`;
+    const seat = keyOf(row);
     const move = (frame.desks.interns ?? []).find((m) => m.key === seat && m.cause === row.cause) ?? null;
 
     if (move === null || !move.exact || !moving) {
@@ -3136,7 +3137,7 @@ function internBlink(arrival, loss) {
  * motion and a row drawn without motion draw no fade: the laptop is simply present or absent on the applying render.
  */
 function laptopFades(row, base, frame, interns, moving) {
-    const seat = `${row.install_id}/${row.seat_id}`;
+    const seat = keyOf(row);
     const flip = (frame.desks.flips ?? []).find((f) => f.key === seat && f.cause === row.cause) ?? null;
     const opacity = (state) => (state === 'working' ? 1 : 0);
     const out = [];
@@ -3187,7 +3188,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
         const id = row.animation_id;
         const motion = row.motion === true;
-        const key = row.seat_id === null ? null : `${row.install_id}/${row.seat_id}`;
+        const key = row.seat_id === null ? null : keyOf(row);
         const base = {
             animation_id: id,
             cause: row.cause,
@@ -3208,18 +3209,17 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
             seen.add(tag);
 
-            // An install-scope post is its room's; a fleet-scope one (card#12239) is the floor's, and its
-            // ends are already `install_id/seat_id` keys, its travellers only the destinations drawn here.
+            // An install-scope post is its room's; a fleet-scope one (card#12239) is the floor's. Either arm's ends
+            // are `keyOf()` keys, which `anchors` is keyed by; a fleet round's travellers are the destinations drawn here.
             const local = frame.coord?.[row.install_id]?.rounds.find((r) => r.post_ref === row.cause) ?? null;
             const fleet = local === null ? (frame.coord_fleet?.rounds.find((r) => r.post_ref === row.cause) ?? null) : null;
             const round = local ?? fleet;
-            const keyOf = (seatId) => (fleet === null ? `${row.install_id}/${seatId}` : seatId);
-            const origin = round?.origin.agent?.resolved ? anchors.get(keyOf(round.origin.agent.seat_id)) ?? null : null;
+            const origin = round?.origin.agent?.resolved ? anchors.get(round.origin.agent.seat_id) ?? null : null;
             const destinations = round === null ? [] : fleet === null ? round.targets.desks.map((d) => d.seat_id) : round.travellers;
 
             if (id === 'A19' && round !== null && origin !== null) {
                 for (const target of destinations) {
-                    const to = anchors.get(keyOf(target)) ?? null;
+                    const to = anchors.get(target) ?? null;
 
                     if (to === null) {
                         continue;

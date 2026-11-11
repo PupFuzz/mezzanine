@@ -303,11 +303,9 @@ export function floors(snapshot, layout, nowMs = null) {
  */
 function plate(floor, label, rooms, held, hallway, theme, nowMs) {
     const seats = rooms.flatMap((room) => held[room.install_id] ?? []);
-    // § 4.1: "on a floor of more than one room the `install_id`, a slash and the `seat_id`" — a
-    // `seat_id` is unique within one install only (D2 § 8.2.1).
-    const seatName = rooms.length > 1
-        ? (seat) => `${seat.install_id}/${seat.seat_id}`
-        : (seat) => String(seat.seat_id);
+    // § 4.1: a seat is named by its `seat_id`, on a floor of any number of rooms — a live `seat_id` is unique
+    // site-wide (D2 § 8.2.1).
+    const seatName = (seat) => String(seat.seat_id);
 
     const row = {
         floor,

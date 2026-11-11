@@ -154,7 +154,7 @@ function hourWhere(keys, within, lead) {
 
 const SEATS = Object.fromEntries(BASE.installs[0].seats.map((s) => [s.seat_id, s]));
 const PM_CALL = SEATS['aimla-pm'].subagents[0].call_id;
-const K = { pm: 'aimla/aimla-pm', i1: 'aimla/aimla-impl-1', i2: 'aimla/aimla-impl-2', rv: 'aimla/aimla-review', pmIntern: `aimla/aimla-pm~${PM_CALL}` };
+const K = { pm: 'aimla-pm', i1: 'aimla-impl-1', i2: 'aimla-impl-2', rv: 'aimla-review', pmIntern: `aimla-pm~${PM_CALL}` };
 
 /**
  * One run: the snapshot `seats` (seat_id → patch over fx-snapshot-4's object), its window anchor (`at_s`, the corrected
@@ -185,12 +185,12 @@ function run({ note, at_s, seats = {}, deltas = [], beats = null, until_ms, map 
     const linksAt = (ms) => new Map([...seeded, ...linkDeltas.filter((m) => m.at_ms < ms).map((m) => [m.seat, m.patch.link_state])]);
     for (const ms of beats ?? range(500, until_ms, 15000)) {
         const fleet = { db: 'ok', fold: 'ok', sweep: 'ok', sweep_last_run_at: server(ms - 2000), ingest_last_receipt_at: server(ms), max_fold_lag_ms: 50, ...counts(linksAt(ms)) };
-        messages.push({ at_ms: ms, envelope: { feed_version: 2, t: 'feed.heartbeat', server_time: server(ms), fleet } });
+        messages.push({ at_ms: ms, envelope: { feed_version: 3, t: 'feed.heartbeat', server_time: server(ms), fleet } });
     }
     for (const m of deltas) {
         messages.push(m.t === 'room.map'
-            ? { at_ms: m.at_ms, envelope: { feed_version: 2, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
-            : { at_ms: m.at_ms, envelope: { feed_version: 2, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
+            ? { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
+            : { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
     }
     messages.sort((a, b) => a.at_ms - b.at_ms);
     return { note, http, messages, until_ms, floor: clone(tpl.floor), ...(reduce ? { reduce: true } : {}) };
@@ -336,11 +336,11 @@ runs['stilled-mid-trip'] = run({ note: `idle-trip (${i2note}), then at 35 s, dur
 const sc = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'scene.js')).href);
 
 function chained(old) {
-    const PM = 'aimla/aimla-pm';
-    const I1 = 'aimla/aimla-impl-1';
-    const I2 = 'aimla/aimla-impl-2';
-    const RV = 'aimla/aimla-review';
-    const N = 'aimla/aimla-pm~01K3TA6G7H8J9K0M1N2P3Q4R5T';
+    const PM = 'aimla-pm';
+    const I1 = 'aimla-impl-1';
+    const I2 = 'aimla-impl-2';
+    const RV = 'aimla-review';
+    const N = 'aimla-pm~01K3TA6G7H8J9K0M1N2P3Q4R5T';
     const ALL = [PM, I1, I2, RV, N];
 
     const breaks = (key, from, to) => sc.snackBreaks(draw, key, from, to);
@@ -502,7 +502,7 @@ function chained(old) {
         msgs.push({
             at_ms: 35000,
             envelope: {
-                feed_version: 2,
+                feed_version: 3,
                 t: 'seat.delta',
                 server_time: iso(E + 35),
                 install_id: 'aimla',
@@ -586,11 +586,11 @@ function chained(old) {
 // through the harness's probe and the instant a later delta lands is derived from the legs it drew — so a re-laid map
 // moves those instants with it, and `--check` says so.
 function restroomRuns() {
-    const PM = 'aimla/aimla-pm';
-    const I1 = 'aimla/aimla-impl-1';
-    const I2 = 'aimla/aimla-impl-2';
-    const RV = 'aimla/aimla-review';
-    const N = `aimla/aimla-pm~${PM_CALL}`;
+    const PM = 'aimla-pm';
+    const I1 = 'aimla-impl-1';
+    const I2 = 'aimla-impl-2';
+    const RV = 'aimla-review';
+    const N = `aimla-pm~${PM_CALL}`;
     const ALL = [PM, I1, I2, RV, N];
     const R = sc.RESTROOM_CHAIN;
     const rBreaks = (k, a, b) => sc.snackBreaks(draw, k, a, b, R);
@@ -704,7 +704,7 @@ function restroomRuns() {
         const at = dwellAt(fx, 20);
         const v1 = SEATS['aimla-impl-1'].state_version;
 
-        r.messages.push({ at_ms: at, envelope: { feed_version: 2, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
+        r.messages.push({ at_ms: at, envelope: { feed_version: 3, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
         r.messages.sort((a, b) => a.at_ms - b.at_ms);
         runs['busy-visit'] = r;
         notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping its facts and drawing no task bubble; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
@@ -851,7 +851,7 @@ function restroomRuns() {
         }
 
         return false;
-    }, 19900, 80000);
+    }, 19900, 400000);
     {
         const ref = q.s - 5;
         const seats = { 'aimla-impl-1': IDLE_SEAT, 'aimla-review': { ...IDLE_SEAT, blocked_since: null } };
@@ -876,7 +876,7 @@ function restroomRuns() {
             p = { a: a[0].start_s, c: c[0].start_s };
 
             return true;
-        }, 19900, 80000);
+        }, 19900, 400000);
 
         runs['restroom-past-the-last-spot'] = make({ at_s: ref, until_ms: 5000 + (sc.restroomBreak(draw, I2, ref + 5).dwell_s + 60) * 1000,
             seats: { 'aimla-impl-1': IDLE_SEAT, 'aimla-review': { ...IDLE_SEAT, blocked_since: null } }, map: `@json:${MAPS}/restroom-one-spot.json` });

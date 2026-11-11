@@ -58,11 +58,11 @@ true size (a seat's frame over its character rect, an intern's over its stool re
   }
   document.getElementById('catalogue').innerHTML = html;
   const roster = await (await fetch('roster.json')).json();
-  document.getElementById('roster').innerHTML = roster.seats.map((s) => img(C.standingFrame(s.install_id, s.seat_id), SV.w / SU, SV.h / SU, `${s.install_id}/${s.seat_id}`)).join('');
+  document.getElementById('roster').innerHTML = roster.seats.map((s) => img(C.standingFrame(s.seat_id), SV.w / SU, SV.h / SU, s.seat_id)).join('');
   const seat = ['aimla', 'aimla-impl-1'];
   const interns = Array.from({ length: 8 }, (_, i) => `${seat[1]}~01JD3K${String(i).padStart(2, '0')}ZQ4T6W2N9XG5HV7RB`);
-  document.getElementById('table').innerHTML = img(C.standingFrame(...seat), SV.w / SU, SV.h / SU, seat.join('/'))
-    + interns.map((k) => img(C.chibiFrame(seat[0], k), CV.w / IU, CV.h / IU, '')).join('');
+  document.getElementById('table').innerHTML = img(C.standingFrame(seat[1]), SV.w / SU, SV.h / SU, seat[1])
+    + interns.map((k) => img(C.chibiFrame(k), CV.w / IU, CV.h / IU, '')).join('');
 </script>
 </body>
 </html>

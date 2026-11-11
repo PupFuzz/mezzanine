@@ -202,7 +202,7 @@ class TheAgeReadoutReadsTheServerClockTest extends TestCase
     /** Second RED — `action.started_at` as an elapsed time: the +10 min seat's call starts in the future. */
     public function test_second_red_the_seat_clock_start_as_elapsed_puts_the_call_in_the_future(): void
     {
-        $key = 'aimla/aimla-impl-1';
+        $key = 'aimla-impl-1';
         $seat = $this->snapshotSeats('ages_skewed_seat')[$key];
         $serverMs = $this->serverTimeMs('ages_skewed_seat');
 

@@ -119,14 +119,14 @@ class AnUnrecognisedMemberRendersAsUnrecognisedTest extends TestCase
 
         foreach ($this->fixture(self::RUN)['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
             foreach ($install['seats'] as $seat) {
-                $seats["{$seat['install_id']}/{$seat['seat_id']}"] = $seat;
+                $seats[$seat['seat_id']] = $seat;
             }
         }
 
         $touched = [];
 
         foreach ($this->fixture(self::RUN)['messages'] as $message) {
-            $key = "{$message['envelope']['install_id']}/{$message['envelope']['seat_id']}";
+            $key = $message['envelope']['seat_id'];
             $seats[$key] = array_replace($seats[$key], $message['envelope']['patch']);
             $touched[$key] = true;
         }
@@ -218,7 +218,7 @@ class AnUnrecognisedMemberRendersAsUnrecognisedTest extends TestCase
         $defects = [];
 
         foreach ($deltas as $delta) {
-            $key = "{$delta['install_id']}/{$delta['seat_id']}";
+            $key = $delta['seat_id'];
             $desk = $last[$key];
             $patch = $delta['patch'];
 
@@ -259,7 +259,7 @@ class AnUnrecognisedMemberRendersAsUnrecognisedTest extends TestCase
         }
 
         // No other desk is affected.
-        $touched = array_map(static fn (array $d): string => "{$d['install_id']}/{$d['seat_id']}", $deltas);
+        $touched = array_map(static fn (array $d): string => $d['seat_id'], $deltas);
 
         foreach ($last as $key => $desk) {
             if (in_array($key, $touched, true)) {

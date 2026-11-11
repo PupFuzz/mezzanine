@@ -21,6 +21,7 @@
  */
 
 import { composeTarget, fill, receipt } from './compose-model.js';
+import { keyOf } from '../wire/seat-key.js';
 
 export class ComposeBox {
     #fetch;
@@ -29,7 +30,7 @@ export class ComposeBox {
 
     #unconfigured;
 
-    /** `"install/seat"` the receipt below belongs to — a receipt never follows the operator to another desk. */
+    /** The `keyOf()` key the receipt below belongs to — a receipt never follows the operator to another desk. */
     #for = null;
 
     /** The last answer's receipt row, or `null`. */
@@ -56,7 +57,7 @@ export class ComposeBox {
      */
     view(seat) {
         const target = composeTarget(seat, this.#unconfigured);
-        const here = seat === null ? null : `${seat.install_id}/${seat.seat_id}`;
+        const here = seat === null ? null : keyOf(seat);
         const mine = this.#for !== null && this.#for === here;
         const clear = mine && this.#clear;
 
@@ -88,7 +89,7 @@ export class ComposeBox {
 
         const shown = target.label;
 
-        this.#for = `${seat.install_id}/${seat.seat_id}`;
+        this.#for = keyOf(seat);
         this.#receipt = null;
         this.#clear = false;
         this.#inFlight = true;

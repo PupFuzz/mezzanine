@@ -81,7 +81,7 @@ const C = await import(pathToFileURL(join(TREE, 'index.js')).href);
 const SLEEPS = typeof C.sleepDocument === 'function';
 const { draw, seatKey } = await import(pathToFileURL(join(TREE, 'seed.js')).href);
 /** § 6.2's per-seat loop phase, by the published rule (FLOOR.md § 10.4 item 4). */
-const offsetOf = (installId, seatId, length) => draw(seatKey(installId, seatId), 'loop-phase') % length;
+const offsetOf = (seatId, length) => draw(seatKey(seatId), 'loop-phase') % length;
 
 // ── the figures, read from the document ────────────────────────────────────────────────────────────
 const MD = readFileSync(join(REPO, 'docs', 'design', 'FLOOR.md'), 'utf8');
@@ -299,7 +299,7 @@ if (idle.render_state !== 'idle' || stale.render_state !== 'stale') {
 }
 
 const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, theme: 'studio', placeholder: false, failed: new Set() };
-const desk = (seat, reduce, i) => placeDesk(deskModel(seat, deskAgeReadout(seat, NOW_MS), {}, { reduce }), `room-${i}/${seat.seat_id}`, `room-${i}`, null,
+const desk = (seat, reduce, i) => placeDesk(deskModel(seat, deskAgeReadout(seat, NOW_MS), {}, { reduce }), seat.seat_id, `room-${i}`, null,
     { x: i * BOX.width, y: i * 30 }, ctx, { overflow: false, slot: null, object_id: null });
 
 // A theme whose every furniture document is an empty drawing: this probe reads the character and the monitor.
@@ -339,7 +339,7 @@ const ownFrames = (placed) => {
     try {
         // card#12443: in the seat's delivered body, which its character element carries and the painter is handed —
         // that the element carries the seat object's `character.species` is painter-probe.mjs's body legs.
-        return C.sleepFrames(placed.install_id, placed.seat_id, edgeOf(placed) / VIEW.h, characterElement(placed)?.clear, characterElement(placed)?.species);
+        return C.sleepFrames(placed.seat_id, edgeOf(placed) / VIEW.h, characterElement(placed)?.clear, characterElement(placed)?.species);
     } catch (e) {
         defects.push(`sleeper: the tree draws no sleeper for ${placed.key}'s character element — ${e.message}`);
 
@@ -410,7 +410,7 @@ const ownFrames = (placed) => {
 
         const own = ownFrames(placed);
         const loop = own.frames.length - 1;
-        const offset = offsetOf(placed.install_id, placed.seat_id, LOOP);
+        const offset = offsetOf(placed.seat_id, LOOP);
         const first = image.getAttribute('href');
         const stepped = [];
 
@@ -453,7 +453,7 @@ const ownFrames = (placed) => {
 }
 
 function crestOf(placed) {
-    const r = C.recipe(seatKey(placed.install_id, placed.seat_id));
+    const r = C.recipe(seatKey(placed.seat_id));
 
     return r.variant === null ? r.species : `${r.species}/${r.variant}`;
 }
@@ -490,7 +490,7 @@ if (SLEEPS) {
     for (let i = 0; ids.length < 2 && i < 64; i++) {
         const id = i === 0 ? idle.seat_id : `${idle.seat_id}-${i}`;
 
-        if (ids.every((o) => offsetOf(idle.install_id, o, LOOP) !== offsetOf(idle.install_id, id, LOOP))) {
+        if (ids.every((o) => offsetOf(o, LOOP) !== offsetOf(id, LOOP))) {
             ids.push(id);
         }
     }
@@ -516,7 +516,7 @@ if (SLEEPS) {
                 defects.push(`stagger: ${s.id} under reduced motion is not painted at the still, document 0`);
             }
 
-            const owed = 1 + offsetOf(s.moving.placed.install_id, s.moving.placed.seat_id, LOOP);
+            const owed = 1 + offsetOf(s.moving.placed.seat_id, LOOP);
 
             if (firsts[i] !== owed) {
                 defects.push(`stagger: ${s.id}'s moving loop starts at document ${firsts[i]}, not its loop's start plus its offset over the loop's ${LOOP} frames, document ${owed}`);

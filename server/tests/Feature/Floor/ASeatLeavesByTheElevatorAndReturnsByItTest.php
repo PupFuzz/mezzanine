@@ -34,13 +34,13 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
 
-    private const IMPL_1 = 'aimla/aimla-impl-1';
+    private const IMPL_1 = 'aimla-impl-1';
 
-    private const IMPL_2 = 'aimla/aimla-impl-2';
+    private const IMPL_2 = 'aimla-impl-2';
 
-    private const REVIEW = 'aimla/aimla-review';
+    private const REVIEW = 'aimla-review';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
     private const ANIMATION_SET = 'animation-set.js';
 
@@ -158,7 +158,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** @return list<string> `ID key` for every A1/A2 row */
     private function walkRows(array $result): array
     {
-        return array_values(array_map(static fn (array $r): string => "{$r['animation_id']} {$r['install_id']}/{$r['seat_id']}",
+        return array_values(array_map(static fn (array $r): string => "{$r['animation_id']} {$r['seat_id']}",
             array_filter($this->edgeRows($result), static fn (array $r): bool => in_array($r['animation_id'], ['A1', 'A2'], true))));
     }
 
@@ -244,7 +244,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 
     private function keyOf(array $walk): string
     {
-        return "{$walk['install_id']}/{$walk['seat_id']}";
+        return $walk['seat_id'];
     }
 
     /** Each distinct walk a run drew, at the frame that first drew it (its applying render): `[frame, walk]`. */
@@ -975,8 +975,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
             $arrival = $this->frameAt($result, $at);
 
             $this->assertSame([], $this->walks($arrival), "[{$run}] the arrival's render still draws a walker for the re-slotted seat");
-            $this->assertSame(5, $this->deskIn($arrival, self::IMPL_2)['slot'], "[{$run}] the arrival did not re-slot the seat");
-            $this->assertContains('A16 '.self::IMPL_2, array_map(static fn ($r) => "{$r['animation_id']} {$r['install_id']}/{$r['seat_id']}", $this->edgeRows($result)),
+            $this->assertSame($this->documentCollision()['moves_to'], $this->deskIn($arrival, self::IMPL_2)['slot'], "[{$run}] the arrival did not re-slot the seat to where § 3.3's worked collision moves it");
+            $this->assertContains('A16 '.self::IMPL_2, array_map(static fn ($r) => "{$r['animation_id']} {$r['seat_id']}", $this->edgeRows($result)),
                 "[{$run}] the arrival's render logged no A16 for the re-slotted seat");
         }
 
@@ -1342,7 +1342,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     private function noRouteDefects(array $result, string $key, bool $line): array
     {
         $defects = [];
-        $rows = array_values(array_filter($this->edgeRows($result), static fn ($r) => $r['animation_id'] === 'A2' && "{$r['install_id']}/{$r['seat_id']}" === $key));
+        $rows = array_values(array_filter($this->edgeRows($result), static fn ($r) => $r['animation_id'] === 'A2' && $r['seat_id'] === $key));
 
         if (count($rows) !== 1 || $rows[0]['motion'] !== true) {
             $defects[] = 'the A2 row was not logged once, with motion';
@@ -1577,8 +1577,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** The runs AT-D3-34 replays whose departures queue, each held to the lane. */
     private const LANE_RUNS = ['lane-arrival-meets-queue', 'lane-lone', 'lane-arrival-over-committed-boarder', 'two-walkers', 'mass-departure', 'crossing', 'queue-return-after-boarding'];
 
-    /** The fixture floor's open slots: `fx-snapshot-4` holds four of the shipped default's six, slots 0 and 5 open floor. */
-    private const FIXTURE_OPEN_SLOTS = [0, 5];
+    /** The fixture floor's open slots: `fx-snapshot-4` holds four of the shipped default's six, slots 4 and 5 open floor (§ 3.2's worked table). */
+    private const FIXTURE_OPEN_SLOTS = [4, 5];
 
     /** `walk-probe.mjs`'s `spots` answer for the shipped default with `$open` slots open. */
     private function spotsProbe(array $open, ?string $dir = null): array

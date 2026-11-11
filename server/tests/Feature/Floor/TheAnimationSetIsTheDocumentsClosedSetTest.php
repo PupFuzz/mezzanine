@@ -37,8 +37,8 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
     /** One seat's A3 episode, entered at `motion: true` against v5 — the render every pair case follows. */
     private const ENTER_A3 = [
         'op' => 'held', 'at' => 1000,
-        'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => ['animation_id' => 'A3', 'motion' => true]]],
-        'seats' => ['aimla/aimla-pm' => ['state_version' => 5]],
+        'desks' => ['aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => ['animation_id' => 'A3', 'motion' => true]]],
+        'seats' => ['aimla-pm' => ['state_version' => 5]],
     ];
 
     /**
@@ -48,21 +48,21 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
     private const PRECEDENCE_PAIRS = [
         // v6 draws A6, and row 5's condition newly draws the empty chair.
         '(2a)+(3)' => [[
-            'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => null]],
-            'seats' => ['aimla/aimla-pm' => ['state_version' => 6]],
-            'conditions' => ['aimla/aimla-pm' => ['prior' => ['animation_id' => 'A6', 'motion' => true], 'unconfirmed' => true, 'stilled' => false]],
+            'desks' => ['aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => null]],
+            'seats' => ['aimla-pm' => ['state_version' => 6]],
+            'conditions' => ['aimla-pm' => ['prior' => ['animation_id' => 'A6', 'motion' => true], 'unconfirmed' => true, 'stilled' => false]],
         ], 6],
         // v6 keeps A3 and withholds its loop, and row 5's condition newly draws the empty chair.
         '(3)+(2b)' => [[
-            'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => null]],
-            'seats' => ['aimla/aimla-pm' => ['state_version' => 6]],
-            'conditions' => ['aimla/aimla-pm' => ['prior' => ['animation_id' => 'A3', 'motion' => false], 'unconfirmed' => true, 'stilled' => false]],
+            'desks' => ['aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => null]],
+            'seats' => ['aimla-pm' => ['state_version' => 6]],
+            'conditions' => ['aimla-pm' => ['prior' => ['animation_id' => 'A3', 'motion' => false], 'unconfirmed' => true, 'stilled' => false]],
         ], 'unconfirmed'],
         // v6 keeps A3 and withholds its loop, and the floor newly stills.
         '(2b)+(4)' => [[
-            'desks' => ['aimla/aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => ['animation_id' => 'A3', 'motion' => false]]],
-            'seats' => ['aimla/aimla-pm' => ['state_version' => 6]],
-            'conditions' => ['aimla/aimla-pm' => ['prior' => ['animation_id' => 'A3', 'motion' => false], 'unconfirmed' => false, 'stilled' => true]],
+            'desks' => ['aimla-pm' => ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', 'held' => ['animation_id' => 'A3', 'motion' => false]]],
+            'seats' => ['aimla-pm' => ['state_version' => 6]],
+            'conditions' => ['aimla-pm' => ['prior' => ['animation_id' => 'A3', 'motion' => false], 'unconfirmed' => false, 'stilled' => true]],
         ], 6],
     ];
 
@@ -262,7 +262,7 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
     {
         $driven = $this->shippedSet(['ops' => [[
             'op' => 'displaced', 'install_id' => 'aimla', 'seat_id' => 'aimla-impl-2',
-            'arriving' => 'aimla/aimla-mac-1', 'at' => 9000,
+            'arriving' => 'aimla-win-6', 'at' => 9000,
         ]]]);
 
         $this->assertSame([], $driven['errors']);
@@ -270,14 +270,14 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
         $this->assertSame([
             'animation_id' => 'A16', 'episode_id' => 'ep-1', 'install_id' => 'aimla',
             'seat_id' => 'aimla-impl-2', 'class' => 'edge', 'phase' => 'fired',
-            'cause' => 'aimla/aimla-mac-1', 'motion' => true, 'at' => 9000,
+            'cause' => 'aimla-win-6', 'motion' => true, 'at' => 9000,
         ], $driven['rows'][0]);
 
         // § 6.4, one class over: the same displacement under `reduce` draws A16's reduced form and
         // says so on the row.
         $reduced = $this->shippedSet(['reduce' => true, 'ops' => [[
             'op' => 'displaced', 'install_id' => 'aimla', 'seat_id' => 'aimla-impl-2',
-            'arriving' => 'aimla/aimla-mac-1', 'at' => 9000,
+            'arriving' => 'aimla-win-6', 'at' => 9000,
         ]]]);
 
         $this->assertFalse($reduced['rows'][0]['motion']);
@@ -325,17 +325,17 @@ class TheAnimationSetIsTheDocumentsClosedSetTest extends TestCase
      */
     public function test_the_side_tables_a23_is_its_own_episode_beside_the_desks(): void
     {
-        $desk = static fn (?array $interns): array => ['aimla/aimla-pm' => [
+        $desk = static fn (?array $interns): array => ['aimla-pm' => [
             'install_id' => 'aimla', 'seat_id' => 'aimla-pm',
             'held' => ['animation_id' => 'A3', 'motion' => true],
             'interns_held' => $interns,
         ]];
         $typing = ['animation_id' => 'A23', 'motion' => true];
-        $conditions = static fn (?array $priorInterns, bool $stilled = false): array => ['aimla/aimla-pm' => [
+        $conditions = static fn (?array $priorInterns, bool $stilled = false): array => ['aimla-pm' => [
             'prior' => ['animation_id' => 'A3', 'motion' => true], 'prior_interns' => $priorInterns, 'unconfirmed' => false, 'stilled' => $stilled,
         ]];
         $render = static fn (int $at, ?array $interns, int $version, ?array $conditions = null): array => ['op' => 'held', 'at' => $at,
-            'desks' => $desk($interns), 'seats' => ['aimla/aimla-pm' => ['state_version' => $version]]] + ($conditions === null ? [] : ['conditions' => $conditions]);
+            'desks' => $desk($interns), 'seats' => ['aimla-pm' => ['state_version' => $version]]] + ($conditions === null ? [] : ['conditions' => $conditions]);
         $ops = [
             // v5: the desk works with an intern typing beside it — two episodes, one seat.
             $render(1000, $typing, 5),

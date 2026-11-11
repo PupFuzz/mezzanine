@@ -335,10 +335,9 @@ if (input.mode === 'turn-touched') {
         side: () => side,
         lattice_key: latticeKey,
     });
-    const [install, seat] = key.split('/');
     const clauses = {
         none: (c) => c,
-        journal: (c) => ({ ...c, journal: [{ outcome: 'applied', t: 'seat.insert', install_id: install, seat_id: seat }] }),
+        journal: (c) => ({ ...c, journal: [{ outcome: 'applied', t: 'seat.insert', install_id: walk.install_id, seat_id: key }] }),
         lattice: (c) => ({ ...c, lattice_key: `${latticeKey} moved` }),
         stilled: (c) => ({ ...c, stilled: true }),
         unconfirmed: (c) => ({ ...c, unconfirmed: () => true }),

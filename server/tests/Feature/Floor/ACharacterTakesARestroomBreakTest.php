@@ -27,13 +27,13 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 {
     use DrivesTheFloorScreen;
 
-    private const IMPL_1 = 'aimla/aimla-impl-1';
+    private const IMPL_1 = 'aimla-impl-1';
 
-    private const IMPL_2 = 'aimla/aimla-impl-2';
+    private const IMPL_2 = 'aimla-impl-2';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
-    private const REVIEW = 'aimla/aimla-review';
+    private const REVIEW = 'aimla-review';
 
     private const SCENE = '../floor/scene.js';
 
@@ -95,14 +95,14 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     private function held(array $result, string $key, string $id): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'held'
-            && $r['animation_id'] === $id && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && $r['animation_id'] === $id && $r['seat_id'] === $key));
     }
 
     /** @return list<array<string, mixed>> the edge rows of the given ids one seat wrote */
     private function edges(array $result, string $key, array $ids): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'edge'
-            && in_array($r['animation_id'], $ids, true) && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && in_array($r['animation_id'], $ids, true) && $r['seat_id'] === $key));
     }
 
     private function desk(array $frame, string $key): array
@@ -496,7 +496,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
         foreach (['recall-inside' => self::IMPL_2, 'recall-waiting' => self::IMPL_1] as $run => $key) {
             $r = $this->restroomRun($run, $dir);
-            $version = $this->snapshotSeat($run, explode('/', $key)[1])['state_version'] + 1;
+            $version = $this->snapshotSeat($run, $key)['state_version'] + 1;
 
             if (array_column($left($this->held($r, $key, 'A26')), 'cause') !== [$version]
                 || array_column($entered($this->held($r, $key, 'A7')), 'cause') !== [$version]) {
@@ -1602,7 +1602,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** The walker an effect draws: a visit's walker key, an elevator walk's seat or intern. */
     private function walkerOf(array $e): string
     {
-        return $e['walker_key'] ?? $e['intern_key'] ?? "{$e['install_id']}/{$e['seat_id']}";
+        return $e['walker_key'] ?? $e['intern_key'] ?? $e['seat_id'];
     }
 
     /** The lane defects over every frame of `$runs` (the shipped tree, or a planted copy), and the instants sampled. */

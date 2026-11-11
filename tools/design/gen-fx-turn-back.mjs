@@ -41,8 +41,8 @@ const snack = load('fx-snack');
 const restroom = load('fx-restroom');
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
-const IMPL_1 = 'aimla/aimla-impl-1';
-const IMPL_2 = 'aimla/aimla-impl-2';
+const IMPL_1 = 'aimla-impl-1';
+const IMPL_2 = 'aimla-impl-2';
 /** `aimla-impl-1`'s state version in fx-elevator's leave-stale and return-from-stale, before any delta added here. */
 const V1 = 31108;
 
@@ -62,7 +62,7 @@ function probe(scenario) {
 function walkAt(result, seat, at, id) {
     // Several renders can land at one instant (one per delta of a tick); the walk is the last of them that draws it.
     const fx = result.floor_renders.filter((x) => x.at === at && x.trigger === 'render' && x.frame.scene !== null).reverse()
-        .map((x) => x.frame.scene.effects.find((e) => e.animation_id === id && `${e.install_id}/${e.seat_id}` === seat && e.frames > 0))
+        .map((x) => x.frame.scene.effects.find((e) => e.animation_id === id && e.seat_id === seat && e.frames > 0))
         .find((e) => e !== undefined);
 
     if (fx === undefined) {
@@ -96,7 +96,7 @@ function delta(at, seat, v, patch, clockOf) {
     const changed = Object.keys(patch);
     const when = clockOf(at);
 
-    return { at_ms: at, envelope: { feed_version: 2, t: 'seat.delta', server_time: when, install_id: 'aimla', seat_id: seat, state_version: v, at: when, changed, patch } };
+    return { at_ms: at, envelope: { feed_version: 3, t: 'seat.delta', server_time: when, install_id: 'aimla', seat_id: seat, state_version: v, at: when, changed, patch } };
 }
 
 /** A run: the template's bytes, its messages with `added` merged in time order, its note and its horizon. */
@@ -326,13 +326,13 @@ for (const [name, at, where, what] of lone) {
         return cab !== undefined && cab.enter !== undefined && cab.frames - D.step - D.close > 0;
     };
     const fx = r.frame.scene.effects.filter((e) => e.animation_id === 'A2' && e.frames > 0 && open(e)).sort((a, b) => (a.seat_id < b.seat_id ? -1 : 1))[0];
-    const walk = walkAt(result, `${fx.install_id}/${fx.seat_id}`, r.at, 'A2');
+    const walk = walkAt(result, fx.seat_id, r.at, 'A2');
     const cab = walk.effect.legs.find(isLeg('cab'));
     const at = inLeg(walk, isLeg('cab'), (D.step / 2) / cab.frames);
     const v = mass.messages.find((m) => m.envelope.seat_id === fx.seat_id).envelope.state_version;
 
     add('turn-in-cab-at-a-spot', make(mass, [delta(at, fx.seat_id, v + 1, LIVE('working'), mc)], '', at + 20000));
-    notes['turn-in-cab-at-a-spot'] = `mass-departure, then \`${fx.install_id}/${fx.seat_id}\` \`stale → working\` at ${at} ms, half-way through its step from the threshold to a rider spot of its own, the leaves still open for the boarders behind it: it steps back out from where it is and walks home, and the others ride on.`;
+    notes['turn-in-cab-at-a-spot'] = `mass-departure, then \`${fx.seat_id}\` \`stale → working\` at ${at} ms, half-way through its step from the threshold to a rider spot of its own, the leaves still open for the boarders behind it: it steps back out from where it is and walks home, and the others ride on.`;
 }
 
 // ── leaving again on its way in: fx-elevator's return-then-leave, its A1 at 1000 ms, out again in each leg of the arrival. ──
@@ -367,7 +367,7 @@ for (const [name, at, where, what] of lone) {
     const r = result.floor_renders.filter((x) => x.trigger === 'render' && x.frame.scene !== null).at(-1);
     const fx = r.frame.scene.effects.filter((e) => e.animation_id === 'A2' && e.frames > 0 && e.legs.some(isLeg('stand', 'line')))
         .sort((a, b) => (a.seat_id < b.seat_id ? -1 : 1))[0];
-    const seat = `${fx.install_id}/${fx.seat_id}`;
+    const seat = fx.seat_id;
     const walk = walkAt(result, seat, r.at, 'A2');
     const at = inLeg(walk, isLeg('stand', 'line'), 0.5);
     const v = mass.messages.find((m) => m.envelope.seat_id === fx.seat_id).envelope.state_version;

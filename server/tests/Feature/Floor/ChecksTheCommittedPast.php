@@ -36,7 +36,7 @@ trait ChecksTheCommittedPast
 
     private function pastKey(array $e): string
     {
-        return "{$e['install_id']}/{$e['seat_id']}";
+        return $e['seat_id'];
     }
 
     /** § 12's *Elevator leaves*. @return array{open: int, step: int, close: int} */

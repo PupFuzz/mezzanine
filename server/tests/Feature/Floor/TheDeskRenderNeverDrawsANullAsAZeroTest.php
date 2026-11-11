@@ -288,12 +288,8 @@ class TheDeskRenderNeverDrawsANullAsAZeroTest extends TestCase
 
     private function key(string $seatId): string
     {
-        foreach (array_keys($this->snapshotSeats(self::RUN)) as $key) {
-            if (str_ends_with($key, '/'.$seatId)) {
-                return $key;
-            }
-        }
+        $this->assertArrayHasKey($seatId, $this->snapshotSeats(self::RUN), "fx-nulls carries no seat {$seatId}");
 
-        $this->fail("fx-nulls carries no seat {$seatId}");
+        return $seatId;
     }
 }

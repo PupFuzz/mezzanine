@@ -310,7 +310,7 @@ class ARefusalIsNeverAnEmptyOfficeTest extends TestCase
 
         // "delta application stops immediately — assert a delta delivered after it changes nothing"
         $delta = $this->firstEnvelope($run, 'seat.delta');
-        $key = "{$delta['install_id']}/{$delta['seat_id']}";
+        $key = $delta['seat_id'];
 
         if ($this->finalSeats($result)[$key] != $this->snapshotSeats($run)[$key]) {
             $defects['delta'] = 'a delta delivered after the banner changed the seat it names';

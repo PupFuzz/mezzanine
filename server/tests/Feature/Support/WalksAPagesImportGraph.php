@@ -35,12 +35,12 @@ trait WalksAPagesImportGraph
     /**
      * @param  string  $root  the module tree walked — the shipped `public/js` or a mutated copy of it
      * @param  list<string>  $roots  the modules the walk starts from, relative to `$root`
+     * @param  ?string  $resources  the asset route's tree — the repository's `resources/` unless a caller walks another copy
      * @return array{seen: list<string>, edges: list<array{0: string, 1: string}>, defects: list<string>}
      */
-    protected function importGraph(string $root, array $roots): array
+    protected function importGraph(string $root, array $roots, ?string $resources = null): array
     {
-        // The asset route's tree is the repository's `resources/`, whichever copy of the module tree is walked.
-        $resources = dirname($this->jsRoot(), 3).'/resources';
+        $resources ??= dirname($this->jsRoot(), 3).'/resources';
         $seen = [];
         $queue = $roots;
         $defects = [];

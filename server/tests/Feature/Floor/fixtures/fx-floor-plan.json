@@ -10076,7 +10076,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11932,7 +11932,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "building.layout",
             "server_time": "2026-08-23T14:23:16.400Z",
             "layout_version": 8,

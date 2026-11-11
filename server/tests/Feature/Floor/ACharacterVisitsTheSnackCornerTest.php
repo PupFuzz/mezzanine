@@ -35,13 +35,13 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
 {
     use DrivesTheFloorScreen;
 
-    private const IMPL_1 = 'aimla/aimla-impl-1';
+    private const IMPL_1 = 'aimla-impl-1';
 
-    private const IMPL_2 = 'aimla/aimla-impl-2';
+    private const IMPL_2 = 'aimla-impl-2';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
-    private const REVIEW = 'aimla/aimla-review';
+    private const REVIEW = 'aimla-review';
 
     private const SCENE = '../floor/scene.js';
 
@@ -87,14 +87,14 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     private function edges(array $result, string $key, array $ids): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'edge'
-            && in_array($r['animation_id'], $ids, true) && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && in_array($r['animation_id'], $ids, true) && $r['seat_id'] === $key));
     }
 
     /** @return list<array<string, mixed>> the held rows of one id one seat wrote */
     private function held(array $result, string $key, string $id): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'held'
-            && $r['animation_id'] === $id && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && $r['animation_id'] === $id && $r['seat_id'] === $key));
     }
 
     private function desk(array $frame, string $key): array

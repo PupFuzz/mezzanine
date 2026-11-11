@@ -1,0 +1,328 @@
+{
+  "note": "docs/design/FLOOR.md § 11's `fx-room-move` (card#13117, plan § 9 T8's client half): `aimla-pm` in room `aimla` and `seat-w` in no room (the snapshot's virtual install `unassigned`), then the one `seat.delta` a console room move publishes — `changed: [\"install_id\"]`, `patch.install_id = \"aimla\"`, `state_version` + 1, the envelope carrying the new room. A client keyed by `seat_id` merges it into the seat it holds and draws one desk for `seat-w`, in `aimla`; a client keyed by the pair holds no `aimla/seat-w`, fetches it, and holds two. The served seat body under `/api/fleet/seats/seat-w` is that second client's answer — a seat-keyed client never asks for it.",
+  "runs": {
+    "room_move": {
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 2,
+                "seats_live": 2
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "idle_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "activity_state": "working",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                },
+                {
+                  "install_id": "unassigned",
+                  "seats": [
+                    {
+                      "install_id": "unassigned",
+                      "seat_id": "seat-w",
+                      "character": {
+                        "species": "frog"
+                      },
+                      "state_version": 100,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "idle_since": null,
+                      "action": null,
+                      "longest_open_call": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
+                      "protocol_agent_name": "impl-w",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "/api/fleet/seats/seat-w": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.500Z",
+              "install_id": "aimla",
+              "seat_id": "seat-w",
+              "character": {
+                "species": "frog"
+              },
+              "state_version": 101,
+              "render_state": "idle",
+              "link_state": "live",
+              "activity_state": "idle",
+              "unknown_reason": null,
+              "api_error_type": null,
+              "blocked_since": null,
+              "idle_since": null,
+              "action": null,
+              "longest_open_call": null,
+              "open_calls": 0,
+              "open_turn": false,
+              "subagents": [],
+              "subagents_open": 0,
+              "task": {
+                "title": "ingest endpoint",
+                "source": "board_card",
+                "ref": "card#7338",
+                "as_of": "2026-08-23T14:05:00.000Z",
+                "degraded": false
+              },
+              "context": {
+                "used_pct": 73.2,
+                "used_tokens": 146401,
+                "total_tokens": 200000,
+                "source": "harness",
+                "sampled_at": "2026-08-23T14:41:00.310Z",
+                "sampled_received_at": "2026-08-23T14:41:04.880Z"
+              },
+              "model_label": "claude-opus-5",
+              "session": {
+                "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                "started_at": "2026-08-23T14:22:40.201Z",
+                "source": "clear",
+                "project_label": "mezzanine",
+                "harness_label": "claude-code/2.1.240"
+              },
+              "activity": {
+                "last_event_time": "2026-08-23T14:21:47.300Z",
+                "last_received_at": "2026-08-23T14:21:51.010Z",
+                "last_kind": "turn.end"
+              },
+              "delivery": {
+                "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                "no_data_since": null,
+                "clock_skew_ms": 412,
+                "spool_lag_events": 0,
+                "oldest_unsent_age_s": null,
+                "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                "last_seq": 48211
+              },
+              "badges": [],
+              "badges_since": null,
+              "enabled": true,
+              "roundtable_agent_name": null,
+              "roundtable_agent_name_check": null,
+              "protocol_agent_name": "impl-w",
+              "protocol_agent_name_check": "checked",
+              "protocol_agent_role": "impl",
+              "reporter": {
+                "version": "0.1.0",
+                "platform": "linux",
+                "uptime_s": 401150,
+                "selftest_failed": []
+              },
+              "retired": null,
+              "derivation": {
+                "computed_at": "2026-08-23T14:23:14.318Z",
+                "fold_lag_ms": 117,
+                "cursor_event_id": 9912837
+              },
+              "detail": null
+            }
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 50,
+          "envelope": {
+            "feed_version": 3,
+            "t": "seat.delta",
+            "server_time": "2026-08-23T14:23:14.450Z",
+            "install_id": "aimla",
+            "seat_id": "seat-w",
+            "state_version": 101,
+            "at": "2026-08-23T14:23:14.450Z",
+            "changed": [
+              "install_id"
+            ],
+            "patch": {
+              "install_id": "aimla"
+            }
+          }
+        }
+      ],
+      "until_ms": 1000
+    }
+  }
+}

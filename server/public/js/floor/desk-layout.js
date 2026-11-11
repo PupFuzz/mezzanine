@@ -50,6 +50,7 @@ import { TRUNCATION_MARK } from '../desk/task-bubble.js';
 import { BADGES } from '../wire/member-sets.js';
 import { UNRECOGNISED } from '../desk/desk-render.js';
 import { ART_W, deskSlab, monitorFrame } from './desk-geometry.js';
+import { keyOf } from '../wire/seat-key.js';
 
 // The art column's width is `desk-geometry.js`'s, beside the desk's slab that the cab's door view reads too; it stays
 // readable from here.
@@ -942,7 +943,8 @@ export function deskLayout(desk, ctx) {
     } else {
         // § 10.6 item 8: the desk's FURNITURE SET — one theme document per art element, each at its rect, all
         // drawn or none (the painter generates the set before it emits any), reported under one asset id.
-        const key = { install_id: desk.install_id, seat_id: desk.seat_id };
+        // A theme seeds a desk's furniture from its seat alone (§ 10.6), as the character tree does.
+        const key = { seat_id: desk.seat_id };
         const set = furnitureAsset(ctx.theme, desk);
         const doc = (fn, input = key) => ({ set, theme: ctx.theme, fn, input });
 
@@ -1197,21 +1199,21 @@ export function clusterOrder(desk) {
 
 /**
  * The asset id a desk's FURNITURE SET is reported under when the painter cannot draw it (§ 9 F14, FLOOR.md
- * § 10.6 item 8): `theme:<name>/desk:<install_id>/<seat_id>` — the five documents are one unit.
+ * § 10.6 item 8): `theme:<name>/desk:<key>` — the five documents are one unit.
  */
 export function furnitureAsset(theme, desk) {
-    return `theme:${theme}/desk:${desk.install_id}/${desk.seat_id}`;
+    return `theme:${theme}/desk:${keyOf(desk)}`;
 }
 
 /** The asset id a desk's character is reported under when the painter cannot draw it (§ 9 F14). */
 export function characterAsset(desk) {
-    return `character:${desk.install_id}/${desk.seat_id}`;
+    return `character:${keyOf(desk)}`;
 }
 
 /**
  * THE INTERN KEY — `seat~<call_id>` (§ 10.4; the operator's ruling of 2026-10-02 on card#11058 Q3: "intern
  * sprites keyed by call_id"). The character tree is handed it in the seat's place, so an intern's look is
- * a pure function of `(install_id, seat_id, call_id)`: it keeps its sprite when `subagents[]` reorders or
+ * a pure function of `(seat_id, call_id)`: it keeps its sprite when `subagents[]` reorders or
  * a sibling leaves, and two siblings never share one. `~` is outside the `seat_id` alphabet
  * (`App\Support\Slug::SEAT_ID`), so no intern key is ever a seat's.
  */
@@ -1221,7 +1223,7 @@ export function internKey(seatId, callId) {
 
 /** The asset id an intern's sprite is reported under when the painter cannot draw it (§ 9 F14). */
 export function internAsset(desk, callId) {
-    return `intern:${desk.install_id}/${internKey(desk.seat_id, callId)}`;
+    return `intern:${internKey(desk.seat_id, callId)}`;
 }
 
 /** Whether a string fact is there to draw: the model's null, an absent member and an empty string draw nothing. */
