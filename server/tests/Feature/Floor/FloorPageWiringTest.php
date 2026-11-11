@@ -992,6 +992,7 @@ class FloorPageWiringTest extends TestCase
     private function painterDefects(string $js): array
     {
         return str_contains($js, "import { createPainter } from './painter.js';")
+            && str_contains($js, "import { loadArt, measurer } from './painter.js';")
             && preg_match('/=\s*createPainter\(/', $js) === 1
             ? []
             : ['painter' => 'the entry does not construct the room drawing\'s painter from floor/painter.js'];

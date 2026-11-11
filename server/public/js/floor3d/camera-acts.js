@@ -39,7 +39,7 @@ export function cameraActs(controls, { surface, entry, clamp, bounds }) {
     };
 
     return {
-        drag(dx, dy, modifiers) {
+        drag(dx, dy, modifiers = {}) {
             if (modifiers.shift) {
                 controls.pan(dx, dy);
             } else {
