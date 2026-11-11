@@ -29,7 +29,7 @@
  * the view rests (`building/main.js`).
  */
 
-import { NOTCH_PX, PINCH_GAIN } from '../wire/camera.js';
+import { NOTCH_PX, PINCH_GAIN, turnOf } from '../wire/camera.js';
 import { liveView, snap } from './stack-model.js';
 
 /** How long a gesture must be quiet before the next event starts a new one (§ 12 item 14, a seat ruling). */
@@ -190,7 +190,7 @@ export function buildingActs({ stack, gliding }) {
                 return resting;
             }
 
-            const turned = resting.azimuth - (dx * 2 * Math.PI) / live.surface.width;
+            const turned = resting.azimuth - turnOf(dx, live.surface.width);
 
             resting = Object.freeze({ pose: 'overview', azimuth: Math.atan2(Math.sin(turned), Math.cos(turned)) });
 

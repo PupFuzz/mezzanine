@@ -25,9 +25,11 @@
  */
 
 import { PLATE_TEXT_W } from '../floor/desk-layout.js';
+import { UNIT, topOf, worldOf } from '../floor/floor-world.js';
 
-/** Scene px per world unit (§ 12's *Building view unit*). */
-export const UNIT = 100;
+// The unit, a slab's top and the one scene-px-to-world map are the floor's world's (`floor/floor-world.js`, hoisted
+// there at the 3-D floor, card#13033 stage 2), read here unchanged.
+export { UNIT, topOf, worldOf };
 
 /** A slab's thickness in world units — 12 scene px (§ 12's *Building view slab*). */
 export const SLAB_T = 0.12;
@@ -76,11 +78,6 @@ const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
 const norm = (a) => scale(a, 1 / Math.hypot(a.x, a.y, a.z));
 const lerp = (a, b, t) => a + (b - a) * t;
 
-/** A slab's top face height. */
-export function topOf(slab) {
-    return slab.box.y + slab.box.h;
-}
-
 /**
  * The boxes of a stack of footprints at storey spacing `s`: the ground (the widest footprint, its top at `y = 0`), then
  * each floor by storey, storey 0 lowest, its top at `(storey + 1) × s`. `footprints` is in storey order, each `{w, d}`.
@@ -120,7 +117,7 @@ export function fitDistance(bounds, fov, aspect) {
 }
 
 /** A camera on a sphere about `target`: `polar` from vertical, `azimuth` from the front (+z), at `distance`. */
-function orbitCamera(target, polar, azimuth, distance) {
+export function orbitCamera(target, polar, azimuth, distance) {
     const offset = { x: Math.sin(polar) * Math.sin(azimuth), y: Math.cos(polar), z: Math.sin(polar) * Math.cos(azimuth) };
 
     return Object.freeze({ position: Object.freeze(add(target, scale(offset, distance))), target: Object.freeze({ ...target }), fov: FOV });
@@ -688,18 +685,6 @@ export function floorEntryBoxes(stack, camera, surface, sizeOf) {
     }
 
     return boxes;
-}
-
-/**
- * A scene point on a slab, in world units — the one scene-px-to-world map (§ 3.4): the drawing's bottom edge at the
- * slab's front, its top toward the back, its left at the slab's left.
- */
-export function worldOf(slab, at) {
-    return {
-        x: slab.box.x + (at.x - slab.extent.x) / UNIT,
-        y: topOf(slab),
-        z: slab.box.z + (at.y - slab.extent.y) / UNIT,
-    };
 }
 
 /**

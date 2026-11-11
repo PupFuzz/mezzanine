@@ -77,6 +77,8 @@ function edit(path, from, to) {
 }
 
 const VIEW = (t) => join(t.root, 'server', 'public', 'js', 'floor', 'door-view.js');
+/** The wall classification and the cell and slab placement, hoisted out of `door-view.js` (card#13033 stage 2 slice 2). */
+const WALLS = (t) => join(t.root, 'server', 'public', 'js', 'floor', 'floor-walls.js');
 
 /** The modules a leg drives, loaded from the tree `t`. */
 async function open(t) {
@@ -591,9 +593,9 @@ const PLANTS = [
     ['the house theme\'s palette for every stop', 'fixtures', "cottage's are",
         (t) => edit(VIEW(t), 'const module = resolved === null ? null : themes.modules[resolved] ?? null;', 'const module = resolved === null ? null : themes.modules[themes.registry.house] ?? null;')],
     ['a cell under a desk\'s slab drawn', 'fixtures', 'the under-slab reading',
-        (t) => edit(VIEW(t), 'if (y === f.y || underSlab(x, y)) {', 'if (y === f.y) {')],
+        (t) => edit(WALLS(t), 'if (y === f.y || underSlab(x, y)) {', 'if (y === f.y) {')],
     ['the footprint\'s top row drawn', 'fixtures', 'a near-wall cell on the footprint\'s top row is drawn',
-        (t) => edit(VIEW(t), 'if (y === f.y || underSlab(x, y)) {', 'if (underSlab(x, y)) {')],
+        (t) => edit(WALLS(t), 'if (y === f.y || underSlab(x, y)) {', 'if (underSlab(x, y)) {')],
     ['bare read off the held map alone (F16\'s failure ignored)', 'fixtures', 'S3b (a held v1 map under a failed refetch)',
         (t) => edit(VIEW(t), 'if (ids.some((id) => building.mapless(id))) {', 'if (ids.some((id) => (building.room(id)?.held?.map ?? null) === null)) {')],
     ['the tilesets ignored', 'fixtures', 'the whole floor bare, reason tileset',
@@ -611,13 +613,13 @@ const PLANTS = [
     ['round 3\'s m4: two pieces on one foot line by their distance, not the tile order', 'fixtures', 'round 3\'s m4',
         (t) => edit(VIEW(t), '(a.tier === 1 ? a.seq - b.seq : ', '(a.tier === 1 ? b.mx - a.mx || a.seq - b.seq : ')],
     ['round 3\'s M3: no snap, the cells left where a dragged layer puts them', 'fixtures', 'bravo dragged 3 px',
-        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => v;')],
+        (t) => edit(WALLS(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => v;')],
     ['round 3\'s M3, through the random floors', 'order', 'violations',
-        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => v;')],
+        (t) => edit(WALLS(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => v;')],
     ['the offset ROUNDED to the grid (half a cell or more moves the layer a cell)', 'fixtures', 'bravo dragged 4 px',
-        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => Math.round(v / T) * T;')],
+        (t) => edit(WALLS(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => Math.round(v / T) * T;')],
     ['the offset FLOORED to the grid (a negative offset moves the layer a cell)', 'fixtures', 'bravo dragged -3 px',
-        (t) => edit(VIEW(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => Math.floor(v / T) * T;')],
+        (t) => edit(WALLS(t), 'const whole = (v) => Math.trunc(v / T) * T;', 'const whole = (v) => Math.floor(v / T) * T;')],
     ['no straddle clause (a body across the centre line at its nearer edge\'s distance)', 'fixtures', 'the straddle clause',
         (t) => edit(VIEW(t), 'const mxOf = (x1, x2) => (x1 <= 0 && x2 >= 0 ? 0 : Math.min(Math.abs(x1), Math.abs(x2)));', 'const mxOf = (x1, x2) => Math.min(Math.abs(x1), Math.abs(x2));')],
     ['a body\'s distance from the centre line read off its centre', 'fixtures', 'a distance read off the body\'s centre',
@@ -625,7 +627,7 @@ const PLANTS = [
     ['a desk\'s rank ahead of its distance', 'fixtures', 'a desk\'s rank ahead of its distance',
         (t) => edit(VIEW(t), 'b.mx - a.mx || a.rank - b.rank || a.seq - b.seq)', 'a.rank - b.rank || b.mx - a.mx || a.seq - b.seq)')],
     ['a desk\'s slab snapped to the FLOOR\'s lattice, not its room\'s (a planned room off the 8-px lattice)', 'order', 'planned, room origin.y 96 + 3',
-        (t) => edit(VIEW(t), 'const y0 = g.origin.y + Math.floor((exact.y - g.origin.y) / T) * T;\n\n        return { ...exact, y: y0, h: g.origin.y + Math.ceil((exact.y + exact.h - g.origin.y) / T) * T - y0 };',
+        (t) => edit(WALLS(t), 'const y0 = g.origin.y + Math.floor((exact.y - g.origin.y) / T) * T;\n\n        return { ...exact, y: y0, h: g.origin.y + Math.ceil((exact.y + exact.h - g.origin.y) / T) * T - y0 };',
             'const y0 = Math.floor(exact.y / T) * T;\n\n        return { ...exact, y: y0, h: Math.ceil((exact.y + exact.h) / T) * T - y0 };')],
     ['a monitor at its own distance, not its desk\'s', 'order', 'over monitor',
         (t) => edit(VIEW(t), "y1: DESK_H, y2: MONITOR_TOP }), { mx, rank: 1 });", "y1: DESK_H, y2: MONITOR_TOP }), { rank: 1 });")],

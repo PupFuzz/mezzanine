@@ -353,7 +353,7 @@ class BuildingPageWiringTest extends TestCase
             'labels' => (string) file_get_contents($dir.'/labels.js'),
             'paint' => (string) file_get_contents($dir.'/stack-paint.js'),
             'picture' => (string) file_get_contents($dir.'/floor-picture.js'),
-            'floor' => (string) file_get_contents($this->jsRoot().'/floor/main.js'),
+            'floor' => (string) file_get_contents($this->jsRoot().'/floor/painter-renderer.js'),
             'all' => $all,
         ];
     }

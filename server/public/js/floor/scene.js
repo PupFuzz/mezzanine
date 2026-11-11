@@ -33,6 +33,7 @@ import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-se
 import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf } from './floor-layout.js';
 import { floorTheme } from './floor-theme.js';
 import { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles, sceneryInput } from './map-tiles.js';
+import { deskSlabs, floorCell, wallBodies } from './floor-walls.js';
 import { tilesetUrl } from './tileset.js';
 import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
@@ -1339,6 +1340,8 @@ export function buildScene(frame, input) {
     const snackTables = [];
     // card#12786 (§ 6.7 items 2 and 3): the restroom doors, read off the map by kind the same way.
     const restroomDoors = [];
+    // Each drawn grid's cells, in tile order — what the walls below are read from without tiling a map twice.
+    const cellsByGrid = new Map();
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -1348,6 +1351,8 @@ export function buildScene(frame, input) {
         }
 
         const cells = mapTiles(g.map, g.origin, tilesetFor, g.install_id);
+
+        cellsByGrid.set(g, cells);
 
         for (const c of cells) {
             if (c.kind === 'wall' || standing.includes(c.kind)) {
@@ -1421,6 +1426,20 @@ export function buildScene(frame, input) {
             }
         }
     });
+
+    // ── The standing walls (`floor-walls.js`): every `wall` cell an `edge` or a `partition` of its footprint, as the cab's
+    // door view stands them — what the 3-D floor's world lifts (`floor-world.js`), and nothing the 2-D painter reads. A
+    // floor whose every room is mapless draws no room grid (F16), and so no wall.
+    const wallGrids = grids.flatMap((g, i) => (extents[i] === null ? [] : [{
+        map: g.map,
+        origin: g.origin,
+        footprint: { x: extents[i].x, y: extents[i].y, width: extents[i].w, height: extents[i].h },
+        room: g.install_id !== null,
+        seed: g.seed,
+        cells: cellsByGrid.get(g),
+    }]));
+    const wallCell = wallGrids.some((g) => g.room) ? floorCell(wallGrids) : null;
+    const walls = wallCell === null ? [] : wallBodies(wallGrids, (g) => g.cells, wallCell, deskSlabs(wallGrids, wallCell));
 
     // ── Desks: inside their slots, the later `id` on top; F21's notices per room ──────────────
     const desks = [];
@@ -1638,6 +1657,7 @@ export function buildScene(frame, input) {
         band_docs: bandDocs,
         planes: Object.freeze(planes),
         scenery: Object.freeze(scenery),
+        walls: Object.freeze(walls),
         desks: Object.freeze(desks),
         strip,
         effects,

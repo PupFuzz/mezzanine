@@ -17,7 +17,9 @@
  * acts (`zoomStep(notches)`, `drag(dx, dy)`, each over `camera.js`); what comes back is handed to `show`.
  * What IS decided here is which key does what — row 15's, unchanged:
  *  · `+` or `=` zooms in and `-` or `_` out, one notch about the drawing's centre;
- *  · an arrow key pans by `PAN_STEP_PX`, the view moving the way the arrow points;
+ *  · an arrow key pans by `PAN_STEP_PX`, the view moving the way the arrow points, and hands the acts its modifiers
+ *    (`{ shift }`) as `drag()`'s third argument — the 2-D screens' acts read two and ignore it; the 3-D floor's
+ *    (`floor3d/camera-acts.js`) pan on Shift and turn without it (card#13033 stage 2, the plan's § 3.6);
  *  · a key with a modifier is the browser's (Ctrl + is the page zoom) and passes through, and so does
  *    every other key — a focused desk's Enter and Space, a plaque link's Enter, the lobby's elevator's — untouched;
  *  · the zoom-in and zoom-out buttons are one notch each, about the centre, as the keys are;
@@ -59,7 +61,7 @@ const KEY_SHORTCUTS = ['+', '-', ...Object.keys(KEY_PAN)].join(' ');
 /**
  * @param {EventTarget} element the focusable drawing the keys are pressed on
  * @param {{zoomIn: EventTarget, zoomOut: EventTarget}} buttons the page's zoom-in and zoom-out buttons
- * @param {{zoomStep: function(number): object, drag: function(number, number): object,
+ * @param {{zoomStep: function(number): object, drag: function(number, number, {shift: boolean}): object,
  *         camera: function(): {bounds: object|null}}} acts the screen's camera acts, each returning the
  *        camera it leaves, and the camera as it stands
  * @param {function(object): void} show puts a camera on the drawing (`camera-view.js`'s `show`)
@@ -80,7 +82,7 @@ export function cameraKeys(element, buttons, acts, show) {
             show(acts.zoomStep(KEY_ZOOM[event.key]));
         } else if (event.key in KEY_PAN) {
             event.preventDefault();
-            show(acts.drag(...KEY_PAN[event.key]));
+            show(acts.drag(...KEY_PAN[event.key], { shift: event.shiftKey }));
         }
     });
 
