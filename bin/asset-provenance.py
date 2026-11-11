@@ -118,6 +118,9 @@ WHAT IT DOES NOT DO, said out loud so nobody reads a green as more than it is:
     exists to refuse the format nobody anticipated, not to defeat somebody deliberately hiding
     one, and the line above already concedes the deliberate case. (A file renamed .glb is refused
     anyway: clause 4 reads the GLB magic, because it cannot judge a model without reading it as one.)
+  * CLAUSE 4 BOUNDS A .glb'S IMAGES, NOT ITS SIZE.  A large `extras` string or an unknown chunk
+    after the BIN chunk passes it; the loader ignores both, and the file's own row and review
+    stand over every byte. No gate here enforces a model transfer budget.
   * It cannot refuse a generator that FETCHES upstream art at run time. Nothing that inspects
     a tree can. Section 10.1 names this residue; the lineage file's deliberate-omissions
     section and human review are what stand against it.
@@ -852,8 +855,12 @@ def gate2_clause4(rel: str, raw: bytes) -> None:
             _clause4(rel, f"image {i} has no bytes inside the file — its bufferView does not name a view of the "
                           "file's own BIN chunk, so clause 4 cannot read what it is")
             continue
-        start = view.get("byteOffset", 0)
-        data = binary[start:start + view.get("byteLength", 0)]
+        start, length = view.get("byteOffset", 0), view.get("byteLength", 0)
+        if not (type(start) is int and type(length) is int and start >= 0 and length >= 0):
+            _unreadable(rel, f"image {i}'s bufferView has a byteOffset or byteLength that is not a "
+                             "non-negative integer")
+            continue
+        data = binary[start:start + length]
         size = _png_size(data)
         if size is None:
             _clause4(rel, f"image {i} is not a PNG — its bytes do not open with the PNG signature and an IHDR "

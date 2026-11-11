@@ -8571,7 +8571,7 @@ Retired at row 22 (card#11046, 2026-10-07), each with what holds its absence aft
 registry, `themes/studio/theme.js`, and one marker SVG per tile the tileset declares beyond the wall's — a kind
 the tileset carries at two sizes has a marker at each, since Tiled draws an image-collection tile at its
 image's own size. No
-licensed asset is left under `resources/floor/`; the manifest's MIT notice stands for the first-party rows
+licensed asset was left under `resources/floor/` when row 22 landed (the 3-D floor's CC0 models arrived later; `docs/ATTRIBUTION.md` lists them); the manifest's MIT notice stands for the first-party rows
 ([§ 10.2](#102-characters-original-creatures-drawn-by-code)'s *the manifest still owes an MIT notice*).
 
 **The shipped default since row 22 keeps** its `desks` objects as they are — [§ 12](#12-every-number-and-where-it-comes-from)'s

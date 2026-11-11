@@ -766,6 +766,11 @@ model_case("clause 4 RED 11 — a GLB cut short of the length its header declare
            "its header declares", glb([png(2, 2)])[:-8])
 model_case("clause 4 RED 12 — an image whose bufferView names no view of the file's own bytes", 1,
            "image 0 has no bytes inside the file", glb(images=[{"bufferView": 3, "mimeType": "image/png"}]))
+model_case("clause 4 RED 13 — an image bufferView whose byteOffset is not an integer is unreadable, never a crash",
+           1, "byteOffset or byteLength that is not a non-negative integer",
+           glb(bufferViews=[{"buffer": 0, "byteOffset": "0", "byteLength": 8}],
+               images=[{"bufferView": 0, "mimeType": "image/png"}],
+               buffers=[{"byteLength": 8}]))
 
 print("\n14. UNMEASURABLE (exit 2) — every state the gate cannot see its population in")
 case("nothing under any asset tree — an empty measurement is not a clean one",
