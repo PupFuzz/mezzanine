@@ -75,7 +75,8 @@ a NUL byte is binary and skipped (a binary can still carry the text, and that is
 One narrowing: a file under `UPSTREAM_BODY_DIR` that is a row of `bin/vendor-pin-check.sh`'s MANIFEST
 and whose header says `DECLARED LOCAL EDITS — none` is read only as far as its `//` header. Its body
 is the published upstream file byte for byte, pinned to the upstream digest, so a reference reaches it
-only through a body edit that reds the pin or a re-pin, which is a reviewed manifest change; upstream's
+only through a body edit that reds the pin or an edit to `bin/vendor-pin-check.sh` itself, which review
+reads; upstream's
 own text (Three.js names two eigenvalues with the short form plus a digit) is not this repository's
 writing. The header, which mezzanine writes, is still read. A file there that is not a manifest row,
 or lacks the declaration, is read whole, and so is every file when the manifest cannot be read.
@@ -189,7 +190,8 @@ UPSTREAM_BODY_DECLARATION = "DECLARED LOCAL EDITS — none"
 
 
 def pinned_paths(root: str) -> frozenset[str]:
-    """The paths `bin/vendor-pin-check.sh`'s MANIFEST pins; empty when it cannot be read."""
+    """The paths `bin/vendor-pin-check.sh`'s MANIFEST pins with the `//` comment leader — the header
+    rule `readable_text` applies — and empty when the manifest cannot be read."""
     try:
         with open(os.path.join(root, "bin", "vendor-pin-check.sh"), encoding="utf-8") as fh:
             src = fh.read()
@@ -198,7 +200,8 @@ def pinned_paths(root: str) -> frozenset[str]:
     block = re.search(r"^MANIFEST=\(\n(.*?)^\)", src, re.MULTILINE | re.DOTALL)
     if not block:
         return frozenset()
-    return frozenset(m.group(1) for m in re.finditer(r'^\s*"([^"|]+)\|', block.group(1), re.MULTILINE))
+    rows = (m.group(1).split("|") for m in re.finditer(r'^\s*"([^"]+)"\s*$', block.group(1), re.MULTILINE))
+    return frozenset(r[0] for r in rows if len(r) == 4 and r[3] == "//")
 
 
 def readable_text(rel: str, text: str, pinned: frozenset[str]) -> str:
@@ -467,6 +470,11 @@ def _selftest(scratch: str) -> int:
     d = repo(dict(exempt_file, **{vend: (head + "let r" + "t1 = 0;\n").encode()}))
     failures, _ = scan(d)
     expect("a declared file there that the manifest does not pin is read whole", len(failures) == 1,
+           repr(failures))
+    slash = {"bin/vendor-pin-check.sh": ('MANIFEST=(\n  "' + vend + '|three|0|/"\n)\n').encode()}
+    d = repo(dict(exempt_file, **slash, **{vend: (head + "let r" + "t1 = 0;\n").encode()}))
+    failures, _ = scan(d)
+    expect("a file the manifest pins under another comment leader is read whole", len(failures) == 1,
            repr(failures))
     d = repo(dict(pinned_file, **{vend: (head + "// per r" + "t#9020\nlet a = 0;\n").encode()}))
     failures, _ = scan(d)
