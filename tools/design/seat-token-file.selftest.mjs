@@ -2,7 +2,8 @@
 // THE SEAT TOKENS PAGE'S SAVED FILE, READ BY THE INSTALLER — card#12571, D6 § 4.2's R-srv-1 (the half that needs
 // the installer's parser). The producer (`server/public/js/console/seat-token.js`, on the markup the view renders)
 // and the consumer (`fleet-reporter/install.js`'s exported `parseTokenFile`) are in this repository, so this file
-// holds the hop between them: the bytes the page's button builds must be a v2 file the installer takes.
+// holds the hop between them: the bytes the page's button builds must be a v3 file the installer takes (card#13117),
+// and the installer version the page tells the operator it needs must be the one that first reads v3.
 //
 //   node tools/design/seat-token-file.selftest.mjs
 //
@@ -15,8 +16,10 @@
 //   render     the https issue response renders exactly one save button and the token element; an http one, none
 //   save       a click builds an `application/octet-stream` blob, downloaded by a link named
 //              `mezzanine-reporter-token` whose href is that blob's
-//   parse      `parseTokenFile(<the blob's bytes>)` returns version 2 with the rendered token, the button's
-//              ingest URL, install id and seat id — the parser refuses anything else, by name
+//   parse      `parseTokenFile(<the blob's bytes>)` returns version 3 with the rendered token, the button's
+//              ingest URL and seat id — the parser refuses anything else, by name
+//   installer  the version the page names as the installer it needs is the oldest `fleet-reporter/UPDATES.md`
+//              ledger row that names the v3 token file — the release that first reads it
 //   restore    `pageshow` with `persisted` true blanks the token element and removes the button
 // Each plant mutates the script or the markup and requires the named check to RED; a plant that does not change
 // its input, or that the checks pass, fails the run. Whether a browser actually downloads the file, or restores the
@@ -33,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SCRIPT = readFileSync(path.join(ROOT, 'server/public/js/console/seat-token.js'), 'utf8');
+const LEDGER = readFileSync(path.join(ROOT, 'fleet-reporter/UPDATES.md'), 'utf8');
 const { parseTokenFile } = createRequire(import.meta.url)(path.join(ROOT, 'fleet-reporter/install.js'));
 
 function render(appUrl) {
@@ -51,7 +55,14 @@ function elementsOf(html) {
     return attrs;
   });
   const token = /<code\b[^>]*\bdata-seat-token\b[^>]*>([^<]*)<\/code>/.exec(html);
-  return { buttons, token: token ? decode(token[1]) : null };
+  const installer = /<code\b[^>]*\bdata-token-file-installer\b[^>]*>([^<]*)<\/code>/.exec(html);
+  return { buttons, token: token ? decode(token[1]) : null, installer: installer ? decode(installer[1]) : null };
+}
+
+/** The reporter version that first reads the v3 file: the oldest ledger row (rows are newest first) naming it. */
+function v3Since(ledger) {
+  const rows = [...ledger.matchAll(/^\| (\d+\.\d+\.\d+) \|[^\n]*\bv3 token file\b/gm)].map((m) => m[1]);
+  return rows.length ? rows[rows.length - 1] : null;
 }
 
 /** Runs the page's script over a stub DOM holding those elements; returns the handles a check drives. */
@@ -83,7 +94,7 @@ function runScript(source, { buttons, token }) {
 }
 
 /** The whole check over one script and one markup; returns the failed check names (empty = clean). */
-async function check(source, html, httpHtml) {
+async function check(source, html, httpHtml, ledger = LEDGER) {
   const failed = [];
   const el = elementsOf(html);
   if (el.buttons.length !== 1 || !el.token || elementsOf(httpHtml).buttons.length !== 0) { failed.push('render'); return failed; }
@@ -95,8 +106,10 @@ async function check(source, html, httpHtml) {
   let parsed = null;
   try { parsed = blob ? parseTokenFile(Buffer.from(await blob.arrayBuffer())) : null; } catch (e) { parsed = null; }
   const b = el.buttons[0];
-  if (!parsed || parsed.version !== 2 || parsed.token !== el.token.trim() || parsed.ingest_url !== b['data-ingest-url']
-      || parsed.install_id !== b['data-install-id'] || parsed.seat_id !== b['data-seat-id']) failed.push('parse');
+  if (!parsed || parsed.version !== 3 || parsed.token !== el.token.trim() || parsed.ingest_url !== b['data-ingest-url']
+      || parsed.seat_id !== b['data-seat-id']) failed.push('parse');
+  const since = v3Since(ledger);
+  if (since === null || el.installer !== since) failed.push('installer');
   page.fire('pageshow', { persisted: true });
   if (/mzn_/.test(page.tokenEl.textContent) || page.live().length !== 0) failed.push('restore');
   return failed;
@@ -109,7 +122,10 @@ const want = (s, from, to) => { if (!s.includes(from)) throw new Error(`plant: "
 const PLANTS = [
   ['a carriage return in the file', 'parse', () => [want(SCRIPT, '\\nseat_id ', '\\r\\nseat_id '), HTML, HTTP_HTML]],
   ['a key the parser does not know', 'parse', () => [want(SCRIPT, '\\ningest_url ', '\\ningest '), HTML, HTTP_HTML]],
-  ['no line feed between two lines', 'parse', () => [want(SCRIPT, '\\ninstall_id ', ' install_id '), HTML, HTTP_HTML]],
+  ['no line feed between two lines', 'parse', () => [want(SCRIPT, '\\nseat_id ', ' seat_id '), HTML, HTTP_HTML]],
+  ['the file written as v2 (an install_id line)', 'parse', () => [want(SCRIPT, '\\nseat_id ', '\\ninstall_id unassigned\\nseat_id '), HTML, HTTP_HTML]],
+  ['the page naming an installer older than the v3 reader', 'installer', () => [SCRIPT, want(HTML, `data-token-file-installer>${v3Since(LEDGER)}<`, 'data-token-file-installer>0.6.6<'), HTTP_HTML]],
+  ['no ledger row names the v3 token file', 'installer', () => [SCRIPT, HTML, HTTP_HTML, want(LEDGER, 'v3 token file', 'version-three token file')]],
   ['an http ingest URL in the markup', 'parse', () => [SCRIPT, want(HTML, 'data-ingest-url="https://', 'data-ingest-url="http://'), HTTP_HTML]],
   ['a token one character short in the markup', 'parse', () => [SCRIPT, want(HTML, 'data-seat-token>mzn_FIXTUREx', 'data-seat-token>mzn_FIXTURE'), HTTP_HTML]],
   ['the blob typed text/plain', 'save', () => [want(SCRIPT, "'application/octet-stream'", "'text/plain'"), HTML, HTTP_HTML]],
@@ -120,7 +136,7 @@ const PLANTS = [
 
 let bad = 0;
 const clean = await check(SCRIPT, HTML, HTTP_HTML);
-const CHECKS = ['render', 'save', 'parse', 'restore'];
+const CHECKS = ['render', 'save', 'parse', 'installer', 'restore'];
 for (const name of CHECKS) {
   const ok = !clean.includes(name);
   if (!ok) bad += 1;

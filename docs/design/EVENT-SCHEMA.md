@@ -49,7 +49,7 @@ almost nothing else — [§ 18.9](#189-why-this-does-not-ride-the-batch-contract
    ([§ 8](#8-call-lifecycle--the-kill-vs-complete-contract)).
 7. The batch envelope carries one `schema_version`; the ingest declares its accepted set and
    **rejects an unaccepted version loudly**, per [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line).
-8. Identity is `install_id` + `seat_id` from an install-time config file — never inferred from
+8. Identity is `seat_id` (with `install_id` until card#13117) from an install-time config file — never inferred from
    harness environment markers ([§ 3.4](#34-why-identity-never-comes-from-the-environment)) — and the
    server trusts the **bearer token's** binding, never the payload's claim.
 9. Delivery is best-effort with **bounded, counted** loss: at-least-once with server-side dedup, a
@@ -347,18 +347,20 @@ Written once, at install time, by the installer. It is the **only** source of th
 These rows are the installer's platform table, as [§ 2.1](#21-one-file-four-subcommands)'s are (`node
 fleet-reporter/install.js --paths`). **The token reaches this file from a TOKEN FILE the installer is given by
 path** (card#12571; `docs/design/REPORTER-INSTALL.md` § 4 owns the contract's rationale). **v1** is the bare token
-on one line with an optional LF. **v2** is the form the site's *Seat tokens* page saves (its *Save token file*
-button, card#12571's server half): exactly four `<key> <value>` lines — `token`, `ingest_url`, `install_id`,
-`seat_id` — once each, in any order, LF only and no carriage return, `ingest_url` an `https://` URL ending
-`/api/ingest/events`, the two slugs by the rows below; a v2 file gives the installer the seat's identity and
-site. One parser in `fleet-reporter/install.js` reads both and refuses anything else by name, never printing
-the content. The installer takes the file into this file's directory, owner-only — a file another principal
+on one line with an optional LF. **v3** is the form the site's *Seat tokens* page saves (its *Save token file*
+button) since card#13117: exactly three `<key> <value>` lines — `token`, `ingest_url`, `seat_id` — once each,
+in any order, LF only and no carriage return, `ingest_url` an `https://` URL ending `/api/ingest/events`,
+`seat_id` by its row below; a v3 file gives the installer the seat's identity and site. **v2**, the form the
+page saved from card#12571 until card#13117, is those three lines and an `install_id` line; the installer holds
+that value to its row's pattern and discards it, so a v2 file still installs and writes no `install_id` into
+this file. One parser in `fleet-reporter/install.js` reads all three and refuses anything else by name, never
+printing the content. The installer takes the file into this file's directory, owner-only — a file another principal
 could have read is **taken with a warning** (the operator's ruling of 2026-10-29, which loosens the earlier
 *treat it as exposed* rule for a file given by path) — writes the config, and removes the file.
 
 | Key | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
-| `install_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,31}$` | `"aimla"` |
+| `install_id` | slug | no — **absent** on a seat installed since card#13117 | `^[a-z0-9][a-z0-9-]{1,31}$` when present. ⭐ **Optional since card#13117**: the seat's identity is `seat_id` alone, and a 13117-era server reads no `install_id` ([§ 4.2](#42-batch-envelope-fields)). The installer no longer writes it; a config written before that card keeps it and is never rewritten, and the reporter sends it on every batch and event exactly when this file carries it | `"aimla"` |
 | `seat_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,47}$` | `"aimla-pm"` |
 | `ingest_url` | string | no — **the single-site form**; absent when `sites` is set | absolute `https://` URL, ≤ 256 B | `"https://mezzanine.example.org/api/ingest/events"` |
 | `token` | string | no — the single-site form | `mzn_` + 43 base64url chars | `"mzn_kQ7…"` *(never printed, never logged, never echoed)* |
@@ -377,8 +379,8 @@ could have read is **taken with a warning** (the operator's ruling of 2026-10-29
 **What the reporter enforces of this table.** `loadConfig` checks every row at each read except
 `protocol_agent_name` (below) and two byte bounds, and a value outside its row is a **config error**:
 `selftest`'s `config_readable` fails with an error naming the field, and at runtime the flusher counts
-`config_invalid` ([§ 9.3](#93-degradation-counters)), keeps spooling and sends nothing. `install_id`,
-`seat_id` and `token` must match their patterns. `ingest_url` must start `https://`, parse as a URL
+`config_invalid` ([§ 9.3](#93-degradation-counters)), keeps spooling and sends nothing. `seat_id` and
+`token` must match their patterns, and `install_id` must match its pattern when it is present. `ingest_url` must start `https://`, parse as a URL
 (`new URL`, the parser every request uses) and fit 256 B. `spool_dir` must be an absolute path, and one
 that is not — absent, empty or relative — is the one config error with nowhere to report it at runtime:
 it names no directory a process may write, so the hooks and the flusher write **nothing**, no spool, log,
@@ -420,7 +422,7 @@ under a typo carry no more once it is fixed than the seat asked for.
 the heartbeat's last transmission. There is no other kill switch and no environment variable that
 disables the reporter ([§ 3.4](#34-why-identity-never-comes-from-the-environment)).
 
-**Identity stability rule.** `install_id` and `seat_id` are file-resident, so they survive session
+**Identity stability rule.** `seat_id` — and `install_id`, where a config written before card#13117 carries it — are file-resident, so they survive session
 restarts, `/clear`, reboots, host renames, and harness upgrades. They change only when a human edits
 the file or re-runs the installer — which is a re-identification of the desk and is intended to be a
 deliberate act. Neither is ever derived from hostname, cwd, username, process tree, or any harness
@@ -430,15 +432,16 @@ variable.
 support questions ("is `impl-2` reporting?"). A random identifier makes every such exchange require a
 lookup table. Uniqueness is not enforced by the format — it is enforced by the **token binding**
 ([§ 3.3](#33-authentication-and-the-identity-binding-rule)): a token is issued to exactly one
-`(install_id, seat_id)` pair, so two seats claiming one identity is a provisioning error caught at
-token-issue time, not a silent merge of two desks.
+seat — one `seat_id`, live once across the whole site since card#13117 — so two seats claiming one identity
+is a provisioning error caught at token-issue time, not a silent merge of two desks.
 
 #### Sites: one seat reporting to several Mezzanine deployments
 
 **Card#12180, the operator's ask of 2026-10-21: one reporter install reports to more than one
 Mezzanine site at once — a production deployment and the sandbox — so the same desk is on both
-floors.** The seat's identity does not move with it: `install_id` and `seat_id` are the seat's,
-declared once in this file, and each site binds its own token to that same pair
+floors.** The seat's identity does not move with it: `seat_id` is the seat's — the whole identity since
+card#13117, `install_id` an optional key a site no longer reads — declared once in this file, and each site
+binds its own token to that same seat
 ([§ 3.3](#33-authentication-and-the-identity-binding-rule)) — a seat is provisioned on a site by that
 site issuing it a token, and on no other site by it. What becomes per site is the transport half of
 the table above: `ingest_url`, `token`, `ca_file` and `proxy_url`. Everything a site is told is told
@@ -465,7 +468,7 @@ accepts both while the writer emits one is the migration). Each element is one s
 |---|---|---|---|---|
 | `name` | slug | no | `install_id`'s own pattern, `^[a-z0-9][a-z0-9-]{1,31}$`, reused rather than minted; unique within the file. **Local, never on the wire**: it keys the site's entry in `state.json`, prefixes its log lines, names its block in `selftest`'s report and tags its quarantine records ([§ 11.1](#111-layout)) | `"prod"` |
 | `ingest_url` | string | no | as the top-level row; unique within the file **by its site key** (*What the reporter enforces*, below) | `"https://mezzanine.example.org/api/ingest/events"` |
-| `token` | string | no | as the top-level row: the token **this site** issued to this seat's `(install_id, seat_id)` | `"mzn_kQ7…"` *(never printed, never logged, never echoed)* |
+| `token` | string | no | as the top-level row: the token **this site** issued to this seat's `seat_id` | `"mzn_kQ7…"` *(never printed, never logged, never echoed)* |
 | `ca_file` | string | **yes** | as the top-level row, per site: one site may pin a private CA while another trusts the default store | `null` |
 | `proxy_url` | string | **yes** | as the top-level row, per site | `null` |
 
@@ -881,7 +884,8 @@ request is then the only thing the lane sends until the site has answered it.
   or without a persisted request.** `install_id` and `seat_id` are seat-wide, and the site's epoch
   and `next_seq` are a fact about *which seat's sequence they continue*, exactly as its cursor is a
   fact about which server holds the lines. So the entry records **`identity_sha256`**, the lowercase
-  hex SHA-256 of `install_id|seat_id`, beside `ingest_url_sha256`, and `siteEntry` compares it with
+  hex SHA-256 of `install_id|seat_id` — `install_id` the empty string when the config carries none
+  (card#13117), so a config that has one hashes as it always did — beside `ingest_url_sha256`, and `siteEntry` compares it with
   the config's pair by the same binding shape as rule 2: a difference is the age rule's epoch reset
   — `request` cleared if one is persisted, a new `seq_epoch`, `next_seq` 1, the heartbeat a cleared
   request carried counted, the cursors kept, in one save, before anything is built. A legacy entry
@@ -1703,7 +1707,7 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
 |---|---|---|---|---|---|
 | `schema_version` | int | — | no | ≥ 1 | `1` |
 | `batch_id` | ULID | — | no | 26 chars | `"01K3T8ZQ5N7M2X9V4B6D0FGHJK"` |
-| `install_id` | slug | — | **optional** | ≤ 32 B — ⭐ **not read since card#13117**: accepted present, absent or of any value, with no bound and no pattern checked; a reporter writing to a server before that card must still send it ([§ 3.3](#33-authentication-and-the-identity-binding-rule)) | `"aimla"` |
+| `install_id` | slug | — | **optional** | ≤ 32 B — ⭐ **not read since card#13117**: accepted present, absent or of any value, with no bound and no pattern checked; a reporter writing to a server before that card must still send it ([§ 3.3](#33-authentication-and-the-identity-binding-rule)). **The reporter sends it exactly when its config carries it** ([§ 3.1](#31-the-seat-config-file)): a seat installed before that card keeps sending its value, one installed since sends none | `"aimla"` |
 | `seat_id` | slug | — | no | ≤ 48 B | `"aimla-pm"` |
 | `reporter_version` | semver | — | no | ≤ 24 B | `"0.1.0"` |
 | `reporter_platform` | enum | — | no | `linux` \| `win32` \| `darwin` \| `other` — `other` is the unknown member for any `process.platform` outside the three ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) | `"linux"` |
@@ -1735,7 +1739,7 @@ Present on **every** event of every kind.
 | `kind` | string | — | no | ≤ 32 B, `^[a-z]+\.[a-z_]+$`; the 16 currently-defined kinds are listed in [§ 6](#6-event-kinds), and an **unknown kind is accepted, ignored and counted** ([§ 5](#5-compatibility--what-this-document-owes-the-policy)), never a rejection | `"tool.start"` |
 | `event_time` | rfc3339_ms | UTC, seat clock | no | — | `"2026-08-23T14:07:03.118Z"` |
 | `seq` | int | — | no | 1…2^53−1, monotonic per `seq_epoch` | `48211` |
-| `install_id` | slug | — | **optional** | ≤ 32 B — ⭐ **not read since card#13117**, as [§ 4.2](#42-batch-envelope-fields)'s row; it was compared with the batch's until that card, and a reporter writing to a server before it must still send it | `"aimla"` |
+| `install_id` | slug | — | **optional** | ≤ 32 B — ⭐ **not read since card#13117**, as [§ 4.2](#42-batch-envelope-fields)'s row; it was compared with the batch's until that card, and a reporter writing to a server before it must still send it. The reporter puts it on an event exactly when its config carries it, as on the envelope | `"aimla"` |
 | `seat_id` | slug | — | no | ≤ 48 B, **must equal the batch's** | `"aimla-pm"` |
 | `session_id` | string | — | **yes** (null only on `reporter.heartbeat`) | ≤ 128 B | `"e3c1a5f0-9b21-4a77-8f0e-2d61c4b8a913"` |
 | `data` | object | — | no | kind-specific, ≤ 3 KiB serialized | `{ … }` |
@@ -3627,7 +3631,7 @@ split of the fields is stated under the table.
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
 | `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **316 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
 | `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **254 B** — **no reduction rule, and none owed** (same exemption) | see below |
-| `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** — the `ingest_url` of the site receiving the heartbeat, so a single-site seat's fingerprint is what it was before card#12180 | `"9f2c41a7be03d518"` |
+| `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** — the `ingest_url` of the site receiving the heartbeat, so a single-site seat's fingerprint is what it was before card#12180; `install_id` the empty string when the config carries none (card#13117) | `"9f2c41a7be03d518"` |
 
 
 **Which members are the site's and which are the seat's (card#12180).** A heartbeat is built for one

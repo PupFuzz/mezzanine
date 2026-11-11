@@ -9,9 +9,9 @@
  * PowerShell and the reporter itself are spawned by argument array. `INSTALL.md`, beside this file, is the
  * reference for what each step does on each OS and why; this header says how the file is laid out.
  *
- *   node install.js --token-file <path> [--site <url> --seat-id <id> [--install-id <id>]] [--agent-name <n>]
+ *   node install.js --token-file <path> [--site <url> --seat-id <id>] [--agent-name <n>]
  *                   [--ca-file <path>] [--no-board]      first install; with a config present, the ROTATION
- *   node install.js [--site <url>] [--seat-id <id>] [--install-id <id>] [--no-board]
+ *   node install.js [--site <url>] [--seat-id <id>] [--no-board]
  *                                                        re-check and upgrade; refuses with no config
  *   node install.js add-site --token-file <path> [--site <url>] [--ca-file <path>] [--site-name <n>]
  *   node install.js remove-site <name> · statusline [--wrap <command>] · set-descriptors full|paths|none
@@ -221,12 +221,17 @@ function renderShipping(input) {
   return out;
 }
 
-// ── the token file: one parser, v1 and v2 ──────────────────────────────────────────────────────────────
+// ── the token file: one parser, v1, v2 and v3 ──────────────────────────────────────────────────────────
 
-/* THE ONE READER OF A TOKEN FILE'S BYTES (D6 § 4.2). v1 is the token alone with an optional line feed; v2 is
- * exactly four `<key> <value>` lines — `token`, `ingest_url`, `install_id`, `seat_id` — once each, in any
- * order, LF only. Anything else is refused BY NAME: a message names a line number or a key, never content. */
-const V2_KEYS = ['token', 'ingest_url', 'install_id', 'seat_id'];
+/* THE ONE READER OF A TOKEN FILE'S BYTES (D6 § 4.2). v1 is the token alone with an optional line feed. v3 —
+ * what the Seat tokens page saves since card#13117 — is exactly three `<key> <value>` lines, `token`,
+ * `ingest_url` and `seat_id`; v2, saved before it, is those three and `install_id`. Each key once, in any
+ * order, LF only. Anything else is refused BY NAME: a message names a line number or a key, never content.
+ * A v2 file's `install_id` is held to its pattern and then DISCARDED: the identity is `seat_id` alone, so a v2
+ * and a v3 file parse to the same shape, `{ version, token, ingest_url, seat_id }`, and nothing downstream can
+ * compare a room. Every caller tells the forms apart by `version === 1` alone. */
+const V3_KEYS = ['token', 'ingest_url', 'seat_id'];
+const V2_KEYS = [...V3_KEYS, 'install_id'];
 function parseTokenFile(bytes) {
   const text = Buffer.isBuffer(bytes) ? bytes.toString('utf8') : String(bytes);
   if (text.includes('\r')) refuse('the token file holds a carriage return (it went through an editor or a terminal on the way)');
@@ -241,7 +246,7 @@ function parseTokenFile(bytes) {
     if (Object.prototype.hasOwnProperty.call(got, m[1])) refuse(`the token file carries ${m[1]} more than once`);
     got[m[1]] = m[2];
   });
-  for (const k of V2_KEYS) if (!Object.prototype.hasOwnProperty.call(got, k)) refuse(`the token file carries no ${k} line`);
+  for (const k of V3_KEYS) if (!Object.prototype.hasOwnProperty.call(got, k)) refuse(`the token file carries no ${k} line`);
   if (!TOKEN_RE.test(got.token)) refuse('the token file\'s token is not mzn_ and 43 base64url characters');
   let u = null;
   try { u = new URL(got.ingest_url); } catch (e) { u = null; }
@@ -249,9 +254,10 @@ function parseTokenFile(bytes) {
       || Buffer.byteLength(got.ingest_url) > 256) {
     refuse(`the token file's ingest_url is not an https:// URL of at most 256 B, with no userinfo, ending ${INGEST_PATH}`);
   }
-  if (!SLUG_INSTALL.test(got.install_id)) refuse('the token file\'s install_id fails D1 § 3.1\'s ^[a-z0-9][a-z0-9-]{1,31}$');
+  const v2 = Object.prototype.hasOwnProperty.call(got, 'install_id');
+  if (v2 && !SLUG_INSTALL.test(got.install_id)) refuse('the token file\'s install_id fails D1 § 3.1\'s ^[a-z0-9][a-z0-9-]{1,31}$');
   if (!SLUG_SEAT.test(got.seat_id)) refuse('the token file\'s seat_id fails D1 § 3.1\'s ^[a-z0-9][a-z0-9-]{1,47}$');
-  return { version: 2, token: got.token, ingest_url: got.ingest_url, install_id: got.install_id, seat_id: got.seat_id };
+  return { version: v2 ? 2 : 3, token: got.token, ingest_url: got.ingest_url, seat_id: got.seat_id };
 }
 
 /* The issue command's output (D6 § 3.1, `issue-file`): EXACTLY ONE line matching the token line rule; every
@@ -290,7 +296,7 @@ function ingestUrlOf(site) {
 // ── the config writer ──────────────────────────────────────────────────────────────────────────────────
 
 const TRANSPORT = ['ingest_url', 'token', 'ca_file', 'proxy_url'];
-const SEAT_OPTS = ['install', 'seat', 'spool', 'agent', 'wrapped', 'descriptors', 'boardUser', 'boardBase'];
+const SEAT_OPTS = ['seat', 'spool', 'agent', 'wrapped', 'descriptors', 'boardUser', 'boardBase'];
 const WRITE_MODES = ['', 'add-site', 'set-token', 'remove-site', 'set-descriptors', 'board', 'wrapped'];
 
 /* THE CONFIG WRITER — the runbook's `write-config.js` as a function (D6 § 3.1). A fresh install (`mode` '')
@@ -318,11 +324,11 @@ function writeConfig(o) {
   const siteOf = (name, url, token) => ({ name, ingest_url: url, token, ca_file: o.caFile || null, proxy_url: null });
   let c, text;
   if (mode === '') {
-    for (const k of ['install', 'seat', 'url', 'spool']) if (!o[k]) refuse(`a fresh config needs ${k}: NOTHING WRITTEN`);
+    for (const k of ['seat', 'url', 'spool']) if (!o[k]) refuse(`a fresh config needs ${k}: NOTHING WRITTEN`);
     if (!TOKEN_RE.test(o.token || '')) refuse('the token is not mzn_ and 43 base64url characters: NOTHING WRITTEN');
     if (exists(o.config)) refuse(`${o.config} already exists, and a fresh install writes only a config that does not: NOTHING WRITTEN`);
     c = {
-      install_id: o.install, seat_id: o.seat, spool_dir: o.spool,
+      seat_id: o.seat, spool_dir: o.spool,
       wrapped_statusline: o.wrapped || null, protocol_agent_name: o.agent || null,
       descriptors: o.descriptors || 'full', enabled: true,
       ...(o.boardUser ? { board_user_id: Number(o.boardUser), board_api_base: o.boardBase } : {}),
@@ -508,8 +514,6 @@ function which(name) {
 }
 const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
 const versionOf = (js) => { const m = /^const REPORTER_VERSION = '([^']*)';$/m.exec(fs.readFileSync(js, 'utf8')); return m ? m[1] : null; };
-/* The account name as an install_id slug (install.sh's derivation, D6 § 5). */
-const accountSlug = () => os.userInfo().username.toLowerCase().replace(/[_.]/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 32);
 
 /* COORD_CONFIG as the seat's sessions see it: settings.json, then settings.local.json, the last that sets it
  * winning (Claude Code's settings precedence). Empty when none sets it. */
@@ -1698,23 +1702,20 @@ function uninstall(ctx) {
 
 // ── the token routes: first install, rotation, add-site, issue-file ────────────────────────────────────
 
-/* The seat's values: from a v2 file, or from the flags for a v1 file. A flag that disagrees with a v2 file is
- * refused. */
+/* The seat's values: from the flags for a v1 file, else from the file (v2 or v3). A flag that disagrees with
+ * the file is refused. */
 function valuesFrom(ctx, parsed) {
   const f = ctx.a.flags;
-  if (parsed.version === 2) {
-    if (f['install-id'] && f['install-id'] !== parsed.install_id) refuse(`--install-id ${f['install-id']} disagrees with the token file's install_id ${parsed.install_id}: NOTHING WRITTEN`);
-    if (f['seat-id'] && f['seat-id'] !== parsed.seat_id) refuse(`--seat-id ${f['seat-id']} disagrees with the token file's seat_id ${parsed.seat_id}: NOTHING WRITTEN`);
-    if (f.site && siteKey(ingestUrlOf(f.site)) !== siteKey(parsed.ingest_url)) refuse('--site disagrees with the token file\'s ingest_url: NOTHING WRITTEN');
-    return { install: parsed.install_id, seat: parsed.seat_id, url: parsed.ingest_url };
+  if (parsed.version === 1) {
+    if (!f.site || !f['seat-id']) refuse('a v1 token file carries no site and no seat: pass --site <url> and --seat-id <id> with it: NOTHING WRITTEN');
+    const url = ingestUrlOf(f.site);
+    if (!/^https:\/\//.test(url) || siteKey(url) === null) refuse('--site must be an https:// URL (D1 § 3.5): NOTHING WRITTEN');
+    if (!SLUG_SEAT.test(f['seat-id'])) refuse(`--seat-id ${f['seat-id']} is not a seat_id (D1 § 3.1): NOTHING WRITTEN`);
+    return { seat: f['seat-id'], url };
   }
-  if (!f.site || !f['seat-id']) refuse('a v1 token file carries no site and no seat: pass --site <url> and --seat-id <id> with it: NOTHING WRITTEN');
-  const url = ingestUrlOf(f.site);
-  if (!/^https:\/\//.test(url) || siteKey(url) === null) refuse('--site must be an https:// URL (D1 § 3.5): NOTHING WRITTEN');
-  const install = f['install-id'] || accountSlug();
-  if (!SLUG_INSTALL.test(install)) refuse(`${f['install-id'] ? '--install-id' : 'this account\'s name'} gives no install_id (D1 § 3.1): pass --install-id: NOTHING WRITTEN`);
-  if (!SLUG_SEAT.test(f['seat-id'])) refuse(`--seat-id ${f['seat-id']} is not a seat_id (D1 § 3.1): NOTHING WRITTEN`);
-  return { install, seat: f['seat-id'], url };
+  if (f['seat-id'] && f['seat-id'] !== parsed.seat_id) refuse(`--seat-id ${f['seat-id']} disagrees with the token file's seat_id ${parsed.seat_id}: NOTHING WRITTEN`);
+  if (f.site && siteKey(ingestUrlOf(f.site)) !== siteKey(parsed.ingest_url)) refuse('--site disagrees with the token file\'s ingest_url: NOTHING WRITTEN');
+  return { seat: parsed.seat_id, url: parsed.ingest_url };
 }
 function caFileOf(ctx) {
   const ca = ctx.a.flags['ca-file'];
@@ -1730,7 +1731,7 @@ function tokenConfig(ctx, named, values, board) {
   let s = {};
   try { s = readJson(T.settings); } catch (e) { s = {}; }
   const cur = s.statusLine && typeof s.statusLine.command === 'string' ? s.statusLine.command : '';
-  writeConfig({ config: T.config, token: parsed.token, install: values.install, seat: values.seat, url: values.url, spool: T.spool,
+  writeConfig({ config: T.config, token: parsed.token, seat: values.seat, url: values.url, spool: T.spool,
     agent: ctx.a.flags['agent-name'] || undefined, wrapped: isReporterCommand(T.platform, T.js, cur) ? undefined : (cur || undefined),
     descriptors: 'full', boardUser: board && board.decl ? board.decl.id : undefined, boardBase: board && board.decl ? board.decl.base : undefined,
     caFile: caFileOf(ctx), siteName: ctx.a.flags['site-name'], platform: T.platform });
@@ -1742,27 +1743,28 @@ function configSites(T) {
   if (!r.config) refuse(`cannot read ${T.config}: ${r.errors.join('; ')}`);
   return { cfg: r.config, sites: r.sites };
 }
-/* THE ROTATION (D6 § 4.5): `--token-file` with a config present. A v2 file names its site; a v1 file rotates
- * --site-name, `default` when unset. */
+/* THE ROTATION (D6 § 4.5): `--token-file` with a config present. A v1 file rotates --site-name, `default` when
+ * unset; a v2 or v3 file names its site, and its seat_id must be the config's — the identity is the seat alone,
+ * so a seat the console moved to another room rotates like any other (card#13117). */
 function rotate(ctx) {
   const T = ctx.T, f = ctx.a.flags;
   prereqs(ctx);
   const parsed = readTokenFile(T, f['token-file']);
   const { cfg, sites } = configSites(T);
   let name;
-  if (parsed.version === 2) {
+  if (parsed.version === 1) {
+    name = f['site-name'] || 'default';
+    if (!sites.some((s) => s.name === name)) refuse(`${name} is not a site of this config:\n${listing({ sites })}\npass --site-name: NOTHING WRITTEN`);
+  } else {
     const key = siteKey(parsed.ingest_url);
     const hits = sites.filter((s) => typeof s.ingest_url === 'string' && siteKey(s.ingest_url) === key);
-    const idOk = parsed.install_id === cfg.install_id && parsed.seat_id === cfg.seat_id;
+    const idOk = parsed.seat_id === cfg.seat_id;
     if (hits.length !== 1 || !idOk || (f['site-name'] && f['site-name'] !== hits[0].name)) {
-      refuse(`the token file is for ${parsed.install_id}/${parsed.seat_id} on ${parsed.ingest_url}, and this seat is ${cfg.install_id}/${cfg.seat_id} with:\n${listing({ sites })}\n`
+      refuse(`the token file is for seat ${parsed.seat_id} on ${parsed.ingest_url}, and this seat is ${cfg.seat_id} with:\n${listing({ sites })}\n`
         + (hits.length !== 1 ? 'no configured site matches the file\'s ingest_url: to add it as a new site, run install.js add-site --token-file <path>' : !idOk ? 'the identity differs: this token was issued for another seat' : `--site-name ${f['site-name']} names another site than the file's`)
         + ': NOTHING WRITTEN');
     }
     name = hits[0].name;
-  } else {
-    name = f['site-name'] || 'default';
-    if (!sites.some((s) => s.name === name)) refuse(`${name} is not a site of this config:\n${listing({ sites })}\npass --site-name: NOTHING WRITTEN`);
   }
   backup(ctx);
   const named = tokenTake(ctx, f['token-file']);
@@ -1782,13 +1784,13 @@ function addSite(ctx) {
   const parsed = readTokenFile(T, f['token-file']);
   const { cfg, sites } = configSites(T);
   let url;
-  if (parsed.version === 2) {
-    if (parsed.install_id !== cfg.install_id || parsed.seat_id !== cfg.seat_id) refuse(`the token file is for ${parsed.install_id}/${parsed.seat_id}, and this seat is ${cfg.install_id}/${cfg.seat_id}: issue the token for this seat's pair: NOTHING WRITTEN`);
-    if (f.site && siteKey(ingestUrlOf(f.site)) !== siteKey(parsed.ingest_url)) refuse('--site disagrees with the token file\'s ingest_url: NOTHING WRITTEN');
-    url = parsed.ingest_url;
-  } else {
+  if (parsed.version === 1) {
     if (!f.site) refuse('a v1 token file carries no site: pass --site <url> with add-site: NOTHING WRITTEN');
     url = ingestUrlOf(f.site);
+  } else {
+    if (parsed.seat_id !== cfg.seat_id) refuse(`the token file is for seat ${parsed.seat_id}, and this seat is ${cfg.seat_id}: issue the token for this seat: NOTHING WRITTEN`);
+    if (f.site && siteKey(ingestUrlOf(f.site)) !== siteKey(parsed.ingest_url)) refuse('--site disagrees with the token file\'s ingest_url: NOTHING WRITTEN');
+    url = parsed.ingest_url;
   }
   if (sites.some((s) => typeof s.ingest_url === 'string' && siteKey(s.ingest_url) === siteKey(url))) refuse(`that site is already configured:\n${listing({ sites })}\nto replace its token, run install.js --token-file <path>: NOTHING WRITTEN`);
   let name = f['site-name'];
@@ -1887,7 +1889,7 @@ async function install(ctx) {
   if (!hasConfig) {
     step('values');
     const values = valuesFrom(ctx, readTokenFile(T, tokenFile));
-    say(`install_id ${values.install} · seat_id ${values.seat} · ${values.url}`);
+    say(`seat_id ${values.seat} · ${values.url}`);
     backup(ctx);
     resolver(ctx);
     identity(ctx);
@@ -1900,7 +1902,6 @@ async function install(ctx) {
     fresh = true;
   } else {
     const { cfg, sites } = configSites(T);
-    if (f['install-id'] && f['install-id'] !== cfg.install_id) refuse(`the config is for install_id ${cfg.install_id}, not ${f['install-id']}: NOTHING RUN`);
     if (f['seat-id'] && f['seat-id'] !== cfg.seat_id) refuse(`the config is for seat_id ${cfg.seat_id}, not ${f['seat-id']}: NOTHING RUN`);
     if (f.site && !sites.some((s) => typeof s.ingest_url === 'string' && siteKey(s.ingest_url) === siteKey(ingestUrlOf(f.site)))) refuse(`the config's sites do not include ${f.site}:\n${listing({ sites })}\nNOTHING RUN`);
     backup(ctx);
@@ -1930,7 +1931,7 @@ async function install(ctx) {
   return verdict;
 }
 
-const VALUE_FLAGS = ['token-file', 'site', 'seat-id', 'install-id', 'agent-name', 'ca-file', 'site-name', 'out', 'wrap'];
+const VALUE_FLAGS = ['token-file', 'site', 'seat-id', 'agent-name', 'ca-file', 'site-name', 'out', 'wrap'];
 const BOOL_FLAGS = ['no-board', 'uninstall', 'paths', 'render-shipping', 'prompt', 'help'];
 /* Each step alone, the by-hand fallback (INSTALL.md § By hand). */
 const STEPS = {

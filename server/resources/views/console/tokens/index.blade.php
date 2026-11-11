@@ -30,15 +30,15 @@
             @if ($tokenFileIngestUrl !== null)
                 {{-- card#12571, D6 § 4.2: `seat-token.js` builds the file in the browser from this button's
                      attributes and the token element's text; no request carries it. The button holds no
-                     copy of the token, and the script removes it on a back/forward-cache restore.
-                     `data-install-id` is the seat's room, `unassigned` for none (card#13117): the v2 file's
-                     `install_id` line, which this server never reads and an installer before the v3 file
-                     still requires (plan-13117-seat-identity.md § 8.1). --}}
+                     copy of the token, and the script removes it on a back/forward-cache restore. The file
+                     is v3 (card#13117): the seat id is the whole identity, so no room is written into it.
+                     The installer version named below is the ledger row that first reads v3
+                     (`fleet-reporter/UPDATES.md`); `tools/design/seat-token-file.selftest.mjs` holds the two equal. --}}
                 <p>
                     <button type="button" data-seat-token-save data-ingest-url="{{ $tokenFileIngestUrl }}"
-                            data-install-id="{{ $issued->installId }}" data-seat-id="{{ $issued->seatId }}">Save token file</button>
+                            data-seat-id="{{ $issued->seatId }}">Save token file</button>
                 </p>
-                <p>The button saves <code>mezzanine-reporter-token</code>: the token, this site's ingest URL and the seat's ids, the one file the reporter's installer needs. Tell the seat's Claude Code agent where you saved or copied it (it may be copied from another machine); the agent runs <code>node fleet-reporter/install.js --token-file &lt;that path&gt;</code>, which reads the file and removes it once the token is in the config (<code>fleet-reporter/AGENT-INSTALL.md</code>; what each step does: <code>fleet-reporter/INSTALL.md</code>). Do not paste the token to the agent. If you did not save it, revoke this prefix below and issue another.</p>
+                <p>The button saves <code>mezzanine-reporter-token</code>: the token, this site's ingest URL and the seat id, the one file the reporter's installer needs. It needs the installer of reporter version <code data-token-file-installer>0.7.0</code> or later; an older one refuses the file because it carries no <code>install_id</code> line, which exposes nothing: update the checkout and run the installer again. Tell the seat's Claude Code agent where you saved or copied it (it may be copied from another machine); the agent runs <code>node fleet-reporter/install.js --token-file &lt;that path&gt;</code>, which reads the file and removes it once the token is in the config (<code>fleet-reporter/AGENT-INSTALL.md</code>; what each step does: <code>fleet-reporter/INSTALL.md</code>). Do not paste the token to the agent. If you did not save it, revoke this prefix below and issue another.</p>
             @else
                 <p>This site's address (<code>APP_URL</code>) does not start with <code>https://</code>, and the reporter's installer accepts only an <code>https://</code> site (<code>fleet-reporter/INSTALL.md</code>), so this page offers no token file to save. Set <code>APP_URL</code> to the site's <code>https://</code> address to install a seat from here. If you did not copy the token, revoke this prefix below and issue another.</p>
             @endif
