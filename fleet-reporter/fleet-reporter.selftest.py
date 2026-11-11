@@ -5199,8 +5199,8 @@ eq("RED: on case E's box a reporter reading only the home path finds no roster, 
    (0, "pass", want(AT27_NAME, "unchecked", "pass", unchecked=1)), act(r_path))
 
 # RED — the name in the identity: `config_fingerprint` covering the declaration.
-P_FP = ("    .update(`${cfg.install_id}|${cfg.seat_id}|${site.ingest_url}`)",
-        "    .update(`${cfg.install_id}|${cfg.seat_id}|${site.ingest_url}|${cfg.protocol_agent_name}`)")
+P_FP = ("    .update(`${identityPair(cfg)}|${site.ingest_url}`)",
+        "    .update(`${identityPair(cfg)}|${site.ingest_url}|${cfg.protocol_agent_name}`)")
 at_pm = drive_at27(at27_box("at27-identity-pm", declare="pm", home=AT27_ROSTER))
 p_fp = plant(P_FP)
 r_fp = (drive_at27(at27_box("at27-identity-red-a", home=AT27_ROSTER), reporter=p_fp)["fingerprint"],
@@ -7415,7 +7415,7 @@ WRITER_DRIVER = r"""
 const m = require(process.argv[1]), fs = require('fs'), e = process.env;
 const opt = (k) => (k in e ? e[k] : undefined);
 const o = { mode: e.FR_MODE || '', config: e.FR_CONFIG, siteName: opt('FR_SITE_NAME'), url: opt('FR_URL'), caFile: opt('FR_CA_FILE'),
-  install: opt('FR_INSTALL'), seat: opt('FR_SEAT'), spool: opt('FR_SPOOL'), agent: opt('FR_AGENT'), wrapped: opt('FR_WRAPPED'),
+  seat: opt('FR_SEAT'), spool: opt('FR_SPOOL'), agent: opt('FR_AGENT'), wrapped: opt('FR_WRAPPED'),
   descriptors: opt('FR_DESCRIPTORS'), boardUser: opt('FR_BOARD_USER'), boardBase: opt('FR_BOARD_BASE'), liftName: opt('FR_LIFT_NAME') };
 (async () => {
   try {
@@ -8811,7 +8811,7 @@ os.chmod(pd, 0o700)
 pf = p_single(pd)
 orig = pf.read_bytes()
 base_env = {"FR_CONFIG": pf}
-r_nomode = run_writer({**base_env, "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm", "FR_URL": "https://x.example.test/api/ingest/events",
+r_nomode = run_writer({**base_env, "FR_SEAT": "aimla-pm", "FR_URL": "https://x.example.test/api/ingest/events",
                        "FR_SPOOL": pd / "spool"}, stdin=ISSUE_OUT(P_TOK2))
 eq("Case P: without FR_MODE an existing file is refused and unchanged", (1, orig), (r_nomode.returncode, pf.read_bytes()))
 r_add = run_writer({**base_env, "FR_MODE": "add-site", "FR_SITE_NAME": "sandbox",
@@ -8830,7 +8830,7 @@ refusals = {
     "duplicate URL": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://SANDBOX.example.test:443/api/ingest/events"},
     "malformed URL": {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://bad host/api/ingest/events"},
 }
-for k in ("FR_INSTALL", "FR_SEAT", "FR_SPOOL", "FR_AGENT", "FR_WRAPPED", "FR_DESCRIPTORS"):
+for k in ("FR_SEAT", "FR_SPOOL", "FR_AGENT", "FR_WRAPPED", "FR_DESCRIPTORS"):
     refusals[f"{k} set"] = {"FR_MODE": "add-site", "FR_SITE_NAME": "third", "FR_URL": "https://t.example.test/api/ingest/events", k: "x"}
 ref_out = {}
 for label, envx in refusals.items():
@@ -8839,14 +8839,14 @@ for label, envx in refusals.items():
         env_.pop("FR_REPORTER")
     r = run_writer(env_, stdin=ISSUE_OUT(P_TOK3))
     ref_out[label] = (r.returncode, pf.read_bytes() == after_add, no_tmp(pd), leaked(r, P_TOK1, P_TOK2, P_TOK3))
-eq("  … a duplicate name, a duplicate URL (by site key), a malformed URL, and each of the six seat keys set: each "
+eq("  … a duplicate name, a duplicate URL (by site key), a malformed URL, and each seat key set: each "
    "exits 1, the file unchanged, no temp file left, no planted token printed (the writer validates with the reporter "
    "beside it, so the runbook writer's missing-FR_REPORTER refusal has no counterpart)",
    {k: (1, True, True, False) for k in refusals}, ref_out)
 eq("  … and no planted token appeared on stdout or stderr of the add itself", False, leaked(r_add, P_TOK1, P_TOK2))
 fd_ = tmpdir("fr-at28-pf-")
 os.chmod(fd_, 0o700)
-r_fresh = run_writer({"FR_CONFIG": fd_ / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
+r_fresh = run_writer({"FR_CONFIG": fd_ / "config.json", "FR_SEAT": "aimla-pm",
                       "FR_URL": "https://prod.example.test/api/ingest/events", "FR_SPOOL": fd_ / "spool"}, stdin=ISSUE_OUT(P_TOK1))
 fresh = json.loads((fd_ / "config.json").read_text(encoding="utf-8"))
 eq("  … a fresh-install run writes sites: [{ name: \"default\", … }] with no top-level transport key",
@@ -9932,7 +9932,7 @@ cron_state(None)
 _cfg_dir = cr_home / ".config" / "fleet-reporter"
 _cfg_dir.mkdir(parents=True)
 os.chmod(_cfg_dir, 0o700)
-run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
+run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_SEAT": "aimla-pm",
             "FR_URL": "https://127.0.0.1:9/api/ingest/events", "FR_SPOOL": cr_home / "spool"}, stdin=ISSUE_OUT(P_TOK1))
 (cr_home / ".claude" / "settings.json").write_text('{"hooks": []}\n', encoding="utf-8")
 rf, cf, inf = inst("--no-board")
@@ -9949,7 +9949,7 @@ _carry_on = writer_path(WRITER_SRC.replace(_steps, "  try { hooks(ctx); } catch 
 cron_state(None)
 _cfg_dir.mkdir(parents=True)
 os.chmod(_cfg_dir, 0o700)
-run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_INSTALL": "aimla", "FR_SEAT": "aimla-pm",
+run_writer({"FR_CONFIG": _cfg_dir / "config.json", "FR_SEAT": "aimla-pm",
             "FR_URL": "https://127.0.0.1:9/api/ingest/events", "FR_SPOOL": cr_home / "spool"}, stdin=ISSUE_OUT(P_TOK1))
 (cr_home / ".claude" / "settings.json").write_text('{"hooks": []}\n', encoding="utf-8")
 rfr, cfr, infr = inst("--no-board", installer=_carry_on)
@@ -11352,6 +11352,192 @@ redgreen("a synthesized tool call carries the same bounds as an observed one (D1
          "tool.end with the same name; an odd-named close beside another open call synthesizes a phantom pair",
          "open and close both read through toolCallOf -> INVALID_TOOL_NAME (counted) and a null ref on the "
          "synthesized pair, an in-bound ref kept, and the odd-named close paired by lifo_tool_name")
+
+
+print("\n== 30. NO REPORTER PATH REQUIRES install_id (D1 § 3.1, plan-13117 § 8.1's T17, card#13117) ==")
+# A seat installed from a v3 token file has a config with no `install_id`. Every path of the reporter must work on
+# it — load, spool from a hook and the status line, heartbeat, send, persist a request and resend it after a
+# restart — while a config that has the key keeps sending it, byte for byte, under the same state.json binding.
+#
+# THE RESTART LEG IS THE ONE THAT ISOLATES. The build before card#13117 refuses such a config in `loadConfig`, so
+# it never reaches the flusher; the isolating build is THAT build with its loader alone made to accept the
+# config, read out of git history (`PRE_S6_BUILD`, the commit `dev` stood at when this slice branched). On it the
+# request persisted by one pass is refused by `readableRequest` at the next start, whose member set held
+# `install_id` exactly, and the site's epoch resets: the batch is never resent. A shallow checkout without that
+# commit reports the leg NOT MEASURED (CI fetches full history, and fails the run instead).
+PRE_S6_BUILD = "8718ea869b7365cefba50d9f949fba7ba1afad1f"
+_pre_s6 = subprocess.run(["git", "-C", str(HERE), "show", f"{PRE_S6_BUILD}:fleet-reporter/fleet-reporter.js"],
+                         capture_output=True, text=True)
+LOADER_ONLY = ("  if (!SLUG_INSTALL.test(str('install_id') || '')) errors.push",
+               "  if (c.install_id !== undefined && !SLUG_INSTALL.test(str('install_id') || '')) errors.push")
+T17_AT = rig_clock_ms()
+T17_RETRY_MS = 15 * 60_000                       # past the first retry's backoff, inside the hour the rig sits in
+
+
+def build_from(src: str, *subs: tuple) -> Path:
+    """A reporter built from `src` (another revision's text) with each (old, new) applied; an anchor that does not
+    match raises, so a plant can never be vacuous."""
+    d = tmpdir("fr-t17-build-")
+    shutil.copytree(HERE / "fixtures", d / "fixtures")
+    for old, new in subs:
+        if old not in src:
+            raise AssertionError(f"plant anchor not found (the RED would be vacuous): {old[:70]!r}")
+        src = src.replace(old, new, 1)
+    p = d / "fleet-reporter.js"
+    p.write_text(src, encoding="utf-8")
+    return p
+
+
+def t17_seat(name: str, ing: Ingest, *, room: bool) -> Seat:
+    s = seat(name, ingest=ing.url, ca=str(ing.crt))
+    if not room:
+        s.cfg.pop("install_id")
+        s.write_cfg()
+    return s
+
+
+def restart_leg(name: str, reporter: Path) -> dict:
+    """A v3 seat: a hook, a pass whose POST the site answers 503 (the request stays persisted), then a NEW flusher
+    process on the same state.json, with the site answering. What was persisted, and whether it was resent."""
+    ing = Ingest(tmpdir("fr-t17-ingest-"))
+    try:
+        s = t17_seat(name, ing, room=False)
+        hook(s, "PreToolUse", pre(tuid=f"t17-{name}"), reporter=reporter, FLEET_REPORTER_NOW_MS=T17_AT)
+        ing.status = 503
+        fl(s, T17_AT, reporter=reporter)
+        e1 = s.entry()
+        req = e1.get("request") or {}
+        n = len(ing.batches)
+        ing.status = 202
+        fl(s, T17_AT + T17_RETRY_MS, reporter=reporter)
+        e2 = s.entry()
+        after = [b["batch"] for b in ing.batches[n:]]
+        return {"tried": n >= 1, "pending": bool(req.get("batch_id")), "pending_install_id": "install_id" in req,
+                "resent": any(b.get("batch_id") == req.get("batch_id") for b in after),
+                "epoch_same": bool(e1.get("seq_epoch")) and e1.get("seq_epoch") == e2.get("seq_epoch")}
+    finally:
+        ing.stop()
+
+
+GOOD_RESTART = {"tried": True, "pending": True, "pending_install_id": False, "resent": True, "epoch_same": True}
+t17_g = restart_leg("t17-restart", REPORTER)
+eq("T17: a v3 config (no install_id): a request the site answered 503 stays persisted without the key, and a flusher "
+   "restart resends that same batch under the same seq_epoch", GOOD_RESTART, t17_g)
+if _pre_s6.returncode != 0:
+    (bad if os.environ.get("CI") else skip)(
+        f"T17's isolating build needs the build before card#13117 S6 from git history ({PRE_S6_BUILD[:8]}), which this "
+        "checkout lacks — NOT measured, and that is not a pass")
+    t17_r = None
+else:
+    t17_r = restart_leg("t17-restart-red", build_from(_pre_s6.stdout, LOADER_ONLY))
+    eq("RED: the build before card#13117 with its loader alone accepting the config persists the request, and at the "
+       "restart `readableRequest` refuses it: the epoch resets and the batch is never resent",
+       (True, True, False, False), (t17_r["tried"], t17_r["pending"], t17_r["resent"], t17_r["epoch_same"]))
+
+
+def presence_leg(reporter: Path) -> dict:
+    """Two seats, one config with install_id and one without, each through a hook, the status line and a pass: for
+    each, whether every envelope and every event carried the key, whether none did, and what was spooled."""
+    ing = Ingest(tmpdir("fr-t17-presence-"))
+    out = {}
+    try:
+        for room in (True, False):
+            s = t17_seat(f"t17-presence-{'v2' if room else 'v3'}-{reporter.parent.name}", ing, room=room)
+            n = len(ing.batches)
+            hook(s, "PreToolUse", pre(tuid=f"t17p{room}"), reporter=reporter)
+            statusline(s, {"session_id": SID, "context_window": {"used_percentage": 41.0, "total_input_tokens": 82000,
+                                                                 "context_window_size": 200000}}, reporter=reporter)
+            kinds = sorted({e["kind"] for e in s.events()})
+            fl(s, reporter=reporter)
+            sent = [b["batch"] for b in ing.batches[n:]]
+            things = sent + [e for b in sent for e in b.get("events", [])]
+            out["v2" if room else "v3"] = {
+                "spooled": kinds, "sent": len(sent) >= 1,
+                "all_carry": bool(things) and all(t.get("install_id") == "aimla" for t in things),
+                "none_carry": bool(things) and all("install_id" not in t for t in things)}
+    finally:
+        ing.stop()
+    return out
+
+
+SPOOLED = ["context.sample", "tool.start"]
+GOOD_PRESENCE = {"v2": {"spooled": SPOOLED, "sent": True, "all_carry": True, "none_carry": False},
+                 "v3": {"spooled": SPOOLED, "sent": True, "all_carry": False, "none_carry": True}}
+eq("T17: a hook and the status line spool on a config with no install_id, and the envelope and every event carry the "
+   "key exactly when the config has it", GOOD_PRESENCE, presence_leg(REPORTER))
+P_ALWAYS = ("  ? { seat_id: src.seat_id } : { install_id: src.install_id, seat_id: src.seat_id });",
+            "  ? { install_id: 'unassigned', seat_id: src.seat_id } : { install_id: src.install_id, seat_id: src.seat_id });")
+P_NEVER = ("  ? { seat_id: src.seat_id } : { install_id: src.install_id, seat_id: src.seat_id });",
+           "  ? { seat_id: src.seat_id } : { seat_id: src.seat_id });")
+t17_always, t17_never = presence_leg(plant(P_ALWAYS)), presence_leg(plant(P_NEVER))
+eq("RED: a build writing `unassigned` for an absent install_id (§ 11's declined closure) sends the key on the v3 seat",
+   False, t17_always["v3"]["none_carry"])
+eq("RED: a build that never sends install_id drops it from the seat whose config has it", False, t17_never["v2"]["all_carry"])
+
+
+def binding_leg(old: Path, new: Path) -> dict:
+    """A config with install_id, run one pass by `old` and one by `new`: the state.json identity binding and epoch."""
+    ing = Ingest(tmpdir("fr-t17-binding-"))
+    try:
+        s = t17_seat(f"t17-binding-{new.parent.name}", ing, room=True)
+        hook(s, "PreToolUse", pre(tuid="t17b1"), reporter=old)
+        fl(s, reporter=old)
+        b1 = s.entry()
+        hook(s, "PreToolUse", pre(tuid="t17b2"), reporter=new)
+        fl(s, reporter=new)
+        b2 = s.entry()
+        return {"bound": bool(b1.get("identity_sha256")), "binding_same": b1.get("identity_sha256") == b2.get("identity_sha256"),
+                "epoch_same": bool(b1.get("seq_epoch")) and b1.get("seq_epoch") == b2.get("seq_epoch"),
+                "reset_logged": "names another identity pair" in seat_log(s)}
+    finally:
+        ing.stop()
+
+
+if t17_r is not None:
+    PRE = build_from(_pre_s6.stdout)
+    eq("T17: a config with install_id upgraded in place keeps its state.json identity binding and its seq_epoch",
+       {"bound": True, "binding_same": True, "epoch_same": True, "reset_logged": False}, binding_leg(PRE, REPORTER))
+    t17_b_red = binding_leg(PRE, plant(("const identityPair = (cfg) => `${cfg.install_id === undefined ? '' : cfg.install_id}|${cfg.seat_id}`;",
+                                        "const identityPair = (cfg) => `${cfg.seat_id}`;")))
+    eq("RED: a build that hashes the seat_id alone moves an upgraded seat's binding, and its start resets the epoch",
+       (False, False, True), (t17_b_red["binding_same"], t17_b_red["epoch_same"], t17_b_red["reset_logged"]))
+
+# THE GREP LEG. The behavioural legs reach the hook and status-line gates only for the two configs they drive; this
+# leg reaches every line. Its population is every line of the reporter outside a comment that names `install_id`,
+# grouped by the top-level declaration it sits in, and the permitted declarations are the four this card left:
+# the identity primitives (`seatIdentity` on the wire, `identityPair` under the two hashes), `parseConfig`'s pattern
+# check and `readableRequest`'s shape check. It cannot see a read that does not spell the key (a computed member).
+INSTALL_ID_READERS = {"seatIdentity", "identityPair", "parseConfig", "readableRequest"}
+
+
+def install_id_reads(src: str) -> list:
+    out, decl = [], "<module>"
+    for line in src.splitlines():
+        m = TOP_DECL_RE.match(line)
+        if m:
+            decl = m.group(1) or m.group(2)
+        code = line.split("//", 1)[0]
+        if code.lstrip().startswith(("*", "/*")):
+            continue
+        if re.search(r"\binstall_id\b", code):
+            out.append(decl)
+    return out
+
+
+t17_reads = install_id_reads(REPORTER.read_text(encoding="utf-8"))
+eq("T17: every read of install_id in the reporter is one of the permitted shapes", [],
+   sorted(set(t17_reads) - INSTALL_ID_READERS))
+eq("  … and the leg sees the permitted ones (a selector that found nothing would pass the line above)",
+   INSTALL_ID_READERS, set(t17_reads))
+if _pre_s6.returncode == 0:
+    t17_old_reads = set(install_id_reads(_pre_s6.stdout)) - INSTALL_ID_READERS
+    eq("RED: on the build before card#13117 the grep leg finds the reads it forbids, the hook gate among them",
+       (True, True), (bool(t17_old_reads), "hookMain" in t17_old_reads))
+redgreen("no reporter path requires install_id (plan-13117 § 8.1, T17)",
+         f"the build before card#13117 with its loader alone accepting a v3 config -> "
+         f"{t17_r if t17_r is not None else 'NOT MEASURED (no history)'}; a build writing `unassigned` for an absent "
+         f"key -> v3 events carry it; a build hashing seat_id alone -> {t17_b_red if t17_r is not None else 'n/a'}",
+         f"restart -> {t17_g}; every install_id read in {sorted(INSTALL_ID_READERS)}")
 
 
 print("\n== 21. THE RUN LEAVES NO FLUSHER DAEMON BEHIND (card#7976) ==")

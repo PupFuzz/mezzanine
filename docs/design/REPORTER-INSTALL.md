@@ -52,7 +52,7 @@ claude on macos"*).
    the config is verified ([§ 4](#4-the-token-file-contract)). An argument that is really the token
    is refused by name and the token treated as exposed.
 4. **The Seat tokens page gains a *Save token file* button** writing the v2 file client-side with the
-   ingest URL, install id and seat id, so the installer derives the identity and asks nothing else.
+   ingest URL and seat id (⭐ card#13117: v3, the seat alone), so the installer derives the identity and asks nothing else.
 5. **The same end state on every OS, idempotent; one command installs, re-checks and upgrades;
    `--uninstall` reverses it.** Supervision per OS: the user crontab on Linux, byte-identical to
    today's block; a user `launchd` agent on macOS for a seat at a GUI login; nothing on Windows
@@ -115,7 +115,7 @@ by-hand fallback and the installer are the same code:
 | Part | What it holds |
 |---|---|
 | platform table | keyed on `process.platform`: artifact, config, spool, attempt-directory and settings paths — D1 § 2.1/3.1's values, with `os.homedir()` as the profile on every OS (Git Bash's `$HOME` is never read, `INSTALL-LINUX.md:2236`); the supervisor kind; the owner-only mechanism (`chmod` 0700/0600 on POSIX, the ACL helper on `win32` — today's `acl-only-me.js`, carried into `install.js` as a function) |
-| `token-file` parser | **one** parser for v1 and v2 ([§ 4.2](#42-the-page-writes-the-file-v2)), used by the pre-read of `--token-file` and by the config write — the only reader of the file's bytes, and it never prints them |
+| `token-file` parser | **one** parser for v1, v2 and v3 ([§ 4.2](#42-the-page-writes-the-file-v3)), used by the pre-read of `--token-file` and by the config write — the only reader of the file's bytes, and it never prints them |
 | config writer | today's `write-config.js` logic (`INSTALL-LINUX.md:568-758`) as a function: first write, `set-token`, `add-site`, `remove-site`, `set-descriptors`, the statusLine wrap's `wrapped_statusline`; every result validated with **the checkout's** `fleet-reporter.js` `loadConfig` (`fleet-reporter.js:5303` exports it) — the build about to be installed, never the artifact already on the seat, which an upgrade is replacing |
 | atomic write | **the reporter's own `atomicWrite`** (`fleet-reporter.js:833-862`: a unique temp beside the target, `wx` 0600, optional `fsync`, `rename`), **extended and exported** rather than a second primitive beside it: it gains a `keepMode` option (the target's existing mode, read before the write, applied to the temp) and, on `win32`, a bounded retry of the `rename` on `EPERM`/`EBUSY`, which an antivirus or indexer holding the target raises. The installer uses it for the settings file, the artifact, the config and the plist, writing beside `realpath`'s answer so a symlinked settings file stays a symlink. Today's blocks each spell the temp-and-rename on their own — the derivation is `grep -c 'renameSync' fleet-reporter/INSTALL-LINUX.md`, every hit a copy (the to-do key's removal at `INSTALL-LINUX.md:2104` and its set at `:1324` among them) — and the reporter's own `win32` state writes go through `atomicWrite` with **no** such retry today, so an indexer holding `state.json` loses that pass's save: a sibling of the same shape, named here for the build (canon #7), not fixed by this design |
 | exports | `cronLine(platform, inputs)`, `launchdPlist(inputs)`, `hookCommand(platform, artifactPath)`, `writeConfig(…)`, `parseTokenFile(bytes)`, `parseIssueOutput(text)`, `siteKey(url)`, `atomicWrite` — for the reporter's acceptance suite and the version guard ([§ 3.3](#33-what-the-old-guards-protected-preserved-by-other-means)); **`main` runs only under a `require.main === module` guard**, so a `require` of the file runs nothing |
@@ -133,7 +133,7 @@ installer are one code path:
 
 | Invocation | Steps, in order |
 |---|---|
-| `node install.js --token-file <path> [--site <url> --seat-id <id> [--install-id <id>]] [--agent-name] [--ca-file] [--no-board]` | `prereqs`, `backup`, `values` (from the file, or the flags for a v1 file), `resolver`, `identity`, `board-identity`, `token-take` ([§ 4.3](#43-the-take-rule)), `token-config`, `config-check`, then the install below. With a config present it is the **rotation** ([§ 4.5](#45-rotation)) |
+| `node install.js --token-file <path> [--site <url> --seat-id <id>] [--agent-name] [--ca-file] [--no-board]` | `prereqs`, `backup`, `values` (from the file, or the flags for a v1 file), `resolver`, `identity`, `board-identity`, `token-take` ([§ 4.3](#43-the-take-rule)), `token-config`, `config-check`, then the install below. With a config present it is the **rotation** ([§ 4.5](#45-rotation)) |
 | `node install.js [values]` | `prereqs`, `backup`, `artifact` (compare, then install), `resolver`, `board-identity`, `hooks`, `todo-tools`, `supervisor`, `holder`/`restart` when owed, `config-check`, `selftest`, `health`, `arrival`, `ancestry`. With no config: refuses, naming `--token-file` |
 | `node install.js <step> [args]` | that step alone, the by-hand fallback `INSTALL.md` describes |
 | `node install.js add-site --token-file <path> [--site <url>] [--ca-file <path>] [--site-name <n>]` · `remove-site <name>` | today's *Adding a site* and *Removing one site* (`INSTALL-LINUX.md:794-844`, `:2148-2168`). `add-site` runs **`token-take` and the default removal exactly as the main invocation does** ([§ 4.3](#43-the-take-rule)); a v2 file's identity must equal the config's and its `ingest_url` must match no configured site; a v1 file **requires `--site`**, since it carries none; `--ca-file` sets the new site's `ca_file` as the main invocation's does; then the writer's `add-site` mode and the flusher restart. `remove-site` refuses the last site and restarts |
@@ -336,7 +336,7 @@ and the issue-command pipe become `install.js issue-file` ([§ 3.1](#31-fleet-re
 by-hand ways to produce a **v1** file for a seat with no browser download; the installer takes either
 file by path.
 
-### 4.2 The page writes the file: v2
+### 4.2 The page writes the file: v3
 
 The issue response alone carries the plaintext (`SeatTokenController.php`, *SHOW-ONCE IS THE POST'S
 OWN 200*). The button is in `seat-token.js`, builds a `Blob` of type `application/octet-stream` from
@@ -350,18 +350,25 @@ can neither show nor save it. The ingest URL is rendered server-side into `data-
 ```
 token mzn_<43 chars>
 ingest_url https://<host>/api/ingest/events
-install_id <slug>
 seat_id <slug>
 ```
 
-LF line endings, no carriage return, no trailing whitespace. **v1** is today's bare one-line token
-(`INSTALL-LINUX.md:889-901`). **One parser** accepts both: v1 by the writer's `FILE_TOKEN` rule; v2 as
-exactly those four keys, once each, in any order, `\r` anywhere refused by name, `ingest_url` an
-`https://` URL ending `/api/ingest/events`, the slugs by D1 § 3.1; anything else refused by name,
-content never printed. The installer derives the identity from a v2 file and refuses a flag that
-disagrees with it. The producer and the consumer are in this repository: the contract is declared
+LF line endings, no carriage return, no trailing whitespace. ⭐ **card#13117: the file is v3**, the
+three keys above; until that card the page saved **v2**, the same keys and an `install_id <slug>` line,
+and the identity was the pair. A seat is now known by its `seat_id` alone (`plan-13117-seat-identity.md`
+§ 3, § 8.1), so the page writes no room into the file. **v1** is today's bare one-line token
+(`INSTALL-LINUX.md:889-901`). **One parser** accepts all three: v1 by the writer's `FILE_TOKEN` rule; v3
+as exactly those three keys and v2 as those three and `install_id`, once each, in any order, `\r`
+anywhere refused by name, `ingest_url` an `https://` URL ending `/api/ingest/events`, the slugs by D1
+§ 3.1; anything else refused by name, content never printed. A v2 file's `install_id` is held to its
+pattern and discarded, so a file saved before the site's upgrade still installs and the config never
+carries a room. The installer derives the identity from a v3 or v2 file — `seat_id` alone — and refuses a
+flag that disagrees with it; `--install-id` is no longer a flag. The page names the installer version
+that first reads v3 beside the button, because an older installer refuses the file, by name (*carries no
+install_id line*). The producer and the consumer are in this repository: the contract is declared
 here and in D1 § 3.1 ([§ 11](#11-the-amendment-ledger) row 2) and checked by one test that drives the
-button's blob through the parser (R-srv-1).
+button's blob through the parser, and holds the installer version the page names to the ledger row that
+first reads v3 (R-srv-1, `tools/design/seat-token-file.selftest.mjs`).
 
 ### 4.3 The take rule
 
@@ -404,7 +411,8 @@ With a config present, `--token-file` rotates. The file's `ingest_url` is the pa
 and is not normalised; **each configured site's `ingest_url` is reduced by the exported `siteKey`**
 — scheme and host lower-cased, a trailing `/` dropped, `/api/ingest/events` appended to a bare origin
 — and the file's URL, passed through the same `siteKey`, must equal exactly one of them, with
-`install_id` and `seat_id` equal to the config's; that site is rotated, and `--site-name`, if given,
+`seat_id` equal to the config's (⭐ card#13117: the identity is the seat alone, so a v2 file's `install_id`
+is compared with nothing and a seat moved to another room rotates); that site is rotated, and `--site-name`, if given,
 must name it. **A mismatch is refused with a listing**: the file's identity and every configured
 site's name and URL, and the pointer to `install.js add-site` — because writing site B's token into
 site A's entry has A refuse every batch and quarantine them (D1 § 11.5). A v1 file rotates
@@ -418,8 +426,7 @@ to revoke the old prefix. The suite imports `siteKey` rather than re-spelling it
 ```
 User:  Install the Mezzanine reporter from https://github.com/PupFuzz/mezzanine
 Agent: One thing I need from you: on the site, open Admin → Seat tokens, issue a token for this seat —
-       type install id "<account name, as a slug>" and seat id "<host name, lower-cased>" unless you
-       want other names — click "Save token file", and tell me where you saved or copied the file on
+       type seat id "<host name, lower-cased>" unless you want another name — click "Save token file", and tell me where you saved or copied the file on
        this machine (usually ~/Downloads/mezzanine-reporter-token). Don't paste the token itself; the
        file is removed once the token is in the config.
 User:  ~/Downloads/mezzanine-reporter-token
@@ -449,9 +456,9 @@ launchctl reports pid 8812 = flusher.lock`.
 `--uninstall`, then the operator revokes the prefixes it prints.
 
 **`AGENT-INSTALL.md`** states the five moves and three mechanical facts. **The identity the agent
-proposes**: the install id is the account name as a slug (`install.sh:195`'s derivation) and the
-seat id the host name lower-cased, offered for the user to type on the Seat tokens page, since the
-page is where the pair is first fixed. **The run time**, derived from the installer's own bounds:
+proposes**: the seat id, the host name lower-cased, offered for the user to type on the Seat tokens
+page, since the page is where it is first fixed (⭐ card#13117: the room is the admin console's, never
+the installer's). **The run time**, derived from the installer's own bounds:
 `restart`'s wait for the supervisor (70 s today, `INSTALL-LINUX.md:1937`) + `arrival`'s window
 (`FR_WAIT_S=150`, `:1760`) + one 15 s request timeout per site for `selftest`'s probe and one for
 `health` (`:2001`, D1 § 3.5) — over four minutes on one site before the artifact copy and the hook
@@ -505,7 +512,7 @@ says; **all** = the three runners, **lin/win/mac** = that runner, **seat** = the
 | # | RED | Where |
 |---|---|---|
 | R-all-1 | `--paths` equals D1 § 2.1/3.1's rows for the running OS, read out of D1 by the test | all |
-| R-all-2 | an argument matching the token shape ⇒ exit 1, nothing written, no token printed; a two-token, empty, CR-bearing, fifth-key, repeated-key, non-https, bad-slug file ⇒ refused by name, content never printed; a v2 file disagreeing with a flag ⇒ refused; a v1 file with no `--site`/`--seat-id` ⇒ refused naming both | all |
+| R-all-2 | an argument matching the token shape ⇒ exit 1, nothing written, no token printed; a two-token, empty, CR-bearing, fifth-key, repeated-key, non-https, bad-slug file, and a v3 file with a fourth key or no `seat_id`, ⇒ refused by name, content never printed; a v2 or v3 file disagreeing with a flag ⇒ refused; a v1 file with no `--site`/`--seat-id` ⇒ refused naming both; ⭐ card#13117: a v3 and a v2 file parse to one shape with no `install_id`, `--install-id` is refused as unknown, and `token-take` then `token-config` with either writes a config with no `install_id` | all |
 | R-all-3 | a symlink, a directory, a file another account owns ⇒ refused before any read | all |
 | R-all-4 | the take rule: a file nobody else could reach ⇒ no warning; group-readable in a traversable chain ⇒ warning naming group, the window from `birthtime`/`ctime` (a copy with an old `mtime` still reports the copy's age), the accounts; a file already at the named path ⇒ not moved; after every take the named file is 0600 in 0700 (POSIX) or owner-only (win), and the config write passes; the file is gone afterwards | all |
 | R-all-5 | the token in no stdout, stderr, argv or environment of any spawned process — strace on lin; *not measured* recorded on win/mac | lin (+ recorded elsewhere) |
@@ -523,7 +530,7 @@ says; **all** = the three runners, **lin/win/mac** = that runner, **seat** = the
 | R-all-15 | `install.sh --set-token …` ⇒ refused naming `--token-file`, nothing run; `install.sh` with any other arguments ⇒ `install.js` runs with them | lin mac |
 | R-win-4 | a roaming profile (stub `roaming true`) ⇒ refused by name before anything is written, as W1 does today (`INSTALL-LINUX.md:2401-2402`) | win |
 | R-all-8 | hooks: the user's entries and every other key survive byte-equal; the path quoted on win; `todo-tools` set/kept with its marker; board identity from the stub board | all |
-| R-all-9 | rotation: a v2 file matching no site ⇒ refused with the listing, config byte-equal; matching B with `--site-name A` ⇒ refused; matching B alone, or by a URL differing only in case or a trailing slash ⇒ B rotated and A untouched; mismatched identity ⇒ refused | all |
+| R-all-9 | rotation: a v3 file matching no site ⇒ refused with the listing, config byte-equal; matching B with `--site-name A` ⇒ refused; matching B alone, or by a URL differing only in case or a trailing slash ⇒ B rotated and A untouched; mismatched `seat_id` ⇒ refused; ⭐ card#13117: a v2 file naming another room for this seat ⇒ B rotated, every other key unchanged | all |
 | R-all-10 | `--uninstall` with a foreign hook entry added after the install, a `statusLine` the user set later, and (lin) a foreign crontab line added outside the block after the install: the reporter's entries (by the parsed comparison) and its to-do key gone, the foreign entry and the user's `statusLine` kept; the config removed before the stop; the crontab holds the foreign line and no block, and the `flock` file is gone (lin); `bootout` called and the plist file absent (mac); every config backup and token file gone from every attempt directory while this run's settings and crontab/plist backups remain; one prefix line per site | all |
 | R-all-11 | `reporter-version-guard.py`: a file added to or changed in the `artifact` region's list, or a `--render-shipping` output that differs base-versus-head, with `REPORTER_VERSION` unmoved ⇒ FAIL naming the touch (`artifact`/`fixtures`/`hooks`/`supervisor`); moved with the row ⇒ PASS | all |
 | R-all-12 | `AGENT-INSTALL.md` holds verbatim the `mzn_` rule and the timeout sentence (prose rules no guard sees otherwise) | all |
@@ -537,7 +544,7 @@ says; **all** = the three runners, **lin/win/mac** = that runner, **seat** = the
 | R-mac-2 | ancestry: a planted lock pid that `launchctl print` does not report ⇒ UNVERIFIED, never FAIL (the step is informational); reported ⇒ PASS; on the seat: `kill -9` recovery and no stacking under `StartInterval` | mac + seat |
 | R-mac-3 | flusher control on darwin: a reused pid refused, a holder started before the artifact ⇒ FAIL, a stand-in not running the artifact refused | mac |
 | R-mac-4 | no `gui/<uid>` domain (stub) ⇒ refused by name before anything is written | mac |
-| R-srv-1 | the Save button: absent on an `http:` page; present on `https:`, its blob is v2 with the `app.url`-rendered ingest URL, LF only, `application/octet-stream`, parsed by the installer's parser; absent after a `pageshow` restore; the plaintext in no URL, session row or log line (the existing `seat-token.browser.mjs` walk gains the clicks) | server |
+| R-srv-1 | the Save button: absent on an `http:` page; present on `https:`, its blob is v3 (⭐ card#13117; v2 before it) with the `app.url`-rendered ingest URL, LF only, `application/octet-stream`, parsed by the installer's parser; the installer version the page names is the ledger row that first reads v3; absent after a `pageshow` restore; the plaintext in no URL, session row or log line (the existing `seat-token.browser.mjs` walk gains the clicks) | server |
 
 ## 8. Risks, by name
 
@@ -578,7 +585,7 @@ All of 2026-10-29, recorded as decided; nothing gates the build.
 | Question | Answer (verbatim) | Where it lands |
 |---|---|---|
 | Q1 macOS supervision: (A) user `launchd` agent, (B) crontab without `flock`, (C) hooks only | **A** | [§ 3.4](#34-supervision-per-os) |
-| Q2 the Seat tokens page gains *Save token file* and keeps showing the plaintext | **yes, both** | [§ 4.2](#42-the-page-writes-the-file-v2) |
+| Q2 the Seat tokens page gains *Save token file* and keeps showing the plaintext | **yes, both** | [§ 4.2](#42-the-page-writes-the-file-v3) |
 | Q3 the token file is removed by default | **yes, by default** | [§ 4.3](#43-the-take-rule); no keep flag |
 | Q4 a token file other accounts could have read | **accept with warning** — covers a saved and a copied file alike | [§ 4.3](#43-the-take-rule); ledger row 12 |
 | Q5 `install.sh` becomes a shim for one release | **yes** | [§ 3.6](#36-upgrading-an-existing-seat-in-place) |

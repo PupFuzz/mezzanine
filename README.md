@@ -521,8 +521,8 @@ interim pixel people that came with an earlier port of munder-difflin's generato
 tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's **body** —
 which creature it is — is allocated by the server when the seat is created, one no other live seat
 holds while there are enough to go round, and kept for the seat's life (`docs/design/FLEET-STATE.md
-§ 6.13`, card#12443); everything else about its appearance is a pure function of `(install_id,
-seat_id)`. Both are the same on every browser.
+§ 6.13`, card#12443); everything else about its appearance is a pure function of its
+`seat_id`. Both are the same on every browser.
 
 Two CI gates enforce the licence claim rather than leaving it to discipline: **every asset
 needs a provenance row** — hash, SPDX from a closed allowlist, and an `origin` of `first-party`

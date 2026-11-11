@@ -9,7 +9,8 @@ REDs plant their own defect in a copy and need no outside plant; those say so wh
 
   R-all-1   `--paths` equals D1 § 2.1 / § 3.1's rows for this OS, read out of D1 here.
   R-all-2   a token-shaped argument, and every malformed token file, refused by name, nothing written, nothing
-            printed of the content; a v2 file disagreeing with a flag; a v1 file with no --site/--seat-id.
+            printed of the content; a v2 or v3 file disagreeing with a flag; a v1 file with no --site/--seat-id;
+            a v3 file and a v2 file parse to one shape, the v2 file's install_id discarded (card#13117, plan T16).
   R-all-3   a symlink, a directory and a file another account owns, refused before any read.
   R-all-4   the take rule: no warning for a file nobody else could reach; a warning naming the directory, the
             window from birthtime/ctime (an old mtime does not hide a new copy) and the principals for a
@@ -20,7 +21,8 @@ REDs plant their own defect in a copy and need no outside plant; those say so wh
             (Windows): artifact first, the stop second, the holder check PASS; a flusher that read the previous
             artifact just before the install and took the lock after it is the previous build (card#12476).
   R-all-8   the user's hooks and keys survive; the to-do tools key and its marker; the board declaration.
-  R-all-9   rotation: no matching site, a --site-name naming another, a case-only URL difference, identity.
+  R-all-9   rotation: no matching site, a --site-name naming another, a case-only URL difference, identity — the
+            identity is the seat_id alone, so a v2 file naming another room rotates (card#13117, plan T16).
   R-all-10  uninstall: the reporter's entries by the parsed comparison, the user's kept, the config before the
             stop, the crontab block / plist, the secrets out of every attempt directory, the prefixes.
   R-all-12  AGENT-INSTALL.md holds the mzn_ rule and the timeout sentence verbatim.
@@ -494,9 +496,12 @@ def reap() -> None:
         p.wait()
 
 
-def write_v2(path: Path, tok: str, url: str, install_id: str, seat_id: str, mode: int = 0o600) -> Path:
+def write_token_file(path: Path, tok: str, url: str, seat_id: str, *, install_id: "str | None" = None, mode: int = 0o600) -> Path:
+    """A keyed token file: v3, what the Seat tokens page saves since card#13117, or v2 — v3 and an `install_id`
+    line, what it saved before — when `install_id` is given."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(f"token {tok}\ningest_url {url}\ninstall_id {install_id}\nseat_id {seat_id}\n".encode())
+    room = f"install_id {install_id}\n" if install_id is not None else ""
+    path.write_bytes(f"token {tok}\ningest_url {url}\n{room}seat_id {seat_id}\n".encode())
     if not IS_WIN:
         os.chmod(path, mode)
     return path
@@ -547,17 +552,32 @@ try:
             "a non-https URL": f"token {T0}\ningest_url http://h.test/api/ingest/events\ninstall_id ab\nseat_id cd\n",
             "a bad slug": f"token {T0}\ningest_url https://h.test/api/ingest/events\ninstall_id AB\nseat_id cd\n",
             "trailing whitespace": f"token {T0} \ningest_url https://h.test/api/ingest/events\ninstall_id ab\nseat_id cd\n",
+            "a fourth key beside v3's three": f"token {T0}\ningest_url https://h.test/api/ingest/events\nseat_id cd\nextra x\n",
+            "no seat_id": f"token {T0}\ningest_url https://h.test/api/ingest/events\ninstall_id ab\n",
         }
         # BY NAME: each refusal names its own rule, so a rule disabled is a refusal that names another, and reds.
         names = {"two tokens": "line 1 is not one", "empty": "is empty", "a carriage return": "carriage return",
                  "a fifth key": "line 5 carries a key", "a repeated key": "token more than once",
                  "a non-https URL": "ingest_url is not an https://", "a bad slug": "install_id fails",
-                 "trailing whitespace": "line 1 is not one"}
+                 "trailing whitespace": "line 1 is not one", "a fourth key beside v3's three": "line 4 carries a key",
+                 "no seat_id": "carries no seat_id line"}
         r = node_eval("const m=require(process.argv[1]); const out={}; for (const [k,v] of Object.entries(JSON.parse(process.argv[2]))) { try { m.parseTokenFile(v); out[k]='ACCEPTED'; } catch (e) { out[k]=e.message; } } console.log(JSON.stringify(out));", json.dumps(bad))
         got = json.loads(r.stdout or "{}")
-        check("R-all-2", "the parser refuses a two-token, empty, CR-bearing, fifth-key, repeated-key, non-https, bad-slug and "
-              "trailing-whitespace file, each naming its own rule, and no message carries the token",
+        check("R-all-2", "the parser refuses a two-token, empty, CR-bearing, fifth-key, repeated-key, non-https, bad-slug, "
+              "trailing-whitespace, fourth-key-on-v3 and no-seat_id file, each naming its own rule, and no message carries the token",
               set(got) == set(bad) and all(names[k] in v and T0 not in v for k, v in got.items()), json.dumps(got, indent=1))
+        # T16 (plan-13117 § 8.1): the page's v3 file, and the v2 file it saved before, parse to ONE shape — the
+        # identity is seat_id alone, and a v2 file's install_id reaches nothing downstream to be compared with.
+        forms = {"v3": f"seat_id cd\ntoken {T0}\ningest_url https://h.test/api/ingest/events\n",
+                 "v2": f"token {T0}\ningest_url https://h.test/api/ingest/events\ninstall_id ab\nseat_id cd\n"}
+        r = node_eval("const m=require(process.argv[1]); const out={}; for (const [k,v] of Object.entries(JSON.parse(process.argv[2]))) "
+                      "{ try { const p=m.parseTokenFile(v); out[k]={version:p.version, keys:Object.keys(p).sort(), seat:p.seat_id, url:p.ingest_url, tok:p.token===JSON.parse(process.argv[3])}; } "
+                      "catch (e) { out[k]=e.message; } } console.log(JSON.stringify(out));", json.dumps(forms), json.dumps(T0))
+        got = json.loads(r.stdout or "{}")
+        shape = {"keys": ["ingest_url", "seat_id", "token", "version"], "seat": "cd", "url": "https://h.test/api/ingest/events", "tok": True}
+        check("R-all-2", "T16: a v3 file (any key order) parses as version 3, and a v2 file as version 2, to the same members — "
+              "token, ingest_url, seat_id — with no install_id",
+              got == {"v3": {"version": 3, **shape}, "v2": {"version": 2, **shape}}, r.stdout + r.stderr)
         r = node_eval("const m=require(process.argv[1]); const k=[m.siteKey('https://LOCALHOST:8443/api/ingest/events'), m.siteKey('https://localhost:8443/api/ingest/events/'), m.siteKey('https://localhost:8443/'), m.siteKey('https://localhost:8443/api/ingest/events')]; console.log(JSON.stringify(k));")
         keys = json.loads(r.stdout or "[]")
         check("R-all-9", "siteKey: a URL differing only in host case, in a trailing slash, or a bare origin keys the same site",
@@ -623,10 +643,15 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             check("R-all-2", f"a token file with {label}: refused by name, NOTHING WRITTEN, treated as exposed, the content never printed",
                   r.returncode == 1 and "NOTHING WRITTEN" in r.stderr and "exposed" in r.stderr and tok not in r.stdout + r.stderr
                   and not Path(s.T["config"]).exists() and f.exists(), tail(r))
-        v2 = write_v2(dl / "v2", tok, INGEST.url, "inst-a", "seat-a")
-        r = s.node("--token-file", str(v2), "--seat-id", "other-seat", "--ca-file", str(INGEST.crt))
-        check("R-all-2", "a v2 file disagreeing with --seat-id: refused, nothing written",
-              r.returncode == 1 and "disagrees" in r.stderr and not Path(s.T["config"]).exists() and v2.exists(), tail(r))
+        v2 = write_token_file(dl / "v2", tok, INGEST.url, "seat-a", install_id="room-a")
+        v3 = write_token_file(dl / "v3", tok, INGEST.url, "seat-a")
+        for label, f in (("v2", v2), ("v3", v3)):
+            r = s.node("--token-file", str(f), "--seat-id", "other-seat", "--ca-file", str(INGEST.crt))
+            check("R-all-2", f"a {label} file disagreeing with --seat-id: refused, nothing written",
+                  r.returncode == 1 and "disagrees" in r.stderr and not Path(s.T["config"]).exists() and f.exists(), tail(r))
+        r = s.node("--token-file", str(v3), "--install-id", "room-a", "--ca-file", str(INGEST.crt))
+        check("R-all-2", "T16: --install-id is no longer a flag: refused as an unknown argument, nothing written",
+              r.returncode == 1 and "unknown argument [--install-id]" in r.stderr and not Path(s.T["config"]).exists(), tail(r))
         v1 = dl / "v1"
         v1.write_bytes((tok + "\n").encode())      # bytes: text mode writes CRLF on Windows
         r = s.node("--token-file", str(v1))
@@ -647,6 +672,25 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         check("R-all-3", f"a file another account owns ({foreign}) is refused before any read",
               r.returncode == 1 and "not owned by this account" in r.stderr and "line" not in r.stderr, tail(r))
 
+    # ── T16: the by-hand steps read the file too — `token-take` and `token-config`, which reads it from the config
+    #    directory with no flag at all (plan-13117 § 8.1); both with a v3 file, and with a v2 file whose room is
+    #    discarded. No site is contacted: the steps write the config and nothing else.
+    if want("R-all-2"):
+        print("== T16: token-take and token-config take a v3 file and a v2 file ==")
+        for label, room in (("v3", None), ("v2", "room-a")):
+            S = Seat(f"by-hand-{label}", coord=False)
+            dl = S.home / "Downloads"
+            dl.mkdir()
+            f = write_token_file(dl / "t", token(), INGEST.url, f"seat-{label}", install_id=room)
+            r1 = S.node("token-take", "--token-file", str(f))
+            r2 = S.node("token-config", "--no-board", "--ca-file", str(INGEST.crt))
+            cfg = S.config() if Path(S.T["config"]).exists() else {}
+            check("R-all-2", f"T16: token-take then token-config with a {label} file: the config carries its seat_id and URL, "
+                  "and no install_id; the token file is gone",
+                  r1.returncode == 0 and r2.returncode == 0 and cfg.get("seat_id") == f"seat-{label}" and "install_id" not in cfg
+                  and cfg.get("sites", [{}])[0].get("ingest_url") == INGEST.url and not f.exists() and not Path(S.T["tokenFile"]).exists(),
+                  tail(r1) + tail(r2))
+
     # ── the fresh install (seat A), with the take rule's warning and, on Linux, under strace ──────────
     A = None
     A_TOK = token()
@@ -665,7 +709,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         if not IS_WIN:
             os.chmod(A.home, 0o755)
             os.chmod(dl, 0o755)
-        tf = write_v2(dl / "mezzanine-reporter-token", A_TOK, INGEST.url, "inst-a", "seat-a", mode=0o640)
+        tf = write_token_file(dl / "mezzanine-reporter-token", A_TOK, INGEST.url, "seat-a", mode=0o640)
         if not IS_WIN:
             os.utime(tf, (946684800, 946684800))           # an old mtime: a copy keeps one, and must not hide the copy's age
         else:
@@ -709,11 +753,12 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         else:
             check("R-win-1", "the config, the config directory and the artifact passed the owner-only ACL check",
                   out.count("ACL owner-only") >= 3 and "ACL: owner-only" in out, tail(r))
-        check("R-all-8", "the config carries the token file's identity and URL, --ca-file, descriptors full, and the board user "
-              "the seat's own kanban credential resolves to",
-              (cfg.get("install_id"), cfg.get("seat_id"), cfg.get("sites", [{}])[0].get("ingest_url"), cfg.get("sites", [{}])[0].get("ca_file"),
+        check("R-all-8", "the config carries the v3 token file's identity and URL and no install_id (T16), --ca-file, "
+              "descriptors full, and the board user the seat's own kanban credential resolves to",
+              ("install_id" in cfg, cfg.get("seat_id"), cfg.get("sites", [{}])[0].get("ingest_url"), cfg.get("sites", [{}])[0].get("ca_file"),
                cfg.get("descriptors"), cfg.get("board_user_id"), cfg.get("board_api_base"), cfg.get("wrapped_statusline"))
-              == ("inst-a", "seat-a", INGEST.url, str(INGEST.crt), "full", 14, INGEST.site + "/api/v3", "my-status-line"), json.dumps(cfg))
+              == (False, "seat-a", INGEST.url, str(INGEST.crt), "full", 14, INGEST.site + "/api/v3", "my-status-line"),
+              json.dumps({k: cfg.get(k) for k in ("seat_id", "descriptors", "board_user_id", "wrapped_statusline")}))
         after = A.settings()
         check("R-all-8", "every key of the user's settings other than hooks and env is unchanged",
               {k: v for k, v in after.items() if k not in ("hooks", "env")} == {k: v for k, v in user.items() if k not in ("hooks", "env")})
@@ -1016,10 +1061,10 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         cfg_before = Path(A.T["config"]).read_bytes()
         tb = token()
         INGEST2.accepted.add(tb)
-        fb = write_v2(A.root / "carry" / "site-b", tb, INGEST2.url, "inst-a", "seat-a")
+        fb = write_token_file(A.root / "carry" / "site-b", tb, INGEST2.url, "seat-a")
         r = A.node("add-site", "--token-file", str(fb), "--ca-file", str(INGEST2.crt), "--site-name", "site-b")
         cfg = A.config()
-        check("R-all-18", "add-site with a v2 file and --ca-file: the site added with that ca_file, the file taken and removed, the "
+        check("R-all-18", "add-site with a v3 file and --ca-file: the site added with that ca_file, the file taken and removed, the "
               "flusher restarted",
               r.returncode == 0 and [s["name"] for s in cfg["sites"]] == ["default", "site-b"] and cfg["sites"][1]["ca_file"] == str(INGEST2.crt)
               and not fb.exists() and not Path(A.T["tokenFile"]).exists() and "PASS: the lock holder runs the artifact" in r.stdout, tail(r))
@@ -1035,29 +1080,47 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         r = A.node("add-site", "--token-file", str(fv1), "--site", INGEST3.site, "--ca-file", str(INGEST3.crt), "--site-name", "site-c")
         check("R-all-18", "  … with --site: the site added, the file taken and removed as the main invocation does",
               r.returncode == 0 and [s["name"] for s in A.config()["sites"]] == ["default", "site-b", "site-c"] and not fv1.exists(), tail(r))
-        r = A.node("add-site", "--token-file", str(write_v2(A.root / "carry" / "dup", token(), INGEST2.url, "inst-a", "seat-a")))
+        r = A.node("add-site", "--token-file", str(write_token_file(A.root / "carry" / "dup", token(), INGEST2.url, "seat-a")))
         check("R-all-18", "add-site for a site already configured: refused with the listing", r.returncode == 1 and "already configured" in r.stderr and "site site-b" in r.stderr, tail(r))
+        other = write_token_file(A.root / "carry" / "other-seat", token(), "https://elsewhere.test/api/ingest/events", "seat-z")
+        r = A.node("add-site", "--token-file", str(other))
+        check("R-all-18", "add-site with a v3 file for another seat: refused naming both seats, the file left",
+              r.returncode == 1 and "seat seat-z" in r.stderr and "this seat is seat-a" in r.stderr and other.exists(), tail(r))
         # R-all-9 — rotation.
         before = Path(A.T["config"]).read_bytes()
-        nomatch = write_v2(A.root / "carry" / "nomatch", token(), "https://elsewhere.test/api/ingest/events", "inst-a", "seat-a")
+        nomatch = write_token_file(A.root / "carry" / "nomatch", token(), "https://elsewhere.test/api/ingest/events", "seat-a")
         r = A.node("--token-file", str(nomatch))
-        check("R-all-9", "a v2 file matching no site: refused with the listing and the add-site pointer, the config byte-equal, the file left",
+        check("R-all-9", "a v3 file matching no site: refused with the listing and the add-site pointer, the config byte-equal, the file left",
               r.returncode == 1 and "site default:" in r.stderr and "add-site" in r.stderr and Path(A.T["config"]).read_bytes() == before and nomatch.exists(), tail(r))
         nb = token()
         INGEST2.accepted.add(nb)
-        fb2 = write_v2(A.root / "carry" / "rot-b", nb, INGEST2.url.replace("localhost", "LOCALHOST"), "inst-a", "seat-a")
+        fb2 = write_token_file(A.root / "carry" / "rot-b", nb, INGEST2.url.replace("localhost", "LOCALHOST"), "seat-a")
         r = A.node("--token-file", str(fb2), "--site-name", "default")
         check("R-all-9", "a file matching site-b with --site-name default: refused, the config byte-equal", r.returncode == 1 and Path(A.T["config"]).read_bytes() == before, tail(r))
-        wrong = write_v2(A.root / "carry" / "wrong-id", token(), INGEST2.url, "inst-a", "seat-z")
+        wrong = write_token_file(A.root / "carry" / "wrong-id", token(), INGEST2.url, "seat-z")
         r = A.node("--token-file", str(wrong))
         check("R-all-9", "a mismatched identity: refused, the config byte-equal", r.returncode == 1 and "identity differs" in r.stderr and Path(A.T["config"]).read_bytes() == before, tail(r))
         a_site = json.loads(before)["sites"][0]
         r = A.node("--token-file", str(fb2))
         cfg = A.config()
-        check("R-all-9", "a file matching site-b by a URL differing only in host case: site-b rotated, default untouched, the flusher "
-              "restarted, the revoke reminder printed",
+        check("R-all-9", "T16: a v3 file with no --site matching site-b, the second of two sites, by a URL differing only in host "
+              "case: site-b rotated, the default site byte-identical, the flusher restarted, the revoke reminder printed",
               r.returncode == 0 and cfg["sites"][1]["token"] == nb and cfg["sites"][0] == a_site and "token replaced: site-b" in r.stdout
               and "Revoke the old token" in r.stdout and "PASS: the lock holder runs the artifact" in r.stdout and not fb2.exists(), tail(r))
+        # A seat the console moved to another room (card#13117): its v2 file names a room no config holds, and the
+        # identity is the seat_id alone, so it rotates.
+        before = Path(A.T["config"]).read_bytes()
+        mb = token()
+        INGEST2.accepted.add(mb)
+        moved = write_token_file(A.root / "carry" / "moved", mb, INGEST2.url, "seat-a", install_id="another-room")
+        r = A.node("--token-file", str(moved))
+        cfg = A.config()
+        check("R-all-9", "T16: a v2 file naming another room for this seat rotates site-b; the default site and every seat key "
+              "byte-identical, and no install_id written",
+              r.returncode == 0 and cfg["sites"][1]["token"] == mb and cfg["sites"][0] == a_site and "install_id" not in cfg
+              and {k: v for k, v in cfg.items() if k != "sites"} == {k: v for k, v in json.loads(before).items() if k != "sites"}
+              and not moved.exists(), tail(r))
+        INGEST2.accepted.discard(nb)
         INGEST2.accepted.discard(tb)
         # remove-site
         r = A.node("remove-site", "site-c")
@@ -1280,7 +1343,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         INGEST.accepted.add(tw)
         d = planted_copy("rw1", ("install.js", "  const child = reporter().spawnFlusher(T.js, env);\n",
                                          "  const child = reporter().spawnFlusher(T.js, env);\n  child.kill();\n"))
-        cp_ = run_to_files([NODE, str(d / "install.js"), "--token-file", str(write_v2(W.root / "t", tw, INGEST.url, "inst-w", "seat-w")), "--ca-file", str(INGEST.crt)],
+        cp_ = run_to_files([NODE, str(d / "install.js"), "--token-file", str(write_token_file(W.root / "t", tw, INGEST.url, "seat-w")), "--ca-file", str(INGEST.crt)],
                            W.env, W.root, timeout=600)
         check("R-win-1", "the supervisor step with its start disabled ends NO FLUSHER exit 1, and the arrival step never runs",
               cp_.returncode == 1 and "NO FLUSHER" in cp_.stderr and "step `arrival`" not in cp_.stdout, tail(cp_))
@@ -1313,7 +1376,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
               r.returncode == 0 and stops == [f'node "{fwd}" hook Stop'], f"{stops}\n{tail(r)}")
     if IS_WIN and want("R-win-4"):
         S = Seat("roaming", coord=False)
-        f = write_v2(S.root / "t", token(), INGEST.url, "inst-r", "seat-r")
+        f = write_token_file(S.root / "t", token(), INGEST.url, "seat-r")
         r = S.node("--token-file", str(f), env={**S.env, "FLEET_REPORTER_INSTALL_ASSUME_ROAMING": "1"})
         check("R-win-4", "a roaming profile: refused by name before anything is written",
               r.returncode == 1 and "roaming profile" in r.stderr and not S.attempts() and not Path(S.T["configDir"]).exists() and f.exists(), tail(r))
@@ -1373,7 +1436,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
     if IS_MAC and want("R-mac-4"):
         S = Seat("nogui", coord=False)
         (S.stub / "no-gui").write_text("")
-        f = write_v2(S.root / "t", token(), INGEST.url, "inst-g", "seat-g")
+        f = write_token_file(S.root / "t", token(), INGEST.url, "seat-g")
         r = S.node("--token-file", str(f))
         check("R-mac-4", "no gui/<uid> domain: refused by name before anything is written",
               r.returncode == 1 and "no gui launchd domain" in r.stderr and not S.attempts() and not Path(S.T["configDir"]).exists() and f.exists(), tail(r))
@@ -1391,7 +1454,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
                   and Path(S.T["settings"]).read_text() == body, tail(r))
         if not IS_WIN:
             H = Seat("space-home", home_name="a home", coord=False)
-            f = write_v2(H.root / "t", token(), INGEST.url, "inst-h", "seat-h")
+            f = write_token_file(H.root / "t", token(), INGEST.url, "seat-h")
             r = H.node("--token-file", str(f))
             check("R-all-2", "a POSIX home holding whitespace is refused at prereqs, before anything is written",
                   r.returncode == 1 and "holds whitespace or a quote" in r.stderr and not H.attempts()
@@ -1399,7 +1462,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
         if IS_LIN:
             C = Seat("odd-coord", coord=False)
             (C.home / ".claude" / "settings.local.json").write_text(json.dumps({"env": {"COORD_CONFIG": "/tmp/$(id)/c.json"}}))
-            f = write_v2(C.root / "t", token(), INGEST.url, "inst-c", "seat-c")
+            f = write_token_file(C.root / "t", token(), INGEST.url, "seat-c")
             r = C.node("--token-file", str(f))
             check("R-all-2", "a COORD_CONFIG the crontab line cannot carry is refused BY NAME at prereqs, before anything is written",
                   r.returncode == 1 and "COORD_CONFIG" in r.stderr and "cannot carry" in r.stderr and not C.attempts() and f.exists(), tail(r))
@@ -1409,7 +1472,7 @@ console.log(JSON.stringify({cmd:m.hookCommand('win32',js,'hook Stop')===fwd, w1:
             target.mkdir()
             subprocess.run(["cmd", "/c", "mklink", "/J", J.T["configDir"], str(target)], capture_output=True)
             before = subprocess.run(["icacls", str(target)], capture_output=True, text=True).stdout
-            f = write_v2(J.root / "t", token(), INGEST.url, "inst-j", "seat-j")
+            f = write_token_file(J.root / "t", token(), INGEST.url, "seat-j")
             r = J.node("--token-file", str(f))
             check("R-win-1", "a config directory that is a junction is refused before icacls runs, and its target's ACL is unchanged",
                   Path(J.T["configDir"]).exists() and r.returncode == 1 and "never re-ACL'd" in r.stderr

@@ -804,7 +804,7 @@ after the materialisation reappears as an implicit floor. **A pre-13117 revision
 ### 8.1 Token file v3 and the config
 
 **v3** is v2 minus the `install_id` line: exactly three `<key> <value>` lines — `token`, `ingest_url`, `seat_id` —
-once each, any order, LF only, the same bounds (D1 § 3.1, `INSTALL.md § The two forms`). The *Seat tokens* page
+once each, any order, LF only, the same bounds (D1 § 3.1, `INSTALL.md § The three forms`). The *Seat tokens* page
 writes **v3 only** from this card on (its `data-install-id` attribute goes; `seat-token.js` builds three lines).
 `parseTokenFile` (`install.js:229-254`) reads v1, v2 and v3 and refuses anything else by name as today; a v2 file's
 `install_id` is **read and discarded** (a 13117-era server never reads it), so a file saved before the deploy still
@@ -1154,7 +1154,8 @@ precedes S4 because the take-over and the materialisation write through `amend()
 - **Rolling S1 back after S6 has shipped — accepted.** A seat installed from a v3 token file after S6 has no
   `install_id` in its config and sends none; a pre-S1 server compares the envelope's `install_id` with the token's
   binding (step 7) and refuses the batch `403 identity_mismatch`, which is the reporter's auth stop — every such seat
-  is dark until S1 is redeployed or the seat is rotated by an installer against the rolled-back page. The cheap
+  is dark until S1 is redeployed. Rotating the seat against the rolled-back page does not rescue it: both the old
+  and the S6 installer leave a config with no `install_id` without one (found while building S6). The cheap
   closure — a v3 reporter sending `install_id: "unassigned"` when its config has none, the value `down()` would have
   given its seat — was weighed and **declined**: it writes a wire value from an absence to serve one rollback path,
   and it is wrong for a v3-rotated seat whose room is not that row. Accepted because S6 lands after S1 by § 10's

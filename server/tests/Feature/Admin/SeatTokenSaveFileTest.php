@@ -9,7 +9,7 @@ use Tests\TestCase;
 
 /**
  * R-srv-1's server half — card#12571, D6 § 4.2 (`docs/design/REPORTER-INSTALL.md`): the issue response
- * carries a *Save token file* button that writes the v2 token file in the browser, and what the server
+ * carries a *Save token file* button that writes the v3 token file in the browser (card#13117), and what the server
  * renders for it. The blob itself is built by `public/js/console/seat-token.js`; that the bytes it builds
  * parse through `fleet-reporter/install.js`'s `parseTokenFile` is `tools/design/seat-token-file.selftest.mjs`'s,
  * in CI; a real browser's click and restore are walked by hand with `tools/design/seat-token.browser.mjs`.
@@ -52,8 +52,8 @@ class SeatTokenSaveFileTest extends TestCase
         $this->assertNotNull($button, 'the issue response renders no save button on an https site');
         $this->assertSame('https://mezzanine.example/api/ingest/events', $button['data-ingest-url'],
             'the ingest URL is not rtrim(app.url, "/")."/api/ingest/events"');
-        // A new seat is in no room (card#13117): the v2 file carries `unassigned`, which the server never reads.
-        $this->assertSame('unassigned', $button['data-install-id']);
+        // card#13117: the v3 file's identity is the seat id alone, so the button carries no room.
+        $this->assertArrayNotHasKey('data-install-id', $button, 'the button still carries a room for a v2 file');
         $this->assertSame('aimla-pm', $button['data-seat-id']);
         $this->assertSame('button', $button['type'], 'a submit button would post the page\'s form');
         $response->assertSee('Save token file');

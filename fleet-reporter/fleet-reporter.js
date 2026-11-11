@@ -67,7 +67,7 @@ const lazy = (name) => require(name);
  * change to a file a reporter update ships, and `bin/reporter-version-guard.py` fails a PR that changes
  * one without moving it, so two different builds never report the same version. Each version's row in
  * `fleet-reporter/UPDATES.md` says what an upgrading seat must apply. */
-const REPORTER_VERSION = '0.6.6';
+const REPORTER_VERSION = '0.7.0';
 const SCHEMA_VERSION = 1;
 
 /* ── Every number, from § 14 and the section that derives it ──────────────────────────────── */
@@ -326,10 +326,21 @@ function siteKey(u) {
   try { const x = new URL(u); x.username = ''; x.password = ''; return x.href; } catch (e) { return null; }
 }
 const sha256hex = (s) => crypto.createHash('sha256').update(s).digest('hex');
+/* THE SEAT'S IDENTITY (card#13117). The identity is `seat_id`; `install_id` is OPTIONAL — a config the
+ * installer wrote before card#13117 carries it and keeps sending it, one written since carries none (D1 § 3.1).
+ * `seatIdentity` is what goes on the wire for `src` (a config, a persisted request or a spooled event):
+ * `install_id` exactly when `src` has one, in the key order the envelope and events have always used, so an
+ * upgraded seat's bytes do not move. `identityPair` is the string the two hashes cover — `install_id|seat_id`,
+ * `install_id` empty when absent — so an upgraded seat's `identity_sha256` and `config_fingerprint` are the
+ * values the previous build wrote. These two, `parseConfig`'s pattern check and `readableRequest`'s shape check
+ * are the only reads of the key in this file; `fleet-reporter.selftest.py` § 30 reds on any other. */
+const seatIdentity = (src) => (src.install_id === undefined
+  ? { seat_id: src.seat_id } : { install_id: src.install_id, seat_id: src.seat_id });
+const identityPair = (cfg) => `${cfg.install_id === undefined ? '' : cfg.install_id}|${cfg.seat_id}`;
 /* What a site's entry is bound to (§ 3.1, *State per site*): the hash of the site key — never the URL,
  * whose userinfo is a secret — and the hash of the seat's identity pair. */
 const urlBinding = (site) => { const k = siteKey(site.ingest_url); return k === null ? null : sha256hex(k); };
-const identityBinding = (cfg) => sha256hex(`${cfg.install_id}|${cfg.seat_id}`);
+const identityBinding = (cfg) => sha256hex(identityPair(cfg));
 
 /* ONE SITE'S TRANSPORT RULES (§ 3.1's top-level rows, run per site — the same code under either form, so
  * the two cannot disagree about what a valid URL, token, CA file or proxy is). `label` is the scope every
@@ -396,7 +407,10 @@ function parseConfig(raw) {
   catch (e) { return { config: null, errors: [`config is not valid JSON: ${e.message}`], spool: null, sites: [] }; }
   if (!c || typeof c !== 'object' || Array.isArray(c)) return { config: null, errors: ['config is not a JSON object'], spool: null, sites: [] };
   const str = (k) => (typeof c[k] === 'string' ? c[k] : null);
-  if (!SLUG_INSTALL.test(str('install_id') || '')) errors.push('install_id fails ^[a-z0-9][a-z0-9-]{1,31}$');
+  // `install_id` is optional since card#13117 (`seatIdentity`); a config that carries it is held to its pattern.
+  if (Object.prototype.hasOwnProperty.call(c, 'install_id') && !SLUG_INSTALL.test(str('install_id') || '')) {
+    errors.push('install_id, when present, fails ^[a-z0-9][a-z0-9-]{1,31}$');
+  }
   if (!SLUG_SEAT.test(str('seat_id') || '')) errors.push('seat_id fails ^[a-z0-9][a-z0-9-]{1,47}$');
   // A relative `spool_dir` resolves against the process's working directory, which a hook inherits from
   // the agent's project directory: hooks in two projects spool into two directories, the flusher reads
@@ -2091,7 +2105,7 @@ function makeEmitter(cfg, spool, take) {
     const t = take();
     const ev = {
       event_id: ulid(t), schema_version: SCHEMA_VERSION, kind, event_time: rfc3339(t),
-      install_id: cfg.install_id, seat_id: cfg.seat_id, session_id: sessionId, data,
+      ...seatIdentity(cfg), session_id: sessionId, data,
     };
     // § 4.4 — an event over the 4 KiB cap is truncated at data.descriptor and flagged
     // `oversize: true`. `oversize` is ABSENT on an ordinary event (§ 4.3), never `false`.
@@ -3249,7 +3263,7 @@ function hookMain(hookName) {
   registerConfigSecrets(config);
   const errors = countConfigErrors(loaded);
   if (errors.length) logLine(spool, 'hook', `config invalid: ${errors.join('; ')}`);
-  if (!spool || !config.install_id || !config.seat_id) { flushCounters(spool, 'hook'); return; }
+  if (!spool || !config.seat_id) { flushCounters(spool, 'hook'); return; }
   // § 3.1/§ 6.14 — `enabled: false` is the ONLY switch that stops emission. The hooks go quiet
   // and the flusher keeps heartbeating with enabled:false, so the desk renders *disabled*
   // rather than sliding through stale into offline and looking broken.
@@ -3299,7 +3313,7 @@ function statuslineMain() {
   countConfigErrors(loaded);
 
   try {
-    if (spool && config.install_id && config.seat_id && config.enabled !== false) {
+    if (spool && config.seat_id && config.enabled !== false) {
       // A section of the seat writer, like every writer of the events tree (§ 11.2, card#11563):
       // a `context.sample` carries the stamp its emit takes the lock with. A suppressed render
       // emits nothing and never takes the lock.
@@ -3544,20 +3558,22 @@ function loadState(spool, atMs) {
   }
 }
 
-/* The persisted request's member set, EXACTLY (§ 3.1, *One request per site*). An entry whose `request`
- * is anything else is not one this build can resend, so it is not a usable entry. */
-const REQUEST_KEYS = ['events', 'batch_id', 'schema_version', 'seq_epoch', 'install_id', 'seat_id',
+/* The persisted request's member set, EXACTLY (§ 3.1, *One request per site*): every member of
+ * `REQUEST_KEYS`, and `install_id` when the config the request was built from carried one (`seatIdentity`).
+ * An entry whose `request` is anything else is not one this build can resend, so it is not a usable entry. */
+const REQUEST_KEYS = ['events', 'batch_id', 'schema_version', 'seq_epoch', 'seat_id',
   'reporter_version', 'reporter_platform', 'runtime_version', 'first_seq', 'count', 'advance',
   'heartbeat_event_id', 'built_at', 'attempts'];
 
 function readableRequest(r, e) {
   if (r === null) return true;
   if (!isPlain(r)) return false;
-  const keys = Object.keys(r);
+  const keys = Object.keys(r).filter((k) => k !== 'install_id');
   if (keys.length !== REQUEST_KEYS.length || !REQUEST_KEYS.every((k) => keys.includes(k))) return false;
   return Array.isArray(r.events) && r.events.length > 0 && r.events.every(isPlain) && r.events.length === r.count
     && typeof r.batch_id === 'string' && typeof r.schema_version === 'number' && r.seq_epoch === e.seq_epoch
-    && ['install_id', 'seat_id', 'reporter_version', 'reporter_platform', 'runtime_version'].every((k) => typeof r[k] === 'string')
+    && (r.install_id === undefined || typeof r.install_id === 'string')
+    && ['seat_id', 'reporter_version', 'reporter_platform', 'runtime_version'].every((k) => typeof r[k] === 'string')
     && r.first_seq === e.next_seq && isPlain(r.advance) && Object.values(r.advance).every((v) => typeof v === 'number')
     && (r.heartbeat_event_id === null || typeof r.heartbeat_event_id === 'string')
     && Number.isFinite(r.built_at) && Number.isInteger(r.attempts) && r.attempts >= 0;
@@ -4019,7 +4035,7 @@ const platformName = () => (['linux', 'win32', 'darwin'].includes(process.platfo
 function envelopeOf(r, sentAt) {
   return {
     schema_version: r.schema_version, batch_id: r.batch_id,
-    install_id: r.install_id, seat_id: r.seat_id,
+    ...seatIdentity(r),
     reporter_version: r.reporter_version,
     // `other` is the unknown member for any process.platform outside the three (§ 4.2).
     reporter_platform: r.reporter_platform,
@@ -4048,7 +4064,7 @@ function buildBatch(cfg, entry, items, maxEvents, heartbeat, atMs) {
   const events = [];
   let used = heartbeat ? heartbeat.schema_version : null, lastIdx = -1;
   const base = {
-    schema_version: null, batch_id: ulid(atMs), install_id: cfg.install_id, seat_id: cfg.seat_id,
+    schema_version: null, batch_id: ulid(atMs), ...seatIdentity(cfg),
     reporter_version: REPORTER_VERSION, reporter_platform: platformName(), runtime_version: process.version,
     seq_epoch: entry.seq_epoch,
   };
@@ -4061,8 +4077,8 @@ function buildBatch(cfg, entry, items, maxEvents, heartbeat, atMs) {
   };
   if (heartbeat) {
     take({ event_id: heartbeat.event_id, schema_version: heartbeat.schema_version, kind: heartbeat.kind,
-      event_time: heartbeat.event_time, seq: entry.next_seq, install_id: heartbeat.install_id,
-      seat_id: heartbeat.seat_id, session_id: null, data: heartbeat.data });
+      event_time: heartbeat.event_time, seq: entry.next_seq, ...seatIdentity(heartbeat),
+      session_id: null, data: heartbeat.data });
   }
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
@@ -4072,7 +4088,7 @@ function buildBatch(cfg, entry, items, maxEvents, heartbeat, atMs) {
     const ev = {
       event_id: it.e.event_id, schema_version: it.v, kind: it.e.kind, event_time: it.e.event_time,
       seq: entry.next_seq + events.length,
-      install_id: it.e.install_id, seat_id: it.e.seat_id, session_id: it.e.session_id === undefined ? null : it.e.session_id,
+      ...seatIdentity(it.e), session_id: it.e.session_id === undefined ? null : it.e.session_id,
       data: it.e.data,
     };
     if (it.e.oversize) ev.oversize = true;
@@ -4401,7 +4417,7 @@ function configFingerprint(cfg, site) {
   // the RAW one of the site receiving the heartbeat (§ 6.14, card#12180), so a single-site seat's
   // fingerprint is byte-identical to the one the previous build sent.
   return crypto.createHash('sha256')
-    .update(`${cfg.install_id}|${cfg.seat_id}|${site.ingest_url}`).digest('hex').slice(0, 16);
+    .update(`${identityPair(cfg)}|${site.ingest_url}`).digest('hex').slice(0, 16);
 }
 
 /* What is behind ONE SITE'S cursor (§ 6.14's `spool_lag_events` and `oldest_unsent_age_s`, per site). */
@@ -4473,7 +4489,7 @@ function buildHeartbeat(cfg, spool, state, ix, site, entry, selftest, declaratio
   for (const c of SELFTEST_CHECKS) st[c] = selftest[c] === true ? 'pass' : 'fail';
   return {
     event_id: ulid(atMs), schema_version: SCHEMA_VERSION, kind: 'reporter.heartbeat', event_time: rfc3339(atMs),
-    install_id: cfg.install_id, seat_id: cfg.seat_id, session_id: null,
+    ...seatIdentity(cfg), session_id: null,
     data: {
       uptime_s: Math.max(0, Math.round((atMs - Date.parse(state.started_at)) / 1000)),
       spool_bytes: Math.min(spoolBytes(spool), K.SPOOL_BYTES),
