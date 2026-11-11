@@ -150,7 +150,7 @@ async function rasteriseImage(canvas, svg, width, height) {
  * @param {HTMLElement} host `#building-pictures`
  * @param {{characters: object|null, themes: Object<string, object|null>, house: string|null, clock: object,
  *          failed: function(list<string>): void, wake: function(): void, record: function(string): void}} art what
- *        `floor/main.js` hands its own painter, but `ride` and `select`; `wake`, the page's render request, asked when a
+ *        `floor/painter-renderer.js` hands its own painter, but `ride` and `select`; `wake`, the page's render request, asked when a
  *        floor's interval ends; and `record`, the page's event record, which a floor's failed picture writes one line to
  * @param {{paintWith?: Function, serialise?: function(Element): string, rasterise?: Function}} [io] the painter's
  *        constructor, the serialiser and the rasteriser — the browser's, and stand-ins under `node`

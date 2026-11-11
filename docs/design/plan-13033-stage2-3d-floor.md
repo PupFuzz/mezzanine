@@ -220,7 +220,7 @@ drawings to place (§ 3.4); the **target's box clamp** (three lines over `Box3`,
 Stage 1 fixed the unit: **one world unit per `UNIT` = 100 scene px** (`building/stack-model.js`, `FLOOR.md` § 12's
 *Building view unit*), `y` up, a floor's slab centred on `x` with its front edge (the drawing's bottom) at `+z`, and
 **`worldOf(slab, point)`** the one map from a scene-px point to a world point on the slab — read it in
-`stack-model.js`; it is not restated here. Stage 2 builds ONE floor in exactly that frame, its plane at `y = 0`, so
+`floor/floor-world.js`, where slice 2 hoisted it; it is not restated here. Stage 2 builds ONE floor in exactly that frame, its plane at `y = 0`, so
 every plan point the scene already computes — a desk's anchor, a walker's `pointAt()`, a queue spot, the elevator's
 threshold — becomes a world point by the function stage 1 already has, and the building view (slice 8) places N such
 worlds at `y = storey × ROOM_H_U` with no second frame. `worldOf()` is hoisted to `floor/floor-world.js` at its
@@ -914,6 +914,23 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    `floor-walls.js` and `worldOf()` hoisted; `floor/floor-world.js`, `floor3d/view-limits.js`, `floor3d/camera-acts.js`
    (the keys wire's `shift` member); AT-D3-38 in `FLOOR.md` § 11 with its Appendix B row; tests 1 (the hoists), 2
    (the world half) and 3.
+   **As built (2026-11-11), where it departs from the text above, each the coder's to argue at review:** (a) the
+   renderer contract is two calls, not one — `camera(screen)` at once (`show`, `current`, `fit`, `resize`,
+   `gestures(stage)`, `keys.acts`/`keys.shortcuts`) and `create(art, hooks)` once the art answers (the drawing:
+   `paint`, `refresh`, `paintCab`, `cabTheme`) — because the floor page wired its resize observer, gestures, keys and
+   *Fit* at load, and binding them only at `create()` would change when a resize before the art answers reaches the
+   screen; and `offerKeys()` reads the frame's camera on both routes (whether a floor is framed is the screen's), so
+   the contract carries no `keys.camera`; (b) the walls reach the world through the scene — `buildScene()` gains a
+   `walls` member from `floor/floor-walls.js`'s `wallBodies()` (its second caller beside `doorView()`), so `floorWorld()`
+   reads the scene alone and takes no `frame`, `art` or `theme` (`floorWorld(scene)`); (c) `UNIT` and `topOf()` move
+   with `worldOf()` to `floor/floor-world.js`, the stack model re-exporting all three, so the floor tree does not import
+   the building tree back; (d) `anchor3d()`'s foot is the sitter's rect's bottom (its feet), not `trail_foot.y` (§ 3.1
+   above), which is the thought trail's foot under the bubble, at the head; its anchor is the element's CENTRE, the point
+   a `CSS2DObject` is centred on; (e) the walls' top-row cells and the cells under a desk's slab are no bodies in the
+   world either — the classification hoisted is the door view's whole rule, and the band stands in for the top row;
+   (f) the sitter stands half the slab's depth behind the slab's back edge (no scene figure places a chair in plan);
+   (g) the `notice` label kind is not carried — § 3.9 puts a floor's notices in a flowed list under the stage; (h) the
+   building acts' per-pixel turn was a formula, not a constant, so `wire/camera.js` gains `turnOf(px, width)`.
 3. **The creatures** — the species `shape` data moved out of `build()` (M7) with the sheet pixel-equal and the
    distinctness legs green; `creatures-3d.js` with `BONES`, `POSES`, `CLIPS`, `bodyParts()`, `chibiParts()`;
    `faceDocument()`; **`floor3d/creature-paint.js`** and the `svg-texture.js` hoist (it needs them to draw; m7: this
@@ -1044,9 +1061,11 @@ Applied by **revision 2** (this commit), each a diff to the owning text with its
 
 Waits for a slice, with its reason:
 
-- **§ 11's AT-D3-38 and Appendix B row 49** — added by **slice 2**, which lands the probe they name:
+- **§ 11's AT-D3-38 and its Appendix B row** — added by **slice 2**, which lands the probe they name:
   `tools/design/verify-floor.py`'s G5 holds every acceptance test to a suite and its fixture names both ways, so a
-  test written ahead of its suite reds the gate on this commit.
+  test written ahead of its suite reds the gate on this commit. **Landed with slice 2 (2026-11-11) as Appendix B row
+  51** — rows 49 and 50 were taken by card#13117 slices S4 and S5 in the meantime — and as AT-D3-38's world half; its characters' half
+  is added by slices 3 and 5.
 - **§ 4.4's row swap** — slice 7, after the operator's reading (Q3 A).
 
 ## 12. Seat rulings — reversible by the operator, each one constant or one rule

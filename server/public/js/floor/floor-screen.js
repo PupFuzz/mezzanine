@@ -115,7 +115,7 @@ export const LAST_KNOWN_LAYOUT = 'last known layout';
  * from the room `sola`'s redirect: a name somebody chose outranks a key nobody chose.
  *
  * The segment is lowered first, so an address typed from a plaque (`/floor/The-Nook`) reaches its floor; the
- * page then shows the floor's own key in the address bar (`floor/main.js`).
+ * page then shows the floor's own key in the address bar (`floor/floor-page.js`).
  */
 export function resolveRoute(segment, composed) {
     const typed = String(segment).toLowerCase();

@@ -28,11 +28,12 @@
  * stop the stops no longer offer — the model says `bare` and why, and carries no body.
  */
 
-import { BAND_H, ELEVATOR, mapDesks, mapGrid, placeRooms, thresholdOf } from './floor-layout.js';
+import { BAND_H, ELEVATOR, mapGrid, placeRooms, thresholdOf } from './floor-layout.js';
 import { floorTheme } from './floor-theme.js';
-import { PLANE_KINDS, mapTiles, sceneryInput } from './map-tiles.js';
+import { PLANE_KINDS, sceneryInput } from './map-tiles.js';
 import { namedTilesets } from './tileset.js';
-import { deskSlab, monitorFrame } from './desk-geometry.js';
+import { monitorFrame } from './desk-geometry.js';
+import { cellOf, deskSlabs, floorCell, gridCells, wallBodies } from './floor-walls.js';
 import { CAB, svgUri } from './cab-paint.js';
 
 /** § 12's *Door-view scale*: cm per floor px — the cab's door (200 cm) over the band's leaves (144 px), the one object drawn on both sides. */
@@ -128,16 +129,11 @@ function paletteOf(P) {
 }
 
 /**
- * The floor drawn: its plane, its accent runs, and every body in paint order.
- *
- * ⚠ ONE CELL GRID PER FLOOR: the first room's tile height. Every shipped and live map is on one 8-px grid; rooms on grids of
- * different sizes on one floor are not defended (the plan's § 7).
+ * The floor drawn: its plane, its accent runs, and every body in paint order — on ONE cell grid per floor
+ * (`floor-walls.js`'s `floorCell()`).
  */
 function project(stopRow, placement, maps, tilesetFor, kinds, module) {
     const rooms = new Map(placement.rooms.map((room) => [room.install_id, room]));
-    const T = mapGrid(maps.get(placement.draw_order[0])).tileheight;
-    // Whole cells of a layer's or a tileset's offset, truncated toward zero (see the cell loop below).
-    const whole = (v) => Math.trunc(v / T) * T;
     const threshold = thresholdOf(placement.extent);
     const X = (px) => (threshold.x - px) * SCALE;
     const Z = (py) => (py - threshold.y) * SCALE;
@@ -168,18 +164,10 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
         }]),
         ...placement.draw_order.map((id) => ({ seed: id, map: maps.get(id), origin: rooms.get(id).origin, footprint: rooms.get(id).footprint, room: true })),
     ];
-
-    // The desks' slabs, each snapped OUTWARD to the rows of ITS ROOM's grid it touches (at most a cell deeper), so each strip
-    // spans one of the rows the room's cells, walls and footprint lie in — the room's origin may be off the floor's 8-px
-    // lattice (an authored planned floor), and a strip on the floor's lattice would then sort against the room's rows by key
-    // rather than by depth.
-    const slabs = grids.filter((g) => g.room).flatMap((g) => mapDesks(g.map).map((desk) => {
-        const exact = deskSlab({ x: g.origin.x + desk.x, y: g.origin.y + desk.y + desk.height });
-        const y0 = g.origin.y + Math.floor((exact.y - g.origin.y) / T) * T;
-
-        return { ...exact, y: y0, h: g.origin.y + Math.ceil((exact.y + exact.h - g.origin.y) / T) * T - y0 };
-    }));
-    const underSlab = (x, y) => slabs.some((s) => x < s.x + s.w && s.x < x + T && y < s.y + s.h && s.y < y + T);
+    const T = floorCell(grids);
+    // The desks' slabs, each strip of one spanning one of its room's rows (`deskSlabs()`).
+    const slabs = deskSlabs(grids, T);
+    const cells = new Map(grids.map((g) => [g, gridCells(g, tilesetFor)]));
 
     // The rooms' walls, per FOOTPRINT (never the union extent): the far wall on its bottom edge, the side walls on its left
     // and right edges cut into row strips — a strip two rooms share drawn once. The top edge is the band, behind the eye.
@@ -198,37 +186,23 @@ function project(stopRow, placement, maps, tilesetFor, kinds, module) {
         }
     }
 
-    // Every cell of every grid, in the floor page's tile order: a `wall` cell a box of its own, an `accent` cell a piece of
-    // a flat run, a standing kind a billboard on its foot line.
-    //
-    // ⛔ A CELL IS PLACED BY ITS TILE INDEX, NOT BY ITS DRAWN PIXELS: its column and row in its layer, moved only by WHOLE
-    // cells of the offset `mapTiles()` added (the layer's and its groups' `offsetx`/`offsety` and the tileset's), the
-    // part under a cell truncated toward zero. The footprint is the map's own grid at the room's origin, so a cell on the
-    // footprint's top row or edge is there by construction whatever an author dragged a layer by. Rounding the drawn
-    // pixels would move a whole layer one cell across the footprint's edges at an offset of half a cell or more, and
-    // flooring them would do the same for any negative offset; the selftest's dragged fixtures hold both.
-    for (const g of grids) {
-        const f = g.footprint;
-        const grid = mapGrid(g.map);
+    // Every standing `wall` cell a box of its own, in the floor page's tile order (`wallBodies()`: an `edge` the room's
+    // height, a `partition` the partition's — the footprint's top row, the near wall along the band, is none: drawn, it
+    // would fill the doorway).
+    for (const w of wallBodies(grids, (g) => cells.get(g), T, slabs)) {
+        const edge = w.kind === 'edge';
 
-        for (const cell of mapTiles(g.map, g.origin, tilesetFor, g.room ? g.seed : null)) {
-            const atX = g.origin.x + cell.col * grid.tilewidth;
-            const atY = g.origin.y + cell.row * grid.tileheight;
-            const x = atX + whole(cell.x - atX);
-            const y = atY + whole(cell.y + cell.h - atY - grid.tileheight);
+        push({ kind: edge ? 'wall' : 'partition', x1: X(w.x + T), x2: X(w.x), z1: Z(w.y), z2: Z(w.y + T), y1: 0, y2: edge ? ROOM_H : PARTITION_H }, (2 * w.y) / T + 1);
+    }
+
+    // Every other cell of every grid, in the floor page's tile order, placed on the grid by its tile index
+    // (`cellOf()`): an `accent` cell a piece of a flat run, a standing kind a billboard on its foot line.
+    for (const g of grids) {
+        for (const cell of cells.get(g)) {
+            const { x, y } = cellOf(cell, g, T);
 
             if (cell.kind === 'accent') {
                 accents.push({ x, y });
-            } else if (cell.kind === 'wall') {
-                // The footprint's top row is the near wall along the band — drawn, it would fill the doorway; a cell under a
-                // slab is under the desk standing on it.
-                if (y === f.y || underSlab(x, y)) {
-                    continue;
-                }
-
-                const edge = x === f.x || x + T === f.x + f.width || y + T === f.y + f.height;
-
-                push({ kind: edge ? 'wall' : 'partition', x1: X(x + T), x2: X(x), z1: Z(y), z2: Z(y + T), y1: 0, y2: edge ? ROOM_H : PARTITION_H }, (2 * y) / T + 1);
             } else if (standing.includes(cell.kind)) {
                 const foot = y + T;
 

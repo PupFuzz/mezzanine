@@ -40,7 +40,7 @@ class TheKeyPrimitiveIsTheOnlyKeyBuilderTest extends TestCase
      * @var array<string, list<string>>
      */
     private const PATH_SPLITS = [
-        'floor/main.js' => ['window.location.pathname'],
+        'floor/floor-page.js' => ['window.location.pathname'],
         'floor/tileset.js' => ['FLOOR_ART', 'base', 'relative', 'url'],
     ];
 
@@ -182,7 +182,7 @@ class TheKeyPrimitiveIsTheOnlyKeyBuilderTest extends TestCase
 
         $this->assertSame([], self::sitesIn('wire/building.js', "return `/api/building/rooms/\${encodeURIComponent(installId)}/map`;\n"), 'a room URL was read as a key');
         $this->assertSame([], self::sitesIn('floor/planted.js', "// a comment naming `\${seat.install_id}/\${seat.seat_id}`\n"), 'a comment was read as code');
-        $this->assertSame([], self::sitesIn('floor/main.js', "const parts = window.location.pathname.split('/');\n"), 'a URL split was read as a key split');
+        $this->assertSame([], self::sitesIn('floor/floor-page.js', "const parts = window.location.pathname.split('/');\n"), 'a URL split was read as a key split');
         $this->assertCount(1, self::sitesIn('floor/painter.js', "const parts = window.location.pathname.split('/');\n"),
             'a path split is spared only in the module it is named for');
     }

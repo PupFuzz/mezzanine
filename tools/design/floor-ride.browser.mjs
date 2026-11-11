@@ -237,7 +237,8 @@ const cabContrast = (s) => s.ev(`(() => {
  * Each row: `run(chrome, c)` answers `{ defects, facts }`; `base` its own page conditions; `plant` what must red it — or a
  * list of plants, each run on its own and each required to red, where one row reads two surfaces with a defect each.
  */
-const MAIN = 'js/floor/main.js';
+/** The floor page's wiring, hoisted out of `floor/main.js` (card#13033 stage 2 slice 2): where the page's plants land. */
+const MAIN = 'js/floor/floor-page.js';
 const SCREEN = 'js/floor/floor-screen.js';
 const PANEL = 'js/floor/cab-panel.js';
 const RULE = 'js/wire/ride-arrival.js';
@@ -885,7 +886,7 @@ const ROWS = {
   // floor's call button the elevator's lamp — each read from the theme module and the sheet the page loads, and the
   // cab's drawn frame and lamp the same two palette colours.
   'cab-palette': row('the button popup is drawn in the house theme\'s elevator palette — its body the frame\'s colour, a stop in the door\'s colours, the current floor lit by the lamp — as the cab\'s drawing is, its walls, ceiling and floor following the frame\'s colour', {},
-    { plant: [{ file: MAIN, from: '    painter.cabTheme(cab.dialog);\n', to: '' }] },
+    { plant: [{ file: MAIN, from: '    drawing.cabTheme(cab.dialog);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
@@ -1225,7 +1226,7 @@ const ROWS = {
     })),
 
   'pre-layout': row('the pre-layout frame under the hold: at the first chrome change the cab is still held, nothing is stated, no room is listed', { api: { '/api/building': 600 } },
-    { plant: [{ file: MAIN, from: '    if (frame.scene !== null) {\n        revealed(html);', to: '    if (frame.scene !== null || frame.statement !== null || frame.floor === null) {\n        revealed(html);' }] },
+    { plant: [{ file: MAIN, from: '        if (frame.scene !== null) {\n            revealed(html);', to: '        if (frame.scene !== null || frame.statement !== null || frame.floor === null) {\n            revealed(html);' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await rideTo(s, 'zeta');
       const r = await arrivedRecord(s);
@@ -1240,7 +1241,7 @@ const ROWS = {
     })),
 
   'layout-fails': row('a layout that fails (503): its statement drawn under the hold, the cab fading into it at the bound, no elevator, no door motion', { layout: { '/floor/zeta': 503 } },
-    { plant: [{ file: MAIN, from: '    if (frame.scene !== null) {\n        revealed(html);', to: '    if (frame.scene !== null || frame.statement !== null) {\n        revealed(html);' }] },
+    { plant: [{ file: MAIN, from: '        if (frame.scene !== null) {\n            revealed(html);', to: '        if (frame.scene !== null || frame.statement !== null) {\n            revealed(html);' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
@@ -1645,10 +1646,10 @@ const ROWS = {
   starts: row('the lobby and a floor each start: the stream asked for, the first scene drawn, and no uncaught exception on either page', {},
     [
       { plant: [{ file: 'js/lobby/main.js', from: "    const drawn = layer.hasAttribute('data-drawn');", to: '    const drawn = true;' }] },
-      { plant: [{ file: MAIN, from: '    surface: surface(),\n    lobby_href: lobbyHref,', to: '    surface: { width: 0, height: 0 },\n    lobby_href: lobbyHref,' }] },
+      { plant: [{ file: MAIN, from: '        surface: surface(),\n        lobby_href: lobbyHref,', to: '        surface: { width: 0, height: 0 },\n        lobby_href: lobbyHref,' }] },
       { plant: [{ file: 'js/wire/fleet-client.js', from: "    start() {\n        this.#phase = 'connecting';\n        this.#open();\n", to: "    start() {\n        this.#phase = 'connecting';\n" }] },
-      { plant: [{ file: MAIN, from: 'if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\n', to: "if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\nsetTimeout(() => { throw new Error('planted after the start'); }, 0);\n" }] },
-      { plant: [{ file: MAIN, from: 'if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\n', to: "if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\nPromise.reject(new Error('planted rejection'));\n" }] },
+      { plant: [{ file: MAIN, from: '    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n', to: "    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n    setTimeout(() => { throw new Error('planted after the start'); }, 0);\n" }] },
+      { plant: [{ file: MAIN, from: '    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n', to: "    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n    Promise.reject(new Error('planted rejection'));\n" }] },
       { plant: [{ file: 'page', from: 'var CAB_HOLD_MS = ', to: 'null.planted; var CAB_HOLD_MS = ' }] },
     ],
     (chrome, c) => within(chrome, c, async (s, srv) => {
@@ -1707,7 +1708,7 @@ const ROWS = {
   ride: row('press a floor: the destination is navigated to by a ride, held, and revealed at its first scene (no blank)',
     // The layout answering 600 ms late, so the destination paints its waiting chrome well before its first scene.
     { api: { '/api/building': 600 } },
-    { plant: [{ file: MAIN, from: "    if (frame.scene !== null) {\n        revealed(html);\n    }\n", to: "    revealed(html);\n" }] },
+    { plant: [{ file: MAIN, from: "        if (frame.scene !== null) {\n            revealed(html);\n        }\n", to: "        revealed(html);\n" }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await rideTo(s, 'zeta');
       await until(async () => { const r = await s.record(); return r.scene !== null && r.classes.some(([, k]) => k.includes('ride-arrived')); }, 6000, 'the destination never arrived and drew');
