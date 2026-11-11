@@ -12176,7 +12176,12 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   crosses no slab at any step; the storey converges within
   the bound with the last iterate plus the tolerance satisfying the occlusion inequality strictly, on one slab as on
   ten, every lower slab's back-edge rays — the ground's included — clearing the slab above from the computed
-  overview camera; every floor entry's corner is visible from every azimuth on the grid; the snap table holds cell
+  overview camera; every floor entry's corner is visible from every azimuth on the grid; every floor entry stands
+  beside the stack — at the overview from every azimuth and at every focus pose, on stages from 390 px wide up, each
+  entry inside the stage's sides, and no entry whose notices are drawn meeting a slab's projected rectangle (its own
+  included) or another entry, its notices culled where they do not fit; the stage shows *Drawing the building…*, the
+  list visually hidden and still read, from the page's start until the first stack stands, and the list in flow
+  without WebGL 2 or once everything has answered with nothing to stack (card#13033's polish); the snap table holds cell
   by cell — a wheel in over a floor focuses it, over the ground or the sky stays, **+** from the overview focuses the
   floor nearest the stage's centre and from a focus pose stays, a wheel out returns to the overview at the azimuth
   it left, *Fit* to the front; and the acts turn a stream of small wheel events that fills the bucket once and outlives the glide into exactly
@@ -12187,7 +12192,9 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   asks for its stream, holds a WebGL 2 context on its canvas (a `2d` context asked of the same canvas is refused),
   paints one floor drawing per composed floor into its hidden hosts with no nameplate text and no plate in any,
   keeps each floor's rasterised canvas beside its host, where a desk's chip rect in the top floor's canvas is not the
-  background, docks each list entry to the stage, culls every desk label with `.visually-hidden` at the overview
+  background, docks each list entry to the stage with no floor's drawn notices over a slab, shows the *Drawing the
+  building…* placeholder and never the bare list from the navigation until the stack stands and neither once it has,
+  culls every desk label with `.visually-hidden` at the overview
   and no floor entry — each culled label still not `display: none` and still focusable, its focus bringing its
   floor into view — and, with motion on and wheel events dispatched from outside the page at a device's fixed pace,
   (over a point derived to lie on one floor at the overview and on another at that floor's pose, so a second snap is
@@ -12242,6 +12249,16 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   boxes intersect; the no-intersection assertion fails on the browser leg and in the probe.
 - **Fifteenth RED — the link that lies:** the *Read this floor* link's predicate inverted → shown where nothing is
   culled and hidden where names are; either stage fails.
+- **Sixteenth RED — the notices over the slabs:** a floor entry centred over its slab's corner, as the overview drew it
+  before card#13033's polish → its notices meet its own slab's projected rectangle and the ground's, in the probe and
+  on the browser leg.
+- **Seventeenth RED — the notices drawn where they do not fit:** the notice cull dropped → on a narrow stage an
+  entry's notices stand past the stage's side or over the stack.
+- **Eighteenth RED — the bare list before the first frame:** the stage's phase the list from the start → every step
+  before the first stack shows the list, and the browser leg samples it before the stack stands; or the phase drawing
+  always → a failed layout and an empty building claim to be drawing.
+- **Nineteenth RED — the status line that prefixes the name:** the focus status written *floor NAME* → the status is
+  not the floor's name alone.
 - **The red list, confirmed against the plants (slice 3, 2026-11-10):** the first, second, third (both halves), fourth,
   fifth, seventh, eighth, ninth and tenth (both halves) REDs, and the probe's halves of the fourteenth and fifteenth,
   were each planted in the shipped tree and seen red on `TheBuildingViewStacksTheFloorsTest`'s legs, and are held there
@@ -12255,7 +12272,11 @@ two kinds of pose and never through a floor (the operator's answers of 2026-11-0
   milliseconds (the plan's § 10 trigger, which fired), and the row's first form — wheel events paced by animation
   frames — re-armed the mute after its first snap; under the seat's ruling of 2026-11-10 the acts read the gesture gap
   from each input event's own time, and the row dispatches its events from outside the page at a fixed pace, as a
-  device delivers them, and passes with the long tasks still there.
+  device delivers them, and passes with the long tasks still there. **(card#13033's polish, 2026-11-11)** the
+  sixteenth to nineteenth REDs were each planted in the shipped tree and seen red on `TheBuildingViewStacksTheFloorsTest`'s
+  legs, where they are held as planted controls; the browser halves of the sixteenth and eighteenth were planted in what
+  the leg serves and seen red by `building-view.browser.mjs --selftest`, with the placeholder left standing once the
+  stack stood and the list left hidden without WebGL 2 besides.
 - **Discriminating control:** the three floors entered through the `floor` entry draw the same extents the building
   frame carries, and a client that never enters `/building` writes the same log rows, so the equalities are known to
   be reachable and the log's silence known to be the view's; and the probe's transition on the one-slab stack, which

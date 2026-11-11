@@ -10,9 +10,10 @@
  * Entries are reconciled by key, never rebuilt, so a render does not take keyboard focus off the link it is on.
  *
  * ⛔ ONE DOCKING FUNCTION (`dock()`): it is the one writer of every entry's `data-home` — `stage` while the renderer runs,
- * `flow` otherwise — and the sheet keys every dependent style on it. `place()` moves each docked entry to its anchor's
- * projection on every camera applied and on every resize: a floor at its slab's corner nearest the camera
- * (`labelCorner()`), a desk at its nameplate's point on its slab (`worldOf()`).
+ * `flow` otherwise — and the sheet keys every dependent style on it. `place()` moves each docked entry on every camera
+ * applied and on every resize: a floor's entry beside the stack, level with its slab's corner nearest the camera and over
+ * no slab (`floorEntryBoxes()`, which also says whether its notices fit), a desk at its nameplate's point on its slab
+ * (`worldOf()`).
  *
  * ⛔ A LABEL NOT DRAWN IS CULLED, NEVER HIDDEN: it takes the sheet's `.visually-hidden`, keeping its place in the
  * accessibility tree and the tab order — never the `hidden` attribute, which the sheet makes `display: none`. Which are
@@ -25,7 +26,7 @@
 
 import { FONT_NAME } from '../floor/desk-layout.js';
 import { GROUND_NAME } from './building-screen.js';
-import { LABEL_BORDER, LABEL_H, LABEL_PAD, labelBoxes, labelCorner, labelsShown, poseCamera, readFloorLink, readingOrder, worldOf } from './stack-model.js';
+import { LABEL_BORDER, LABEL_H, LABEL_PAD, floorEntryBoxes, labelBoxes, labelsShown, poseCamera, readFloorLink, readingOrder, worldOf } from './stack-model.js';
 
 /**
  * @param {Document} document
@@ -44,6 +45,11 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
     let home = 'flow';
     /** Whether the list holds the building's entries yet, or still the page's WAITING placeholder. */
     let listed = false;
+    /**
+     * Each floor entry's box docked on the stage — with its notices and its link's alone, by floor key — measured once per
+     * render and per docking, since only their text and the sheet's rules size them; `null` until measured.
+     */
+    let sizes = null;
 
     // The label's box is the model's: its font and its padding, border and height are written from the one source.
     list.style.setProperty('--label-font', FONT_NAME);
@@ -192,12 +198,14 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
 
             hold(list, [...drawn.map(({ row }) => floors.get(row.floor).item), ground.item]);
             listed = true;
+            sizes = null;
             this.dock(home);
         },
 
         /** Every entry's home — `stage` while the renderer runs, `flow` otherwise. */
         dock(where) {
             home = where;
+            sizes = null;
 
             if (!listed) {
                 return;
@@ -205,11 +213,12 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
 
             list.dataset.home = where;
 
-            for (const { head } of floors.values()) {
+            for (const { head, notices } of floors.values()) {
                 head.dataset.home = where;
 
                 if (where === 'flow') {
                     head.style.transform = '';
+                    notices.classList.remove('visually-hidden');
                 }
             }
 
@@ -224,10 +233,11 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
         },
 
         /**
-         * Each docked entry at its anchor's projection under the camera as applied.
+         * Each docked entry at its place under the camera as applied: a floor's beside the stack, its notices culled where
+         * they do not fit (`floorEntryBoxes()`), a desk's at its anchor's projection.
          *
          * @param {object} stack `stackModel()`'s
-         * @param {{position: object}} camera the camera applied — a pose or a glide's step
+         * @param {{position: object, target: object, fov: number}} camera the camera applied — a pose or a glide's step
          * @param {function(object): {x: number, y: number}} project the paint's projector
          */
         place(stack, camera, project) {
@@ -235,12 +245,20 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
                 return;
             }
 
-            const azimuth = Math.atan2(camera.position.x - stack.axis.x, camera.position.z - stack.axis.z);
-            const at = (node, point, centred) => {
-                const p = project(point);
+            if (sizes === null) {
+                // Measured with every notice drawn, so a cull from the last placing does not shrink the entry it sizes.
+                for (const { notices } of floors.values()) {
+                    notices.classList.remove('visually-hidden');
+                }
 
-                node.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, ${centred ? '-50%' : '-100%'})`;
-            };
+                sizes = new Map([...floors].map(([key, { head, link }]) => [key, {
+                    entry: { w: head.offsetWidth, h: head.offsetHeight },
+                    link: { w: link.offsetWidth, h: link.offsetHeight },
+                }]));
+            }
+
+            const none = { entry: { w: 0, h: 0 }, link: { w: 0, h: 0 } };
+            const boxes = floorEntryBoxes(stack, camera, stack.surface, (slab) => sizes.get(slab.floor ?? '') ?? none);
 
             for (const slab of [...stack.slabs, stack.ground]) {
                 const floor = floors.get(slab.floor ?? '');
@@ -249,11 +267,16 @@ export function buildingLabels(document, { list, readFloor, measure }, report) {
                     continue;
                 }
 
-                at(floor.head, labelCorner(slab, azimuth), false);
+                const box = boxes.get(slab.floor);
+
+                floor.head.style.transform = `translate(${box.x}px, ${box.y}px)`;
+                floor.notices.classList.toggle('visually-hidden', !box.notices);
 
                 if (slab.extent !== null) {
                     for (const label of floor.labels) {
-                        at(desks.get(label.key), worldOf(slab, label.at), true);
+                        const p = project(worldOf(slab, label.at));
+
+                        desks.get(label.key).style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
                     }
                 }
             }

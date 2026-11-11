@@ -49,6 +49,36 @@ import { stackModel } from './stack-model.js';
  */
 export const NO_WEBGL = 'this browser offers no WebGL 2, so the building is not drawn; the floors are listed below';
 
+/**
+ * What the stage shows (§ 7) — a decision, so it is made here and driven headlessly:
+ *  · `list` without WebGL 2: the floors' list in flow is the page;
+ *  · `stage` once a stack stands: the canvas, the list docked over it as its labels;
+ *  · `drawing` while the first stack is still coming — the snapshot, the layout or the art not yet answered: the page's
+ *    placeholder in the stage, the list visually hidden and still in the accessibility tree, so a viewer never reads the
+ *    bare list for the seconds the first frame takes. The page shows the phase as it stands a stack, after that stack's
+ *    pictures are rasterised, so the placeholder usually covers the first rasterisation (a resize during that first
+ *    paint can stand the stack before its pictures, showing bare slabs until they land);
+ *  · `list` again when everything has answered and there is still no stack to stand — a failed layout, no floor with an
+ *    extent, a stage collapsed to no size. A snapshot that never arrives leaves the phase `drawing`; the feed's
+ *    failure banner is what says so.
+ *
+ * @param {{webgl: boolean, art: boolean, frame: object|null, stack: object|null}} state whether the page holds a WebGL 2
+ *        paint; whether the art modules have answered (`loadArt()`); the last building frame, `null` before the first; and
+ *        the stack as stood
+ * @returns {'drawing'|'stage'|'list'}
+ */
+export function stagePhase({ webgl, art, frame, stack }) {
+    if (!webgl) {
+        return 'list';
+    }
+
+    if (stack !== null) {
+        return 'stage';
+    }
+
+    return frame === null || frame.layout === 'pending' || !art ? 'drawing' : 'list';
+}
+
 /** The ground slab's entry in the floors' list: the lobby, by the lobby page's own heading. */
 export const GROUND_NAME = 'Lobby';
 

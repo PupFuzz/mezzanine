@@ -1,7 +1,7 @@
 /**
  * The probe `Tests\Feature\Building\TheBuildingViewStacksTheFloorsTest` reads `building/stack-model.js` through — plan
  * § 8 item 3's legs for the storey, the focus pose, the paths, the floor entries' corner, the snap table, the cull and
- * the rest. argv[2] is the module directory (the shipped `public/js/building` or a MUTATED COPY of it); stdin carries
+ * the rest, and the floor entries' place beside the stack (card#13033's polish). argv[2] is the module directory (the shipped `public/js/building` or a MUTATED COPY of it); stdin carries
  * `{ "cull": { "extent", "labels", "glyph_w" } }` — one floor's scene extent and desk labels from the harness's
  * `building_stack` run, and the label font's glyph width — and stdout is `{ "legs": { "<leg>": [defect, …] }, "printed":
  * { … } }`: each leg a list of defects, empty when it holds, and the figures the plan says are printed, not asserted.
@@ -276,6 +276,83 @@ for (const [fixture, extents] of Object.entries(FIXTURES)) {
     }
 }
 
+// ── the floor entries stand beside the stack ──────────────────────────────────────────────────
+
+/**
+ * Every floor entry at its widest — two notice lines at the sheet's notice width — and the ground's link: a notice drawn
+ * over a slab, or over another entry, is the defect (card#13033's polish: the overview's notices were written over the
+ * slabs). The stages run from the paths' to the narrow ones, where the room beside the stack falls toward nothing and the
+ * notices must be culled rather than drawn over a slab.
+ */
+const ENTRY_STAGES = [...PATH_STAGES, stage(1400, 734), stage(1024, 700), stage(768, 950), stage(390, 700)];
+const ENTRY_SIZE = { entry: { w: 320, h: 56 }, link: { w: 110, h: 24 } };
+const GROUND_SIZE = { entry: { w: 60, h: 24 }, link: { w: 60, h: 24 } };
+const sizeOf = (slab) => (slab.floor === null ? GROUND_SIZE : ENTRY_SIZE);
+const meets = (p, q) => p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
+let entriesDrawn = 0;
+let entriesCulled = 0;
+
+for (const [fixture, extents] of Object.entries(FIXTURES)) {
+    for (const surface of ENTRY_STAGES) {
+        const stack = stackOf(extents, surface);
+        const slabs = [...stack.slabs, stack.ground];
+        const cameras = [
+            ...AZIMUTHS.map((azimuth) => [`the overview at ${Math.round((azimuth * 180) / Math.PI)}°`, M.overviewPose(stack, surface, azimuth)]),
+            ...stack.slabs.map((slab, i) => [`${slab.floor}'s focus pose`, focus(stack, i, surface, fixture)]),
+        ];
+
+        for (const [where, camera] of cameras) {
+            const boxes = M.floorEntryBoxes(stack, camera, surface, sizeOf);
+            const at = `${fixture} on ${name(surface)} at ${where}`;
+
+            for (const slab of slabs) {
+                const box = boxes.get(slab.floor);
+                const what = slab.floor ?? 'the ground';
+
+                if (box.x < -1e-6 || box.x + box.w > surface.width + 1e-6) {
+                    leg('entries').push(`${at}: ${what}'s entry stands past the stage's side — the keyboard's focus on it is out of view`);
+                }
+
+                if (slab.floor === null || !box.notices) {
+                    entriesCulled += slab.floor === null ? 0 : 1;
+                    continue;
+                }
+
+                entriesDrawn++;
+
+                for (const other of slabs) {
+                    const rect = M.slabRect(other, camera, surface);
+
+                    if (rect !== null && meets(box, rect)) {
+                        leg('entries').push(`${at}: ${what}'s notices are drawn over ${other.floor === slab.floor ? 'its own slab' : `${other.floor ?? 'the ground'}'s slab`}`);
+                    }
+
+                    if (other !== slab && meets(box, boxes.get(other.floor))) {
+                        leg('entries').push(`${at}: ${what}'s notices are drawn over ${other.floor ?? 'the ground'}'s entry`);
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The controls: the notices are drawn where there is room — the sandbox's stage and the plan's, every floor, at the
+// overview from the front — so the leg reads drawn notices, not only culled ones; and culled where there is none.
+for (const surface of [stage(1400, 734), stage(1280, 600)]) {
+    const stack = stackOf(FIXTURES['five floors'], surface);
+    const boxes = M.floorEntryBoxes(stack, M.overviewPose(stack, surface, 0), surface, sizeOf);
+
+    if (stack.slabs.some((slab) => !boxes.get(slab.floor).notices)) {
+        leg('entries').push(`CONTROL — five floors on ${name(surface)} at the overview cull a notice where the stage has room for every one`);
+    }
+}
+
+if (entriesCulled === 0) {
+    leg('entries').push('CONTROL — no stage culls a notice, so the narrow stages tested nothing');
+}
+
+printed.entries = { drawn: entriesDrawn, culled: entriesCulled };
+
 // ── the snap table, cell by cell ──────────────────────────────────────────────────────────────
 
 printed.plus = {};
@@ -527,7 +604,7 @@ printed.centre_misses = centreMisses;
 
     // The status line names what the view rests on, by the floor's name (a name and no figure).
     check(`viewStatus() at the overview is ${JSON.stringify(M.viewStatus({ pose: 'overview', azimuth: 0.7 }, stack))}`, M.viewStatus({ pose: 'overview', azimuth: 0.7 }, stack) === 'the whole building');
-    check(`viewStatus() at ${slab.floor} is ${JSON.stringify(M.viewStatus({ pose: { floor: slab.floor }, azimuth: 0 }, stack))}`, M.viewStatus({ pose: { floor: slab.floor }, azimuth: 0 }, stack) === `floor ${slab.name}`);
+    check(`viewStatus() at ${slab.floor} is ${JSON.stringify(M.viewStatus({ pose: { floor: slab.floor }, azimuth: 0 }, stack))}, not the floor's name alone`, M.viewStatus({ pose: { floor: slab.floor }, azimuth: 0 }, stack) === slab.name);
     check('viewStatus() at a dropped floor is not the whole building\'s', M.viewStatus({ pose: { floor: 'no-such-floor' }, azimuth: 0 }, stack) === 'the whole building');
 
     const t1 = M.textureSize(DEFAULT, 1, 8192);
@@ -539,4 +616,4 @@ printed.centre_misses = centreMisses;
     check(`textureSize() on a 1024 device is not proportional at 1024: ${JSON.stringify(t3)}`, t3.width === 1024 && t3.height === Math.round((864 * 1024) / 1784));
 }
 
-process.stdout.write(JSON.stringify({ legs: Object.fromEntries(['storey', 'focus', 'paths', 'corner', 'snap', 'cull', 'rest'].map((k) => [k, legs[k] ?? []])), printed }));
+process.stdout.write(JSON.stringify({ legs: Object.fromEntries(['storey', 'focus', 'paths', 'corner', 'entries', 'snap', 'cull', 'rest'].map((k) => [k, legs[k] ?? []])), printed }));
