@@ -3201,9 +3201,11 @@ creation, a room taken off its floor at its retirement); all of them go through 
 below — and one save is one transaction.
 
 ⭐ **Two writes of the layout, and each decides against the document it replaces (card#13117).** A console
-ACTION — a room's placement, a retirement's removal, and the later floor acts of the plan
-`plan-13117-seat-identity.md § 5.5` — goes through **`Layouts::amend()`**, the one writer for them: inside the
-lock below it reads the CURRENT document, hands it to the action's edit, validates the result exactly as a
+ACTION — a room's placement, a retirement's removal, and the Floors module's acts (a floor's creation, rename,
+theme, forgotten alias and placed room, `plan-13117-seat-identity.md § 5.5`) — goes through **`Layouts::amend()`**,
+the one writer for them: inside the lock below it reads the CURRENT document — refusing by name, with the store
+unchanged, a stored document the reader refuses, which the textarea or a restore repairs — hands it to the
+action's edit, validates the result exactly as a
 save is validated, refuses a no-op, and writes one revision, so a decision about the document is never taken
 against the one a form was rendered from. The **textarea** replaces the whole document, so it is held to the
 same rule by a **compare-and-swap**: its form carries the `layout_version` it was opened at, and a save whose

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Building\BuildingLayout;
+use App\Building\FloorEditReport;
 use App\Building\InvalidBuildingLayout;
 use App\Building\Layouts;
 use App\Building\RoomRefused;
@@ -52,11 +53,12 @@ class RoomController extends Controller
         $floor = ($validated['floor'] ?? '') === '' ? null : $validated['floor'];
 
         return $this->act(function () use ($validated, $floor, $request): string {
-            $version = Rooms::create($validated['key'], $validated['name'], $floor, (string) $request->user()->email);
+            $report = new FloorEditReport;
+            $version = Rooms::create($validated['key'], $validated['name'], $floor, (string) $request->user()->email, $report);
 
             return $version === null
                 ? sprintf('Room %s is created, on no floor. Place seats in it from the Agents page.', $validated['key'])
-                : sprintf('Room %s is created and placed on the floor at /floor/%s, as layout revision %d.', $validated['key'], $floor, $version);
+                : sprintf('Room %s is created and placed on the floor at /floor/%s, as layout revision %d.%s', $validated['key'], $floor, $version, $report->said());
         });
     }
 

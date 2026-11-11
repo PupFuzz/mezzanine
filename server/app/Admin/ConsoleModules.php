@@ -35,12 +35,18 @@ final class ConsoleModules
                     .'administer this install.',
             ],
             [
-                'key' => 'floors',
+                'key' => 'building',
                 'label' => 'Floors',
+                'route' => 'admin.building.index',
+                'blurb' => 'The floors of the building: name one and its web address follows the name, rename it '
+                    .'and its old links keep working, choose its theme, and put rooms on it.',
+            ],
+            [
+                'key' => 'floors',
+                'label' => 'Room maps',
                 'route' => 'admin.floors.index',
-                'blurb' => 'The floors this deploy renders, and the Tiled map each one takes its '
-                    .'desk slots from. The map says how many desks a room has and where they '
-                    .'sit; which seat sits at which desk stays derived.',
+                'blurb' => 'The Tiled map each room takes its desk slots from. The map says how many '
+                    .'desks a room has and where they sit; which seat sits at which desk stays derived.',
             ],
             [
                 'key' => 'layout',
