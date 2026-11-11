@@ -39,9 +39,6 @@ final class Rooms
     /** `installs.display_name`'s width (`docs/design/FLEET-STATE.md § 6.4`), in characters. */
     public const NAME_MAX = 64;
 
-    /** The record a placement writes: a room drawn in the default form, as the layout's own default. */
-    private const PLACED_RECORD = ['form' => 'open'];
-
     /**
      * Every room, live and retired — the `unassigned` key excepted, which is no room — each with its name, the
      * floor the layout places it on (null for none), its live seats and its map's version (null for the shipped
@@ -81,17 +78,17 @@ final class Rooms
 
     /**
      * Create room `$key` named `$name`, placed on the floor at address `$floor` when one is named — the room's row
-     * and its placement in one transaction. Answers the new `layout_version`, or null when the room
-     * was placed on no floor.
+     * and its placement (`FloorEdits::place()`, which unplans a planned floor) in one transaction. Answers the new
+     * `layout_version`, or null when the room was placed on no floor.
      *
      * @throws RoomRefused|InvalidBuildingLayout naming why nothing was written
      */
-    public static function create(string $key, string $name, ?string $floor, string $by): ?int
+    public static function create(string $key, string $name, ?string $floor, string $by, FloorEditReport $report = new FloorEditReport): ?int
     {
         self::refuseAKeyThatCannotBeARoom($key);
         self::refuseAName($name);
 
-        return Layouts::serialise(function () use ($key, $name, $floor, $by): ?int {
+        return Layouts::serialise(function () use ($key, $name, $floor, $by, $report): ?int {
             try {
                 DB::table('installs')->insert([
                     'install_id' => $key,
@@ -115,17 +112,7 @@ final class Rooms
                 return null;
             }
 
-            return Layouts::amend(function (\stdClass $document) use ($key, $floor): \stdClass {
-                $entry = FloorEdits::entryAt($document, $floor) ?? throw new RoomRefused(sprintf(
-                    'There is no floor at /floor/%s in the building layout now — it changed since this page was '
-                    .'opened. Reload and choose the floor again; nothing was created.',
-                    $floor,
-                ));
-
-                $entry->rooms->{$key} = (object) self::PLACED_RECORD;
-
-                return $document;
-            }, $by);
+            return Layouts::amend(FloorEdits::place($floor, $key, $report), $by);
         });
     }
 
@@ -195,40 +182,12 @@ final class Rooms
 
             // Decided against the document under the lock: a save that placed the room since the page was
             // rendered is removed here, and an unplaced room writes no revision (`amend()` refuses a no-op).
-            if (self::floorHolding(Layouts::lockedDocument(), $key) === null) {
+            if (FloorEdits::floorHolding(Layouts::lockedDocument(), $key) === null) {
                 return null;
             }
 
-            return Layouts::amend(fn (\stdClass $document): \stdClass => self::withoutRoom($document, $key), $by);
+            return Layouts::amend(FloorEdits::unplace($key), $by);
         });
-    }
-
-    /**
-     * The document with room `$key` taken off its floor — and the floor's entry with it when the room was its
-     * last, since a floor of no rooms is a document the reader refuses (`docs/design/FLOOR.md § 4.6`).
-     */
-    private static function withoutRoom(\stdClass $document, string $key): \stdClass
-    {
-        $entry = self::floorHolding($document, $key);
-        unset($entry->rooms->{$key});
-
-        if (get_object_vars($entry->rooms) === []) {
-            $document->floors = array_values(array_filter($document->floors, fn ($floor) => $floor !== $entry));
-        }
-
-        return $document;
-    }
-
-    /** The floor entry of `$document` whose rooms include `$key`, or null. A room is on one floor at most. */
-    private static function floorHolding(\stdClass $document, string $key): ?\stdClass
-    {
-        foreach ($document->floors ?? [] as $entry) {
-            if ($entry instanceof \stdClass && ($entry->rooms ?? null) instanceof \stdClass && property_exists($entry->rooms, $key)) {
-                return $entry;
-            }
-        }
-
-        return null;
     }
 
     /** The live room `$key`'s row, locked; refused by name when there is none. */

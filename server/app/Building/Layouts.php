@@ -276,13 +276,15 @@ final class Layouts
      *
      * @param  callable(\stdClass): \stdClass  $edit  handed a decoded copy of the current document
      *
-     * @throws InvalidBuildingLayout on a refusal `$edit` throws, on a document the reader refuses, on an
-     *                               overlap, a theme the build does not ship, a retired room, or a no-op
+     * @throws InvalidBuildingLayout on a stored document the reader refuses, on a refusal `$edit` throws, on an
+     *                               edited document the reader refuses, on an overlap, a theme the build does not ship, a
+     *                               retired room, or a no-op
      */
     public static function amend(callable $edit, string $by): int
     {
         return self::serialise(function () use ($edit, $by) {
             $current = self::lockedDocument();
+            self::refuseAnUnreadableBase($current);
             $edited = $edit(self::decode(self::encode($current)));
 
             if (self::encode($edited) === self::encode($current)) {
@@ -298,6 +300,25 @@ final class Layouts
 
             return self::write($document, null, $by);
         });
+    }
+
+    /**
+     * ⛔ `amend()` EDITS ONLY A DOCUMENT THE READER ACCEPTS. A stored document a later rule refuses (FLOOR.md § 9 F17)
+     * can hold an entry of any shape, and a closure reading it would fail on the shape rather than refuse by name; the
+     * textarea and a restore are what repair it, and the refusal says so.
+     */
+    private static function refuseAnUnreadableBase(\stdClass $current): void
+    {
+        try {
+            BuildingLayout::parse($current);
+        } catch (InvalidBuildingLayout $e) {
+            throw new InvalidBuildingLayout(
+                'The stored building layout is refused by this build\'s reader, so no console action can change it: '
+                .$e->getMessage().' Repair it in the building layout editor, or restore a revision, first. Nothing '
+                .'was changed.',
+                previous: $e,
+            );
+        }
     }
 
     /**

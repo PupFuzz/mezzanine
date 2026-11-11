@@ -4,11 +4,13 @@
     <p>
         <strong>A room is an install; a floor is a set of rooms you compose</strong>
         (<code>docs/design/FLOOR.md § 4.6</code>, operator ruling card#9267). Rooms are created, named and
-        retired in the <a href="{{ route('admin.rooms.index') }}">Rooms</a> module, which can also place a new
-        room on a floor here as a revision of this document. This document is the composition, and it is the
-        only place that says which rooms share a floor. Everything else
+        retired in the <a href="{{ route('admin.rooms.index') }}">Rooms</a> module; floors are created, named,
+        themed and given rooms in the <a href="{{ route('admin.building.index') }}">Floors</a> module. Both write
+        their acts as revisions of this document, and what their forms do not do — a planned floor's positions
+        and hallway — is written here. This document is the composition, and it is the only place that says
+        which rooms share a floor. Everything else
         about a room — how big it is, where its desks are, what it looks like — is that room's own
-        map, in the <a href="{{ route('admin.floors.index') }}">floors</a> module.
+        map, in the <a href="{{ route('admin.floors.index') }}">Room maps</a> module.
     </p>
 
     <p>

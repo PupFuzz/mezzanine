@@ -331,7 +331,8 @@ observer is refused it with a `403` and the dashboard does not link it (card#941
 edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, the *Room* control that
 moves a seat between rooms, and the **retired seats** record — a removed seat's desk goes from the floor
 immediately, so the console is where *who retired it, when and why* lives, `card#9078`), **rooms** (create,
-rename and retire the rooms seats are placed in, `card#13117`), **floors** (each room's Tiled map: how
+rename and retire the rooms seats are placed in, `card#13117`), **floors** (name, rename and theme the
+floors of the building and put rooms on them, `card#13117`), **room maps** (each room's Tiled map: how
 many desks it has and where they sit, `card#9085`), the **building layout** (which rooms share a
 floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`) and
 **seat tokens** (issue a seat's reporter token, shown once to copy, and revoke one later,
@@ -392,8 +393,8 @@ shell as `php artisan mezzanine:ingest-token:issue <seat_id>` and
 **Rooms are the console's** (`/admin/rooms`, card#13117). A room has a **key**, typed once — lower-case
 letters, digits and hyphens, `unassigned` reserved, and the page names the bounds it refuses — which never
 changes because the room's map history is kept under it, and a **name**, which a rename changes. Creating a room
-may place it on a floor of the current building layout in the same act, as one layout revision; a floor laid
-out with positions refuses a room without one, so place such a room in the layout document instead. A room
+may place it on a floor of the current building layout in the same act, as one layout revision, as the Floors
+page places a room (below). A room
 is retired once no live seat is in it and no coordination binding is bound to it; retiring it takes it off
 its floor in the same act, and a layout save or restore that would place it again is refused. A retired
 room is listed as a record and drawn nowhere; its key is never reused.
@@ -413,6 +414,18 @@ reload and re-apply the edit.
 is at `/floor/the-burrow`. A floor's `aliases` keep the addresses it had before a rename, so old links redirect
 to it; a link naming a room reaches the floor that holds the room. A room no floor places is drawn on the
 **Unassigned** floor, last in the directory, until it is placed.
+
+**Floors are named and given rooms on the Floors page** (`/admin/building`, card#13117). A floor is created with a
+name, a theme and its first room, since a floor always holds one; the name field shows the address the name will
+get and, before the save, the floor that holds that address now. A rename keeps the old address as a former
+address that still opens the floor, and a name whose address another floor used to have takes that address over,
+which the page says when it saves; an address another floor answers to now is refused, naming that floor. Each
+former address can be forgotten. Placing a room on a floor takes it off the floor it was on; a floor left with no
+room is removed, and its addresses then open nothing, so a new floor is refused the only room of another floor —
+rename that floor instead and its links keep working. Placing a room on a floor laid out with positions clears that
+floor's positions and hallway, which the revision before still holds; positions and hallways are written in the
+building layout editor. Every act is one revision of the building layout, decided against the layout as it is when
+the save arrives: an act on a floor renamed since the page was opened is refused, naming the address.
 
 **To install the reporter on a seat**, see [Install the reporter on an agent machine](#install-the-reporter-on-an-agent-machine):
 the seat's own Claude Code agent runs it, and the token reaches the seat as a file, never through the agent.

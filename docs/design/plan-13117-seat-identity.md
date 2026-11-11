@@ -1161,6 +1161,36 @@ there and was moved rather than masked: on a placed floor the entry's camera fit
 an overflow row they bring is outside the fit view; `camera_degraded_low` now enters the Unassigned floor, composed
 only once its seats are held, and the behaviour is reported to the card rather than changed in this slice.
 
+**Build notes, S5 (2026-11-11) — where the build read this section differently, and why.** (1) **A floor is created
+holding a room** (S4's first finding): the create form is (name, theme, first room), and `FloorEdits::create()` keeps
+its room. The alternative — a reader that admits a floor of no rooms — was declined: FLOOR.md § 4.6 defines a floor
+as its rooms and refuses an empty one as *a floor that draws nothing*, and admitting it would give both composers,
+the directory, the cab and the building view a floor with nothing on it to draw, for an act the operator can do with
+a room in hand. (2) **A new floor is refused the only room of another floor** (S4's second finding), naming the floor
+and saying to rename it: that act would only re-home the floor's one room under a new name, which the rename does
+while keeping every link, so moving the aliases with the room would be a second rename path, and dropping them is
+the silent loss the finding named. (3) **No *remove a floor* route**: § 5.5's `POST …/remove` *refused while it holds
+rooms* could only ever refuse, since the reader refuses a floor of no rooms; a floor goes with its last room, placed
+elsewhere or retired, and the status line says its addresses then open nothing (§ 5.3's removal). (4) **The floor a
+room leaves keeps its plan**; only the planned floor a room is placed on loses its `origin`s and `hallway`. § 5.5
+cleared both, but every room left on the source keeps its `origin`, so the all-or-nothing rule holds there and
+clearing it would discard positions no rule requires discarding; the destination must be cleared because the form
+has no position to give the room. One primitive takes a room off a floor (`FloorEdits::takeOff()`), used by the
+create, the placement and a retirement (`Rooms::retire()` through `FloorEdits::unplace()`), and the Rooms module's
+create-on-a-floor is the same `FloorEdits::place()`, so it now unplans a planned floor rather than being refused by
+it. (5) **One change per `PATCH`** — the name, the theme, or one alias to forget, each its own form — so a save never
+re-sends a member from the page's rendering. (6) **`amend()` refuses by name to edit a stored document the reader
+refuses** (F17's state), which the closures would otherwise meet as a shape they cannot read. (7) The consequences an
+act decides under the lock — a take-over, a floor removed with its last room, a floor unplanned — come back on a
+`FloorEditReport` and are said on the status line. (8) card#9085's room-map module keeps its routes and is labelled
+*Room maps*, so the nav carries one *Floors*. (9) **Not fixed here, recorded:** retiring an UNPLACED room with an
+authored map writes no layout revision (`amend()` refuses the no-op), so no message reaches an open page, which keeps
+drawing the room on the Unassigned floor until its next `GET /api/building`. The fix is on the wire, not the console:
+`building.layout` is applied only when its `layout_version` differs from the one held, a `room.map` makes the
+browser re-fetch a map the retired room still answers with, and the lobby does not apply `room.map` at all — so
+closing it is a message (or a rule for an existing one) in D2 § 8.3/§ 8.7 and its apply on the floor, the lobby and
+the building view.
+
 ## 10. The slice plan, for the coder
 
 Each slice is one PR to `dev`, `[no-close]` until the last of each card, each with its docs in the same round

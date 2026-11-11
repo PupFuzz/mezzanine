@@ -106,17 +106,19 @@ class RoomConsoleTest extends TestCase
         $this->assertSame('office', Layouts::document()->floors[0]->rooms->aimla->form);
     }
 
-    public function test_a_room_the_reader_refuses_to_place_is_not_created_either(): void
+    public function test_a_room_created_on_a_planned_floor_unplans_it_and_says_so(): void
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
         $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]]]]);
 
-        // A planned floor is all-or-nothing (FLOOR.md § 4.6), so a room placed with no origin is refused —
-        // and the room's row goes with the refusal, since the two are one transaction.
-        $this->create(['key' => 'nook', 'name' => 'Nook', 'floor' => 'aimla'])->assertSessionHasErrors('room');
+        // A planned floor is all-or-nothing (FLOOR.md § 4.6) and the form has no position to give the room, so the
+        // placement is the Floors module's (`FloorEdits::place()`): the floor's plan is cleared, and the status says so.
+        // That a refusal inside the act takes the room's row with it is the stale-floor test below.
+        $this->create(['key' => 'nook', 'name' => 'Nook', 'floor' => 'aimla'])->assertSessionHasNoErrors()
+            ->assertSessionHas('status', fn (string $s) => str_contains($s, 'Floor aimla was planned'));
 
-        $this->assertFalse(DB::table('installs')->where('install_id', 'nook')->exists());
-        $this->assertSame(1, Layouts::version());
+        $this->assertSame(['aimla' => ['aimla', 'nook']], $this->placement());
+        $this->assertObjectNotHasProperty('origin', Layouts::document()->floors[0]->rooms->aimla);
     }
 
     public function test_a_key_that_cannot_be_a_room_and_a_name_that_cannot_be_one_are_refused(): void
@@ -255,7 +257,7 @@ class RoomConsoleTest extends TestCase
 
         $this->create(['key' => 'nook', 'name' => 'Nook', 'floor' => 'lone'])
             ->assertSessionHasErrors(['room' => 'There is no floor at /floor/lone in the building layout now — it changed since this page was '
-                .'opened. Reload and choose the floor again; nothing was created.']);
+                .'opened. Reload and choose the floor again; nothing was changed.']);
 
         $this->assertSame($layout, Layouts::documentText(), 'the layout does not hold exactly the first action\'s write');
         $this->assertFalse(DB::table('installs')->where('install_id', 'nook')->exists());

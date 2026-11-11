@@ -3,8 +3,8 @@
 @section('console')
     <p>
         <strong>A room is where seats are drawn together</strong>: each room has its own desk map (the
-        <a href="{{ route('admin.floors.index') }}">Floors</a> module) and sits on a floor of the
-        <a href="{{ route('admin.layout.edit') }}">building layout</a>. A room's <strong>key</strong> is typed once and
+        <a href="{{ route('admin.floors.index') }}">Room maps</a> module) and sits on a floor, which the
+        <a href="{{ route('admin.building.index') }}">Floors</a> module names and places rooms on. A room's <strong>key</strong> is typed once and
         never changes — its map history is kept under it — and its <strong>name</strong> is what you rename. Seats are
         placed in rooms from the <a href="{{ route('admin.agents.index') }}">Agents</a> page; a new seat starts in none
         (<code>docs/design/FLEET-STATE.md § 4.10</code>).
@@ -39,9 +39,11 @@
 
     <p>
         The key is lower-case letters, digits and hyphens, and a key the room cannot have is refused by name;
-        <code>unassigned</code> is reserved for the seats in no room. Placing the room on a floor writes one layout revision with it. A floor laid out with positions
-        (a <em>planned</em> floor) refuses a room without one: create the room on no floor, then place it in the
-        layout document.
+        <code>unassigned</code> is reserved for the seats in no room. Placing the room on a floor writes one layout
+        revision with it. A floor laid out with positions (a <em>planned</em> floor) loses its positions and its
+        hallway when a room is placed on it, since the form has no position to give the room; the revision before
+        still holds them, and the <a href="{{ route('admin.layout.edit') }}">building layout</a> editor is where a
+        floor is planned again.
     </p>
 
     <h2>Every room</h2>

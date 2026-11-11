@@ -51,6 +51,8 @@ class ConsoleShellTest extends TestCase
             'admin.agents.index' => route('admin.agents.index'),
             // card#13117's Rooms module.
             'admin.rooms.index' => route('admin.rooms.index'),
+            // card#13117's Floors module.
+            'admin.building.index' => route('admin.building.index'),
             'admin.floors.index' => route('admin.floors.index'),
             'admin.floors.create' => route('admin.floors.create'),
             'admin.floors.edit' => route('admin.floors.edit', $this->authoredFloor()),
@@ -217,6 +219,10 @@ class ConsoleShellTest extends TestCase
             'admin.rooms.store' => ['post', route('admin.rooms.store'), ['key' => 'gate-room', 'name' => 'Gate room']],
             'admin.rooms.update' => ['patch', route('admin.rooms.update', 'aimla'), ['name' => 'Renamed']],
             'admin.rooms.retire' => ['post', route('admin.rooms.retire', 'aimla'), []],
+            // card#13117's Floors module, on the floor `aimla` the layout fixture names.
+            'admin.building.floors.store' => ['post', route('admin.building.floors.store'), ['name' => 'Gate floor', 'room' => 'aimla']],
+            'admin.building.floors.update' => ['patch', route('admin.building.floors.update', 'aimla'), ['name' => 'Renamed']],
+            'admin.building.floors.place' => ['post', route('admin.building.floors.place', 'aimla'), ['room' => 'aimla']],
             'admin.floors.store' => ['post', route('admin.floors.store'), [
                 'install_id' => 'aimla', 'map' => FloorMapFixture::valid(),
             ]],

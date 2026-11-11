@@ -32,6 +32,7 @@ use Tests\Feature\Feed\FeedTestCase;
 class AFloorIsAddressedByItsNameTest extends FeedTestCase
 {
     use RefreshDatabase;
+    use ResolvesFloorRoutes;
 
     private const BY = 'suite';
 
@@ -157,7 +158,7 @@ class AFloorIsAddressedByItsNameTest extends FeedTestCase
         $revisions = DB::table('authored_revisions')->where('kind', Revisions::LAYOUT)->count();
         $messages = DB::table('feed_outbox')->where('t', 'building.layout')->count();
 
-        Layouts::amend(FloorEdits::create('The Nook', 'sola'), self::BY);
+        Layouts::amend(FloorEdits::create('The Nook', null, 'sola'), self::BY);
 
         $this->assertSame($revisions + 1, DB::table('authored_revisions')->where('kind', Revisions::LAYOUT)->count(), 'one revision');
         $this->assertSame($messages + 1, DB::table('feed_outbox')->where('t', 'building.layout')->count(), 'one message');
@@ -256,35 +257,5 @@ class AFloorIsAddressedByItsNameTest extends FeedTestCase
         }
 
         $this->fail('the act was not refused: '.$message);
-    }
-
-    /**
-     * Each segment resolved as the floor page resolves it: `GET /api/building`'s served floors and authored rooms,
-     * composed by the browser's `floors()` with no seat held, then `floor/floor-screen.js`'s `resolveRoute()`.
-     *
-     * @param  list<string>  $segments
-     * @return array<string, array{floor: string|null, redirect: string|null}>
-     */
-    private function resolve(array $segments): array
-    {
-        $served = $this->actingAs($this->enrolled())->getJson('/api/building')->assertOk()->json();
-        $js = realpath(__DIR__.'/../../../public/js');
-        $script = sprintf(
-            'import { floors } from %s; import { resolveRoute } from %s;'
-            .'const composed = floors({ installs: [] }, %s, null, %s);'
-            .'console.log(JSON.stringify(Object.fromEntries(%s.map((s) => { const r = resolveRoute(s, composed);'
-            .'return [s, { floor: r.floor === null ? null : r.floor.floor, redirect: r.redirect }]; }))));',
-            json_encode('file://'.$js.'/lobby/lobby-model.js'),
-            json_encode('file://'.$js.'/floor/floor-screen.js'),
-            json_encode($served['layout']['floors']),
-            json_encode(array_column($served['rooms'], 'install_id')),
-            json_encode($segments),
-        );
-        $out = shell_exec('node --input-type=module -e '.escapeshellarg($script).' 2>&1');
-        $decoded = json_decode((string) $out, true);
-
-        $this->assertIsArray($decoded, "node printed something that is not JSON:\n".$out);
-
-        return $decoded;
     }
 }

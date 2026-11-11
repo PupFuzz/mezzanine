@@ -128,5 +128,5 @@
         the furniture box, is refused by name.
     </p>
 
-    <p><a href="{{ route('admin.floors.index') }}">Back to the floors</a></p>
+    <p><a href="{{ route('admin.floors.index') }}">Back to the room maps</a></p>
 @endsection

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\BuildingFloorsController;
 use App\Http\Controllers\Admin\ConsoleController;
 use App\Http\Controllers\Admin\FloorController;
 use App\Http\Controllers\Admin\LayoutController;
@@ -99,7 +100,19 @@ Route::post('/rooms/{room}/retire', [RoomController::class, 'retire'])
     ->where('room', Slug::INSTALL_ID)->name('rooms.retire');
 
 /*
- * THE FLOORS MODULE — card#9085, the (a) half of the operator's 2026-09-08 ruling. A floor's map
+ * THE FLOORS MODULE — card#13117 (plan-13117-seat-identity.md § 5.5). A floor is named, and its address is the slug of
+ * its name; the console renames it (its old address kept, or taken over from another floor), themes it, forgets a
+ * former address, creates a floor holding a room, and places a room on a floor. Every act is one
+ * `App\Building\FloorEdits` closure written through `Layouts::amend()`. A floor is found by its address. No route
+ * removes a floor: the reader refuses a floor of no rooms, and a floor goes with its last room.
+ */
+Route::get('/building', [BuildingFloorsController::class, 'index'])->name('building.index');
+Route::post('/building/floors', [BuildingFloorsController::class, 'store'])->name('building.floors.store');
+Route::patch('/building/floors/{floor}', [BuildingFloorsController::class, 'update'])->name('building.floors.update');
+Route::post('/building/floors/{floor}/rooms', [BuildingFloorsController::class, 'place'])->name('building.floors.place');
+
+/*
+ * THE ROOM MAPS MODULE — card#9085, the (a) half of the operator's 2026-09-08 ruling. A room's map
  * is the authored artifact: how many desks the room has, where they sit, what it looks like.
  *
  * ⛔ NO ROUTE HERE NAMES A SEAT, AND THAT IS THE (b) LINE. `docs/design/FLOOR.md § 3.2` puts a
@@ -108,11 +121,11 @@ Route::post('/rooms/{room}/retire', [RoomController::class, 'retire'])
  * in `Tests\Feature\Admin\FloorConsoleTest`, at the route table and at the schema, because the
  * edit that would cross this line is one column and one form field.
  *
- * ⛔ AND NO FLOORS ROUTE CREATES AN INSTALL. A room IS an install (§ 3.1). ⭐ Since card#13117
+ * ⛔ AND NO ROOM MAPS ROUTE CREATES AN INSTALL. A room IS an install (§ 3.1). ⭐ Since card#13117
  * issuing a seat's token creates no install: the seat starts in no room, and a room is created in the
- * console's Rooms module below (`App\Building\Rooms`), beside the rows that existed before it and those its
- * migration minted for the rooms the layout places. "Add a floor" here means
- * give an existing room its map, and the write refuses a room no seat renders in — the virtual
+ * console's Rooms module above (`App\Building\Rooms`), beside the rows that existed before it and those its
+ * migration minted for the rooms the layout places. Adding a map here means
+ * giving an existing room its map, and the write refuses a room no seat renders in — the virtual
  * install `unassigned` included.
  *
  * REMOVAL IS A `POST` TO A NAMED ACT, matching the shape D2 chose for retirement — but for a

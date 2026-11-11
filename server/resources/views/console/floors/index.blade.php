@@ -1,5 +1,5 @@
 @extends('console.layout')
-@section('title', 'Floors')
+@section('title', 'Room maps')
 @section('console')
     <p>
         A <strong>room</strong> is an install and a <strong>floor</strong> is an
