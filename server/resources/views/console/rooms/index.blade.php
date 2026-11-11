@@ -29,7 +29,7 @@
             <option value="">No floor</option>
             @foreach ($floors as $floor)
                 <option value="{{ $floor['key'] }}" @selected(old('floor') === $floor['key'])>
-                    {{ $floor['label'] ?? $floor['key'] }}@if ($floor['label'] !== null) ({{ $floor['key'] }})@endif
+                    {{ $floor['name'] }} (/floor/{{ $floor['key'] }})
                 </option>
             @endforeach
         </select>

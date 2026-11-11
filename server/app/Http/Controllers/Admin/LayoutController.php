@@ -81,7 +81,7 @@ class LayoutController extends Controller
 
         return redirect()->route('admin.layout.edit')->with('status', sprintf(
             'The building layout is saved as revision %d. Rooms the layout does not place still '
-            .'render, each on a floor of its own (docs/design/FLOOR.md § 4.6), so this document is '
+            .'render, on the Unassigned floor (docs/design/FLOOR.md § 4.6), so this document is '
             .'a departure from that default and never a list anything depends on being complete.',
             $version,
         ));

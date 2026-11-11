@@ -106,7 +106,8 @@ final class CharacterAllocation
     /**
      * Rule 2's floor for `$installId`, as `choose()`'s thunk: the installs the current building layout places on
      * the same floor, among `$installs`, with `$installId` itself — and `$installId` alone when the layout does not
-     * place it (FLOOR.md § 3.1: an unplaced install is a floor of its own).
+     * place it — the floor an unplaced install had when the species backfill (its one caller) was written; since
+     * card#13117 every unplaced room is drawn on the Unassigned floor, which this reading does not pool.
      *
      * ⛔ A STORED LAYOUT THE READER REFUSES DOES NOT STOP THE ALLOCATION. `Layouts::read()` re-asks every rule per
      * read, so a row written before a rule tightened throws `InvalidBuildingLayout`; a seat's creation must not be

@@ -925,7 +925,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2189,7 +2189,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3437,7 +3437,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4585,7 +4585,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }

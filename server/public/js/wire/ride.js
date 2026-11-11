@@ -358,8 +358,8 @@ export class Ride {
 
     /**
      * The cab's stops, re-derived on every frame (never captured at the press, so a floor the layout removed
-     * leaves the panel): the screen's plaques — every composed floor in its key order, each `name` its label else
-     * its key and `href` its own route — then the lobby, last and keyless, at the page's own lobby link. The stop
+     * leaves the panel): the screen's plaques — every composed floor in its key order, each `name` the floor's own and
+     * `href` its own route — then the lobby, last and keyless, at the page's own lobby link. The stop
      * the page stands at is `current`: a floor's on a floor, the lobby's on the lobby.
      */
     #stops() {

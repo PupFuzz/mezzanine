@@ -166,6 +166,32 @@ class FloorPageWiringTest extends TestCase
         $this->assertSame([], $this->bindingDefects($this->mainJs()));
     }
 
+    /**
+     * § 4.4 (card#13117): the address bar reads the DRAWN floor's key — so `/floor/The-Nook`, which the screen resolves
+     * by lowering it, is replaced by `/floor/the-nook` — and every link the page builds carries that key too.
+     */
+    public function test_the_address_bar_and_the_desk_links_carry_the_drawn_floors_key(): void
+    {
+        $this->assertSame([], $this->routeDefects($this->mainJs()));
+
+        // The control: the segment as served, which leaves a typed spelling in the bar.
+        $served = str_replace('return lastFrame?.floor?.key ?? root.dataset.floor;', 'return root.dataset.floor;', $this->mainJs());
+        $this->assertNotSame($served, $this->mainJs());
+        $this->assertNotSame([], $this->routeDefects($served), 'CONTROL (the bar keeping the typed segment) did not bite');
+    }
+
+    /** @return list<string> */
+    private function routeDefects(string $js): array
+    {
+        $needles = [
+            'return lastFrame?.floor?.key ?? root.dataset.floor;',
+            '    const route = routeOf(floorSegment(), frame.seat);',
+            "        link.href = routeOf(floorSegment(), desk.seat_id);",
+        ];
+
+        return array_values(array_filter($needles, fn (string $needle) => ! str_contains($js, $needle)));
+    }
+
     /** ⛔ THE CONTROLS — each re-mints one defect this file exists to catch. */
     public function test_each_check_goes_red_against_the_defect_it_exists_to_catch(): void
     {

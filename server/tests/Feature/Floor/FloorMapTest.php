@@ -396,7 +396,7 @@ class FloorMapTest extends TestCase
         $hallway->layers = [$map->layers[0]];
 
         $layout = fn (\stdClass $hallway) => (string) json_encode(['floors' => [[
-            'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
+            'name' => 'sola', 'rooms' => ['sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]],
             'hallway' => $hallway,
         ]]]);
 

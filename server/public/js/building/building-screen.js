@@ -199,7 +199,7 @@ export class BuildingScreen {
 
     /** The directory's rows over what the client holds, or `null` with no layout held. */
     #rows() {
-        return plates(heldBody(this.#client.seats.values()), this.#building.floors);
+        return plates(heldBody(this.#client.seats.values()), this.#building.floors, null, this.#building.authored);
     }
 
     /** Every room of every row — the rooms this screen renders. */
@@ -249,7 +249,7 @@ export class BuildingScreen {
 
     /**
      * The rooms this screen has never asked for — an install the discovery fetch added after the prefetch, which § 4.6's
-     * client-side rule composes onto a floor of its own — entered, and their tilesets loaded. A room whose request
+     * client-side rule composes onto the Unassigned floor — entered, and their tilesets loaded. A room whose request
      * FAILED is not re-asked: F16's recovery is the next `room.map` for it, not every render.
      */
     async #enterNewRooms() {
@@ -303,7 +303,7 @@ export class BuildingScreen {
     #floor(row, desks) {
         const composition = composeFloor(row, this.#building, roomsOf(this.#client.seats.values()));
         const frame = Object.freeze({
-            floor: Object.freeze({ key: row.floor, label: row.label, name: row.name, theme: row.theme ?? null }),
+            floor: Object.freeze({ key: row.floor, name: row.name, theme: row.theme ?? null }),
             planned: composition.planned,
             extent: composition.extent,
             band: composition.band,

@@ -409,6 +409,11 @@ when it leaves a room a coordination binding is bound to. A seat's reporter need
 a save made after another save or a console action wrote a newer one is refused, naming both revisions, so
 reload and re-apply the edit.
 
+**A floor's web address is its name** (card#13117): every floor in the layout carries a `name`, and *The Burrow*
+is at `/floor/the-burrow`. A floor's `aliases` keep the addresses it had before a rename, so old links redirect
+to it; a link naming a room reaches the floor that holds the room. A room no floor places is drawn on the
+**Unassigned** floor, last in the directory, until it is placed.
+
 **To install the reporter on a seat**, see [Install the reporter on an agent machine](#install-the-reporter-on-an-agent-machine):
 the seat's own Claude Code agent runs it, and the token reaches the seat as a file, never through the agent.
 

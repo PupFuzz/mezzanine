@@ -7,7 +7,7 @@
 
 /**
  * § 9 F23's notice, in § 5.5's words (card#11046, FLOOR.md § 10.6 item 5): the theme as the layout names
- * it, and the floor by its name — `label ?? key`, the one rendering rule § 4.6 states.
+ * it, and the floor by its name — the `name` § 4.6's layout entry carries.
  */
 export function unshippedThemeNotice(name, floorName) {
     return `floor theme \`${name}\` is not installed — drawn in the house theme — \`${floorName}\``;

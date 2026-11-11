@@ -80,8 +80,8 @@ final class Rooms
     }
 
     /**
-     * Create room `$key` named `$name`, placed on the floor that holds room `$floor` when one is named — the
-     * room's row and its placement in one transaction. Answers the new `layout_version`, or null when the room
+     * Create room `$key` named `$name`, placed on the floor at address `$floor` when one is named — the room's row
+     * and its placement in one transaction. Answers the new `layout_version`, or null when the room
      * was placed on no floor.
      *
      * @throws RoomRefused|InvalidBuildingLayout naming why nothing was written
@@ -116,9 +116,9 @@ final class Rooms
             }
 
             return Layouts::amend(function (\stdClass $document) use ($key, $floor): \stdClass {
-                $entry = self::floorHolding($document, $floor) ?? throw new RoomRefused(sprintf(
-                    'The floor holding room %s is no longer in the building layout — it changed since this page '
-                    .'was opened. Reload and choose the floor again; nothing was created.',
+                $entry = FloorEdits::entryAt($document, $floor) ?? throw new RoomRefused(sprintf(
+                    'There is no floor at /floor/%s in the building layout now — it changed since this page was '
+                    .'opened. Reload and choose the floor again; nothing was created.',
                     $floor,
                 ));
 

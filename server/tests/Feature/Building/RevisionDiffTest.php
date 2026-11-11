@@ -107,8 +107,8 @@ class RevisionDiffTest extends TestCase
     {
         // The layout is diffed by this same class (§ 6.11 keys revisions by `(kind, subject)` and
         // the layout is one of the kinds), and it has neither tile layers nor desks.
-        $before = '{"floors":[{"rooms":{"sola":{"form":"office"}}}]}';
-        $after = '{"floors":[{"rooms":{"sola":{"form":"open"}}}]}';
+        $before = '{"floors":[{"name":"sola","rooms":{"sola":{"form":"office"}}}]}';
+        $after = '{"floors":[{"name":"sola","rooms":{"sola":{"form":"open"}}}]}';
 
         $diff = RevisionDiff::between($before, $after);
 

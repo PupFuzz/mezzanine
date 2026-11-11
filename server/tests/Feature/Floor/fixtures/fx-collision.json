@@ -757,7 +757,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1883,7 +1883,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3009,7 +3009,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4135,7 +4135,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -5172,7 +5172,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6831,7 +6831,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -7934,7 +7934,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }

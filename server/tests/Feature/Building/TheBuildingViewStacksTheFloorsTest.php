@@ -76,7 +76,7 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $fx = $this->fixture(self::RUN);
         $floors = $fx['http']['/api/building'][0]['body']['layout']['floors'];
 
-        $this->assertSame(['aimla', 'zeta', 'theta'], array_column($floors, 'floor'));
+        $this->assertSame(['aimla', 'the-annex', 'theta'], array_column($floors, 'floor'));
         $this->assertSame(['cottage'], $fx['building']['scene']['themes']['reject']);
         $this->assertContains('cottage', array_column($floors, 'theme'), 'no floor is named in the rejected theme');
         $this->assertSame(503, $fx['http']['/api/building/rooms/theta/map'][0]['status']);
@@ -631,7 +631,7 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         sort($sorted, SORT_STRING);
         $defects = [];
 
-        if ($keys !== $sorted || $keys !== ['aimla', 'theta', 'zeta']) {
+        if ($keys !== $sorted || $keys !== ['aimla', 'the-annex', 'theta']) {
             $defects[] = 'the floors are not the directory\'s rows, ascending: '.json_encode($keys);
         }
 
@@ -698,7 +698,7 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
         $frame = $this->last($result);
         $defects = [];
 
-        foreach (['aimla', 'theta', 'zeta'] as $key) {
+        foreach (['aimla', 'the-annex', 'theta'] as $key) {
             $page = $this->floorPage($key);
             $mine = $this->floorOf($frame, $key);
             $theirs = $this->floorPage($key)['floor_renders'];
@@ -826,7 +826,7 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
     {
         $frame = $this->last($result);
         $defects = [];
-        $page = $this->floorFrame($this->floorPage('zeta'));
+        $page = $this->floorFrame($this->floorPage('the-annex'));
 
         foreach ($frame['floors'] as $floor) {
             $failed = $floor['scene']['art_failed'];
@@ -837,7 +837,7 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
             }
         }
 
-        if ($frame['strip']['art'] === null || $frame['strip']['art'] !== $page['strip']['art'] || $this->floorOf($frame, 'zeta')['scene']['failed'] !== $page['scene']['failed']) {
+        if ($frame['strip']['art'] === null || $frame['strip']['art'] !== $page['strip']['art'] || $this->floorOf($frame, 'the-annex')['scene']['failed'] !== $page['scene']['failed']) {
             $defects[] = 'the building\'s art line '.json_encode($frame['strip']['art']).' and failed assets are not the floor page\'s '.json_encode($page['strip']['art']);
         }
 

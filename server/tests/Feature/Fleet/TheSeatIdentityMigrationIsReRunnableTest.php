@@ -332,7 +332,13 @@ class TheSeatIdentityMigrationIsReRunnableTest extends TestCase
             }, 'An unrevoked coordination hook is bound'],
             'a current map for an install keyed unassigned' => [function (self $t) {
                 $t->install('unassigned');
+                // The map's writer reads the stored layout, and today's reader refuses the pre-card#13117 document the
+                // seed stored (`label`, no `name`), so the map is authored over the empty building and the seed's
+                // document put back — the store's rows are what this precondition is about.
+                $seeded = DB::table('building_layout')->where('id', 1)->first();
+                DB::table('building_layout')->where('id', 1)->update(['document' => '{"floors": []}']);
                 Floors::save('unassigned', FloorMap::parse(FloorMapFixture::valid()), 'suite');
+                DB::table('building_layout')->where('id', 1)->update((array) $seeded);
             }, 'A room map is authored for `unassigned`'],
         ];
     }

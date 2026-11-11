@@ -110,8 +110,8 @@ class ConsoleShellTest extends TestCase
     private function savedLayout(): void
     {
         if (Layouts::version() === 0) {
-            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "open"}}}]}', 'ops@example.com', 0);
-            Layouts::save('{"floors": [{"rooms": {"aimla": {"form": "office"}}}]}', 'ops@example.com', 1);
+            Layouts::save('{"floors": [{"name": "aimla","rooms": {"aimla": {"form": "open"}}}]}', 'ops@example.com', 0);
+            Layouts::save('{"floors": [{"name": "aimla","rooms": {"aimla": {"form": "office"}}}]}', 'ops@example.com', 1);
         }
     }
 

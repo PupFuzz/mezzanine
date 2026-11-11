@@ -56,7 +56,7 @@ class RoomController extends Controller
 
             return $version === null
                 ? sprintf('Room %s is created, on no floor. Place seats in it from the Agents page.', $validated['key'])
-                : sprintf('Room %s is created and placed on the floor of room %s, as layout revision %d.', $validated['key'], $floor, $version);
+                : sprintf('Room %s is created and placed on the floor at /floor/%s, as layout revision %d.', $validated['key'], $floor, $version);
         });
     }
 
@@ -92,13 +92,13 @@ class RoomController extends Controller
     }
 
     /**
-     * The floors a new room may be placed on: each floor the current layout composes, by the derived key the
-     * place act finds it by (the lexically least room on it), and its label where it has one.
+     * The floors a new room may be placed on: each floor the current layout composes, by the address the place act
+     * finds it by, and its name.
      *
-     * @return list<array{key: string, label: string|null}>
+     * @return list<array{key: string, name: string}>
      */
     private static function floorChoices(BuildingLayout $layout): array
     {
-        return array_map(fn (array $floor): array => ['key' => $floor['floor'], 'label' => $floor['label']], $layout->floors);
+        return array_map(fn (array $floor): array => ['key' => $floor['floor'], 'name' => $floor['name']], $layout->floors);
     }
 }

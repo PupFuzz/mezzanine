@@ -91,24 +91,25 @@ class RoomConsoleTest extends TestCase
     public function test_a_room_placed_at_creation_is_one_layout_revision_and_one_message(): void
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
-        $this->saveLayout([['label' => 'Ground', 'rooms' => ['aimla' => ['form' => 'office']]]]);
+        $this->saveLayout([['name' => 'Ground', 'rooms' => ['aimla' => ['form' => 'office']]]]);
         $wire = new OutboxWire;
         $wire->forget();
 
-        $this->create(['key' => 'nook', 'name' => 'The Nook', 'floor' => 'aimla'])->assertSessionHasNoErrors();
+        // The floor is found by its address (card#13117).
+        $this->create(['key' => 'nook', 'name' => 'The Nook', 'floor' => 'ground'])->assertSessionHasNoErrors();
 
         $this->assertSame(2, Layouts::version());
         $this->assertCount(1, $wire->ofType('building.layout'));
         $this->assertSame(['aimla' => ['aimla', 'nook']], $this->placement());
         // The rest of the floor's entry is the operator's and stays as authored.
-        $this->assertSame('Ground', Layouts::document()->floors[0]->label);
+        $this->assertSame('Ground', Layouts::document()->floors[0]->name);
         $this->assertSame('office', Layouts::document()->floors[0]->rooms->aimla->form);
     }
 
     public function test_a_room_the_reader_refuses_to_place_is_not_created_either(): void
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
-        $this->saveLayout([['rooms' => ['aimla' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]]]]);
+        $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]]]]]);
 
         // A planned floor is all-or-nothing (FLOOR.md § 4.6), so a room placed with no origin is refused —
         // and the room's row goes with the refusal, since the two are one transaction.
@@ -186,7 +187,7 @@ class RoomConsoleTest extends TestCase
             Rooms::create($key, ucfirst($key), null, 'suite');
         }
 
-        $this->saveLayout([['rooms' => ['aimla' => ['form' => 'open'], 'nook' => ['form' => 'open']]], ['rooms' => ['den' => ['form' => 'open']]]]);
+        $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open'], 'nook' => ['form' => 'open']]], ['name' => 'den', 'rooms' => ['den' => ['form' => 'open']]]]);
 
         $this->retire('nook')->assertSessionHasNoErrors();
         $this->assertSame(2, Layouts::version());
@@ -205,13 +206,13 @@ class RoomConsoleTest extends TestCase
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
         Rooms::create('nook', 'Nook', null, 'suite');
-        $this->saveLayout([['rooms' => ['aimla' => ['form' => 'open'], 'nook' => ['form' => 'open']]]]);
+        $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open'], 'nook' => ['form' => 'open']]]]);
         Rooms::retire('nook', 'suite');
         $this->assertSame(2, Layouts::version());
 
         // The raw textarea, from the current base.
         $this->actingAs($this->operator())->patch(route('admin.layout.update'), [
-            'layout' => '{"floors": [{"rooms": {"nook": {"form": "open"}}}]}', 'base_layout_version' => 2,
+            'layout' => '{"floors": [{"name": "nook","rooms": {"nook": {"form": "open"}}}]}', 'base_layout_version' => 2,
         ])->assertSessionHasErrors(['layout' => 'This layout places the retired room `nook`. A retired room is drawn nowhere and is listed in the '
             .'console\'s Rooms module only (docs/design/FLEET-STATE.md § 6.11, card#13117): take it out of the document and save again.']);
 
@@ -233,7 +234,7 @@ class RoomConsoleTest extends TestCase
     public function test_two_console_actions_from_one_base_both_apply_the_second_on_the_firsts_result(): void
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
-        $this->saveLayout([['rooms' => ['aimla' => ['form' => 'open']]]]);
+        $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]]]);
 
         $this->create(['key' => 'nook', 'name' => 'Nook', 'floor' => 'aimla'])->assertSessionHasNoErrors();
         $this->create(['key' => 'den', 'name' => 'Den', 'floor' => 'aimla'])->assertSessionHasNoErrors();
@@ -247,14 +248,14 @@ class RoomConsoleTest extends TestCase
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
         Rooms::create('lone', 'Lone', null, 'suite');
-        $this->saveLayout([['rooms' => ['aimla' => ['form' => 'open']]], ['rooms' => ['lone' => ['form' => 'open']]]]);
+        $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]], ['name' => 'lone', 'rooms' => ['lone' => ['form' => 'open']]]]);
 
         $this->retire('lone')->assertSessionHasNoErrors();
         $layout = Layouts::documentText();
 
         $this->create(['key' => 'nook', 'name' => 'Nook', 'floor' => 'lone'])
-            ->assertSessionHasErrors(['room' => 'The floor holding room lone is no longer in the building layout — it changed since this page '
-                .'was opened. Reload and choose the floor again; nothing was created.']);
+            ->assertSessionHasErrors(['room' => 'There is no floor at /floor/lone in the building layout now — it changed since this page was '
+                .'opened. Reload and choose the floor again; nothing was created.']);
 
         $this->assertSame($layout, Layouts::documentText(), 'the layout does not hold exactly the first action\'s write');
         $this->assertFalse(DB::table('installs')->where('install_id', 'nook')->exists());
@@ -264,13 +265,13 @@ class RoomConsoleTest extends TestCase
     public function test_a_textarea_save_from_a_stale_base_is_refused_naming_both_revisions(): void
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
-        $this->saveLayout([['rooms' => ['aimla' => ['form' => 'open']]]]);
+        $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]]]);
         // A console action lands after the form was opened at revision 1.
         $this->create(['key' => 'nook', 'name' => 'Nook', 'floor' => 'aimla'])->assertSessionHasNoErrors();
         $before = Layouts::documentText();
 
         $this->actingAs($this->operator())->patch(route('admin.layout.update'), [
-            'layout' => '{"floors": [{"rooms": {"aimla": {"form": "office"}}}]}', 'base_layout_version' => 1,
+            'layout' => '{"floors": [{"name": "aimla","rooms": {"aimla": {"form": "office"}}}]}', 'base_layout_version' => 1,
         ])->assertSessionHasErrors(['layout' => 'The layout changed since you opened it (revision 2 is current; you edited from 1): '
             .'reload and re-apply your edit. Nothing was saved (docs/design/FLEET-STATE.md § 6.11).']);
 
@@ -279,7 +280,7 @@ class RoomConsoleTest extends TestCase
 
         // The control: the same edit from the current base is saved.
         $this->actingAs($this->operator())->patch(route('admin.layout.update'), [
-            'layout' => '{"floors": [{"rooms": {"aimla": {"form": "office"}}}]}', 'base_layout_version' => 2,
+            'layout' => '{"floors": [{"name": "aimla","rooms": {"aimla": {"form": "office"}}}]}', 'base_layout_version' => 2,
         ])->assertSessionHasNoErrors();
         $this->assertSame(3, Layouts::version());
     }
@@ -287,7 +288,7 @@ class RoomConsoleTest extends TestCase
     public function test_an_edit_that_changes_nothing_is_refused_as_a_no_op(): void
     {
         Rooms::create('aimla', 'Aimla', null, 'suite');
-        $this->saveLayout([['rooms' => ['aimla' => ['form' => 'open']]]]);
+        $this->saveLayout([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]]]);
 
         $this->expectExceptionMessage('That change leaves the building layout as it already is');
         Layouts::amend(fn (\stdClass $document): \stdClass => $document, 'suite');

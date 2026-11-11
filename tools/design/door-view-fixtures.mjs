@@ -103,7 +103,7 @@ export function scripted(o, rooms, { fail = [], layout = null } = {}) {
 }
 
 /** A stop's plaque row (`plates()`'s shape) for an unplanned floor of `ids`. */
-export const stopRow = (key, ids, theme = null) => ({ floor: key, name: key, label: null, theme, hallway: null, rooms: ids.map((id) => ({ install_id: id, form: 'open', reported: true })) });
+export const stopRow = (key, ids, theme = null) => ({ floor: key, name: key, aliases: [], theme, hallway: null, rooms: ids.map((id) => ({ install_id: id, form: 'open', reported: true })) });
 
 /** The page's `Building` and `TilesetLoader`, every room entered and every tileset loaded through the scripted fetch. */
 export async function held(o, rooms, options = {}) {

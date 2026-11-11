@@ -30,6 +30,7 @@ use Tests\TestCase;
  */
 class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
 {
+    use ReadsTheDrawnScenes;
     use ChecksTheCommittedPast;
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
@@ -176,10 +177,6 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     }
 
     /** The drawn frames that carry a scene, each `{at, trigger, frame}`. */
-    private function drawn(array $result): array
-    {
-        return array_values(array_filter($result['floor_renders'], static fn (array $r): bool => ($r['frame']['scene'] ?? null) !== null));
-    }
 
     private function frameAt(array $result, int $at, string $trigger = 'render', bool $last = true): array
     {

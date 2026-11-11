@@ -89,7 +89,7 @@ class TheConsoleListsMapsNamingRetiredArtTest extends TestCase
     {
         $this->provisionTheRoom();
         $this->plantACurrentMap($this->naming('tiles/furniture-kit.tsx', 1));
-        $layout = (string) json_encode(['floors' => [['rooms' => [
+        $layout = (string) json_encode(['floors' => [['name' => 'beta', 'rooms' => [
             self::INSTALL => ['form' => 'open', 'origin' => ['x' => 0, 'y' => 0]],
             'beta' => ['form' => 'office', 'origin' => ['x' => 8000, 'y' => 0]],
         ]]]]);

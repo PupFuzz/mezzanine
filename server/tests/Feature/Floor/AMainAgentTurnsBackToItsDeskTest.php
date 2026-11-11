@@ -28,6 +28,7 @@ use Tests\TestCase;
  */
 class AMainAgentTurnsBackToItsDeskTest extends TestCase
 {
+    use ReadsTheDrawnScenes;
     use ChecksTheCommittedPast;
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
@@ -68,10 +69,6 @@ class AMainAgentTurnsBackToItsDeskTest extends TestCase
     // ── reading a run ────────────────────────────────────────────────────────────────────────
 
     /** The drawn frames that carry a scene, each `{at, trigger, frame}`, in order. */
-    private function drawn(array $result): array
-    {
-        return array_values(array_filter($result['floor_renders'], static fn (array $r): bool => ($r['frame']['scene'] ?? null) !== null));
-    }
 
     private function keyOf(array $e): string
     {

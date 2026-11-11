@@ -24,6 +24,7 @@ use Tests\TestCase;
  */
 class AnInternRidesTheElevatorTest extends TestCase
 {
+    use ReadsTheDrawnScenes;
     use ChecksTheCommittedPast;
     use ChecksTheElevatorQueue;
     use DrivesTheFloorScreen;
@@ -114,10 +115,6 @@ class AnInternRidesTheElevatorTest extends TestCase
             && $r['animation_id'] === $id && $r['seat_id'] === $key));
     }
 
-    private function drawn(array $result): array
-    {
-        return array_values(array_filter($result['floor_renders'], static fn (array $r): bool => ($r['frame']['scene'] ?? null) !== null));
-    }
 
     /** @return list<array<string, mixed>> the intern walks (A10 effects with a key) a frame draws, with frames */
     private function internWalks(array $frame, ?string $internKey = null): array

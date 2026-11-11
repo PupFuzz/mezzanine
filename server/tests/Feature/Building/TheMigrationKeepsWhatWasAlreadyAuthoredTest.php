@@ -90,10 +90,13 @@ class TheMigrationKeepsWhatWasAlreadyAuthoredTest extends TestCase
 
     public function test_a_configured_layout_is_seeded_as_revision_one_in_the_room_shape_the_reader_now_takes(): void
     {
-        // The PRE-card#9292 document, bare form strings and all — which is what a deployment's
-        // `config/building.php` would have held, and what the reader now refuses by name.
+        // The PRE-card#9292 room shape, bare form strings and all — which is what a deployment's
+        // `config/building.php` would have held, and what the reader now refuses by name. ⚠ The migration
+        // validates with TODAY'S reader, so the floor carries the `name` card#13117 requires: a configured
+        // `label` from that era is refused too, and no deployment still holds the file (it left the tree with
+        // card#9208).
         config(['building.floors' => [
-            ['label' => 'the solos', 'rooms' => ['zeta' => 'office', 'sola' => 'office']],
+            ['name' => 'the solos', 'rooms' => ['zeta' => 'office', 'sola' => 'office']],
         ]]);
 
         $migration = $this->migration();
@@ -108,8 +111,8 @@ class TheMigrationKeepsWhatWasAlreadyAuthoredTest extends TestCase
         // on every request from then on.
         $layout = Layouts::layout();
 
-        $this->assertSame('sola', $layout->floors[0]['floor']);
-        $this->assertSame('the solos', $layout->floors[0]['label']);
+        $this->assertSame('the-solos', $layout->floors[0]['floor']);
+        $this->assertSame('the solos', $layout->floors[0]['name']);
         $this->assertSame(
             [['install' => 'sola', 'form' => 'office'], ['install' => 'zeta', 'form' => 'office']],
             $layout->floors[0]['rooms'],
@@ -126,7 +129,7 @@ class TheMigrationKeepsWhatWasAlreadyAuthoredTest extends TestCase
         // stops with the reason in front of the person running it; the alternative puts the same
         // refusal on every page load of the console and the floor, with nothing saying where it
         // came from.
-        config(['building.floors' => [['rooms' => ['sola' => 'broom-cupboard']]]]);
+        config(['building.floors' => [['name' => 'sola', 'rooms' => ['sola' => 'broom-cupboard']]]]);
 
         $migration = $this->migration();
         $migration->down();
@@ -150,7 +153,7 @@ class TheMigrationKeepsWhatWasAlreadyAuthoredTest extends TestCase
 
         // THE OTHER HALF OF THE SAME PROPERTY: the operator fixes the document and the SAME
         // migration object runs clean — no manual repair in between.
-        config(['building.floors' => [['rooms' => ['sola' => 'office']]]]);
+        config(['building.floors' => [['name' => 'sola', 'rooms' => ['sola' => 'office']]]]);
 
         $migration->up();
 

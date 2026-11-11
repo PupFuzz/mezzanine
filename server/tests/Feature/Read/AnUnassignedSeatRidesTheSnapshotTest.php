@@ -19,10 +19,10 @@ use Tests\TestCase;
 
 /**
  * T7 — `docs/design/plan-13117-seat-identity.md § 4.4`, card#13117: a seat in no room rides the snapshot
- * as a member of the virtual install `unassigned`, under `api_version` 1, and NEITHER COMPOSER CHANGES —
- * today's rule (one implicit floor per unplaced install) draws it on an implicit floor `unassigned`.
+ * as a member of the virtual install `unassigned`, under `api_version` 1, and both composers draw it on the
+ * Unassigned floor (S4; until S4 by the implicit floor every unplaced install got, which keyed it `unassigned` too).
  * The browser composer is held to the same answer by `tests/fixtures/building/compose-cases.json`'s
- * *a seat in no room* case, which `TheDirectoryListsTheComposedFloorsTest` walks; this class holds the
+ * *virtual room* cases, which `TheDirectoryListsTheComposedFloorsTest` walks; this class holds the
  * server's and the surfaces around it: the room map the reserved key answers, and that no console
  * surface offers it as a room.
  */
@@ -43,7 +43,7 @@ class AnUnassignedSeatRidesTheSnapshotTest extends TestCase
         return array_column(Building::compose(Layouts::layout(), array_column($snapshot['installs'], 'install_id')), 'floor');
     }
 
-    public function test_a_roomless_seat_is_the_unassigned_group_and_its_implicit_floor(): void
+    public function test_a_roomless_seat_is_the_unassigned_group_on_the_unassigned_floor(): void
     {
         $this->issue();
 
@@ -61,6 +61,7 @@ class AnUnassignedSeatRidesTheSnapshotTest extends TestCase
     {
         $this->issue();
         Rooms::place(self::SEAT, 'aimla');
+        Layouts::save('{"floors": [{"name": "aimla", "rooms": {"aimla": {"form": "open"}}}]}', 'suite', Layouts::version());
 
         $snapshot = Snapshot::build(0);
 
@@ -84,7 +85,7 @@ class AnUnassignedSeatRidesTheSnapshotTest extends TestCase
      */
     public function test_a_layout_placing_the_reserved_key_is_refused_at_the_write_and_at_load(): void
     {
-        $document = '{"floors": [{"rooms": {"aimla": {"form": "open"}, "unassigned": {"form": "open"}}}]}';
+        $document = '{"floors": [{"name": "aimla","rooms": {"aimla": {"form": "open"}, "unassigned": {"form": "open"}}}]}';
 
         try {
             Layouts::save($document, 'suite', Layouts::version());

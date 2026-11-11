@@ -3168,7 +3168,8 @@ stated rather than assumed:
 cost; this section is the **store** half of it and [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) is the **read** half. What
 an operator authors in the admin console — one Tiled document per **room** (an `installs` row, card#9267;
 ⭐ created, named and retired in the console's Rooms module since card#13117, `App\Building\Rooms`) and
-one **building layout** (which rooms share a floor, each room's form, a floor's label — and, since
+one **building layout** (which rooms share a floor, each room's form, a floor's name — the slug of which is
+its web address since card#13117 — and its former addresses, and, since
 card#9292, the floor **plan**: each room's position and a floor's hallway —
 [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s document) — is served to the floor at runtime,
 and the console is the source of truth for both. The DDL is in [§ 6.4](#64-ddl)'s block, under its
@@ -5671,7 +5672,7 @@ never inlined into fleet state, and never carried on a message.**
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/building` | session+MFA | the **layout** — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s floors, already keyed, labelled and sorted, exactly as the page delivered them before this surface existed — and, for every room that has an authored map, its **`map_version`**. It is what a client fetches beside the snapshot on connect, and again on every `building.layout` |
+| `GET` | `/api/building` | session+MFA | the **layout** — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s floors, already keyed, named and sorted — since card#13117 each carries its `name` and its `aliases`, and its `floor` key is the slug of the name — and, for every room that has an authored map, its **`map_version`**. It is what a client fetches beside the snapshot on connect, and again on every `building.layout` |
 | `GET` | `/api/building/rooms/{install_id}/map` | session+MFA | one room's **map**: the Tiled document the floor draws that room from, with the version it is. Answered from the room's authored document where one is current and from the **shipped default** where none is — the same shape either way, with `source` saying which |
 
 Both require authentication under [§ 9](#9-read-side-authentication)'s browser-only row; both are
@@ -5692,9 +5693,9 @@ from the snapshot's row.
   "layout": {
     "layout_version": 3,
     "floors": [
-      { "floor": "aimla", "label": null,
+      { "floor": "aimla", "name": "aimla", "aliases": [],
         "rooms": [ { "install": "aimla", "form": "open" } ] },
-      { "floor": "sola", "label": "the solos",
+      { "floor": "the-solos", "name": "The Solos", "aliases": [ "sola" ],
         "rooms": [ { "install": "sola", "form": "office", "origin": { "x": 0,   "y": 160 } },
                    { "install": "zeta", "form": "office", "origin": { "x": 480, "y": 160 } } ],
         "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
@@ -5712,11 +5713,16 @@ from the snapshot's row.
 ```
 
 - `layout.floors` is the **placed** floors only — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s
-  one client-side rule (an install the layout does not place is a floor of its own, alone, `open`) is
-  applied by the client against the snapshot's installs, as it is today; this surface does not carry
+  one client-side rule (a room the layout does not place, that the snapshot carries or that `rooms[]`
+  names, is drawn on the Unassigned floor, `open` — ⭐ card#13117; it was a floor of its own until then) is
+  applied by the client against the snapshot's installs and `rooms[]`; this surface does not carry
   `reported`, because whether a room's seats are on the wire is the snapshot's fact and not the
-  layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
-  building, one floor per install.
+  layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: every room on
+  the Unassigned floor.
+- ⭐ Each floor's **`floor`** is the slug of its **`name`** (card#13117, [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)),
+  and **`aliases`** — always present, `[]` for none — are the keys it answered to before a rename, which the
+  floor route redirects from; the worked floor `The Solos` was renamed from `sola`. The member `label` is
+  gone, and a stored document carrying it is refused by the reader, naming `name`.
 - A floor the operator **planned** ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout), card#9292)
   carries `origin` on every room and, where one was authored, its `hallway` — the Tiled document as
   authored, whole, because it is part of the layout document and not a room's; a floor with neither
@@ -5729,10 +5735,13 @@ from the snapshot's row.
   the layout's own write bound ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions))
   and by nothing this surface adds; the hallway endpoint of its own that was declined is
   [§ 13](#13-decisions-taken-revisable-at-review) row 45's.
-- `rooms[]` lists the rooms with an **authored** map and nothing else. It is not a population
+- `rooms[]` lists the **live** rooms with an **authored** map and nothing else. It is not a population
   statement — a room absent here renders the shipped default, and a room named here whose install the
   snapshot does not list is still a room whose seats have not reported, which
-  [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) draws and labels rather than omits.
+  [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) draws and labels rather than omits. ⭐ **A retired
+  room's map is left out** (card#13117): retiring a room keeps its current map as a record, and since the
+  composers draw every authored room no floor places on the Unassigned floor, a retired room listed here
+  would be drawn there.
 
 **`GET /api/building/rooms/aimla/map`, worked** — the envelope; `map` is the Tiled document as
 authored, and what the floor reads of it is [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)'s table:

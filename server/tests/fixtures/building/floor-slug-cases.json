@@ -1,0 +1,34 @@
+{
+  "_": [
+    "docs/design/FLOOR.md § 4.6's floor address: the ONE table both copies of the slug function are driven over —",
+    "App\\Building\\FloorSlug (PHP) and public/js/floor/floor-slug.js (the browser) — by",
+    "Tests\\Feature\\Building\\TheFloorSlugIsOneFunctionTest. A row is a name and the slug it must get; `''` is a name",
+    "the reader refuses. Add a row and both copies are held to it."
+  ],
+  "cases": [
+    { "name": "The Nook", "slug": "the-nook" },
+    { "name": "the nook", "slug": "the-nook" },
+    { "name": "Thé  Nook", "slug": "the-nook" },
+    { "name": "The  Nook!", "slug": "the-nook" },
+    { "name": " The Nook ", "slug": "the-nook" },
+    { "name": "The Nook", "slug": "the-nook" },
+    { "name": "--a--", "slug": "a" },
+    { "name": "Unassigned", "slug": "unassigned" },
+    { "name": "三階", "slug": "" },
+    { "name": "***", "slug": "" },
+    { "name": "", "slug": "" },
+    { "name": "Floor 2", "slug": "floor-2" },
+    { "name": "aimla", "slug": "aimla" },
+    { "name": "solo-agents", "slug": "solo-agents" },
+    { "name": "The Burrow", "slug": "the-burrow" },
+    { "name": "The Treehouse", "slug": "the-treehouse" },
+    { "name": "Ångström Café", "slug": "angstrom-cafe" },
+    { "name": "Ｆｕｌｌ Ｗｉｄｔｈ", "slug": "full-width" },
+    { "name": "Straße", "slug": "stra-e" },
+    { "name": "İstanbul", "slug": "istanbul" },
+    { "name": "ﬁve", "slug": "five" },
+    { "name": "2001", "slug": "2001" },
+    { "name": "a_b.c/d", "slug": "a-b-c-d" },
+    { "name": "Ｋelvin K", "slug": "kelvin-k" }
+  ]
+}

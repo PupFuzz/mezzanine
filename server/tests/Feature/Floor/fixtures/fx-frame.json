@@ -404,7 +404,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -871,7 +871,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1017,7 +1017,7 @@
       "messages": [],
       "until_ms": 100,
       "floor": {
-        "key": "aimla",
+        "key": "two-rooms",
         "local_hours": 9,
         "local_minutes": 45,
         "scene": {
@@ -1659,8 +1659,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "two rooms",
+                    "floor": "two-rooms",
+                    "name": "two rooms",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -1826,7 +1829,7 @@
       "messages": [],
       "until_ms": 100,
       "floor": {
-        "key": "aimla",
+        "key": "two-rooms",
         "local_hours": 9,
         "local_minutes": 45,
         "scene": {
@@ -2468,8 +2471,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "two rooms",
+                    "floor": "two-rooms",
+                    "name": "two rooms",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",

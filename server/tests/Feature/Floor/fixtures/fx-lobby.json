@@ -639,8 +639,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -649,8 +652,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -1742,8 +1759,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -1752,8 +1772,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -2532,8 +2566,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -2542,8 +2579,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -3223,8 +3274,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -3233,8 +3287,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -3914,8 +3982,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -3924,8 +3995,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -4763,8 +4848,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -4773,8 +4861,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -6512,8 +6614,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -6522,8 +6627,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -7870,8 +7989,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -7880,8 +8002,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -7905,8 +8041,11 @@
         "layout_version": 8,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -7915,8 +8054,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the deck",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-deck",
+          "name": "the deck",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -7988,7 +8141,7 @@
      {
       "at_ms": 3600,
       "act": "choose",
-      "key": "aimla"
+      "key": "floor-2"
      },
      {
       "at_ms": 4850,
@@ -8690,8 +8843,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -8700,8 +8856,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",

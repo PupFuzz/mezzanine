@@ -100,7 +100,7 @@ class TheFloorResolvesItsThemeTest extends TestCase
     private function themed(?string $theme, ?string $dir = null): array
     {
         $http = $this->fixture(self::RUN)['http'];
-        $floor = ['floor' => 'aimla', 'label' => null, 'theme' => $theme, 'rooms' => [['install' => 'aimla', 'form' => 'open']]];
+        $floor = ['floor' => 'aimla', 'name' => 'aimla', 'aliases' => [], 'theme' => $theme, 'rooms' => [['install' => 'aimla', 'form' => 'open']]];
 
         $http['/api/building'] = [['status' => 200, 'body' => ['layout' => ['layout_version' => 1, 'floors' => [$floor]], 'rooms' => []]]];
 
