@@ -25,6 +25,9 @@ use Tests\TestCase;
  * handler WITHOUT them, registered beside the real route for the length of one test, and watch the
  * very checks the real route passes report it serving what it must not.
  *
+ * Beside the row's list, every `.glb` model the floor tree ships is served as `model/gltf-binary` (card#13033 stage 2,
+ * the clause's `.glb` member).
+ *
  * ⛔ AND THE ALLOWLIST IS § 10.1 CLAUSE 1's, READ OUT OF THE DOCUMENT. `FloorAssets::SERVED` restates
  * the clause's list for PHP to consult; this test re-derives the list from FLOOR.md on every run and
  * set-differences the two in both directions.
@@ -107,6 +110,23 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
         $this->withPlantedPng(fn () => $unpolicied('/art/floor/'.self::PNG, 'image/png'));
     }
 
+    /**
+     * § 10.1 clause 1 admits `.glb` (card#13033 stage 2): every model the floor tree ships is served as glTF binary,
+     * with `nosniff` and no document policy — it is fetched by the loader, never rendered as a document.
+     */
+    public function test_every_shipped_model_is_served_as_gltf_binary(): void
+    {
+        $models = $this->shippedModels();
+
+        $this->assertNotSame([], $models, 'the floor tree ships no .glb — this arm would prove nothing');
+
+        foreach ($models as $model) {
+            $response = $this->signedIn()->get('/art/floor/'.$model);
+            $this->assertSame([], $this->servedDefects($response, 'model/gltf-binary'), $model);
+            $this->assertNull($response->headers->get('Content-Security-Policy'), "{$model} gained a policy it was not meant to");
+        }
+    }
+
     public function test_the_painters_own_import_specifiers_are_served_as_javascript(): void
     {
         $this->assertSame([], $this->specifierDefects($this->painterSource()));
@@ -152,6 +172,33 @@ class TheArtRouteServesOnlyWhatTheGatesJudgedTest extends TestCase
         $widened = str_replace('`.png`, `.tmx`,', '`.png`, `.webp`, `.tmx`,', $this->floorMd());
         $this->assertNotSame($widened, $this->floorMd());
         $this->assertNotSame([], $this->allowlistDefects($widened), 'CONTROL (clause 1 widened without the route) did not bite');
+
+        // `.glb` left outside clause 1's run, where it stood before the slice that served it: the route serves what
+        // the clause does not admit.
+        $narrowed = str_replace('`.tsj`, `.glb`**', '`.tsj`**', $this->floorMd());
+        $this->assertNotSame($narrowed, $this->floorMd(), 'the narrowing control\'s anchor is gone');
+        $this->assertNotSame([], $this->allowlistDefects($narrowed), 'CONTROL (the route serving `.glb` that clause 1 does not admit) did not bite');
+
+        $model = $this->shippedModels()[0];
+        $this->assertNotSame([], $this->servedDefects($this->signedIn()->get('/art/floor/'.$model), 'application/octet-stream'),
+            'CONTROL (a model checked against a media type it is not served as) did not bite');
+    }
+
+    /** @return list<string> every `.glb` under the floor tree, by its path there */
+    private function shippedModels(): array
+    {
+        $root = FloorAssets::root();
+        $found = [];
+
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS)) as $file) {
+            if ($file->isFile() && strtolower($file->getExtension()) === 'glb') {
+                $found[] = str_replace(DIRECTORY_SEPARATOR, '/', substr($file->getPathname(), strlen($root) + 1));
+            }
+        }
+
+        sort($found);
+
+        return $found;
     }
 
     // ── The checks ─────────────────────────────────────────────────────────────────────────────

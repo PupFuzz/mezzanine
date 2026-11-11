@@ -114,6 +114,16 @@ its date, its decider and the scope of what it moved. The original row above sta
   allowlist is untouched, an operator decision taken separately; and the asset gates still hold every
   file under `resources/` to a row.
 
+- **D-07 · the CC0 clause exercised again, for the 3-D floor's furniture — operator, 2026-11-11 (card#13033,
+  comment 17077, *"Q1. A"*).** The floor in 3-D takes its furniture models from Kenney's **Furniture Kit**
+  (`CC0-1.0`) as `.glb` files under `resources/floor/models/`, recoloured per theme, with a first-party piece
+  for each kind the kit lacks; the characters and the room stay first-party, and the asset gate admits `.glb`
+  under a clause of its own ([`docs/design/FLOOR.md § 10.1`](design/FLOOR.md#101-the-manifest-and-the-two-gates)).
+  **What moves:** licensed assets are back under `resources/floor/`, one `docs/ATTRIBUTION.md` row each, from
+  the first slice of `docs/design/plan-13033-stage2-3d-floor.md`. **What does NOT move:** the 2-D floor's art
+  is still the first-party themes of the 2026-10-07 append; the last clause is untouched; the licence allowlist
+  is untouched.
+
 - **D-08 · the target is named — operator, 2026-09-14.**
   D-08 reads *"App deploys to a **separate host** (operator provisions; target TBD)"*. The
   operator named the target on the 2026-09-14 Decision Docket: the production host is

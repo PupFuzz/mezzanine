@@ -301,7 +301,7 @@ whose IHDR width and height are **at most 1,024 px** (read off the bytes), and *
 manifest row** — the embedded-provenance rule: an image inside a `.glb` is part of the file the row names, so the
 row's licence and sha256 are its, and the gate prints each image's size beside the row; **(iii)**
 `extensionsRequired` absent or empty; **(iv)** no `extensionsUsed` naming a compression extension. A file failing any
-clause is refused by name; `bin/asset-provenance.selftest.py` gains **one RED per refusal — eight**: an external
+clause is refused by name; `bin/asset-provenance.selftest.py` gains **one RED per refusal** (the selftest's `clause 4 RED` cases list them): an external
 buffer URI, an external image URI, an image that is not a PNG, an oversize image, more images than `GLB_IMAGES_MAX`,
 an `extensionsRequired` entry, a compression extension named, a non-GLB renamed `.glb` — and a GREEN control. **Size budget:** ≤ 2 MB
 of `.glb` transferred for a floor (the cap floor's pieces plus the desk set, derived by the slice-1 coder from the
@@ -713,7 +713,7 @@ the same way, never appended; the probe plants a late-arriving desk and reads th
 | `server/routes/web.php`, `resources/views/floor3d.blade.php`, `App\Fleet\SeatTokens` | — | `GET /floor/{floor}/3d` → `floor3d.view` and `GET /floor/{floor}/3d/{seat}` → `floor3d.seat`, both registered before the seat route, which stays unconstrained (m1); `SeatTokens::issue()` refuses the seat id `3d` with a `SeatTokenRefusal` of its own (m2); the 3-D view's chrome — header, status strip, camera row, list view — in **one Blade partial shared with `floor.blade.php`** (hygiene, slice 4's scope) | `EveryModuleAPageLoadsIsVersionedTest::pages()` gains the route; a route test that `/floor/x/3d` resolves to `floor3d.view` and `/floor/x/3d/s` to `floor3d.seat` with `s` the seat, that `/floor/x/s` still opens the drill-down, and that `route:cache` builds; `SeatTokens::issue()`'s refusal of `3d` seen red on a planted acceptance, through both minting callers (slice 4) |
 | `App\Support\PublicAsset::moduleMap()` (changed) | — | the one bare entry `"three"` → `url('js/vendor/three/three.module.js')` | `EveryModuleAPageLoadsIsVersionedTest` admits one bare key by name |
 | `App\Floor\FloorAssets::SERVED` (changed, M5) | — | `'.glb' => 'model/gltf-binary'` | `TheArtRouteServesOnlyWhatTheGatesJudgedTest`'s row |
-| `bin/asset-provenance.py` (changed, M5) | — | `.glb` in `ASSET_BINARY_EXTENSIONS`; Gate 2's fourth clause (§ 3.2) | `bin/asset-provenance.selftest.py`'s eight REDs and GREEN |
+| `bin/asset-provenance.py` (changed, M5) | — | `.glb` in `ASSET_BINARY_EXTENSIONS`; Gate 2's fourth clause (§ 3.2) | `bin/asset-provenance.selftest.py`'s clause 4 REDs (one per refusal) and GREEN |
 
 ## 5. The libraries — vendoring, pinning, attribution
 
@@ -899,7 +899,7 @@ Each slice one PR to `dev`, `card#13033 [no-close]: …`, with `docs/changelog.d
 on the last only when the operator has read the sandbox. Every slice: its plants seen red, the run on the card.
 
 1. **Libraries and provenance** — the six addons vendored and pinned (§ 5), the import map's bare entry with its
-   test, **Gate 2's `.glb` clause** with one RED per refusal (eight) and a GREEN, `FloorAssets::SERVED` gaining `.glb` with its
+   test, **Gate 2's `.glb` clause** with one RED per refusal and a GREEN, `FloorAssets::SERVED` gaining `.glb` with its
    test row **and `FLOOR.md` § 10.1 clause 1's first bold run reshaped to carry `.glb`** (m3:
    `TheArtRouteServesOnlyWhatTheGatesJudgedTest` reads that run against `SERVED` both ways, L252–270, so the
    document's list and the route's move together — this revision keeps `.glb` outside the run so the test holds on
