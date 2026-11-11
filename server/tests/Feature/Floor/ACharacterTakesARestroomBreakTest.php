@@ -67,8 +67,6 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         return self::$runs[$run] ??= $this->floorRun($run);
     }
 
-    /** @return list<array<string, mixed>> the renders and refreshes that drew a scene */
-
     /** @return list<array<string, mixed>> the restroom visits a frame draws (A26 effects with frames), of one walker where named */
     private function visits(array $frame, ?string $walker = null): array
     {
