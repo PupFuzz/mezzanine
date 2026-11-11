@@ -276,8 +276,8 @@ final class Layouts
      *
      * @param  callable(\stdClass): \stdClass  $edit  handed a decoded copy of the current document
      *
-     * @throws InvalidBuildingLayout on a stored document the reader refuses, on a refusal `$edit` throws, on a
-     *                               document the reader refuses, on an overlap, a theme the build does not ship, a
+     * @throws InvalidBuildingLayout on a stored document the reader refuses, on a refusal `$edit` throws, on an
+     *                               edited document the reader refuses, on an overlap, a theme the build does not ship, a
      *                               retired room, or a no-op
      */
     public static function amend(callable $edit, string $by): int
