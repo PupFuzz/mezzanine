@@ -1455,6 +1455,11 @@ the check that the slab shows the floor the floor page shows.
 
 ## 11. Stage 2 — the floor in 3D, at outline depth
 
+⚠ **SUPERSEDED 2026-11-11.** The operator read stage 1 on the sandbox and ruled on § 13 ruling 5's gate — *"I want
+full 3D models that allow you to move around in the floor to view from any angle above the floor"* (card comment
+17048) — so the billboard outline below, its 15°–55° band and the gate's two questions are history; stage 2's design
+is `docs/design/plan-13033-stage2-3d-floor.md`. This section is left as the record of what was outlined and why.
+
 Stage 2 is a design of its own, to be written after the operator has read stage 1 on the sandbox (§ 13 ruling 5);
 it stays PROPOSED in `FLOOR.md` (§ 14 item 49) until then, and every sentence below is conditional. What it
 would do, stated now so stage 1 builds nothing that stage 2 must undo:
