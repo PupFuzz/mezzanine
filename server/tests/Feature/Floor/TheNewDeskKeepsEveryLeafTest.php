@@ -568,7 +568,7 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
 
         $blade = $this->scratchDir().'/floor.blade.php';
         file_put_contents($blade, str_replace('data-panel-open-calls', 'data-panel-gone',
-            (string) file_get_contents(__DIR__.'/../../../resources/views/floor.blade.php')));
+            (string) file_get_contents(__DIR__.'/../../../resources/views/partials/floor-page.blade.php')));
 
         $this->assertNotSame([], array_filter($this->probeRun([], ['--blade', $blade])['results'][0]['findings'], fn ($f) => $f['rule'] === 'slots'),
             'CONTROL (a PR-A slot missing from the page) did not red');

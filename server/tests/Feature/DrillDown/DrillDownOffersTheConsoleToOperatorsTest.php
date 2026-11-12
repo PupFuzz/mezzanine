@@ -61,7 +61,7 @@ class DrillDownOffersTheConsoleToOperatorsTest extends TestCase
     /** The page's link opens a new tab and hands claude.ai no handle on this page. */
     public function test_the_page_declares_the_link_as_a_new_tab_without_an_opener(): void
     {
-        $blade = (string) file_get_contents(resource_path('views/floor.blade.php'));
+        $blade = (string) file_get_contents(resource_path('views/partials/floor-page.blade.php'));
 
         $this->assertMatchesRegularExpression(
             '#<a data-panel-console target="_blank" rel="noopener noreferrer" hidden></a>#',

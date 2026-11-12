@@ -17,7 +17,16 @@ namespace Tests\Feature\Support;
  *    loads the furniture box and the character tree — the paths its `FURNITURE_MODULE` and `CHARACTER_TREE` constants
  *    name — and the same registry and themes.
  * Each is walked into `resources/` by the asset route's own paths, the themes by every name the registry's `THEMES` line
- * names. Another dynamic import in either file, or one of its own gone, makes them all unfollowable defects again.
+ * names. Another dynamic import in either file, or one of its own gone, makes them all unfollowable defects again. A
+ * third, `floor3d/furniture.js`'s `loadKitMap()` (card#13033 stage 2), loads the furniture kit's kind map by its
+ * `KIT_MAP` constant.
+ *
+ * ⛔ A VENDORED MODULE IS A LEAF: a file under `vendor/` is recorded as loaded and its own specifiers are not read. It is
+ * upstream's bytes, pinned by `bin/vendor-pin-check.sh`, it imports nothing first-party — so no bound
+ * a caller holds over this walk's edges runs through it — and its add-ons import `three` by the one bare name the page's
+ * import map resolves (`EveryModuleAPageLoadsIsVersionedTest` holds that map and which modules may import a name bare).
+ * Reading its source would read upstream's strings as imports this lexer cannot tell from one (`GLTFLoader.js`'s
+ * warning text `from "srgb-linear"`), a false red on a file no change here can edit.
  */
 trait WalksAPagesImportGraph
 {
@@ -30,6 +39,7 @@ trait WalksAPagesImportGraph
     private static array $assetLoaders = [
         'floor/cab-paint.js' => ['imports' => ['await import(THEME_REGISTRY)', 'await import(themeModule(name))'], 'constants' => []],
         'floor/painter.js' => ['imports' => ['await import(specifier)'], 'constants' => ['FURNITURE_MODULE', 'CHARACTER_TREE']],
+        'floor3d/furniture.js' => ['imports' => ['import(KIT_MAP)'], 'constants' => ['KIT_MAP']],
     ];
 
     /**
@@ -57,6 +67,11 @@ trait WalksAPagesImportGraph
             $path = str_starts_with($file, '@resources/') ? $resources.'/'.substr($file, 11) : $root.'/'.$file;
             $this->assertFileExists($path, "the page imports {$file}, which is not there");
             $seen[$file] = true;
+
+            if (str_starts_with($file, 'vendor/')) {
+                continue;
+            }
+
             $source = (string) file_get_contents($path);
             $unfollowable = [];
 

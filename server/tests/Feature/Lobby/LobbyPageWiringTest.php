@@ -255,7 +255,7 @@ class LobbyPageWiringTest extends TestCase
     /** @return list<string> */
     private function keyMarkupDefects(string $html): array
     {
-        $floor = (string) file_get_contents(resource_path('views/floor.blade.php'));
+        $floor = (string) file_get_contents(resource_path('views/partials/floor-page.blade.php'));
         $defects = [];
 
         if (preg_match('/<div id="lobby-building"([^>]*)>/', $html, $m) !== 1) {

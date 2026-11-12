@@ -13,7 +13,8 @@
  *    default where a renderer gives none). Bound before the art answers because the page wires its surface, gestures,
  *    keys and *Fit* at load, as it did inline: a resize before the art answers still reaches the screen.
  *  · `create(art, hooks)`, called once the art modules have answered (`loadArt()`) — the drawing, `{ paint(scene,
- *    camera), refresh(view), paintCab(host, ride), cabTheme(dialog) }`, over `hooks` `{ failed, select, ride, clock }`.
+ *    camera), refresh(view), paintCab(host, ride), cabTheme(dialog) }`, over `hooks` `{ failed, select, link, ride, clock }`
+ *    — `link(seatId)` the desk's drill-down URL on this route, for a renderer that writes its desks as links.
  * `route` is `'2d'` or `'3d'`: the URL shape the page reads and writes (§ 4.4; the 3-D floor's segment follows the
  * floor's, the seat's follows it).
  *
@@ -430,6 +431,7 @@ export function startFloorPage(document, window, { renderer, route }) {
                 requestRender();
             },
             select: openDesk,
+            link: (seatId) => routeOf(floorSegment(), seatId),
             ride: () => cab.act(screen.ride()),
             clock,
         });

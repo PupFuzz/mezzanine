@@ -18,7 +18,7 @@ use Tests\TestCase;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE HOST PAGE IS THE FLOOR PAGE (Appendix B row 10, card#7342). § 4: "the drill-down is a panel
  * over the floor rather than a route of its own", so `/floor/{floor}` and § 4.4's
- * `/floor/{floor}/{seat_id}` serve one view, `resources/views/floor.blade.php`, whose `floor/main.js`
+ * `/floor/{floor}/{seat_id}` serve one view, `resources/views/floor.blade.php` (its body `partials/floor-page.blade.php`), whose `floor/main.js`
  * hands each frame's panel model to `drilldown/main.js`. That module writes `[data-panel-*]` slots and
  * a slot the page does not declare is a `querySelector` answering `null` — a silent no-op, one fact
  * simply never drawn. So the slots are set-differenced BOTH ways against the served page, the way

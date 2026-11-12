@@ -834,7 +834,7 @@ main > section.lobby {
     content: "\2922" / "";
 }
 
-#floor-camera > .pill:not(.building-pill)::before,
+#floor-camera > .pill:not(.building-pill):not(.floor-route-pill)::before,
 .floor-home::before {
     content: "\2302" / "";
 }
@@ -856,6 +856,107 @@ main > section.lobby {
     touch-action: none;
     cursor: grab;
     background: radial-gradient(ellipse at center, var(--ground) 0%, var(--ground-deep) 75%);
+}
+
+/*
+ * THE 3-D FLOOR's STAGE (`/floor/{floor}/3d`, card#13033 stage 2 slice 4): the canvas fills the drawing's box, and the
+ * labels' layer lies over it — every label a positioned element `CSS2DRenderer` moves, the layer itself letting the
+ * pointer through to the camera's controls. Without WebGL 2 (`floor3d/main.js`'s `data-webgl`) the stage is collapsed to a
+ * line and hidden and the camera's controls withdrawn, and the list below is the page.
+ */
+#floor-drawing.floor3d-stage {
+    position: relative;
+    cursor: grab;
+}
+
+#floor3d-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.floor3d-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.floor3d-label {
+    pointer-events: auto;
+    padding: 2px 7px;
+    border-radius: 8px;
+    background: var(--lobby-plaque);
+    color: var(--lobby-plaque-ink);
+    box-shadow: 0 1px 0 var(--lobby-plaque-outline);
+    font-size: 12px;
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.floor3d-label > span {
+    display: block;
+}
+
+.floor3d-label[data-culled] {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.floor3d-label[data-culled]:focus-visible {
+    opacity: 1;
+}
+
+.floor3d-name {
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.floor3d-name:focus-visible {
+    outline: 2px solid var(--lamp);
+}
+
+.floor3d-status {
+    background: var(--scene-monitor);
+    color: var(--scene-monitor-on);
+}
+
+@supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
+    .floor3d-label {
+        background: color-mix(in srgb, var(--lobby-plaque) 90%, transparent);
+    }
+
+    .floor3d-status {
+        background: color-mix(in srgb, var(--scene-monitor) 92%, transparent);
+    }
+}
+
+.floor3d-status[data-lit="off"] {
+    color: var(--faint);
+}
+
+.floor3d-facts {
+    font-size: 11px;
+    color: var(--lobby-plaque-dim);
+}
+
+.floor3d-bubble {
+    max-width: 200px;
+    border-radius: 14px;
+    white-space: normal;
+}
+
+#floor[data-webgl="none"] #floor-camera > button,
+#floor[data-webgl="none"] .floor-hint-row {
+    display: none;
+}
+
+/* Withdrawn, never removed: the floor screen's camera needs the drawing's box positive whatever draws in it. */
+#floor[data-webgl="none"] .floor-stage > #floor-drawing {
+    flex: 0 0 1px;
+    min-height: 1px;
+    visibility: hidden;
 }
 
 /* The gesture hint's row under the drawing: its height kept whether the line is offered or not (card#11045). */
@@ -1454,7 +1555,7 @@ main > section.lobby {
     }
 
     #floor-camera > #floor-fit,
-    #floor-camera > .pill:not(.building-pill),
+    #floor-camera > .pill:not(.building-pill):not(.floor-route-pill),
     .app-header > .floor-home {
         width: 34px;
         justify-content: center;
@@ -1463,7 +1564,7 @@ main > section.lobby {
     }
 
     #floor-fit::before,
-    #floor-camera > .pill:not(.building-pill)::before,
+    #floor-camera > .pill:not(.building-pill):not(.floor-route-pill)::before,
     .floor-home::before {
         margin: 0;
         font-size: 16px;

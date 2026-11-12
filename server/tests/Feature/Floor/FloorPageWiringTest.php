@@ -477,7 +477,7 @@ class FloorPageWiringTest extends TestCase
         // card#12113: the cab is the shared partial — the view restating a cab of its own, including it under another
         // prefix, or serving a dialog that is not the partial's.
         $view = $this->floorView();
-        $ownCab = str_replace("        @include('partials.ride-cab', ['prefix' => 'floor'])\n", "        <dialog id=\"floor-cab\" class=\"floor-cab\"></dialog>\n", $view);
+        $ownCab = str_replace("    @include('partials.ride-cab', ['prefix' => 'floor'])\n", "    <dialog id=\"floor-cab\" class=\"floor-cab\"></dialog>\n", $view);
         $this->assertNotSame($ownCab, $view, 'the own-cab control\'s anchor is gone — it mutated nothing');
         $this->assertArrayHasKey('partial', $this->partialDefects($ownCab, $page), 'CONTROL (a cab dialog of the view\'s own) did not bite');
         $otherPrefix = str_replace("['prefix' => 'floor']", "['prefix' => 'flor']", $view);
@@ -902,10 +902,13 @@ class FloorPageWiringTest extends TestCase
         return (string) file_get_contents($this->jsRoot().'/wire/ride-page.js');
     }
 
-    /** The floor view's own source, before Blade renders it. */
+    /**
+     * The floor view's own source, before Blade renders it: the page's body, which both floor routes' views include
+     * (`partials/floor-page.blade.php`, card#13033 stage 2 slice 4) — the cab is included there, once.
+     */
     private function floorView(): string
     {
-        return (string) file_get_contents(resource_path('views/floor.blade.php'));
+        return (string) file_get_contents(resource_path('views/partials/floor-page.blade.php'));
     }
 
     /**

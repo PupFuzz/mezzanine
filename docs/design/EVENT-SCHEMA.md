@@ -361,7 +361,7 @@ could have read is **taken with a warning** (the operator's ruling of 2026-10-29
 | Key | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
 | `install_id` | slug | no — **absent** on a seat installed since card#13117 | `^[a-z0-9][a-z0-9-]{1,31}$` when present. ⭐ **Optional since card#13117**: the seat's identity is `seat_id` alone, and a 13117-era server reads no `install_id` ([§ 4.2](#42-batch-envelope-fields)). The installer no longer writes it; a config written before that card keeps it and is never rewritten, and the reporter sends it on every batch and event exactly when this file carries it | `"aimla"` |
-| `seat_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,47}$` | `"aimla-pm"` |
+| `seat_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,47}$`, and never `3d`: the server issues no token for that id (`App\Fleet\SeatTokens::RESERVED_IDS`, card#13033 stage 2), because `/floor/{floor}/3d` is the 3-D floor's address and no desk's ([FLOOR.md § 4.4](FLOOR.md#44-routes-and-what-each-one-fetches)) | `"aimla-pm"` |
 | `ingest_url` | string | no — **the single-site form**; absent when `sites` is set | absolute `https://` URL, ≤ 256 B | `"https://mezzanine.example.org/api/ingest/events"` |
 | `token` | string | no — the single-site form | `mzn_` + 43 base64url chars | `"mzn_kQ7…"` *(never printed, never logged, never echoed)* |
 | `spool_dir` | string | no | absolute path, ≤ 256 B | `"/home/agent/.local/state/fleet-reporter"` |

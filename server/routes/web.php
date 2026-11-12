@@ -168,6 +168,18 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     Route::get('/building', fn () => view('building'))
         ->name('building.view');
 
+    // § 4.4's `/floor/{floor}/3d` and `/floor/{floor}/3d/{seat_id}` — THE FLOOR IN 3-D (card#13033 stage 2 slice 4;
+    // `docs/design/plan-13033-stage2-3d-floor.md` § 3.8, B2): the same page over the 3-D renderer, the segments handed
+    // over as data as the 2-D page's are. ⛔ REGISTERED BEFORE THE SEAT ROUTE, which is unconstrained, so registration
+    // order alone sends `/floor/x/3d` here rather than to a drill-down on a seat named `3d` — and no seat can be named
+    // `3d`: `App\Fleet\SeatTokens::issue()` refuses the id where seats are minted.
+    Route::get('/floor/{floor}/3d', fn (string $floor) => view('floor3d', [
+        'floor' => $floor, 'seat' => null, 'composeRefusal' => ComposeCredential::refusal(),
+    ]))->name('floor3d.view');
+    Route::get('/floor/{floor}/3d/{seat}', fn (string $floor, string $seat) => view('floor3d', [
+        'floor' => $floor, 'seat' => $seat, 'composeRefusal' => ComposeCredential::refusal(),
+    ]))->name('floor3d.seat');
+
     // § 4.4's `/floor/{floor}/{seat_id}` — the drill-down open (Appendix B row 10). The SAME page: "the
     // drill-down is a panel over the floor rather than a route of its own, because closing it must not
     // cost a reconnect" (§ 4), so the seat segment is handed over as data exactly as the floor's is,

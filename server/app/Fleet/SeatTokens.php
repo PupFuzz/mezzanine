@@ -53,6 +53,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class SeatTokens
 {
+    /** The seat ids no seat is issued: the segments `routes/web.php`'s floor routes spell after `/floor/{floor}/`. */
+    public const RESERVED_IDS = ['3d'];
+
     /**
      * Test seam: runs inside `issue()`'s transaction right after the species mutex is locked, before any other
      * statement — the position AT-D2-31's concurrency legs probe (`SeatRetirement::$beforeRetire`'s shape).
@@ -82,6 +85,11 @@ final class SeatTokens
         // D1 § 3.1's slug, from `App\Support\Slug` — the seat routes check the same one.
         if (preg_match(Anchored::pattern(Slug::SEAT_ID), $seatId) !== 1) {
             return SeatTokenRefusal::notASlug('seat_id', $seatId, Anchored::pattern(Slug::SEAT_ID));
+        }
+
+        // The floor's own route segments are no seat's (card#13033 stage 2): `/floor/{floor}/3d` is the 3-D floor.
+        if (in_array($seatId, self::RESERVED_IDS, true)) {
+            return SeatTokenRefusal::reservedId($seatId);
         }
 
         // D1 § 3.3: 32 random bytes from a CSPRNG → 43 base64url characters. "256 bits is the
