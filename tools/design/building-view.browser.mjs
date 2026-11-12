@@ -30,7 +30,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { browser, findChrome } from './headless-chromium.mjs';
-import { fixtureRun, serve } from './served-pages.mjs';
+import { StaleAnchor, fixtureRun, serve } from './served-pages.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
@@ -533,7 +533,8 @@ if (argv.includes('--selftest')) {
       continue;
     }
     for (const [plant, planted] of r.plants) {
-      const out = await r.run(chrome, merged(r.base, planted)).catch((e) => ({ defects: [`the row threw: ${e.message}`] }));
+      const out = await r.run(chrome, merged(r.base, planted)).catch((e) => (e instanceof StaleAnchor ? { stale: e } : { defects: [`the row threw: ${e.message}`] }));
+      if (out.stale !== undefined) { console.log(`STALE ${id} under the plant: ${plant} — NOT PLANTED: ${out.stale.message}`); failed++; continue; }
       console.log(`${out.defects.length > 0 ? 'RED  ' : 'GREEN'} ${id} under the plant: ${plant}${out.defects.length > 0 ? ` — ${out.defects[0]}` : ' — the plant was NOT caught'}`);
       if (out.defects.length === 0) failed++;
     }
