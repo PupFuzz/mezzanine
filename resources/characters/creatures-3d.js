@@ -67,7 +67,7 @@ export const CLIPS = Object.freeze({
 /** How deep a body of revolution is, front to back, as a share of its width — a creature a little flatter than round. */
 export const DEPTH = 0.86;
 /** How thick an extruded body is over all, as a share of the lesser of its width and height (its bevel included). */
-const SLAB = 0.42;
+const SLAB = 0.62;
 /** How far a face patch, a muzzle or a belly mark stands proud of the surface it lies on, in frame units. */
 const PROUD = 2.4;
 
@@ -141,7 +141,10 @@ export function bodyParts(key, { species, chibi = false } = {}) {
   const worn = describe(key, r.species);
   const parts = [];
   const colourOf = (tone) => toneOf(key, P, tone);
-  const add = (part) => parts.push({ rotate: [0, 0, 0], scale: [1, 1, 1], ...part });
+  // every part of the creature itself carries the body's paint (`paint`); its paws, its feet, what it wears and its laptop
+  // are their own colour
+  let painted = true;
+  const add = (part) => parts.push({ rotate: [0, 0, 0], scale: [1, 1, 1], paint: painted, ...part });
 
   // ---- the solids: every profile a lathe (body, head) or a patch on the front (a disc, a cut face) ----
   const solids = [];
@@ -312,6 +315,7 @@ export function bodyParts(key, { species, chibi = false } = {}) {
   }
 
   // ---- arms and feet, from the anchors ----
+  painted = false;
   const A = { arms: S.arms, feet: S.feet };
   const armCol = A.arms && colourOf(A.arms.tone), footCol = A.feet && colourOf(A.feet.tone);
   const joints = { root: [0, 0, 0], body: [0, 10, 0], head: [0, round3(headY), 0], tail: [round3(side * 14 * st), 30, round3(-surfaceZ(30) * 0.6)] };
@@ -392,6 +396,21 @@ export function bodyParts(key, { species, chibi = false } = {}) {
 
   // ---- the intern: re-proportioned, not shrunk — the body below the chin squashed toward the foot by `k`, the head
   // coming down to sit on it (`chibiGeometry()`'s figures, the 2-D chibi frame's own) ----
+  // the frame-unit rectangle the painted parts cover at rest, a margin round it: what `paintDocument()` draws in and the
+  // renderer projects from
+  const paintBox = (() => {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    const take = (x, y, r = 0) => { x0 = Math.min(x0, x - r); x1 = Math.max(x1, x + r); y0 = Math.min(y0, y - r); y1 = Math.max(y1, y + r); };
+    for (const p of parts.filter((q) => q.paint)) {
+      if (p.params.points) {
+        const a = (p.rotate[2] * Math.PI) / 180, reach = p.params.radius ?? 0;
+        for (const [x, y] of p.params.points) take(p.at[0] + x * Math.cos(a) - y * Math.sin(a), p.at[1] + x * Math.sin(a) + y * Math.cos(a), reach);
+      } else if (p.shape === 'cone') { take(p.at[0], p.at[1], p.params.radius); take(p.at[0] + p.params.dir[0] * p.params.height, p.at[1] + p.params.dir[1] * p.params.height); }
+      else take(p.at[0], p.at[1], Math.max(...p.scale));
+    }
+    const m = 4;
+    return { x: round3(54 + x0 - m), y: round3(FOOT - y1 - m), w: round3(x1 - x0 + 2 * m), h: round3(y1 - y0 + 2 * m) };
+  })();
   let top = up(g.top), chin = headY;
   if (chibi) {
     // one continuous map of heights: below the chin squashed by k toward the foot, above it moved down by the squash —
@@ -420,6 +439,9 @@ export function bodyParts(key, { species, chibi = false } = {}) {
   return freezeDeep({
     species: r.species, chibi, tall: chibi ? CHIBI_VIEWBOX.h : SEAT_RECT.h, size: r.size, tilt: chibi ? 0 : r.tilt,
     top: round3(top), chin: round3(chin), parts, joints,
+    // the paint's projection: its rectangle, and — for an intern — the squash to undo, so a vertex samples the paint where
+    // its rest point stood (a height under `chin` divided by `k`, one over it raised by `shift`)
+    paint: chibi ? { box: paintBox, k: g.k, chin: round3(headY * g.k), shift: round3((FOOT - g.chin) * (1 - g.k)) } : { box: paintBox, k: 1, chin: 0, shift: 0 },
     face: { box: face, at: [0, round3(chibi ? (faceY < headY ? faceY * g.k : faceY - (FOOT - g.chin) * (1 - g.k)) : faceY), 0], radius: round3(faceZ + PROUD), flat: S.solid === 'extrude', bone: faceY >= headY ? 'head' : 'body' },
   });
 }

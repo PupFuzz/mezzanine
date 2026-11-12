@@ -2515,6 +2515,22 @@ export function faceDocument(key, { pose = 'present', glyph = null, species, bli
 }
 
 /**
+ * THE BODY's PAINT ALONE — `frameDocument()`'s back, body and front layers for a key at rest (phase 0, size 1, upright),
+ * with no rim, no shadow, no face, no paws or feet and nothing worn, on a transparent ground in the frame-unit rectangle
+ * `box`: the 3-D body's paint (the operator's Q6 answer A, 2026-11-12 — the panda's shoulder band, the fox's mask, the
+ * stripes and the spots), which `floor3d/creature-paint.js` projects onto the body's parts from the front.
+ * @param {string} key the seat key, or an intern key
+ * @param {{species?: string, box: {x: number, y: number, w: number, h: number}}} opt `box` the frame-unit rectangle the
+ *        part list covers (`bodyParts()`'s `paint.box`)
+ * @returns {string} an SVG document
+ */
+export function paintDocument(key, { species, box }) {
+  const { pen, c } = build(key, species);
+  const layers = [...c.layers.back, ...c.layers.body, ...c.layers.front].join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(box.x)} ${f(box.y)} ${f(box.w)} ${f(box.h)}" width="${f(box.w)}" height="${f(box.h)}" preserveAspectRatio="none"><defs>${pen.defs.join('')}</defs>${layers}</svg>`;
+}
+
+/**
  * THE LAPTOP LID's BACK ALONE — the intern's laptop lid as `frameDocument()` draws it on the lap (its key's metallic
  * shell, sheen, rim and two stickers), cut to the lid's own rectangle: the 3-D laptop's lid texture.
  * @param {string} key an intern key @returns {string} an SVG document

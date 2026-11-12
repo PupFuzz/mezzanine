@@ -36,8 +36,10 @@
 // keys, each drawn as its 3-D body (`server/public/js/floor3d/creature-paint.js` over `creatures-3d.js`'s part list) from
 // the front through `stage3d.js`, an orthographic camera framing exactly the frame's rectangle at the same px a unit — so
 // ONE measure and ONE bar judge both generators. Its control is the twin (2): a species appended as the hedgehog's copy,
-// `shape` and all, is too close in 3-D too. Dev's pumpkin (1) is the 2-D drawing's control and is not run there — that
-// entry predates `shape` and has no 3-D body.
+// `shape` and all, is too close in 3-D too; and (5) the body's paint (`paintDocument()`, the operator's Q6 answer A,
+// 2026-11-12) dropped — every species drawn bare, as the bodies were before it — puts the owl and the panda back too
+// close, the pair the paint holds apart. Dev's pumpkin (1) is the 2-D drawing's control and is not run there — that entry predates `shape` and has no
+// 3-D body.
 //
 // NO BUILD STEP, NO DEPENDENCY, NO NETWORK — `sheet.browser.mjs`'s shape: a static server on 127.0.0.1 serves the
 // repository root to the browser `tools/design/headless-chromium.mjs` launches (`--chrome <path>`, `$CHROME`, or the
@@ -68,6 +70,8 @@ export const DE_BAR = 10;
 
 /** The control's planted species, and the existing one it copies. */
 const TWIN = 'twinplant', TWIN_OF = 'hedgehog';
+/** The pair control (5) reads with the body's paint dropped: too close bare, apart painted. */
+const UNPAINTED = 'panda', UNPAINTED_BESIDE = 'owl';
 
 /**
  * THE CONTROL's PLANT — the pumpkin as dev drew it at afacf5ce, before card#12795, its whole entry (drawing and
@@ -283,7 +287,11 @@ async function plantedCreatures() {
   let planted = `${src.slice(0, at + 1)}${devPumpkin}${src.slice(end + '\n  },'.length)}`;
   planted = planted.replace(list[0], list[0].replace(']);', `, '${TWIN}']);`));
   const d2 = planted.lastIndexOf('\n/**', planted.indexOf('\nexport const WITHHELD'));
-  return `${planted.slice(0, d2)}\nAPPROVED['${TWIN}'] = { ...APPROVED.${TWIN_OF}, added: 'control' };${planted.slice(d2)}`;
+  planted = `${planted.slice(0, d2)}\nAPPROVED['${TWIN}'] = { ...APPROVED.${TWIN_OF}, added: 'control' };${planted.slice(d2)}`;
+  // (5): the body's paint dropped — every paint document drawn empty
+  const paintAt = 'export function paintDocument(key, { species, box }) {\n  const { pen, c } = build(key, species);\n  const layers = ';
+  if (!planted.includes(paintAt)) throw new Error('the control\'s paint plant has no place in this generator (paintDocument)');
+  return planted.replace(paintAt, `${paintAt}'' && `);
 }
 
 function serve() {
@@ -361,7 +369,7 @@ try {
     console.log('\ncontrols:');
     // (1) dev's pumpkin, planted back: the pale cream colourway beside the hedgehog is the pair the operator named.
     // (2) a planted species appended to the list, copying an existing one, is flagged.
-    const planted = await measure(chrome, server, '__control.html', SOURCE === '3d' ? ['hedgehog', TWIN] : ['pumpkin', 'hedgehog', TWIN]);
+    const planted = await measure(chrome, server, '__control.html', SOURCE === '3d' ? ['hedgehog', TWIN, UNPAINTED, UNPAINTED_BESIDE] : ['pumpkin', 'hedgehog', TWIN]);
     if (SOURCE === '2d') {
       const ph = pairsOf({ pumpkin: planted.species.pumpkin, hedgehog: planted.species.hedgehog })[0];
       console.log(`  dev's pumpkin (its afacf5ce entry) / hedgehog: ${fmt(ph)}`);
@@ -370,6 +378,12 @@ try {
     const twin = pairsOf({ [TWIN]: planted.species[TWIN] ?? [], [TWIN_OF]: planted.species[TWIN_OF] })[0];
     console.log(`  a planted '${TWIN}' appended as a copy of the ${TWIN_OF}: ${fmt(twin)}`);
     check(planted.keys.includes(TWIN) && tooClose(twin), `CONTROL — a species appended to the list as a copy of the ${TWIN_OF} is TOO CLOSE (IoU ${twin.iou.toFixed(3)}, ΔE ${twin.de.toFixed(1)})`);
+    if (SOURCE === '3d') {
+      const bare = pairsOf({ [UNPAINTED_BESIDE]: planted.species[UNPAINTED_BESIDE], [UNPAINTED]: planted.species[UNPAINTED] })[0];
+      const painted = pairsOf({ [UNPAINTED_BESIDE]: species[UNPAINTED_BESIDE], [UNPAINTED]: species[UNPAINTED] })[0];
+      console.log(`  the body's paint dropped from every species: ${fmt(bare)} (painted: ${fmt(painted)})`);
+      check(tooClose(bare) && !tooClose(painted), `CONTROL — the body's paint dropped makes ${UNPAINTED_BESIDE} / ${UNPAINTED} TOO CLOSE (IoU ${bare.iou.toFixed(3)}, ΔE ${bare.de.toFixed(1)}), where painted it is apart (ΔE ${painted.de.toFixed(1)}) — so the gate sees the paint`);
+    }
     // (3) each measure alone clears a pair: the same silhouette in a far colour, a far silhouette in the same colour.
     const sameShape = { iou: 1, de: DE_BAR + 1 }, sameColour = { iou: IOU_BAR - 0.01, de: 0 };
     check(!tooClose(sameShape) && !tooClose(sameColour), 'CONTROL — one difference alone (colour, or silhouette) clears a pair');

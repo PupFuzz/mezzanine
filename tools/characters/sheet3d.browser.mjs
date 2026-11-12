@@ -42,7 +42,7 @@ const PAINT = '/server/public/js/floor3d/creature-paint.js';
 const PLANTS = {
   // the face a material of its own: the seat's body and face are two groups, two calls
   'face-own-material': [
-    ['    own.push(dress(faceGeometry(body.face)', '    laptop.push(dress(faceGeometry(body.face)'],
+    ['    own.push(setPaint(dress(faceGeometry(body.face)', '    laptop.push(setPaint(dress(faceGeometry(body.face)'],
     ['    if (laptop.length > 0) {\n        materials.push(', '    if (laptop.length > 0) {\n        materials.push('],
   ],
   // the laptop's parts each a group (and a material) of their own: the intern is more than two calls
@@ -76,6 +76,9 @@ const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
     const px = x.getImageData(0, 0, 240, 250).data; let inked = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > 128) inked++;
     const intern = await make('calls/seat~intern', { species: 'radish', chibi: true });
     const internCalls = st.shoot(intern.mesh, 'front', CHIBI);
+    // the texture memory each holds — every texture's width × height × 4 bytes × 4/3 for its mipmaps (plan § 6's row)
+    const bytes = (c) => c.textures().reduce((n, t) => n + t.width * t.height * 4 * 4 / 3, 0);
+    const memory = { seat: bytes(seat), intern: bytes(intern), textures: { seat: seat.textures(), intern: intern.textures() } };
     // every species' triangles, seat and intern — printed for § 6's triangle row (slice 4 asserts it at the cap)
     const triangles = {};
     for (const sp of C.SPECIES_KEYS) {
@@ -83,7 +86,7 @@ const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
       const i = await make('calls/' + sp + '~intern', { species: sp, chibi: true }); st.shoot(i.mesh, 'front', CHIBI); const t1 = st.renderer.info.render.triangles; i.dispose();
       triangles[sp] = [t0, t1];
     }
-    return JSON.stringify({ seat: seatCalls, intern: internCalls, inked, laptopGroups: intern.mesh.geometry.groups.length, triangles });
+    return JSON.stringify({ seat: seatCalls, intern: internCalls, inked, laptopGroups: intern.mesh.geometry.groups.length, triangles, memory });
   };
 
   window.sheet = async () => {
@@ -177,11 +180,17 @@ try {
       const med = (k) => by(k)[Math.floor(t.length / 2)][1][k];
       console.log(`MEASURED triangles a creature (renderer.info.render.triangles, one alone): seats median ${med(0)}, most ${by(0).at(-1)[1][0]} (${by(0).at(-1)[0]}); interns median ${med(1)}, most ${by(1).at(-1)[1][1]} (${by(1).at(-1)[0]}) — plan § 6's estimate is 2,500 a seat and 1,200 an intern; § 6's row is asserted at the cap by slice 4`);
     }
+    if (r.memory) {
+      const mb = (b) => (b / 1048576).toFixed(2);
+      console.log(`MEASURED texture memory a creature at the ${r.memory.textures.seat[0].width}-px face bucket: a seat ${mb(r.memory.seat)} MB, an intern ${mb(r.memory.intern)} MB (${r.memory.textures.seat.map((t) => `${t.width}×${t.height}`).join(', ')}) — at § 6's cap of 6 seats and 48 interns, ${mb(6 * r.memory.seat + 48 * r.memory.intern)} MB; § 6's row is asserted at the cap by slice 4`);
+    }
     check(r.inked > 1000, `CONTROL — the seat's front picture is inked (${r.inked} px), so the page drew a creature`);
     check(r.seat >= 1 && r.seat <= 1, `one seat drawn alone is ${r.seat} draw call(s) — at most 1 (its body and its face one material)`);
     check(r.intern >= 1 && r.intern <= 2, `one intern with its laptop drawn alone is ${r.intern} draw call(s) — at most 2 (its laptop the second)`);
     if (argv.includes('--selftest')) {
       console.log('\nplants:');
+      // each plant's anchors read first, so a plant that no longer applies fails by name rather than as a page that never drew
+      for (const name of Object.keys(PLANTS)) await planted(name);
       const face = await readCalls('/__plant/face-own-material.js');
       check(face.seat > 1, `PLANT face-own-material — the face a material of its own reads the seat as ${face.seat} call(s), over 1: RED`);
       const lap = await readCalls('/__plant/laptop-unmerged.js');

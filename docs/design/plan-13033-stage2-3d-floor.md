@@ -963,16 +963,23 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    read above § 6's per-creature estimate for the interns — `node tools/characters/sheet3d.browser.mjs --calls` prints
    them (read 2026-11-11: seats median 2,352, interns median 2,296, the sloth the most at 7,552 and 8,292, against
    2,500 and 1,200) — so § 6's triangle total at the cap is re-derived with this reading in slice 4, where it is
-   asserted; (i) ⚠ **OPEN — `distinct.browser.mjs --source 3d` REDS at this build**: on 2026-11-11 it read owl / panda
-   too close (IoU 0.836, ΔE 9.0) with every extruded part's bevel held inside its outline, the most faithful reading
-   of the 2-D outline; each earlier interpretation had put a different pair at or over the bar (cat / raccoon, then mole
-   / potato, then apple / lemon), and mole / potato, fox / cat and cabbage / apple read within a few hundredths of
-   `IOU_BAR`. The 3-D bodies carry each species' outline, parts and paw colours, but not most of its 2-D body paint (the
-   panda's shoulder band, the stripes, the spots, the fox's mask), which is what holds several pairs apart in 2-D — so
-   the gap is a class (the body paint), not a pair, and was stopped rather than patched pair by pair. Whether the
-   code-built bodies are the direction at all is the operator's reading of the sheet (§ 10's first falsifier); if they
-   are, the class's fix — the body paint carried onto the 3-D body, e.g. the 2-D frame's body layer projected as a front
-   texture — is a design decision ahead of slice 4.
+   asserted; (i) **the body's paint — the operator's Q6 answer A (2026-11-12): keep the code-built bodies, and carry the
+   2-D body paint onto them.** The first build carried each species' outline, parts and paw colours but not its body
+   paint, and `distinct.browser.mjs --source 3d` read pair after pair at or over the bar (cat / raccoon, mole / potato,
+   apple / lemon, then owl / panda at IoU 0.836, ΔE 9.0) — one class, the paint, so it was stopped and put to the
+   operator rather than patched pair by pair. As built on the answer: `paintDocument()` (`creatures.js`: the frame's
+   back, body and front layers alone, in the part list's own rectangle, `bodyParts()`'s `paint.box`) is rasterised once
+   a character and projected onto every part of the creature from the front — each vertex sampling it where its rest
+   point stands, `PAINT_INSET` inside the outline so a side does not wear the outline's stroke, an intern's squash
+   undone — through a second sampler injected into the SAME toon material (a seat stays one call, an intern two), fading
+   out only over the surfaces facing back (`paintWeight()`), so a belly or a nose is not printed on a creature's back;
+   its paws, feet, what it wears and its laptop keep their own colours. The paint texture is as tall as the face atlas
+   (its width the rectangle's aspect), so `--calls` prints each creature's texture memory beside its draw calls. In the
+   same change the flat bodies (banana, lemon, watermelon, mango, kiwi, starfruit) are extruded `SLAB` thick of the
+   lesser of their width and height (0.62, from 0.42), their bevel started inside the outline so the front silhouette
+   stays the 2-D outline. **The gate is passed**: every pair of the 48 species is apart, the closest mole / potato (IoU
+   read 0.820 against `IOU_BAR` 0.82, ΔE 5.6 — apart by silhouette, at the bar's edge), and the check gains a fifth
+   control, the paint dropped from every species, which reads owl / panda too close again (ΔE 9.0 bare, 14.8 painted).
 4. **The page** — the routes (B2) and their test, the view, `floor3d/main.js` as the hoisted page's second caller,
    `floor-paint.js`, `furniture.js`, the labels through `CSS2DRenderer` in reading order, `OrbitControls` configured
    from `view-limits.js` with the clamp, the explicit pan mode and the entry pose, the keys through the contract,

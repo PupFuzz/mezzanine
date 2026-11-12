@@ -67,10 +67,10 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `2690e7435cf10fb45b51e5593626901febdbe79ced9e59aa9777dece4fff20f0` |
-| `resources/characters/creatures-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `aa5be2824113c74a87258e3e22a2052a2b57035d627283c1312a563f9283ae56` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `5c1b9a5ccded89972eaf9a5d341243734a2d4e331778a454e7101399fb7f0499` |
+| `resources/characters/creatures-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `10b106f3589d4f76ec09e31b6b33beddb1d0fae5a298da4f5cc251e47fea4521` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-27 | `f177f48274181682957d47e5428efcb88501c2b495236311d76b3dbd6fdbcc4f` |
-| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `675ece416bdd2e2e2c24634fe6aab8a5d58ff3e7122ba02d61c0769857f07be3` |
+| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `8e23d673a48b3d3e940b51637e205abd4a20a27a6ec823064d0394e225bbbe9b` |
 | `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `9d37334bed46f1454c7cd3a82e99d7179cf618daaf7c5e1bf72927754c5ac8a2` |
 | `resources/floor/tiles/floor-plane/wall-strip.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-04 | `7e3c516867896cf61896d9e8557c9c0b8f349408432dca2b1d58d569202426d6` |
 | `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `f9fcf0884ae29ba08bccee3a7d78acd3d24dbee4010436f69f6dc7a5213d1f4e` |

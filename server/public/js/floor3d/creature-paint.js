@@ -15,6 +15,13 @@
  * shut — two atlases, the blink a swap of the material's map — and mapped onto a patch curved round the head's front
  * over `faceBox()`'s rectangle, its transparent ground cut by the material's alpha test so the body shows through.
  *
+ * ⛔ THE BODY WEARS ITS 2-D PAINT (the operator's Q6 answer A, 2026-11-12): `paintDocument()` — the frame's body layers
+ * alone, the panda's band, the fox's mask, the stripes and the spots — rasterised once and projected onto every part of
+ * the creature from the front, each vertex sampling it where its rest point stands, a little inside the outline
+ * (`PAINT_INSET`) so a side does not wear the outline's stroke. It is a second sampler in the SAME material, so the seat
+ * stays one call; it fades out only over the surfaces that face away (`paintWeight()`), so a belly or a nose is not
+ * printed on the creature's back, and it shows from the front, the sides, above and three-quarters.
+ *
  * ⛔ POSES STEP, NEVER BLEND: `pose(name)` sets every bone from `POSES[name]` over the rest pose at once. The clock that
  * chooses which pose of a clip shows (§ 3.5) is slice 5's; this file only knows how to show one.
  */
@@ -53,6 +60,59 @@ import { rasterise } from './svg-texture.js';
 export const FACE_TEXTURE = 256;
 
 const DEG = Math.PI / 180;
+
+/** How far inside the outline a side's vertex samples the paint, frame units: past the 2-D outline's stroke. */
+export const PAINT_INSET = 2.5;
+
+/**
+ * How much of the paint a surface wears, from its normal's `z` (toward the 2-D viewer): all of it facing the front, the
+ * sides and up; none facing straight back — a smoothstep between.
+ */
+export function paintWeight(nz) {
+    const t = Math.min(1, Math.max(0, (nz + 0.65) / 0.5));
+
+    return t * t * (3 - 2 * t);
+}
+
+/** The vertex shader's and fragment shader's additions: the paint's coordinates in, its colour laid over the vertex colour. */
+function wearPaint(material, paint) {
+    material.onBeforeCompile = (shader) => {
+        shader.uniforms.paintMap = { value: paint };
+        shader.vertexShader = shader.vertexShader
+            .replace('#include <common>', '#include <common>\nattribute vec3 paint;\nvarying vec3 vPaint;')
+            .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPaint = paint;');
+        shader.fragmentShader = shader.fragmentShader
+            .replace('#include <common>', '#include <common>\nuniform sampler2D paintMap;\nvarying vec3 vPaint;')
+            .replace('#include <color_fragment>', '#include <color_fragment>\nvec4 painted = texture2D( paintMap, vPaint.xy );\ndiffuseColor.rgb = mix( diffuseColor.rgb, painted.rgb, painted.a * vPaint.z );');
+    };
+    material.customProgramCacheKey = () => 'creature-paint';
+}
+
+/**
+ * Each vertex's paint coordinates and weight: where its rest point stands in `paintDocument()`'s rectangle, stepped
+ * `PAINT_INSET` back against its normal across the picture, and an intern's squash undone (`bodyParts()`'s `paint`).
+ */
+function setPaint(geo, painted, P, foot) {
+    const pos = geo.getAttribute('position'), normal = geo.getAttribute('normal');
+    const out = new Float32Array(pos.count * 3);
+
+    for (let i = 0; i < pos.count; i++) {
+        if (!painted) {
+            continue;
+        }
+
+        const x = pos.getX(i) - normal.getX(i) * PAINT_INSET, y = pos.getY(i) - normal.getY(i) * PAINT_INSET;
+        const rest = y < P.chin ? y / P.k : y + P.shift;
+
+        out[i * 3] = (54 + x - P.box.x) / P.box.w;
+        out[i * 3 + 1] = 1 - (foot - rest - P.box.y) / P.box.h;
+        out[i * 3 + 2] = paintWeight(normal.getZ(i));
+    }
+
+    geo.setAttribute('paint', new Float32BufferAttribute(out, 3));
+
+    return geo;
+}
 
 /**
  * The atlas's layout over a side of `size` px: the face fitted into the top three quarters, the laptop lid's back in the
@@ -218,7 +278,7 @@ async function atlases(document, docs, layout) {
  * @param {{species?: string, chibi?: boolean, pose?: string, height?: number, textureSize?: number}} [opt] `height` the
  *        character's world height its frame rect stands (`floor-world.js`'s figure; 1 by default)
  * @returns {Promise<{mesh: SkinnedMesh, parts: object, pose: function(string): void, blink: function(boolean): void,
- *          fade: function(number): void, dispose: function(): void}>}
+ *          fade: function(number): void, textures: function(): object[], dispose: function(): void}>}
  */
 export async function createCreature(document, characters, key, { species, chibi = false, pose = 'stand', height = 1, textureSize = FACE_TEXTURE } = {}) {
     const C = characters;
@@ -229,6 +289,11 @@ export async function createCreature(document, characters, key, { species, chibi
     const layout = atlasLayout(textureSize, body.face.box, lidAspect);
     const faceDoc = (blink) => C.faceDocument(key, { species: body.species, pose, blink });
     const sheets = await atlases(document, { face: faceDoc(false), faceShut: faceDoc(true), lid: lidDoc }, layout);
+    // the body's paint, as tall as the face atlas is wide, its width the paint rectangle's aspect
+    const paintCanvas = document.createElement('canvas');
+    const paintH = textureSize, paintW = Math.max(1, Math.round((textureSize * body.paint.box.w) / body.paint.box.h));
+
+    await rasterise(paintCanvas, C.paintDocument(key, { species: body.species, box: body.paint.box }), paintW, paintH);
 
     // ---- the geometry: every part merged, the laptop's parts a second group ----
     const boneIndex = Object.fromEntries(C.BONES.map((b, i) => [b, i]));
@@ -244,7 +309,7 @@ export async function createCreature(document, characters, key, { species, chibi
             const isLidBack = part.name === 'laptop-lid';
             const normal = geo.getAttribute('normal');
 
-            dress(geo, part.colour, boneIndex[part.bone], onWhite);
+            setPaint(dress(geo, part.colour, boneIndex[part.bone], onWhite), false, body.paint, C.FOOT);
             if (isLidBack) {
                 const uv = geo.getAttribute('uv');
                 const pos = geo.getAttribute('position');
@@ -268,14 +333,14 @@ export async function createCreature(document, characters, key, { species, chibi
             }
             laptop.push(geo);
         } else {
-            own.push(dress(geo, part.colour, boneIndex[part.bone], onWhite));
+            own.push(setPaint(dress(geo, part.colour, boneIndex[part.bone], onWhite), part.paint, body.paint, C.FOOT));
         }
     }
 
-    own.push(dress(faceGeometry(body.face), '#ffffff', boneIndex[body.face.bone], (u, v) => [
+    own.push(setPaint(dress(faceGeometry(body.face), '#ffffff', boneIndex[body.face.bone], (u, v) => [
         layout.face.u0 + u * (layout.face.u1 - layout.face.u0),
         layout.face.v0 + v * (layout.face.v1 - layout.face.v0),
-    ]));
+    ]), false, body.paint, C.FOOT));
 
     const groups = [mergeGeometries(own, false)];
 
@@ -293,8 +358,10 @@ export async function createCreature(document, characters, key, { species, chibi
 
         return t;
     };
-    const open = texture(sheets.open), shut = texture(sheets.shut);
+    const open = texture(sheets.open), shut = texture(sheets.shut), paint = texture(paintCanvas);
     const material = new MeshToonMaterial({ map: open, vertexColors: true, alphaTest: 0.35 });
+
+    wearPaint(material, paint);
     const materials = [material];
 
     if (laptop.length > 0) {
@@ -366,10 +433,13 @@ export async function createCreature(document, characters, key, { species, chibi
                 materials[1].opacity = opacity;
             }
         },
+        /** The textures this creature holds, each `{ width, height }` — what the texture-memory leg sums. */
+        textures: () => [open, shut, paint].map((t) => ({ width: t.image.width, height: t.image.height })),
         dispose: () => {
             geometry.dispose();
             open.dispose();
             shut.dispose();
+            paint.dispose();
             for (const m of materials) {
                 m.dispose();
             }
