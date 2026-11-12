@@ -149,7 +149,7 @@ export const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0, busy = 0) =>
 
 /** A plant whose `from` is not in the file it edits: the code it was written against has changed. */
 export class StaleAnchor extends Error {
-  constructor(file, from) { super(`the plant's anchor is not in ${file}: ${from.slice(0, 60)}`); this.name = 'StaleAnchor'; }
+  constructor(file, from, why = null) { super(why ?? `the plant's anchor is not in ${file}: ${String(from).slice(0, 60)}`); this.name = 'StaleAnchor'; }
 }
 
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png',
@@ -167,8 +167,9 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * file the asset route serves as `/art/<path>` (card#13033), `page:<view>` (that view's rendered page) or `page`
  * (every rendered page).
  *
- * Every plant's anchor is found before the server listens, or `serve()` throws `StaleAnchor`: a plant whose anchor has
- * moved plants nothing, so a tool must report it as a plant that no longer exists — never as a row that went red.
+ * Every plant is applied once before the server listens, or `serve()` throws `StaleAnchor`: a plant that cannot be
+ * applied — its anchor, file or view gone, or the plant itself malformed — plants nothing, so a tool must report it as
+ * a plant that no longer exists, never as a row that went red. Any failure while applying them is that refusal.
  */
 export function serve(c = {}) {
   const run = fixtureRun(c.run ?? 'floor_rides');
@@ -185,12 +186,18 @@ export function serve(c = {}) {
   };
   const roots = [['/art/floor/', join(REPO, 'resources', 'floor')], ['/art/characters/', join(REPO, 'resources', 'characters')], ['/', join(REPO, 'server', 'public')]];
   // Each planted file edited once now, as it would be served: an edit inside a request would throw past the server.
-  for (const view of Object.keys(VIEWS)) pageOf(view, 'aimla');
-  for (const p of plants) if (p.file.startsWith('page:') && !(p.file.slice('page:'.length) in VIEWS)) throw new StaleAnchor(p.file, p.from);
-  for (const file of new Set(plants.map((p) => p.file).filter((f) => f !== 'page' && !f.startsWith('page:')))) {
-    const path = file.startsWith('art:') ? join(REPO, 'resources', file.slice('art:'.length)) : join(REPO, 'server', 'public', file);
-    if (!existsSync(path)) throw new StaleAnchor(file, plants.find((p) => p.file === file).from);
-    edit(file, readFileSync(path, 'utf8'));
+  try {
+    for (const p of plants) {
+      if (typeof p.file !== 'string' || typeof p.from !== 'string' || p.from === '' || typeof p.to !== 'string' || p.to === p.from
+        || normalize(p.file) !== p.file) throw new StaleAnchor(p.file, p.from, `a malformed plant: ${JSON.stringify(p).slice(0, 120)}`);
+      if (p.file.startsWith('page:') && !Object.hasOwn(VIEWS, p.file.slice('page:'.length))) throw new StaleAnchor(p.file, p.from);
+    }
+    for (const view of Object.keys(VIEWS)) pageOf(view, 'aimla');
+    for (const file of new Set(plants.map((p) => p.file).filter((f) => f !== 'page' && !f.startsWith('page:')))) {
+      edit(file, readFileSync(file.startsWith('art:') ? join(REPO, 'resources', file.slice('art:'.length)) : join(REPO, 'server', 'public', file), 'utf8'));
+    }
+  } catch (e) {
+    throw e instanceof StaleAnchor ? e : new StaleAnchor(null, null, `a plant could not be applied: ${e.message}`);
   }
   const beacons = [];
   let release = null;
