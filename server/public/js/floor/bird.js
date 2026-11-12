@@ -43,6 +43,13 @@ const P = PALETTE;
 /** The bird drawn this many px above the point of its flight (the art specification's item 3). */
 export const BIRD_LIFT = 14;
 
+/**
+ * card#12445: how small the portal bird is drawn as it vanishes into the birdhouse's hole, at the end of its hop in
+ * (and the start of its hop out) — drawing only: the 2-D sheet's `hop` keyframes scale to it, the hop's path ends
+ * where, at this size, the bird's body is centred on the hole, and the 3-D floor's bird shrinks to it the same way.
+ */
+export const HOP_SCALE = 0.35;
+
 /** The arc's lift at its midpoint: `min(60, 0.12 × distance)` px. */
 export function arcLift(distance) {
     return Math.min(60, 0.12 * distance);

@@ -62,7 +62,8 @@ class TheThreeDFloorsCameraStaysAboveTheFloorTest extends TestCase
             'ArrowUp reaching the pan' => [$acts, '            if (modifiers.shift) {', '            if (modifiers.shift || dy !== 0) {', 'tilt', 'camera-acts'],
             'a Shift-arrow reaching the turn' => [$acts, '            if (modifiers.shift) {', '            if (false) {', 'pan', 'camera-acts'],
             'the keys wire dropping the Shift member' => ['camera-keys.js', '            show(acts.drag(...KEY_PAN[event.key], { shift: event.shiftKey }));', '            show(acts.drag(...KEY_PAN[event.key], { shift: false }));', 'pan', 'camera-acts'],
-            'a dolly by a notch of its own' => [$acts, '            const scale = ZOOM_STEP ** Math.abs(notches);', '            const scale = 1.1 ** Math.abs(notches);', 'dolly', 'camera-acts'],
+            'a dolly by a notch of its own' => [$acts, '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = 1.1 ** -Math.abs(notches);', 'dolly', 'camera-acts'],
+            'a notch in handed to the controls as the distance times the notch' => [$acts, '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);', 'toward', 'camera-acts'],
             'Fit with no clamp' => [$acts, "            controls.update();\n\n            return settled();", "            controls.update();\n\n            return camera();", 'fit', 'camera-acts'],
         ];
     }

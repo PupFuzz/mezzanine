@@ -22,6 +22,11 @@
  * through, but stays in its place in the document, so the accessibility tree is unchanged and its box is still measured
  * on the next frame. A culled name that takes the keyboard's focus is shown.
  *
+ * ⛔ A11's BADGE FADES IN ON THE FACTS LABEL (plan § 3.5's A11 row): while the world carries an A11 row in flight for a
+ * desk, its facts label's badge line runs one fade over the row's frames from the instant the paint read (its
+ * `elapsed_ms` in the past) — a CSS animation, so it draws no frame of the canvas — once per row; under reduced motion
+ * the row has no frames and the badge is simply there.
+ *
  * ⛔ A PRESS ON A LABEL IS THE LABEL's: the container stops a pointer press from reaching the camera's controls, which
  * would otherwise capture the pointer and swallow the link's click.
  */
@@ -89,7 +94,7 @@ export function floorLabels(container, group, { select, link, focused }) {
 
         group.add(object);
 
-        return { object, element, lines: null, desk, kind: label.kind };
+        return { object, element, lines: null, desk, kind: label.kind, raised: null };
     };
 
     const write = (entry, label) => {
@@ -107,6 +112,8 @@ export function floorLabels(container, group, { select, link, focused }) {
             element.textContent = lines[0];
             element.href = link(entry.desk.seat_id);
         } else {
+            // new lines carry no fade: a row in flight starts it again on them (`raise()`)
+            entry.raised = null;
             element.replaceChildren(...lines.map((text) => {
                 const line = document.createElement('span');
 
@@ -125,6 +132,24 @@ export function floorLabels(container, group, { select, link, focused }) {
         }
     };
 
+    /** A11's fade on a facts label's badge line, started once for the row in flight (`fx`), or none. */
+    const raise = (entry, label, fx) => {
+        const cause = fx === undefined ? null : fx.cause;
+
+        if (cause === entry.raised) {
+            return;
+        }
+
+        entry.raised = cause;
+        const badge = label.model.findIndex((f) => f.kind === 'badge');
+
+        [...entry.element.children].forEach((line, i) => {
+            line.style.animation = fx !== undefined && i === badge
+                ? `floor3d-badge-in ${fx.frames * fx.frame_interval_ms}ms linear ${-(fx.elapsed_ms ?? 0)}ms both`
+                : '';
+        });
+    };
+
     return {
         /**
          * The world's labels, held: each written, stood at its anchor and in its place in the container's order; a label
@@ -132,6 +157,7 @@ export function floorLabels(container, group, { select, link, focused }) {
          */
         sync(world) {
             const desks = new Map(world.desks.map((d) => [d.key, d]));
+            const raises = new Map(world.effects.filter((e) => e.kind === 'desk' && e.effect.animation_id === 'A11' && e.effect.frames > 0).map((e) => [e.key, e.effect]));
             const desksInOrder = readingOrder(world.desks.map((d) => ({ key: d.key, at: { x: d.slab.left, y: d.slab.back } }))).map((d) => d.key);
             const rank = new Map(desksInOrder.map((key, i) => [key, i]));
             const wanted = [...world.labels].map((label, i) => ({ label, i }))
@@ -160,6 +186,10 @@ export function floorLabels(container, group, { select, link, focused }) {
 
                 entry.desk = desk;
                 write(entry, label);
+
+                if (label.kind === 'facts') {
+                    raise(entry, label, raises.get(label.key));
+                }
                 entry.object.position.copy(anchorPoint(world.slab, label.anchor));
 
                 if (container.children[i] !== entry.element) {

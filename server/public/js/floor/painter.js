@@ -51,7 +51,7 @@ import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, char
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR, leafLevel } from './scene.js';
 import { cabStep, floorStackOrder, pointAt } from './route.js';
-import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
+import { BIRD_LIFT, HOP_SCALE, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
 import { keyOf } from '../wire/seat-key.js';
@@ -70,13 +70,6 @@ const MEET = 'xMidYMax meet';
 
 /** A text's type role when its element names none — `fit()`'s own default (`desk-layout.js`). */
 const FACT = 'fact';
-
-/**
- * card#12445: how small the portal bird is drawn as it vanishes into the birdhouse's hole, at the end of its hop in
- * (and the start of its hop out) — drawing only: the sheet's `hop` keyframes scale to it, and the hop's path ends
- * where, at this size, the bird's body is centred on the hole.
- */
-const HOP_SCALE = 0.35;
 
 /**
  * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'

@@ -135,11 +135,15 @@
                 `aria-hidden` — and the labels' layer, which `CSS2DRenderer` positions each label element in, in
                 reading order. The camera's pointer is `OrbitControls`' on this element; its keys are the house
                 wire's, offered as on the 2-D page. `#floor3d-webgl` is § 7's statement for a browser with no
-                WebGL 2, and `#floor3d-focus` names the desk a keyboard focus moved the camera to.
+                WebGL 2, and `#floor3d-focus` names the desk a keyboard focus moved the camera to. `#floor3d-marks`
+                is the layer the marks over the bodies stand in — the sleeper's z's and a state marker (each
+                `aria-hidden`: the chip and the status carry the state), and a walker's thought — apart from the
+                desks' labels so their layer stays in reading order.
             --}}
             <div id="floor-drawing" class="floor3d-stage" role="group" aria-label="the floor in 3-D" data-dimmed="false">
                 <canvas id="floor3d-canvas" aria-hidden="true"></canvas>
                 <div id="floor3d-labels" class="floor3d-labels"></div>
+                <div id="floor3d-marks" class="floor3d-labels"></div>
             </div>
             <p id="floor3d-webgl" role="status" hidden>This browser offers no WebGL 2, so this floor is not drawn in 3-D here. It is drawn as a picture on <a href="{{ route('floor', ['floor' => $floor]) }}">the 2-D floor page</a>, and every desk is listed below.</p>
             <p id="floor3d-focus" class="visually-hidden" role="status"></p>

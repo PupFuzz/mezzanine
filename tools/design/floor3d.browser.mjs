@@ -10,7 +10,8 @@
 //   node tools/design/floor3d.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
 //                                                      which must red
 //   node tools/design/floor3d.browser.mjs --out <dir>  also save the operator's reading pictures: the entry pose, a turned
-//                                                      pose, a close view and a view with the band cut away
+//                                                      pose, a close view, a view with the band cut away, the cap floor,
+//                                                      the leaves open, a walker, the marks, a bird and reduced motion
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -24,7 +25,7 @@
 // rate on any device — SwiftShader on a loaded host measures none of those. The draw calls, triangles and texture memory
 // ARE what this engine reports for the cap floor, and they are what § 6 budgets.
 
-import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inflateSync } from 'node:zlib';
@@ -43,6 +44,8 @@ const L = await import(pathToFileURL(join(JS, 'floor3d', 'view-limits.js')).href
 const { HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-model.js')).href);
 const { LOOP_FPS } = await import(pathToFileURL(join(JS, 'wire', 'animation-set.js')).href);
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);
+const CLOCK = await import(pathToFileURL(join(JS, 'floor3d', 'clip-clock.js')).href);
+const CHARACTERS = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
 const REDUCE = [{ name: 'prefers-reduced-motion', value: 'reduce' }];
 /** How late the kit's files answer in the loop row's restart leg, ms — after the page has drawn and settled. */
 const LATE_KIT_MS = 15000;
@@ -74,7 +77,43 @@ const TICKS = `(() => { if (window.__floor3dTicks === undefined) { window.__floo
 const FRAMES_TICKS = `({ frames: document.getElementById('floor3d-canvas').inspect().frames, ticks: window.__floor3dTicks })`;
 
 /** § 6's budgets — the plan's figures, each a claim this leg checks (plan § 6's table). */
-const BUDGET = { calls: 260, triangles: 150000, textureMB: 128, glbMB: 2, walls: 2, fixed: 20, transient: 19 };
+const BUDGET = { calls: 260, triangles: 150000, textureMB: 128, glbMB: 2, walls: 2, fixed: 20, transient: 20 };
+
+/**
+ * § 6's fixed term derived from the room's own members (plan § 6: *each counted from the world's own members*): a plane
+ * per grid, the band, the contact discs, a screen per monitor, the doorway's cab and two leaves with a band, and each
+ * restroom door's leaf and field.
+ */
+const fixedOf = (m) => m.planes + m.band + 1 + m.screens + 3 * m.band + 2 * m.restroom;
+/** § 6's transient term derived from what is drawn: a bird and its envelope each a call, a ring and its singer each one,
+ *  a screen's cross-fade one. */
+const transientOf = (t, fading) => t.birds + t.envelopes + t.rings + t.singers + fading;
+
+/** A run's stream messages moved this many ms later, so they arrive after the page has drawn and settled. */
+const LATER_MS = 7000;
+const later = (name) => {
+  const r = structuredClone(fixtureRun(name));
+  return { ...r, until_ms: (r.until_ms ?? 0) + LATER_MS, messages: r.messages.map((m) => ({ ...m, at_ms: m.at_ms + LATER_MS })) };
+};
+
+/**
+ * The frame the clock names for a held body's read (plan § 3.5): `⌊T ÷ ms⌋` plus its key's offset, mod the loop's length —
+ * derived here from the character tree and the clip clock's form table, never read back from the page.
+ */
+const expectedFrame = (r, ms) => {
+  const form = CLOCK.HELD_FORMS[r.animation_id];
+  const length = CLOCK.loopLength(CHARACTERS, form);
+  return (Math.floor(r.t / ms) + CHARACTERS.loopOffset(r.key, length)) % length;
+};
+const LONG_TASK_MS = 1500;
+
+/** For a picture only: the camera's target moved to a desk (its name focused) and the eye zoomed in `notches` steps. */
+const closeUp = async (p, key, notches) => {
+  await p.ev(`document.querySelector('.floor3d-name[data-key="${key}"]')?.focus()`);
+  await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < ${notches}; k++) b.click(); })()`);
+  // a damped dolly eases in over many frames
+  await sleep(2500);
+};
 
 /** Primitives a kit file carries, read off its own JSON chunk — `k` of § 6's furniture term is the most of them. */
 const primitives = (file) => {
@@ -261,6 +300,11 @@ const orderDefects = (labels, desks) => {
 // ── the plants: each one textual edit of a served file ───────────────────────────────────────
 const P = (file, from, to) => ({ file, from, to });
 const PAINT = 'js/floor3d/floor-paint.js';
+const CLIP = 'js/floor3d/clip-clock.js';
+const TRANSIENT = 'js/floor3d/transient-paint.js';
+const ROOM = 'js/floor3d/room-paint.js';
+const BODIES = 'js/floor3d/body-paint.js';
+const LOOP = 'js/floor3d/frame-loop.js';
 
 // ── the rows ──────────────────────────────────────────────────────────────────────────────────
 const ROWS = {
@@ -373,12 +417,13 @@ const ROWS = {
   },
 
   camera: {
-    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, a wheel at the dolly limit scrolls the page',
+    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, a wheel at the dolly limit scrolls the page',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['`maxPolarAngle` widened past 90°', { plant: [P('js/floor3d/view-limits.js', 'export const MAX_POLAR = (88 * Math.PI) / 180;', 'export const MAX_POLAR = (120 * Math.PI) / 180;')] }],
       ['the target clamp dropped', { plant: [P(PAINT, '        const t = controls.target;\n        const was = t.clone();', '        return;\n        const t = controls.target;\n        const was = t.clone();')] }],
       ['screen-space panning', { plant: [P(PAINT, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
+      ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
     ],
     async run(chrome, c) {
@@ -396,6 +441,16 @@ const ROWS = {
         await p.ev(`document.getElementById('floor-fit').click()`);
         i = await p.settle(600);
         if (Math.abs(deg(i.polar) - deg(HOME_POLAR)) > 0.5) d.push(`after Fit the polar is ${deg(i.polar).toFixed(2)}°, not ${deg(HOME_POLAR)}°`);
+        // the zoom buttons: in brings the eye closer, out takes it back
+        const fitted = i.distance;
+        await p.ev(`document.getElementById('floor-zoom-in').click()`);
+        i = await p.settle(400);
+        f.zoom = [fitted, i.distance];
+        if (!(i.distance < fitted - 1e-6)) d.push(`the zoom-in button took the eye from ${fitted.toFixed(3)} to ${i.distance.toFixed(3)} — not closer`);
+        await p.ev(`document.getElementById('floor-zoom-out').click()`);
+        i = await p.settle(400);
+        f.zoom.push(i.distance);
+        if (!(i.distance > f.zoom[1] + 1e-6)) d.push(`the zoom-out button took the eye from ${f.zoom[1].toFixed(3)} to ${i.distance.toFixed(3)} — not farther`);
         // a vertical right-drag: along the floor, never up
         const before = i.target;
         await p.drag(0, 120, { button: 'right' });
@@ -433,7 +488,7 @@ const ROWS = {
   cutaway: {
     what: 'the cut-away: with the target within a unit of the band, turned to the back, the band is lowered to its foot strip; turned to the front, it stands again; from the floor\'s centre it never lowers',
     base: { run: quiet(), media: REDUCE },
-    plants: [['the cut-away\'s segment test dropped', { plant: [P(PAINT, '        const cut = cutaway(camera.position, controls.target, world);', '        const cut = new Set();')] }]],
+    plants: [['the cut-away\'s segment test dropped', { plant: [P(ROOM, '        const cut = cutaway(eye, target, world);', '        const cut = new Set();')] }]],
     async run(chrome, c) {
       const p = await open(chrome, c);
       if (p.failed) return { defects: [p.failed], facts: {} };
@@ -477,11 +532,11 @@ const ROWS = {
     what: 'the frame loop: it stops once nothing moves, restarts when a late kit file answers, wakes on a drag and draws it to rest at no more than a frame a display tick, and with only held loops running draws at most LOOP_FPS frames a second',
     base: { run: quiet(), media: REDUCE },
     plants: [
-      ['the stop condition dropped', { plant: [P(PAINT, '        if (raf !== null || settling || tweening || next === 0) {', '        if (true) {')] }],
+      ['the stop condition dropped', { plant: [P(LOOP, '        if (raf !== null || next === 0) {', '        if (true) {')] }],
       ['the restart on a late resource dropped', { plant: [P(PAINT, "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    wake();", "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');")] }],
       ['the controls\' change not wired to the loop', { plant: [P(PAINT, "    controls.addEventListener('change', wake);", '')] }],
-      ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(PAINT, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            schedule();')] }],
-      ['a settling frame queuing its successor past the one pending frame (two chains, doubling each tick)', { plant: [P(PAINT, '        if (raf !== null || settling || tweening || next === 0) {\n            schedule();', '        if (raf !== null || settling || tweening || next === 0) {\n            raf = window.requestAnimationFrame(frame);')] }],
+      ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(LOOP, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            schedule();')] }],
+      ['a settling frame queuing its successor past the one pending frame (two chains, doubling each tick)', { plant: [P(LOOP, '        if (raf !== null || next === 0) {\n            schedule();', '        if (raf !== null || next === 0) {\n            raf = window.requestAnimationFrame(frame);')] }],
     ],
     async run(chrome, c) {
       const d = [];
@@ -619,7 +674,7 @@ const ROWS = {
   face: {
     what: 'a desk\'s face is drawn: the face patch of the first desk in reading order, seen close from the front and above, holds the face\'s ink',
     base: { run: quiet(), media: REDUCE },
-    plants: [['the face atlas dropped from the body\'s material', { plant: [P('js/floor3d/creature-paint.js', "    const material = new MeshToonMaterial({ map: open, vertexColors: true, alphaTest: 0.35 });", "    const material = new MeshToonMaterial({ vertexColors: true, alphaTest: 0.35 });")] }]],
+    plants: [['the face left out of the face atlas (its open and shut sheets alike)', { plant: [P('js/floor3d/creature-paint.js', '        g.drawImage(face, layout.face.x, layout.face.y);', '')] }]],
     async run(chrome, c) {
       const p = await open(chrome, c);
       if (p.failed) return { defects: [p.failed], facts: {} };
@@ -643,8 +698,8 @@ const ROWS = {
         i = await p.settle(800);
         face = i.faces.find((x) => x.key === first);
         if (!onStage(face)) return { defects: [`CONTROL: ${first}'s face is not on the stage (${JSON.stringify(face)})`], facts: {} };
-        // the canvas alone: a label over the face is DOM, and its ink is not the face's
-        await p.ev(`document.getElementById('floor3d-labels').style.visibility = 'hidden'`);
+        // the canvas alone: a label or a mark over the face is DOM, and its ink is not the face's
+        await p.ev(`for (const id of ['floor3d-labels', 'floor3d-marks']) document.getElementById(id).style.visibility = 'hidden'`);
         await sleep(200);
         const img = png(await p.shot());
         const r = 6;
@@ -669,8 +724,9 @@ const ROWS = {
     plants: [
       ['the character merge dropped (an intern\'s laptop parts each a call)', { plant: [P('js/floor3d/creature-paint.js', '        groups.push(mergeGeometries(laptop, false));', '        groups.push(...laptop);'), P('js/floor3d/creature-paint.js', '        materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));')] }],
       ['the furniture instancing dropped (a mesh a placement)', { plant: [P('js/floor3d/furniture.js', '        const mesh = new InstancedMesh(geometry, material, placements.length);\n\n        placements.forEach((m, i) => mesh.setMatrixAt(i, m));', '        for (const m of placements.slice(1)) { const one = new InstancedMesh(geometry, material, 1); one.setMatrixAt(0, m); group.add(one); meshes.push(one); }\n        const mesh = new InstancedMesh(geometry, material, 1);\n\n        placements.slice(0, 1).forEach((m, i) => mesh.setMatrixAt(i, m));')] }],
-      ['the wall instancing dropped (a mesh a wall)', { plant: [P(PAINT, "        for (const kind of ['edge', 'partition']) {\n            const of = world.walls.filter((w) => w.kind === kind);", "        for (const kind of world.walls.map((w) => w.id)) {\n            const of = world.walls.filter((w) => w.id === kind);")] }],
+      ['the wall instancing dropped (a mesh a wall)', { plant: [P(ROOM, "        for (const kind of ['edge', 'partition']) {\n            const of = world.walls.filter((w) => w.kind === kind);", "        for (const kind of world.walls.map((w) => w.id)) {\n            const of = world.walls.filter((w) => w.id === kind);")] }],
       ['every part\'s facets ×4 (a lathe of 96 segments)', { plant: [P('js/floor3d/part-geometry.js', 'seat: Object.freeze({ lathe: 24, sphere: [16, 10], bead: [8, 6], tube: [2, 6], cone: 8, cylinder: 20, torus: [8, 24], curve: 4, bevel: 2 }),', 'seat: Object.freeze({ lathe: 96, sphere: [64, 40], bead: [32, 24], tube: [8, 24], cone: 32, cylinder: 80, torus: [32, 96], curve: 16, bevel: 8 }),'), P('js/floor3d/part-geometry.js', 'chibi: Object.freeze({ lathe: 12, sphere: [10, 7], bead: [6, 4], tube: [1, 4], cone: 6, cylinder: 10, torus: [5, 12], curve: 2, bevel: 1 }),', 'chibi: Object.freeze({ lathe: 48, sphere: [40, 28], bead: [24, 16], tube: [4, 16], cone: 24, cylinder: 40, torus: [20, 48], curve: 8, bevel: 4 }),')] }],
+      ['a second cab box in the doorway', { plant: [P(ROOM, '    doorway.add(cab, ...leaves);', "    doorway.add(cab, onTerm(new Mesh(doorBox, cabMaterial), 'fixed'), ...leaves);")] }],
       ['every face at the 512 px bucket', { plant: [P('js/floor3d/creature-paint.js', 'export const FACE_TEXTURE = 256;', 'export const FACE_TEXTURE = 512;')] }],
       ['a 3 MB file added to the kind map', { plant: [P('art:floor/models/kenney-furniture-kit/map.js', "    desk: 'desk.glb',", "    desk: 'bulky.glb',")], files: { '/art/floor/models/kenney-furniture-kit/bulky.glb': Buffer.alloc(3 * 1048576) } }],
     ],
@@ -696,7 +752,9 @@ const ROWS = {
         if (t.furniture.calls > 22 * K) d.push(`furniture ${t.furniture.calls} calls > 22 k = ${22 * K} (k = ${K}, the most primitives a kit file carries)`);
         if (t.walls.calls > BUDGET.walls) d.push(`walls ${t.walls.calls} calls > ${BUDGET.walls}`);
         if (t.fixed.calls > BUDGET.fixed) d.push(`fixed ${t.fixed.calls} calls > ${BUDGET.fixed}`);
+        if (t.fixed.calls > fixedOf(i.room.members)) d.push(`fixed ${t.fixed.calls} calls > the ${fixedOf(i.room.members)} its members count (${JSON.stringify(i.room.members)})`);
         if (t.transient.calls > BUDGET.transient) d.push(`transient ${t.transient.calls} calls > ${BUDGET.transient}`);
+        if (t.transient.calls > transientOf(i.transient, i.room.fading)) d.push(`transient ${t.transient.calls} calls > the ${transientOf(i.transient, i.room.fading)} drawn`);
         if (total > BUDGET.calls) d.push(`${total} draw calls > ${BUDGET.calls}`);
         if (i.triangles > BUDGET.triangles) d.push(`${i.triangles} triangles > ${BUDGET.triangles}`);
         if (mb > BUDGET.textureMB) d.push(`${mb.toFixed(1)} MB of textures > ${BUDGET.textureMB} MB`);
@@ -704,7 +762,7 @@ const ROWS = {
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-cap.png'), await p.shot());
         const perDesk = (x) => (x / desks).toFixed(1);
-        return { defects: d, facts: { desks, S, I, k: K, terms: t, calls: total, triangles: i.triangles, perDesk: { calls: perDesk(total), triangles: perDesk(i.triangles) }, textureMB: mb.toFixed(1), textures: i.textures.length, glbMB: glbMB.toFixed(3), glb: glb.length, memory: i.memory } };
+        return { defects: d, facts: { desks, S, I, k: K, members: i.room.members, fixedOf: fixedOf(i.room.members), terms: t, calls: total, triangles: i.triangles, perDesk: { calls: perDesk(total), triangles: perDesk(i.triangles) }, textureMB: mb.toFixed(1), textures: i.textures.length, glbMB: glbMB.toFixed(3), glb: glb.length, memory: i.memory } };
       } finally { p.close(); }
     },
   },
@@ -737,10 +795,226 @@ const ROWS = {
     },
   },
 
+  clips: {
+    what: 'the clock, on the page: every moving held body shows the loop frame its time since the paint and its key\'s offset name, its time SET from the latest paint even across a long task; two seats in one state at one instant differ in phase; a walker steps its walk at the frame its time names',
+    base: { run: capFloor(), media: [] },
+    plants: [
+      ['the clock advanced by a capped delta a frame, not set', { plant: [P(BODIES, '        const since = now - paintedAt;\n', '        const since = (b.kept = Math.min(now - paintedAt, (b.kept ?? 0) + 50));\n')] }],
+      ['the paint\'s instant not taken on a later paint', { plant: [P(BODIES, '            paintedAt = at;\n', '            paintedAt ||= at;\n')] }],
+      ['the offset dropped from the loop\'s time', { plant: [P(CLIP, '    const frame = (Math.floor(since / ms) + characters.loopOffset(key, length)) % length;', '    const frame = Math.floor(since / ms) % length;')] }],
+    ],
+    async run(chrome, c) {
+      const d = [];
+      const f = {};
+      const ms = 1000 / LOOP_FPS;
+      const check = (i, when) => {
+        const held = i.clock.filter((r) => r.kind === 'held' && r.frame !== null);
+        if (held.length === 0) d.push(`CONTROL (${when}): no held body was moving — the clock was not read`);
+        for (const r of held) {
+          const since = r.now - i.paintedAt;
+          if (Math.abs(r.t - since) > 1e-6) { d.push(`${when}: ${r.key}'s time is ${r.t.toFixed(1)} ms, not the ${since.toFixed(1)} ms since the latest paint — it was not set`); break; }
+          const want = expectedFrame(r, ms);
+          if (r.frame !== want) { d.push(`${when}: ${r.key} (${r.animation_id}) is on loop frame ${r.frame} at ${r.t.toFixed(0)} ms, not ${want}`); break; }
+          const clip = CLOCK.HELD_FORMS[r.animation_id].clip;
+          if (clip !== undefined && r.pose !== CHARACTERS.CLIPS[clip][want % CHARACTERS.CLIPS[clip].length]) { d.push(`${when}: ${r.key} shows ${r.pose}, not its clip's pose at frame ${want}`); break; }
+        }
+        return held;
+      };
+      {
+        const p = await open(chrome, c, { kit: false, w: 960, h: 600 });
+        if (p.failed) return { defects: [p.failed], facts: {} };
+        try {
+          let i = await p.settle(2500);
+          const first = check(i, 'at rest');
+          f.paints = i.paints;
+          if (i.paints < 2) d.push(`CONTROL: the page painted ${i.paints} time(s) — a later paint's restart was not measured`);
+          // two seats in one held state, their offsets apart over the loop: at one frame they show different loop frames
+          const seats = first.filter((r) => !r.key.includes('~'));
+          const pair = seats.flatMap((a) => seats.map((b) => [a, b])).find(([a, b]) => a.animation_id === b.animation_id && a.now === b.now && expectedFrame({ ...a, t: 0 }, ms) !== expectedFrame({ ...b, key: b.key, t: 0 }, ms));
+          if (pair === undefined) d.push(`CONTROL: no two seats in one held state with offsets apart — the phase was not measured (${seats.map((r) => r.key).join(', ')})`);
+          else if (pair[0].frame === pair[1].frame) d.push(`${pair[0].key} and ${pair[1].key} hold ${pair[0].animation_id} with offsets apart and show loop frame ${pair[0].frame} at one instant`);
+          else f.pair = pair.map((r) => [r.key, r.animation_id, r.frame]);
+          // a long task between two frames: the frame after it shows the frame its time names
+          await p.ev(`(() => { const t = performance.now(); while (performance.now() - t < ${LONG_TASK_MS}) {} })()`);
+          await sleep(400);
+          i = await p.inspect();
+          check(i, `after a ${LONG_TASK_MS} ms task`);
+          f.read = i.clock.filter((r) => r.frame !== null).slice(0, 3).map((r) => [r.key, r.animation_id, r.frame, Math.round(r.t)]);
+        } finally { p.close(); }
+      }
+      if (c.plant?.length) return { defects: d, facts: f };
+      // a walker: its walk's pose at the frame its time names, and it moves between two frames
+      {
+        const p = await open(chrome, { ...c, run: later('leave-stale') }, { kit: false, w: 960, h: 600 });
+        if (p.failed) return { defects: [...d, p.failed], facts: f };
+        try {
+          let w = null;
+          for (let t = 0; t < 200 && w === null; t++) { await sleep(100); w = (await p.inspect()).clock.find((r) => r.kind === 'walker' && r.frame !== null) ?? null; }
+          if (w === null) d.push('CONTROL: no walker was in flight — the walk was not read');
+          else {
+            await sleep(400);
+            const i = await p.inspect();
+            const r = i.clock.find((x) => x.key === w.key);
+            const at = i.faces.find((x) => x.key === w.key);
+            const want = CHARACTERS.CLIPS.walk[Math.floor(r.t / ms) % CHARACTERS.CLIPS.walk.length];
+            if (r.frame !== null && (r.frame !== Math.floor(r.t / ms) || r.pose !== want)) d.push(`the walker ${r.key} at ${r.t.toFixed(0)} ms is on frame ${r.frame} showing ${r.pose}, not ${Math.floor(r.t / ms)} showing ${want}`);
+            await sleep(300);
+            const at2 = (await p.inspect()).faces.find((x) => x.key === w.key);
+            if (at !== undefined && at2 !== undefined && at.x === at2.x && at.y === at2.y) d.push(`the walker ${r.key} stood still between two frames with motion on`);
+            f.walker = [r.key, r.frame, r.pose];
+          }
+        } finally { p.close(); }
+      }
+      return { defects: d, facts: f };
+    },
+  },
+
+  motion: {
+    what: 'what moves off the bodies: a walker leaving by the elevator walks with the leaves opening over the cab and shut again; a sleeper\'s z\'s and a marker light in turn; the frame loop draws them at the loop\'s rate and stops once they have ended',
+    base: { run: later('leave-stale'), media: [] },
+    plants: [
+      ['the elevator\'s leaves never moved', { plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * leafLevel(world.doors, f);', '        const shut = 1;')] }],
+      ['the marks lit once and never stepped', { plant: [P(CLIP, 'characters.zLevels(f % characters.SLEEP_LOOP))', 'characters.zLevels(0))'), P(CLIP, 'characters.markerLevel(f % characters.SLEEP_LOOP)]', 'characters.markerLevel(0)]')] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c, { kit: false });
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const f = { leaves: [] };
+        const out = argOf('--out') !== null && !(c.plant ?? []).length ? argOf('--out') : null;
+        // the marks before the walk, read across a whole pulse (`SLEEP_LOOP` loop frames): their levels step
+        const reads = [];
+        for (let k = 0; k < CHARACTERS.SLEEP_LOOP; k++) {
+          reads.push(JSON.stringify((await p.inspect()).marks.filter((m) => m.kind !== 'thought').map((m) => m.levels)));
+          await sleep(1000 / LOOP_FPS);
+        }
+        f.marks = [...new Set(reads)].length;
+        if (out !== null) {
+          const sleeper = (await p.inspect()).marks.find((m) => m.kind === 'zs');
+          if (sleeper !== undefined) {
+            await closeUp(p, sleeper.key, 9);
+            writeFileSync(join(out, 'floor3d-marks.png'), await p.shot());
+            await p.ev(`document.getElementById('floor-fit').click()`);
+            await sleep(600);
+          }
+        }
+        if (reads[0] === '[]') d.push('CONTROL: no sleeper or marker on the floor — the marks were not read');
+        else if (f.marks === 1) d.push(`the marks read ${reads[0]} at every read across a whole pulse — they do not step`);
+        let open = false, walked = false, shot = false;
+        // the pictures: near the back desk the elevator stands by, the walker walking out from it
+        if (out !== null) await closeUp(p, readingOrder((await p.inspect()).desks)[0], 6);
+        for (let t = 0; t < 400; t++) {
+          await sleep(100);
+          const i = await p.inspect();
+          const l = i.room.leaves;
+          const walker = i.clock.find((r) => r.kind === 'walker' && r.frame !== null);
+          walked ||= walker !== undefined;
+          if (l !== null && l[0][0] < l[0][1] - 1e-6) {
+            if (!open) f.leaves.push(l.map(([w, full]) => +(w / full).toFixed(2)));
+            open = true;
+            // the picture at the leaves' widest open (the 2-D leaves' `scaleX(.12)`), before they close again
+            if (out !== null && !shot && l[0][0] / l[0][1] < 0.2) { writeFileSync(join(out, 'floor3d-leaf-open.png'), await p.shot()); shot = true; }
+          }
+          if (walker !== undefined && out !== null && !existsSync(join(out, 'floor3d-walker.png')) && walker.t > 2000) writeFileSync(join(out, 'floor3d-walker.png'), await p.shot());
+          if (open && walked && walker === undefined && l !== null && Math.abs(l[0][0] - l[0][1]) < 1e-6) break;
+        }
+        const i = await p.inspect();
+        f.end = i.room.leaves;
+        if (!walked) d.push('CONTROL: no walker was in flight — the leaves were not read against a walk');
+        if (!open) d.push('the walker left by the elevator and its leaves never opened');
+        if (i.room.leaves !== null && Math.abs(i.room.leaves[0][0] - i.room.leaves[0][1]) > 1e-6) d.push('the leaves are not shut again once the walk has ended');
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  birds: {
+    what: 'a coordination round\'s birds fly between their desks — each a body and an envelope, two calls a bird, the transient term within its bound — and are gone after',
+    base: { run: later('coord'), media: [] },
+    plants: [
+      ['a bird drawn as four meshes', { plant: [P(TRANSIENT, "                    drawn.push({ entry, bird: mesh(wings.down, birdMaterial), envelope: mesh(envelopeGeometry, envelopeMaterial), ring: null, ringMaterial: null });", "                    drawn.push({ entry, bird: mesh(wings.down, birdMaterial), envelope: mesh(envelopeGeometry, envelopeMaterial), ring: null, ringMaterial: null });\n                    for (let k = 0; k < 3; k++) { const x = mesh(wings.up, birdMaterial); x.visible = true; x.position.set(entry.from.x, entry.from.y, entry.from.z); }")] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c, { kit: false });
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const f = { most: 0 };
+        let seen = false, shot = false;
+        if (argOf('--out') !== null && !(c.plant ?? []).length) await closeUp(p, readingOrder((await p.inspect()).desks)[0], 7);
+        const light = () => p.ev(`document.getElementById('floor3d-canvas').inspect({ terms: false })`);
+        for (let t = 0; t < 600; t++) {
+          await sleep(50);
+          // a cheap read to catch a flight, and the full one — every term rendered alone — once a bird is drawn
+          if ((await light()).transient.birds === 0 && !seen) continue;
+          const i = await p.inspect();
+          const want = transientOf(i.transient, i.room.fading);
+          if (i.transient.birds > 0) {
+            seen = true;
+            f.most = Math.max(f.most, i.terms.transient.calls);
+            if (i.terms.transient.calls > want) { d.push(`with ${i.transient.birds} birds, ${i.transient.envelopes} envelopes and ${i.transient.rings} rings drawn the transient term is ${i.terms.transient.calls} calls, more than their ${want}`); break; }
+            if (i.terms.transient.calls > BUDGET.transient) { d.push(`the transient term is ${i.terms.transient.calls} calls > ${BUDGET.transient}`); break; }
+            if (!shot && argOf('--out') !== null && !(c.plant ?? []).length) {
+              const b = i.transient;
+              writeFileSync(join(argOf('--out'), 'floor3d-bird.png'), await p.shot());
+              shot = true; f.shot = b;
+            }
+          } else if (seen && i.transient.envelopes === 0 && i.transient.rings === 0) break;
+        }
+        if (!seen) d.push(`CONTROL: no bird was drawn — the round flew nothing here${p.errors.length > 0 ? ` (uncaught: ${p.errors[0]})` : ''}`);
+        const i = await p.inspect();
+        f.after = i.terms.transient.calls;
+        if (seen && i.transient.birds + i.transient.envelopes + i.transient.rings > 0) d.push(`after the round the transient drawings are still drawn: ${JSON.stringify(i.transient)}`);
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  reduced: {
+    what: 'under reduced motion every held body is its still — no loop frame, no step asked for — the marks at full brightness, a walk drawn at its end, and the frame loop at rest',
+    base: { run: later('leave-stale'), media: REDUCE },
+    plants: [['the clock stepping a held loop under reduced motion (keyed on the row, not its rendering\'s motion, at the loop\'s rate)', { plant: [P(CLIP, "    const moving = form !== undefined && held.motion === true && typeof held.frame_interval_ms === 'number';", "    const moving = form !== undefined;"), P(CLIP, '    const ms = held.frame_interval_ms;', '    const ms = held.frame_interval_ms ?? 1000 / 4;')] }]],
+    async run(chrome, c) {
+      const p = await open(chrome, c, { kit: false });
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        let i = await p.settle(2000);
+        if (argOf('--out') !== null && !(c.plant ?? []).length) {
+          await closeUp(p, readingOrder(i.desks)[0], 5);
+          writeFileSync(join(argOf('--out'), 'floor3d-reduced.png'), await p.shot());
+          i = await p.settle(1500);
+        }
+        const held = i.clock.filter((r) => r.kind === 'held');
+        if (held.length === 0) d.push('CONTROL: no held body was read');
+        const stepping = held.filter((r) => r.frame !== null);
+        if (stepping.length > 0) d.push(`${stepping[0].key} (${stepping[0].animation_id}) is on loop frame ${stepping[0].frame} under reduced motion — not its still`);
+        const dim = i.marks.filter((m) => m.kind !== 'thought' && m.levels.some((l) => l !== 3));
+        if (dim.length > 0) d.push(`a mark reads levels ${dim[0].levels.join('')} under reduced motion — not every glyph at full brightness`);
+        if (i.marks.filter((m) => m.kind !== 'thought').length === 0) d.push('CONTROL: no mark on the floor — the still marks were not read');
+        // a paint (a delivered message) draws its one frame; nothing else may
+        const rest = i.frames;
+        const painted = i.paints;
+        await sleep(1500);
+        i = await p.inspect();
+        if (i.frames - rest > i.paints - painted) d.push(`with motion reduced and the camera still, ${i.frames - rest} frame(s) were drawn in 1.5 s over ${i.paints - painted} paint(s) — the loop did not rest`);
+        // the walk's row arrives: drawn at its end, nothing in flight
+        await sleep(LATER_MS);
+        i = await p.inspect();
+        if (i.clock.some((r) => r.kind === 'walker' && r.frame !== null)) d.push('a walker steps under reduced motion');
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: { held: held.length, marks: i.marks.map((m) => [m.kind, m.levels.join('')]) } };
+      } finally { p.close(); }
+    },
+  },
+
   churn: {
     what: 'a body that leaves gives back what it held: once a seat has left by the elevator and returned, the renderer\'s textures and geometries are back at their count',
     base: { run: churn(), media: REDUCE },
-    plants: [['a leaving body\'s dispose skipped', { plant: [P(PAINT, '                b.creature?.dispose();\n', '')] }]],
+    plants: [['a leaving body\'s dispose skipped', { plant: [P(BODIES, '                b.creature?.dispose();\n', '')] }]],
     async run(chrome, c) {
       const p = await open(chrome, c);
       if (p.failed) return { defects: [p.failed], facts: {} };

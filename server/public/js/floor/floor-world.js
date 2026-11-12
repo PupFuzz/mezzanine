@@ -1,6 +1,7 @@
 /**
  * THE FLOOR AS A WORLD — the scene (`floor/scene.js`'s `buildScene()`, the one decision about what stands where) lifted
- * into the stage-1 world: boxes, placed pieces, placed characters, label anchors, in world units. Pure, frozen, no DOM
+ * into the stage-1 world: boxes, placed pieces, placed characters, label anchors, and the timelines of what moves off a
+ * walker (the leaves, the birds), in world units. Pure, frozen, no DOM
  * and no Three — the 3-D floor's renderer (`floor3d/`, slice 4) draws it and decides nothing.
  * `docs/design/plan-13033-stage2-3d-floor.md` § 3.1 (card#13033 stage 2 slice 2); `docs/design/FLOOR.md` § 11's AT-D3-38.
  *
@@ -38,6 +39,8 @@ import { LINE, union } from './desk-layout.js';
 import { deskSlab, monitorFrame } from './desk-geometry.js';
 import { DESK_H, MONITOR_TOP, PARTITION_H, ROOM_H, SCALE } from './door-view.js';
 import { pointAt } from './route.js';
+import { ELEVATOR_DOOR } from './scene.js';
+import { BIRD_LIFT, HOP_SCALE, arcLift } from './bird.js';
 import { keyOf } from '../wire/seat-key.js';
 
 /** Scene px per world unit (§ 12's *Building view unit*). */
@@ -48,6 +51,9 @@ export const ROOM_H_U = ROOM_H / SCALE / UNIT;
 export const PARTITION_H_U = PARTITION_H / SCALE / UNIT;
 export const DESK_H_U = DESK_H / SCALE / UNIT;
 export const MONITOR_TOP_U = MONITOR_TOP / SCALE / UNIT;
+
+/** How far in front of the back wall's face a bird at the birdhouse stands, in units — clear of the band's picture. */
+const BIRD_DEPTH = 0.08;
 
 /** The kinds of a desk's elements its facts card carries, in the order the scene emits them. */
 const FACT_KINDS = Object.freeze(['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age']);
@@ -126,11 +132,83 @@ function walkerKey(fx) {
 }
 
 /**
+ * THE ELEVATOR's LEAVES AS A LEAF TIMELINE — the walks' door spans (`scene.doors`, frames from the paint) as the moves
+ * `leafLevel()` reads: each span opens over `ELEVATOR_DOOR.open` frames from its start and closes over
+ * `ELEVATOR_DOOR.close` frames to its end, a step a frame — the timeline the 2-D painter's `leafAnimation()` keys.
+ */
+export function elevatorLeaf(spans) {
+    return Object.freeze(spans.flatMap((d) => [
+        Object.freeze({ start: d.from, frames: ELEVATOR_DOOR.open, from: 0, to: 1 }),
+        Object.freeze({ start: d.to - ELEVATOR_DOOR.close, frames: ELEVATOR_DOOR.close, from: 1, to: 0 }),
+    ]));
+}
+
+/**
+ * The rows the 3-D floor draws off the walkers, by what draws them: a bird's flight (A19, A22), A20's ring, and the
+ * desk's own (A5's screen, A11's badge, A24's laptop). Every other non-walker row — A12's gauge and A14's pulse
+ * (the card's and the strip's), A13's removal and A16's move (the next render's desk), A17's room tick (the band's
+ * picture) — has no 3-D drawing of its own, as it has none on the 2-D floor's drawing but those.
+ */
+export const BIRD_ROWS = Object.freeze(['A19', 'A22']);
+export const DESK_ROWS = Object.freeze(['A5', 'A11', 'A24']);
+
+/**
+ * WHERE A BIRD IS `tMs` into its effect (§ 6.2 A19, A22; `scene.js`'s `travel()` timeline): on its flight, carried along
+ * the chord between its two ends and lifted over it by `arcLift()` — the 2-D arc's lift, as a height — flapping a wing
+ * a frame; standing on the birdhouse's perch for its dwell; hopping between the perch and the hole, shrinking to
+ * `HOP_SCALE`; or its envelope resting where it set it down — or `null` before its first part and after its last. Under
+ * reduced motion (`frames` 0) it is the still envelope at its end for the moving form's duration (`still_frames`).
+ *
+ * @param {object} bird the world's bird (`floorWorld()`'s `effects` entry of kind `bird`)
+ * @param {number} tMs
+ * @returns {{phase: string, x: number, y: number, z: number, heading: number, wing: string, scale: number}|null}
+ */
+export function birdAt(bird, tMs) {
+    const fx = bird.effect;
+    const f = tMs / fx.frame_interval_ms - fx.wait_frames;
+    const at = (p, phase, extra = {}) => Object.freeze({ phase, x: p.x, y: p.y, z: p.z, heading: bird.heading, wing: 'down', scale: 1, ...extra });
+    const within = (start, frames) => f >= start && f < start + frames;
+
+    if (fx.frames === 0) {
+        return f >= 0 && f < fx.still_frames ? at(bird.to, 'still') : null;
+    }
+
+    const p = fx.perch;
+
+    if (p !== null && within(p.hop_start, p.hop_frames)) {
+        // the hop in shrinks from the perch into the hole; the hop out grows from it onto the perch
+        const u = (f - p.hop_start) / p.hop_frames;
+        const k = p.hop === 'in' ? u : 1 - u;
+        const lerp = (a, b) => a + (b - a) * k;
+
+        return at({ x: lerp(bird.ledge.x, bird.hole.x), y: lerp(bird.ledge.y, bird.hole.y), z: bird.ledge.z }, 'hop', { scale: 1 + (HOP_SCALE - 1) * k, wing: Math.floor(f) % 2 === 0 ? 'up' : 'down' });
+    }
+
+    if (p !== null && within(p.dwell_start, p.dwell_frames)) {
+        return at(bird.ledge, 'perch');
+    }
+
+    if (within(fx.flight_start, fx.frames)) {
+        const u = (f - fx.flight_start) / fx.frames;
+        const lerp = (a, b) => a + (b - a) * u;
+
+        return at({ x: lerp(bird.from.x, bird.to.x), y: lerp(bird.from.y, bird.to.y) + bird.lift * 4 * u * (1 - u), z: lerp(bird.from.z, bird.to.z) }, 'flight', { wing: Math.floor(f) % 2 === 0 ? 'up' : 'down' });
+    }
+
+    if (within(fx.flight_start + fx.frames, fx.rest_frames)) {
+        return at(bird.to, 'rest');
+    }
+
+    return null;
+}
+
+/**
  * The scene's floor as a world.
  *
  * @param {object} scene `buildScene()`'s scene (as the floor screen hands it, its effects in flight included)
  * @returns {object} the frozen world: `slab`, `extent` (units), `planes`, `band`, `walls`, `pieces`, `desks`,
- *          `walkers`, `labels`
+ *          `walkers`, `effects` (the birds, rings and desk rows drawn off the walkers), `doors` (the elevator's leaf
+ *          timeline), `restroom_doors`, `labels`
  */
 export function floorWorld(scene) {
     const band = scene.band;
@@ -243,6 +321,56 @@ export function floorWorld(scene) {
         }
     }
 
+    // A bird's end in the world: a desk's anchor on the floor, its envelope set down on the desk's top; the birdhouse's
+    // perch or hole on the band, its picture row a height. The bird flies `BIRD_LIFT` above the point, as on the 2-D floor.
+    const onDesk = (p) => Object.freeze({ ...at(p), y: DESK_H_U + BIRD_LIFT / UNIT });
+    const onWall = (p) => Object.freeze({ x: at(p).x, y: (top - p.y + BIRD_LIFT) / UNIT, z: slab.box.z + BIRD_DEPTH });
+    const effects = [];
+
+    for (const fx of scene.effects) {
+        if (BIRD_ROWS.includes(fx.animation_id)) {
+            const portal = fx.perch !== null && fx.perch !== undefined;
+            const out = portal && fx.leg === 'departure';
+            const into = portal && fx.leg === 'arrival';
+            const from = into ? onWall(fx.from) : onDesk(fx.from);
+            const to = out ? onWall(fx.to) : onDesk(fx.to);
+
+            effects.push(Object.freeze({
+                kind: 'bird',
+                key: keyOf(fx),
+                from,
+                to,
+                ledge: portal ? onWall(fx.perch.point) : null,
+                hole: portal ? onWall(fx.perch.hole) : null,
+                lift: arcLift(Math.hypot(fx.to.x - fx.from.x, fx.to.y - fx.from.y)) / UNIT,
+                // the plan heading the bird faces as it flies, about `y` (0 toward +z)
+                heading: Math.atan2(to.x - from.x, to.z - from.z),
+                effect: fx,
+            }));
+        } else if (fx.animation_id === 'A20' && fx.at !== null && fx.at !== undefined) {
+            // the ring on the floor round the origin desk's anchor, the singing bird perched on that desk
+            effects.push(Object.freeze({ kind: 'ring', key: keyOf(fx), at: at(fx.at), perch: onDesk(fx.at), radius: fx.radius / UNIT, effect: fx }));
+        } else if (DESK_ROWS.includes(fx.animation_id) && (fx.seat_id !== null || typeof fx.intern_key === 'string')) {
+            effects.push(Object.freeze({ kind: 'desk', key: fx.animation_id === 'A24' ? fx.intern_key : keyOf(fx), effect: fx }));
+        }
+    }
+
+    // The restroom doors (§ 6.7): each door tile's leaf and its slider's field at the rects the 2-D painter draws them,
+    // stood on the tile's foot line — a rect on a standing tile's face-on picture, its rows heights above that line.
+    const restroomDoors = (scene.restroom_doors ?? []).map((d) => {
+        const foot = d.y + d.h;
+        const onTile = (r) => Object.freeze({ x: at(r).x, w: r.w / UNIT, y: (foot - (r.y + r.h)) / UNIT, h: r.h / UNIT });
+
+        return Object.freeze({
+            id: d.id,
+            at: at({ x: d.x + d.w / 2, y: foot }),
+            recess: onTile(d.recess),
+            sign: onTile(d.sign),
+            leaf: d.leaf,
+            occupied: d.occupied,
+        });
+    });
+
     const walkers = scene.effects.filter((fx) => (fx.legs?.length ?? 0) > 0).map((fx) => Object.freeze({
         key: walkerKey(fx),
         animation_id: fx.animation_id,
@@ -260,6 +388,11 @@ export function floorWorld(scene) {
             h: ROOM_H_U,
             docs: scene.band_docs,
             elevator: onBand(band.elevator.frame),
+            // The two leaves, meeting at the seam, each the 2-D painter's rect (a pixel short of the seam).
+            leaves: Object.freeze([
+                onBand({ x: band.elevator.x, y: band.elevator.y, w: band.elevator.seam - band.elevator.x - 1, h: band.elevator.h }),
+                onBand({ x: band.elevator.seam + 1, y: band.elevator.y, w: band.elevator.x + band.elevator.w - band.elevator.seam - 1, h: band.elevator.h }),
+            ]),
             clock: onBand(band.clock),
             windows: Object.freeze(band.windows.map(onBand)),
         }),
@@ -284,6 +417,10 @@ export function floorWorld(scene) {
         }))),
         desks: Object.freeze(desks),
         walkers: Object.freeze(walkers),
+        effects: Object.freeze(effects),
+        // The elevator's leaves for the walks in flight, a leaf timeline in frames from the paint (`elevatorLeaf()`).
+        doors: elevatorLeaf(scene.doors ?? []),
+        restroom_doors: Object.freeze(restroomDoors),
         labels: Object.freeze(labels),
     });
 }

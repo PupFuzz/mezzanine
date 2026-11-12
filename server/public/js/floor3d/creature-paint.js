@@ -22,8 +22,9 @@
  * stays one call; it fades out only over the surfaces that face away (`paintWeight()`), so a belly or a nose is not
  * printed on the creature's back, and it shows from the front, the sides, above and three-quarters.
  *
- * ⛔ POSES STEP, NEVER BLEND: `pose(name)` sets every bone from `POSES[name]` over the rest pose at once. The clock that
- * chooses which pose of a clip shows (§ 3.5) is slice 5's; this file only knows how to show one.
+ * ⛔ POSES STEP, NEVER BLEND: `pose(name)` sets every bone from `POSES[name]` over the rest pose at once. Which pose of a
+ * clip shows at an instant (§ 3.5) is `floor3d/clip-clock.js`'s, which `floor3d/body-paint.js` asks every frame; this file
+ * only knows how to show one.
  */
 
 import {

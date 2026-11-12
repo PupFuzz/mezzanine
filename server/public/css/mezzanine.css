@@ -947,6 +947,69 @@ main > section.lobby {
     white-space: normal;
 }
 
+@keyframes floor3d-badge-in {
+    from {
+        opacity: 0;
+    }
+}
+
+.floor3d-thought {
+    font-style: italic;
+    pointer-events: none;
+}
+
+/*
+ * The marks over a body (`floor3d/body-paint.js`): the sleeper's z's rising beside its head and a state marker, each glyph
+ * lit at its pulse level (`data-level`, 0 dark to 3 full — the 2-D glow's four, `creatures.js`'s `Z_GLOW`), in the lamp
+ * colour with a halo as it brightens. The glyphs carry a class of their own: the page chrome sheet sizes no tag the lobby's
+ * directory builds (`TheLobbyIsADrawnRoomTest`).
+ */
+.floor3d-mark {
+    pointer-events: none;
+    font-weight: 800;
+    color: var(--scene-ink);
+    line-height: 1;
+}
+
+.floor3d-mark[data-kind="zs"] .floor3d-glyph {
+    display: inline-block;
+    font-size: 14px;
+}
+
+.floor3d-mark[data-kind="zs"] .floor3d-glyph:nth-child(2) {
+    transform: translateY(-8px);
+    font-size: 17px;
+}
+
+.floor3d-mark[data-kind="zs"] .floor3d-glyph:nth-child(3) {
+    transform: translateY(-18px);
+    font-size: 21px;
+}
+
+.floor3d-mark[data-kind="marker"] .floor3d-glyph {
+    font-size: 26px;
+}
+
+.floor3d-mark .floor3d-glyph[data-level="0"] {
+    opacity: 0.45;
+}
+
+.floor3d-mark .floor3d-glyph[data-level="1"] {
+    opacity: 0.65;
+    color: var(--lamp);
+}
+
+.floor3d-mark .floor3d-glyph[data-level="2"] {
+    opacity: 0.85;
+    color: var(--lamp);
+    text-shadow: 0 0 3px var(--lamp);
+}
+
+.floor3d-mark .floor3d-glyph[data-level="3"] {
+    color: var(--lamp);
+    text-shadow: 0 0 6px var(--lamp);
+}
+
 #floor[data-webgl="none"] #floor-camera > button,
 #floor[data-webgl="none"] .floor-hint-row {
     display: none;

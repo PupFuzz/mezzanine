@@ -752,7 +752,7 @@ prints the per-desk cost, and an authored floor past the cap is read against it,
 
 | Figure | Budget | Derivation at the cap | Plant (seen red) |
 |---|---|---|---|
-| Draw calls (`renderer.info.render.calls`) — **asserted per term, then as a total** | **≤ 260** | **characters** — a seat ≤ 1 call (body and face one material, § 3.3), an intern ≤ 2 (its laptop): asserted as `≤ S + 2 I` over the S seats and I interns drawn — 6 + 96 = 102 at the cap; **furniture** — one instanced mesh per (primitive, material): the 17 standing kinds + the 5 desk parts (the side table with its stools one of them), times the primitives per file the slice-1 record counts (`k`, ≤ 3 expected): asserted as `≤ 22 k` with `k` read off the loaded files; **walls** — instanced per run, one mesh per height, **the lighter cap sharing the run's material** (a vertex tone, not a second material): `≤ 2`; **the fixed at-rest terms** — plane 1 per grid (1), the band's wall 1, the windows' glazing instanced 1, the window sky 1, the clock's dial and two hands 3, the elevator's two leaves 2, its frame and call plates instanced 1, the cab's interior box 1, the restroom's leaf 1, the birdhouse 1, the contact discs instanced 1, the screens 6 — `≤ 20`, each counted from the world's own members; **the transient term**, bounded — A20's ring ≤ 1, each bird in flight 2 (its merged body and its envelope) for at most one bird per desk of the floor (A19 sends one per destination desk; A22 one per crossing) ≤ 2 × 6, A5's cross-fade a second screen texture per swapping desk ≤ 6 — `≤ 19`; **labels, markers, z's, the status**: 0 (DOM) — **the honest sum is 102 + 22 k + 2 + 20 + 19 = 143 + 22 k, 209 at k = 3; the budget is that sum plus a margin of a quarter, 260**, so a regression in any one term reds against its own bound whatever `k` is, and the total catches a term the derivation forgot; the leg prints every term beside its bound | per term: the character merge dropped → characters > S + 2I; furniture instancing dropped → > 22 k; wall instancing dropped, or the cap a second material → > 2; a second cab box → the at-rest terms > 20; a bird drawn as four meshes → the transient term > 19 on a fixture with a post to every desk; and the total |
+| Draw calls (`renderer.info.render.calls`) — **asserted per term, then as a total** | **≤ 260** | **characters** — a seat ≤ 1 call (body and face one material, § 3.3), an intern ≤ 2 (its laptop): asserted as `≤ S + 2 I` over the S seats and I interns drawn — 6 + 96 = 102 at the cap; **furniture** — one instanced mesh per (primitive, material): the 17 standing kinds + the 5 desk parts (the side table with its stools one of them), times the primitives per file the slice-1 record counts (`k`, ≤ 3 expected): asserted as `≤ 22 k` with `k` read off the loaded files; **walls** — instanced per run, one mesh per height, **the lighter cap sharing the run's material** (a vertex tone, not a second material): `≤ 2`; **the fixed at-rest terms** — plane 1 per grid (1), the band's wall 1, the windows' glazing instanced 1, the window sky 1, the clock's dial and two hands 3, the elevator's two leaves 2, its frame and call plates instanced 1, the cab's interior box 1, the restroom's leaf 1, the birdhouse 1, the contact discs instanced 1, the screens 6 — `≤ 20`, each counted from the world's own members; **the transient term**, bounded — A20's ring ≤ 1, each bird in flight 2 (its merged body and its envelope) for at most one bird per desk of the floor (A19 sends one per destination desk; A22 one per crossing) ≤ 2 × 6, A5's cross-fade a second screen texture per swapping desk ≤ 6 — `≤ 19` (**re-derived to `≤ 20` at slice 5**, A20's singing bird counted: § 9 slice 5's *As built* (k)); **labels, markers, z's, the status**: 0 (DOM) — **the honest sum is 102 + 22 k + 2 + 20 + 19 = 143 + 22 k, 209 at k = 3; the budget is that sum plus a margin of a quarter, 260**, so a regression in any one term reds against its own bound whatever `k` is, and the total catches a term the derivation forgot; the leg prints every term beside its bound | per term: the character merge dropped → characters > S + 2I; furniture instancing dropped → > 22 k; wall instancing dropped, or the cap a second material → > 2; a second cab box → the at-rest terms > 20; a bird drawn as four meshes → the transient term > 19 on a fixture with a post to every desk; and the total |
 | Triangles (`renderer.info.render.triangles`) | **≤ 150,000** | a seat's creature ≤ 2,500 (a lathe of 24 × 16 plus features), a chibi ≤ 1,200, a kit piece ≤ 800 (read per file at slice 1), a desk set ≤ 2,000: 6 × 2,500 + 48 × 1,200 + 17 × 800 + 6 × 2,000 ≈ 98,200, plus walls and the plane under 1,000. **Read at slice 3 and held at slice 4:** the interns read a median of 2,296 at slice 3 — 48 of them alone over 110,000 — so slice 4 coarsens an intern's facets (`floor3d/part-geometry.js`'s `DETAIL.chibi`; a seat's are unchanged), and `node tools/characters/sheet3d.browser.mjs --calls` reads them at a median of 1,236, inside the 1,200-a-chibi derivation's margin; the leg asserts the total at the cap | the facets ×4 in a served copy of `part-geometry.js` → the characters alone past the budget |
 | Texture memory (the leg **walks the scene's textures** — every room and screen map, each creature's own (`textures()`: its two face atlases and its paint) and each skeleton's bone texture — and sums width × height × 4 bytes (16 for a float bone texture) × 4/3 for the mipmaps — not the renderer's texture count, which is a count) | **≤ 128 MB** | **Re-derived at slice 4 (2026-11-12), the slice-3 handoff's missing term added:** one plane texture per room grid and one for a hallway — the cap floor has one grid — **rasterised at one texel per scene px up to the texture cap** (stage 1's rule, `textureSize()`): at the cap 4,096 × 1,984 → ≈ 43 MB (the default's 1,784 × 696 is ≈ 6.6 MB; a planned floor of N rooms counts N), the band 4,096 × 160 → ≈ 3.5 MB; **the faces with their blink frame — two atlases per character** (m4): 54 × 2 at the 256 px bucket ≈ 37.7 MB; **the body's paint, one per character** (slice 3's (i)), as tall as the face atlas and as wide as its rectangle's aspect — `node tools/characters/sheet3d.browser.mjs --calls` prints each creature's (read: 134 × 256 a seat) — 54 × ≈ 0.18 MB ≈ 9.9 MB; the bone textures, one 8 × 8 float texture a skeleton, ≈ 0.06 MB over all 54; 6 screens at 256 × 160 ≈ 1.3 MB (the status label is DOM and holds no texture) — **≈ 95.5 MB built**, and the nearest desk's faces at the 512 px bucket, 9 × 2 ≈ 25.2 MB, kept as headroom for § 3.3's bucket, which slice 4 does not build — ≈ 121 MB, under the budget | every face at the 512 px bucket → over 128 MB (the faces alone ≈ 151 MB) |
 | `.glb` transfer | **≤ 2 MB** for the cap floor's files | the sum of the mapped files' bytes, read at slice 1 | a 3 MB dummy `.glb` added to the kind map → over |
@@ -1028,6 +1028,63 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    elevator and restroom leaves, the birds, the screens, the reduced forms; the browser leg's clip rows (the pose at
    `T`, the drift plant); AT-D3-23, -31, -32, -33, -36's fixtures replayed through the world probe (their walks lift to
    legal points — the node half; the drawing, by eye); `FLOOR.md` § 6.3's amended bullet is this slice's rule.
+   **As built (2026-11-12), where it departs from the text above, each the coder's to argue at review:** (a) **first, the
+   split slice 4's review asked for**: `floor3d/floor-paint.js` is the composer — the camera, its controls, the parts and
+   the frame — over `floor3d/frame-loop.js` (the one `schedule()`/`wake()`, its one-pending-frame invariant and the held
+   step's timer: each part answers when it next needs a frame, `0`, a delay or `null`, and the soonest wins),
+   `floor3d/room-paint.js` (planes, walls and the cut-away, band, screens, the leaves), `floor3d/body-paint.js` (bodies,
+   contact discs, marks, the clock's use), `floor3d/transient-paint.js` (birds, ring) and `floor3d/terms.js` (§ 6's
+   layers, shared); the split was its own commit, its control the browser leg's selftest before and after, every row
+   PASS and every plant RED both times, the plants that anchored in moved code re-anchored where it moved; (b) **no
+   library mixer**: the clock is `floor3d/clip-clock.js`, pure — the loop frame a time names, `(⌊T ÷ ms⌋ +
+   loopOffset(key, length)) mod length`, with its pose, blink, marks and screen — and the renderer sets what it answers on
+   every frame. Poses step and never blend (§ 3.3), so a mixer over discrete tracks would be a second encoding of `POSES`
+   with nothing to interpolate; the property § 3.5 asks — set, never accumulated — is held on the page by the browser
+   leg's `clips` row (a long task between frames, the latest paint's instant) and under `node` by
+   `TheThreeDFloorsClockIsSetNotAccumulatedTest`; (c) the held forms are keyed by the row (`clip-clock.js`'s
+   `HELD_FORMS`) and the body's pose is the world's (the scene's `DESK` pose): so A9 is the `present` pose under a `?`
+   marker, as the 2-D floor draws it, not the raised hand the table above names; (d) the blink is shut on the last frame
+   of every `BLINK_LOOP` (a loop length the clip's and the blink's least common multiple, so the offset spreads the blinks
+   too), and A15's replay marker is a lit block swept across a bar at the screen's foot over `REPLAY_LOOP` — both chosen,
+   neither carries a fact; (e) the z's and the markers are DOM labels lit at the 2-D pulse's levels (`data-level`), in a
+   layer of their own, `#floor3d-marks`, with its own `CSS2DRenderer` and scene, so the desks' layer stays in reading
+   order — and a break walker's thought (A25, A26) floats there over its head; (f) A5's cross-fade is continuous over the
+   row's frames (its 250 ms), the old picture on a second plane on the transient term; (g) **no pressed call plate**: the
+   2-D painter draws no press on the plate (the plates are the theme's surround, the press the walker's `stand` leg), so
+   the 3-D floor draws none either; (h) the cab's interior is a dark box over the doorway in front of the band's face (the
+   band's picture is opaque), the two leaves boxes in front of it narrowing toward the frame as the 2-D leaves do, all
+   three on the band so the cut-away lowers them with it; the walks' door spans reach the world as a leaf timeline
+   (`floorWorld()`'s `doors`, `elevatorLeaf()`) read by the scene's own `leafLevel()`, so both floors read one timeline;
+   (i) the house theme's `piece3d()` no longer draws the restroom door's leaf: `FLOOR.md` § 6.7 item 2 makes the leaf and
+   the slider's field the renderer's at the scene's rects, which the world lifts (`restroom_doors`); the field is a
+   material's colour, vacant or occupied, not a texture; (j) the birds fly the chord between their ends lifted by the 2-D
+   arc's lift (`arcLift()`) as a height, a desk's end its top and the birdhouse's its picture row; `HOP_SCALE` moves to
+   `floor/bird.js` at its second caller; (k) **§ 6's transient term is re-derived to 20**: A20's singing bird, perched
+   on the origin desk while the ring runs, is a call the derivation above did not count — 1 (the ring) + 1 (the singer) +
+   2 × 6 (a bird and its envelope a desk) + 6 (a cross-fade a desk) — and the total's bound is unchanged; the browser
+   leg also asserts the fixed and transient terms against what is drawn (`fixedOf()`, `transientOf()`), so a second cab
+   box or a four-mesh bird reds on any fixture, not only one that fills the bound; (l) A11 is a CSS fade on the facts
+   label's badge line, once per row; A24 and A10's laptop is the material's opacity stepped a frame at a time, a walking
+   intern carrying none off its walk's `seat` leg; (m) the world probe reads the AT-D3-23, -31, -32, -33 and -36 runs and
+   `fx-coord`'s, and a walker's sampled point is held on open lattice (no wall or standing piece's cell), its plant a
+   standing walker moved into its snack table; an A24 run (`flip`) is read for the desk rows; the browser leg's `face` plant
+   is re-anchored to the face left out of the atlas, because the blink now sets the material's map every frame and
+   dropping the map no longer removed the face, and the `face` row hides the marks' layer with the labels'; (n) **a slice-4 defect
+   found and fixed** in its own commit: `camera-acts.js` handed `OrbitControls`' `dollyIn()` the house notch, which that
+   method multiplies the distance by, so `+` and the zoom-in button moved the camera away; the probe pinned the inverted
+   call (its stub recorded names) and now reads each key's effect on the distance, and the browser leg's camera row reads
+   the buttons. **Not built:** A16's walk between desks — the scene emits the move's two ends and no route, and the 2-D
+   painter draws nothing for it, so a 3-D walk would need a route the plan does not describe; A12's eased gauge (the
+   gauge is the card's and the drill-down's); § 3.3's 512 px face bucket for the near desks (every face stays 256 px,
+   § 6's texture row keeps the headroom) — choosing when a creature is re-rasterised and with what hysteresis is
+   mechanism the plan names and does not describe; the ride's leaves (`scene.ride`), slice 6's. The cap floor's figures,
+   read by `node tools/design/floor3d.browser.mjs --row budget` (2026-11-12, this host's SwiftShader): draw calls 154
+   against 260 — characters 102 (S + 2 I, S = 6, I = 48), furniture 36 against 22 k = 88 (k = 4), walls 2, the fixed term
+   14, exactly the count its members give (`fixedOf()`: a plane per grid, the band, the discs, a screen per monitor, the
+   doorway's cab and leaves, and each restroom door's leaf and field), the transient term 0 (nothing in flight on the cap fixture); triangles 95,272 against
+   150,000; texture memory 58.3 MB against 128 MB; `.glb` 0.15 MB against 2 MB. The transient term on `fx-coord`'s `coord`
+   run peaked at 4 calls (a bird, its envelope, the ring and its singer); the bound's worst case — a post to every desk of
+   the cap floor while every screen cross-fades — is derived, not read.
 6. **The ride from the 3-D floor** — the doorway as the control, the cab modal, `ride-page.js`'s route kind, the
    arrival on the destination's 3-D route; `TheFloorsRideIsNavigationTest`'s shape on the new page.
 7. **The default** (gated on the operator's reading — Q3's answer A was *beside first*): `/floor/{floor}` serves the

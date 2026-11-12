@@ -13,8 +13,9 @@
 // tile draws — and its size the tile's: `w` its width and `h` its height in units, the 2-D picture's own (its rect over
 // the stage-1 unit), so a piece stands as tall in 3-D as it is drawn on the 2-D floor. Its depth is chosen per kind.
 //
-// ⛔ A THEME TAKES NO FACT: the inputs are the tile's size and nothing about a seat. The restroom door's leaf is drawn
-// shut here; its motion is the scene's (§ 6.7) and the renderer's to draw (the plan's slice 5).
+// ⛔ A THEME TAKES NO FACT: the inputs are the tile's size and nothing about a seat. The restroom door's leaf and its
+// slider's field are not the theme's (FLOOR.md § 6.7 item 2): the renderer draws them at the scene's rects, the leaf's
+// motion and the field's state the scene's (`floor3d/room-paint.js`).
 
 /** A part: a shape and its parameters, where it stands, its turn in degrees, its scale and its colour. */
 function part(shape, params, at, colour, rotate = [0, 0, 0], scale = [1, 1, 1]) {
@@ -121,7 +122,8 @@ const PIECES = Object.freeze({
             part('torus', { radius: r * 1.08, tube: r * 0.05 }, [0, cy, 0], P.meridian, [0, 90, 23.5]),
         ];
     },
-    // The door into the restroom: its frame and pediment, the sill, the shut leaf over the dark recess, its sign plate.
+    // The door into the restroom: its frame and pediment, the sill, the dark recess, its sign plate — the leaf over the
+    // recess is the renderer's.
     'restroom-door': (P, { w, h }) => {
         const d = 0.12, jamb = w * 0.12, head = h * 0.1;
 
@@ -131,7 +133,6 @@ const PIECES = Object.freeze({
             block(jamb, h - head, d, (w - jamb) / 2, 0, 0, P.frame),
             block(w * 1.08, head, d * 1.2, 0, h - head, 0, P.pediment),
             block(w - 2 * jamb, h - head, d * 0.4, 0, 0, -d * 0.2, P.recess),
-            block(w - 2 * jamb - 0.02, h - head - 0.02, 0.04, 0, 0.01, d * 0.05, P.frame),
             block(w * 0.28, w * 0.18, 0.01, 0, h * 0.62, d * 0.05 + 0.025, P.plate),
         ];
     },
