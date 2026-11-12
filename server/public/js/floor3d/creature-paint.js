@@ -440,6 +440,7 @@ export async function createCreature(document, characters, key, { species, chibi
             open.dispose();
             shut.dispose();
             paint.dispose();
+            mesh.skeleton.dispose();
             for (const m of materials) {
                 m.dispose();
             }
