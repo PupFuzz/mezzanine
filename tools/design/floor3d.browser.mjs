@@ -48,8 +48,30 @@ const REDUCE = [{ name: 'prefers-reduced-motion', value: 'reduce' }];
 const LATE_KIT_MS = 15000;
 /** How long the loop row counts frames at rest with held loops running, s (a paint or two may land in it). */
 const HELD_WINDOW_S = 4;
-/** How long a damped turn is given to come to rest, s, before the loop row calls it a loop that never stops. */
-const DAMPING_REST_S = 20;
+/**
+ * How many display ticks a damped turn is given to come to rest before the loop row calls it a loop that never stops.
+ * `OrbitControls` damps per FRAME, not per second: each update moves `dampingFactor` of what is left and the turn ends
+ * once a step's square falls under its `_EPS`, so the coast is about `ln(step₀ / √_EPS) / −ln(1 − dampingFactor)` frames
+ * — a couple of hundred for this row's drag at the default factor — however slowly the host draws them. A cap in
+ * seconds measured the host's frame rate instead (and passed only while frames were drawn several to a tick). With one
+ * frame a tick, this cap is that coast with room to spare.
+ */
+const DAMPING_REST_TICKS = 600;
+/** The wall-clock bound on the same wait, s — only so a page whose ticks stall cannot hold the row forever. */
+const DAMPING_REST_S = 300;
+/** How often the loop row samples a damped turn's frames against the display's ticks, ms; a second of samples with no
+ *  frame drawn is the rest. */
+const DAMPING_SAMPLE_MS = 100;
+/**
+ * The frames a damped turn may draw beyond the display's ticks: NONE. A page counter re-queues itself each tick, so every
+ * rendering opportunity runs it once; the frame loop's callbacks of that opportunity run beside it, and a frame it queues
+ * from inside runs at the NEXT one. Each sample reads the frame count and the tick count in one evaluation, between
+ * opportunities, so with at most one frame pending every interval draws at most as many frames as it has ticks.
+ */
+const TICK_SLACK = 0;
+/** The page's tick counter, and one atomic read of it beside the renderer's frame count. */
+const TICKS = `(() => { if (window.__floor3dTicks === undefined) { window.__floor3dTicks = 0; const t = () => { window.__floor3dTicks++; requestAnimationFrame(t); }; requestAnimationFrame(t); } return window.__floor3dTicks; })()`;
+const FRAMES_TICKS = `({ frames: document.getElementById('floor3d-canvas').inspect().frames, ticks: window.__floor3dTicks })`;
 
 /** § 6's budgets — the plan's figures, each a claim this leg checks (plan § 6's table). */
 const BUDGET = { calls: 260, triangles: 150000, textureMB: 128, glbMB: 2, walls: 2, fixed: 20, transient: 19 };
@@ -452,13 +474,14 @@ const ROWS = {
   },
 
   loop: {
-    what: 'the frame loop: it stops once nothing moves, restarts when a late kit file answers, wakes on a drag and draws it to rest, and with only held loops running draws at most LOOP_FPS frames a second',
+    what: 'the frame loop: it stops once nothing moves, restarts when a late kit file answers, wakes on a drag and draws it to rest at no more than a frame a display tick, and with only held loops running draws at most LOOP_FPS frames a second',
     base: { run: quiet(), media: REDUCE },
     plants: [
-      ['the stop condition dropped', { plant: [P(PAINT, '        if (settling || tweening || next === 0) {', '        if (true) {')] }],
+      ['the stop condition dropped', { plant: [P(PAINT, '        if (raf !== null || settling || tweening || next === 0) {', '        if (true) {')] }],
       ['the restart on a late resource dropped', { plant: [P(PAINT, "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    wake();", "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');")] }],
       ['the controls\' change not wired to the loop', { plant: [P(PAINT, "    controls.addEventListener('change', wake);", '')] }],
-      ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(PAINT, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            raf = window.requestAnimationFrame(frame);')] }],
+      ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(PAINT, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            schedule();')] }],
+      ['a settling frame queuing its successor past the one pending frame (two chains, doubling each tick)', { plant: [P(PAINT, '        if (raf !== null || settling || tweening || next === 0) {\n            schedule();', '        if (raf !== null || settling || tweening || next === 0) {\n            raf = window.requestAnimationFrame(frame);')] }],
     ],
     async run(chrome, c) {
       const d = [];
@@ -508,18 +531,32 @@ const ROWS = {
           let i = await p.settle(2500);
           const a0 = i.azimuth;
           const fr0 = i.frames;
+          await p.ev(TICKS);
+          await sleep(200);
+          let last = await p.ev(FRAMES_TICKS);
           await p.drag(200, 0, { steps: 6 });
           const released = await p.inspect();
-          // damping eases the turn out over hundreds of frames: read until a second passes with none drawn
-          let rest = released.frames;
-          let after = -1;
-          let waited = 0;
-          for (; waited < DAMPING_REST_S && after !== rest; waited++) { rest = after === -1 ? rest : after; await sleep(1000); after = (await p.inspect()).frames; }
+          // damping eases the turn out over hundreds of frames: sample until a second passes with none drawn, summing
+          // the frames and the display's ticks over every interval that drew one (an interval at rest adds ticks and
+          // no frame, so counting it would only loosen the bound)
+          const moving = { frames: 0, ticks: 0 };
+          let still = 0;
+          const t0 = Date.now();
+          const tick0 = last.ticks;
+          while (last.ticks - tick0 < DAMPING_REST_TICKS && Date.now() - t0 < DAMPING_REST_S * 1000 && still * DAMPING_SAMPLE_MS < 1000) {
+            await sleep(DAMPING_SAMPLE_MS);
+            const now = await p.ev(FRAMES_TICKS);
+            if (now.frames > last.frames) { moving.frames += now.frames - last.frames; moving.ticks += now.ticks - last.ticks; still = 0; } else still++;
+            last = now;
+          }
+          const waited = (Date.now() - t0) / 1000;
           i = await p.inspect();
-          f.drag = { az: [deg(a0).toFixed(1), deg(released.azimuth).toFixed(1), deg(i.azimuth).toFixed(1)], frames: [fr0, released.frames, after], restedAfterS: waited };
+          f.drag = { az: [deg(a0).toFixed(1), deg(released.azimuth).toFixed(1), deg(i.azimuth).toFixed(1)], frames: [fr0, released.frames, i.frames], moving, restedAfterS: waited.toFixed(1) };
           if (i.frames <= fr0) d.push('a drag drew no frame — the loop did not wake on the controls\' change');
           if (Math.abs(i.azimuth - a0) < 0.05) d.push('a drag turned nothing');
-          if (after !== rest) d.push(`the loop was still drawing ${DAMPING_REST_S} s after the drag — it never came to rest`);
+          if (still * DAMPING_SAMPLE_MS < 1000) d.push(`the loop was still drawing ${last.ticks - tick0} display ticks (${waited.toFixed(0)} s) after the drag — it never came to rest`);
+          if (moving.frames > moving.ticks + TICK_SLACK) d.push(`a drag and its damped settle drew ${moving.frames} frames in ${moving.ticks} display ticks — more than one frame pending at once`);
+          if (moving.ticks === 0) d.push('CONTROL: the tick counter never advanced while the turn settled — frames per tick was not measured');
         } finally { p.close(); }
       }
       return { defects: d, facts: f };

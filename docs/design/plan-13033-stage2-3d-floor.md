@@ -1000,8 +1000,9 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    size; AT-D3-38's world half gains a `parts` leg; (c) the kit is recoloured by REPLACING each primitive's unlit
    `MeshBasicMaterial` with a `MeshToonMaterial` of the colour the kind map's new `PAINT` gives that material in the floor's
    theme (per theme, held by `tools/floor-models/selftest.mjs` to every material each file carries and to a colour of every
-   theme's `PALETTE`); the eight kinds the kit lacks are the house theme's `piece3d()` (`themes/studio/pieces-3d.js`) and
-   `MISSING` is empty; a theme with no `piece3d` uses the house theme's in the house's colours; (d) the part geometry is
+   theme's `PALETTE`); the kinds the kit lacks — the kind map's `PIECE3D` list, which `tools/floor-models/selftest.mjs`
+   re-prints on its `MEASURED` line — are the house theme's `piece3d()` (`themes/studio/pieces-3d.js`) and `MISSING` is
+   empty; a theme with no `piece3d` uses the house theme's in the house's colours; (d) the part geometry is
    hoisted out of `creature-paint.js` into `floor3d/part-geometry.js`, its second caller the first-party pieces; (e) the
    wheel is released to the page at a dolly limit by a capturing listener that turns the controls' zoom off for that one
    event; (f) the clock's held loops this slice steps are the ones `CLIPS` names (A3, A4, A23) and the walk — the rest of

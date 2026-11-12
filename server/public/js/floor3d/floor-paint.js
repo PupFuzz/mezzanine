@@ -20,11 +20,12 @@
  * `prefers-reduced-motion` damping is off, so every move is a cut.
  *
  * ⛔ THE FRAME LOOP RUNS ONLY WHILE SOMETHING MOVES (plan § 3.5): a walker in flight, the camera settling under damping,
- * or a cut-away lowering or rising — a frame each display refresh; and with only held loops moving (a held rendering
- * whose `motion` is true), one frame per step of the loop at its `frame_interval_ms`, never the display's rate. It stops
- * the first frame none of those holds, and restarts on a paint, on the controls' change (a drag, a key, a wheel), and on
- * a resource becoming ready — a kit file parsed, a creature built, the plane or the band rasterised — so a floor drawn
- * before its models arrived is drawn again when they do.
+ * or a cut-away lowering or rising — a frame each display refresh and never more, since one frame is pending at a time
+ * (`schedule()`); and with only held loops moving (a held rendering whose `motion` is true), one frame per step of the
+ * loop at its `frame_interval_ms`, never the display's rate. It stops the first frame none of those holds, and restarts
+ * on a paint, on the controls' change (a drag, a key, a wheel), and on a resource becoming ready — a kit file parsed, a
+ * creature built, the plane or the band rasterised — so a floor drawn before its models arrived is drawn again when they
+ * do.
  *
  * ⛔ THE CLOCK (plan § 3.5): a held loop steps from the PAINT — `T = (now − paintedAt) / 1000`, its frame `⌊T × fps⌋` plus
  * the character's own loop offset (`loopOffset(key, length)`, keyed by its seat or intern key) — and a walker's time is
@@ -216,15 +217,22 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     scene.add(hemi, sun);
 
     // ── the frame loop (the header's rule) ─────────────────────────────────────────────────────
+    /**
+     * The one place a frame is queued, holding the loop to ONE PENDING FRAME: the controls' `change` fires inside a frame
+     * (their update and the clamp's), so a frame that queued its successor directly would queue a second beside the one
+     * that `change` woke — two chains, each doubling every tick. The loop row's frames-per-tick leg holds it.
+     */
+    const schedule = () => {
+        raf ??= window.requestAnimationFrame(frame);
+    };
+
     const wake = () => {
         if (timer !== null) {
             window.clearTimeout(timer);
             timer = null;
         }
 
-        if (raf === null) {
-            raf = window.requestAnimationFrame(frame);
-        }
+        schedule();
     };
 
     controls.addEventListener('change', wake);
@@ -761,8 +769,10 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         labelRenderer.render(scene, camera);
         labels?.cull();
 
-        if (settling || tweening || next === 0) {
-            raf = window.requestAnimationFrame(frame);
+        // A frame already queued — woken by a change during this one — redraws everything, so it stands in for a step's
+        // timer: one pending wake, never a frame and a timer both.
+        if (raf !== null || settling || tweening || next === 0) {
+            schedule();
         } else if (next !== null) {
             timer = window.setTimeout(() => {
                 timer = null;
