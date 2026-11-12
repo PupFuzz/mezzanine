@@ -7,9 +7,11 @@
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ IT DECIDES NOTHING ABOUT THE FLOOR, AND IT IS THE COMPOSER. What stands where is the world's (a projection of the
  * scene), the camera's limits and the cut-away are `floor3d/view-limits.js`'s, the keys' acts `floor3d/camera-acts.js`'s,
- * the furniture `floor3d/furniture.js`'s, the labels `floor3d/floor-labels.js`'s; the room — planes, walls, band, screens —
- * is `floor3d/room-paint.js`'s, the bodies and their clock `floor3d/body-paint.js`'s, and the one frame queue
- * `floor3d/frame-loop.js`'s. This file holds the camera and its controls, builds the parts, and draws a frame.
+ * the furniture `floor3d/furniture.js`'s, the labels `floor3d/floor-labels.js`'s; the room — planes, walls, band, the
+ * elevator's and the restroom's leaves, screens — is `floor3d/room-paint.js`'s, the bodies, their marks and their clock
+ * `floor3d/body-paint.js`'s (over `floor3d/clip-clock.js`), the birds and the ring `floor3d/transient-paint.js`'s, and the
+ * one frame queue `floor3d/frame-loop.js`'s. This file holds the camera and its controls, builds the parts, and draws a
+ * frame: each part says when it next needs one, and the soonest is the frame's answer.
  *
  * ⛔ THE CAMERA IS `OrbitControls`, READING THE POINTER ITSELF (the operator's Q2 answer; `FLOOR.md` § 4.5): left-drag or
  * one finger turns, right-drag or two fingers pan ALONG THE FLOOR (`screenSpacePanning` off), the wheel and a pinch dolly,
@@ -19,10 +21,10 @@
  * controls' own key listener is never connected; the keys are the house wire's, over `camera-acts.js`. Under
  * `prefers-reduced-motion` damping is off, so every move is a cut.
  *
- * ⛔ THE FRAME LOOP RUNS ONLY WHILE SOMETHING MOVES (plan § 3.5): a walker in flight, the camera settling under damping,
- * or a cut-away lowering or rising — a frame each display refresh and never more, since one frame is pending at a time
+ * ⛔ THE FRAME LOOP RUNS ONLY WHILE SOMETHING MOVES (plan § 3.5): a walker or a bird in flight, a screen cross-fading,
+ * the camera settling under damping, or a cut-away lowering or rising — a frame each display refresh and never more, since one frame is pending at a time
  * (`frame-loop.js`); and with only held loops moving (a held rendering whose `motion` is true), one frame per step of the
- * loop at its `frame_interval_ms`, never the display's rate. It stops the first frame none of those holds, and restarts
+ * loop at its `frame_interval_ms` — a body's, a mark's, a screen's, a leaf's, a ring's step — never the display's rate. It stops the first frame none of those holds, and restarts
  * on a paint, on the controls' change (a drag, a key, a wheel), and on a resource becoming ready — a kit file parsed, a
  * creature built, the plane or the band rasterised — so a floor drawn before its models arrived is drawn again when they
  * do.
@@ -52,6 +54,7 @@ import { floorLabels } from './floor-labels.js';
 import { frameLoop } from './frame-loop.js';
 import { floorRoom } from './room-paint.js';
 import { floorBodies } from './body-paint.js';
+import { floorTransients } from './transient-paint.js';
 import { TERMS, onTerm } from './terms.js';
 import { floorWorld } from '../floor/floor-world.js';
 import { cabTheme } from '../floor/cab-paint.js';
@@ -67,6 +70,7 @@ import { cabTheme } from '../floor/cab-paint.js';
 export function worldRenderer(document, window, { reduce, lost, restored }) {
     const canvas = document.getElementById('floor3d-canvas');
     const labelLayer = document.getElementById('floor3d-labels');
+    const markLayer = document.getElementById('floor3d-marks');
     const focusLine = document.getElementById('floor3d-focus');
     const css = window.getComputedStyle(document.documentElement);
     const cssColour = (name) => css.getPropertyValue(name).trim();
@@ -76,6 +80,10 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     const camera = new PerspectiveCamera(45, 1, 0.05, 1000);
     const controls = new OrbitControls(camera);
     const labelRenderer = new CSS2DRenderer({ element: labelLayer });
+    // The marks over the bodies — z's, markers, a walker's thought — in a layer and a scene of their own, apart from the
+    // desks' labels, whose layer is in reading order (`floor-labels.js`).
+    const markScene = new Scene();
+    const markRenderer = new CSS2DRenderer({ element: markLayer });
 
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(new Color(cssColour('--house-trim') || '#1f3540'));
@@ -94,6 +102,9 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     let world = null;
     let alive = true;
     let frames = 0;
+    let paints = 0;
+    /** when the last paint ran (`performance.now()`) — handed to every part as the instant it steps from */
+    let paintAt = null;
     let screen = null;
     /** the character tree's frame (`SCENE_W` × `SCENE_H`), which the distance limit is one character's height of */
     let character = null;
@@ -158,8 +169,9 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     const furnitureGroup = new Group();
     const creatures = new Group();
     const labelGroup = new Group();
+    const transientGroup = new Group();
 
-    scene.add(roomGroup, wallGroup, furnitureGroup, creatures, labelGroup);
+    scene.add(roomGroup, wallGroup, furnitureGroup, creatures, labelGroup, transientGroup);
 
     const hemi = new HemisphereLight('#fff6e6', '#8f7a6a', 1.7);
     const sun = new DirectionalLight('#ffffff', 2.2);
@@ -185,9 +197,14 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         art: () => art,
         failed: (ids) => hooks.failed(ids),
         now: () => window.performance.now(),
+        marks: markScene,
     });
+    const transients = floorTransients({ group: transientGroup });
 
-    /** One frame at `now`: the controls, the clamp, the cut-away and the bodies, drawn; when the next one is needed. */
+    /**
+     * One frame at `now`: the controls, the clamp, the cut-away, the bodies, the room's moving parts and the birds, drawn;
+     * when the next one is needed — the soonest any of them asks for.
+     */
     const draw = (now) => {
         if (!alive) {
             return null;
@@ -199,13 +216,14 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         clamp();
 
         const tweening = room.cutaway(now, camera.position, controls.target);
-        const next = bodies.place(now);
+        const waits = [bodies.place(now), room.place(now), transients.place(now)].filter((n) => n !== null);
 
         renderer.render(scene, camera);
         labelRenderer.render(scene, camera);
+        markRenderer.render(markScene, camera);
         labels?.cull();
 
-        return settling || tweening ? 0 : next;
+        return settling || tweening ? 0 : waits.length === 0 ? null : Math.min(...waits);
     };
 
     const loop = frameLoop(window, draw, { rested: () => room.rested() });
@@ -274,6 +292,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         surface = s;
         renderer.setSize(s.width, s.height, false);
         labelRenderer.setSize(s.width, s.height);
+        markRenderer.setSize(s.width, s.height);
         camera.aspect = s.width / s.height;
         camera.updateProjectionMatrix();
         reLimit();
@@ -365,11 +384,16 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         reLimit();
                     }
 
+                    const at = window.performance.now();
+
+                    paints++;
+                    paintAt = at;
                     // A theme module that failed to load (§ 9 F14) leaves no palette: the walls in the house trim, as the
                     // 2-D floor draws its walls in a flat fallback fill.
-                    room.paint(world, sceneIn, palette?.view.partition ?? (cssColour('--house-trim') || '#1f3540'));
+                    room.paint(world, sceneIn, palette?.view.partition ?? (cssColour('--house-trim') || '#1f3540'), at);
                     standFurniture();
-                    bodies.paint(world, window.performance.now());
+                    bodies.paint(world, at);
+                    transients.paint(world, at);
                     labels.sync(world);
                     wake();
                 },
@@ -395,20 +419,23 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
 
                 /**
                  * What the browser leg reads (`tools/design/floor3d.browser.mjs`): the camera, the frames drawn, the
-                 * walls' heights, the renderer's counters, and § 6's figures term by term after a render of each alone.
-                 * It carries no fact and moves nothing.
+                 * walls' heights, the renderer's counters, and § 6's figures term by term after a render of each alone —
+                 * or, with `{ terms: false }`, everything but those renders, a read cheap enough to poll. It carries no
+                 * fact and moves nothing.
                  */
-                inspect() {
+                inspect({ terms: byTerm = true } = {}) {
                     const terms = {};
 
-                    for (const [term, layer] of Object.entries(TERMS)) {
-                        camera.layers.set(layer);
-                        renderer.render(scene, camera);
-                        terms[term] = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
-                    }
+                    if (byTerm) {
+                        for (const [term, layer] of Object.entries(TERMS)) {
+                            camera.layers.set(layer);
+                            renderer.render(scene, camera);
+                            terms[term] = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles };
+                        }
 
-                    camera.layers.enableAll();
-                    renderer.render(scene, camera);
+                        camera.layers.enableAll();
+                        renderer.render(scene, camera);
+                    }
 
                     // Every texture the floor holds: the room's and the screens' maps, and each creature's own (its face
                     // atlas open and shut and its paint) with its skeleton's bone texture (`body-paint.js`'s).
@@ -425,6 +452,10 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
 
                     return {
                         frames,
+                        paints,
+                        paintedAt: paintAt,
+                        clock: held.clock,
+                        marks: [...markLayer.children].map((e) => ({ key: e.dataset.key ?? null, kind: e.dataset.kind ?? 'thought', levels: [...e.children].map((c) => Number(c.dataset.level ?? -1)), text: e.textContent, shown: e.style.display !== 'none' })),
                         polar: controls.getPolarAngle(),
                         azimuth: controls.getAzimuthalAngle(),
                         distance: controls.getDistance(),
@@ -443,6 +474,8 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         interns: held.interns,
                         desks: world === null ? [] : world.desks.map((d) => ({ key: d.key, back: d.slab.back, front: d.slab.front, left: d.slab.left, right: d.slab.right, seat: d.seat_id })),
                         faces: held.faces,
+                        room: room.inspect(),
+                        transient: transients.inspect(),
                         requested: furniture?.requested() ?? [],
                         labels: labels.count(),
                     };

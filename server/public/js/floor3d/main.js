@@ -50,7 +50,7 @@ function inWorld() {
     });
     let drawing = null;
 
-    canvas.inspect = () => drawing?.inspect() ?? null;
+    canvas.inspect = (options) => drawing?.inspect(options) ?? null;
 
     return {
         camera: renderer.camera,

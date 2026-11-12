@@ -12312,17 +12312,24 @@ is this test's derivation: the 3-D floor is a third renderer of the one scene (`
 a second model of the floor, so `floor/floor-world.js` lifts the scene into the stage-1 world
 ([§ 12](#12-every-number-and-where-it-comes-from)'s *Building view unit*) and adds no fact. The WORLD half is the one the world's slice
 landed; the CHARACTERS half — every species a body from its one shape, the poses and clips, one draw call a seat and two an
-intern — is the bodies' slice's; the clock that steps a clip is added by the animation slice, with its Build bullet and its
-row.*
+intern — is the bodies' slice's; the CLOCK that steps a clip, and the world's legs for what moves off a walker, are the
+animation slice's ([Appendix B](#appendix-b--what-an-implementer-builds-from-this) row 54), run by
+`Tests\Feature\Floor\TheThreeDFloorsClockIsSetNotAccumulatedTest` over `tests/Feature/Floor/clip-clock-probe.mjs` and by
+the world half's own test.*
 
 - **Build — the world half:** the floor screen's harness over `scene_default` (`fx-snapshot-4`'s seats on the shipped default map),
-  `scene_overflow` (AT-D3-20's overflowing run), `interns_cap`, `frame_planned` (a planned floor with a hallway), and
-  the walking runs `two-interns` (`fx-intern-walk`), `idle-trip` and `intern-trip` (`fx-snack`) and `turn-mid-floor`
-  (`fx-turn-back`) — each run's last scene, and for a walking run three scenes with a walker in flight spread across it;
-  `floorWorld()` over each scene, its frame re-derived by the probe from the scene's own extent and band. **Reads:**
-  **the harness**, the **scene**, the **floor world**.
+  `scene_overflow` (AT-D3-20's overflowing run), `interns_cap`, `frame_planned` (a planned floor with a hallway), the
+  walking runs of [AT-D3-23](#at-d3-23-a-seat-leaves-by-the-elevator-and-returns-by-it) (`fx-elevator`),
+  [AT-D3-31](#at-d3-31-an-intern-arrives-by-the-elevator-works-or-rests-at-its-laptop-and-leaves-by-it) (`fx-intern-walk`),
+  [AT-D3-32](#at-d3-32-a-character-visits-the-snack-corner-every-one-to-two-hours-stands-at-its-own-table-and-comes-straight-back) (`fx-snack`),
+  [AT-D3-33](#at-d3-33-a-character-takes-a-restroom-break-every-one-to-five-hours-waits-its-turn-at-the-door-and-the-sign-reads-occupied-while-it-is-inside) (`fx-restroom`)
+  and [AT-D3-36](#at-d3-36-a-main-agent-that-starts-working-again-on-its-way-out-turns-back-to-its-desk) (`fx-turn-back`),
+  `fx-intern-walk`'s `flip` (an A24 fade), and `fx-coord`'s `coord` and `coord_portal` — the runs are the test's `RUNS`,
+  which name what each is read for — each run's last scene, and for a run read for something three scenes holding it (a
+  walker in flight, a door span, a restroom visit, a bird or a ring, a desk's own row) spread across it; `floorWorld()` over each scene, its frame re-derived by the probe
+  from the scene's own extent and band. **Reads:** **the harness**, the **scene**, the **floor world**.
 - **GREEN — one world, the scene's:** the world's members are its slab, extent, planes, band, walls, pieces, desks,
-  walkers and labels — no camera and no ride; its floor is the scene's extent below the band, one unit per `UNIT` scene
+  walkers, effects, doors, restroom doors and labels — no camera and no ride; its floor is the scene's extent below the band, one unit per `UNIT` scene
   px, centred on `x`, its front edge at `+z`; every desk the scene places is a world desk, in the scene's order, its
   slab where its plan rect stands; **its sitter on the band side** — the sitter's `z` less than the slab's back edge,
   which is less than its front, the drawers toward the sitter, the monitor facing its sitter and every laptop its
@@ -12331,7 +12338,16 @@ row.*
   standing tile, both ways; every standing wall the scene's `walls` carry a box, both ways, as tall as its footprint
   position makes it — the room's height on the footprint's edge, the partition's inside it; every effect in flight
   with legs a walker, both ways, whose point at three instants across its walk off its cab legs and its span behind
-  the restroom's door is the route's `pointAt()` lifted, inside the floor.
+  the restroom's door is the route's `pointAt()` lifted, inside the floor, **and on open lattice** — in no wall cell
+  and no standing piece's cell the scene draws, its decorations aside.
+- **GREEN — what moves off a walker is the scene's:** the elevator's leaf timeline is the walks' door spans
+  (`scene.doors`), each shut at its start, open once `ELEVATOR_DOOR.open` frames have passed, and shut again at its end,
+  read by the scene's own `leafLevel()`; each restroom door's leaf timeline and field spans are the scene's, its recess
+  and sign rects stood on the door tile's foot line as heights; every bird (A19, A22), A20 ring and desk row (A5, A11,
+  A24) the world draws is one of the scene's effects, both ways, keyed by its desk or its intern; every bird's ends are
+  its desks' tops or the birdhouse's picture rows as heights, `BIRD_LIFT` above them, and at its flight's middle it is
+  above the chord between them and halfway across; it is drawn nothing after its last part, and under reduced motion it
+  is the still envelope at its end for the moving form's duration.
 - **GREEN — the labels are the painter's strings:** per desk the labels in the one order — name, status, chip, facts,
   bubble — each the text of the element the painter draws for it, the facts card the painter's plated facts in its
   order; each at the desk's depth and at the height its element's centre is drawn above the desk's foot (its sitter's
@@ -12355,7 +12371,8 @@ row.*
 - **The red list, confirmed against the plants (stage 2 slice 2, 2026-11-11):** every RED above was planted in the
   shipped tree and seen red on the leg that names it, and is held in the test as a planted control.
 - **Discriminating control:** the probe fails as a control when the scenes it reads hold no desk, intern, piece, edge
-  wall, partition, sampled walker or bubble — a green over an empty population measured nothing.
+  wall, partition, sampled walker or bubble, or no door span, restroom door, bird, ring or desk row — a green over an empty
+  population measured nothing — and the test fails when a run read for something hands no scene holding it.
 - **Build — the characters half:** every species of the character tree's `SPECIES_KEYS`, each of its variants, as a seat
   and as an intern: `bodyParts()` and `chibiParts()` over the species' one `shape` (the data its 2-D `build()` draws
   from), `POSES` and `CLIPS`, and `server/public/js/floor3d/creature-paint.js` building one character on a page that holds
@@ -12395,6 +12412,38 @@ row.*
   seen red.
 
 ---
+- **The world half's REDs the animation slice added (stage 2 slice 5, 2026-11-12),** each planted in the shipped tree,
+  seen red on the leg that names it and held in the test as a planted control:
+- **Fifteenth RED — a walker stood in a piece:** a standing walker's point a cell back and across from its spot (the
+  route's `stand` legs) → the snack trip's walker stands in its table, and the lattice assertion fails.
+- **Sixteenth RED — leaves closing late:** the elevator's leaves closing from a span's end rather than by it → shut is
+  not read at the span's end.
+- **Seventeenth RED — a restroom rect from the tile's top:** a restroom door's rect stood from the tile's top rather than
+  its foot → the rect's height above the foot fails.
+- **Eighteenth RED — the ring left out:** A20's ring not carried into the world → the effects' set equality fails.
+- **Nineteenth RED — the bird along the chord:** a bird's flight with its arc's lift dropped → it is not above the
+  chord at its flight's middle.
+- **Twentieth RED — the birdhouse read as depth:** the birdhouse's picture row read as a plan depth rather than a
+  height → the portal bird's ends fail.
+- **Twenty-first RED — the laptop's fade on the seat:** an intern's A24 row keyed by its seat rather than its intern → the
+  effects' key assertion fails.
+- **Build — the clock:** `server/public/js/floor3d/clip-clock.js` asked, under `node`, over the shipped character tree
+  and the animation set's own `heldRendering()` for every held row the 3-D floor steps (its `HELD_FORMS`) and for a
+  walk, at instants across several loops, for a corpus of seat keys. **Reads:** the **character tree**, the **animation
+  set**, the **3-D clock**.
+- **GREEN — the time is set, the phase is the key's:** at every instant a held form moving is on loop frame
+  `(⌊T ÷ frame_interval_ms⌋ + loopOffset(key, length)) mod length` — `T` the time since the paint, `length` the 3-D
+  loop's — with its clip's pose, its blink and its marks' pulse (`zLevels()`, `markerLevel()`) at that frame, and asks
+  for its next frame at the next step; a key whose offset is not 0 is not on frame 0 at the paint; two keys whose offsets
+  differ are on different frames at one instant; a loop is on the same frame a whole loop later; a held rendering whose
+  `motion` is false — reduced motion, or not permitted — is its still at every instant and asks for no step, the still
+  lighting every z and the marker at full brightness; a walk steps its clip while it runs and stands once it has ended,
+  and one drawn without its motion never runs. The browser leg's `clips` row
+  (`tools/design/floor3d.browser.mjs`) reads the same on a page: each moving body's time is the time since the latest
+  paint, across a long task, and its loop frame the one this arithmetic names.
+- **The clock's REDs, each seen red:** the offset dropped (the offset leg); the loop keyed on the row rather
+  than on its rendering's `motion` (the still leg); the clock keeping its own time, a step a call (the pose leg); the
+  blink a frame late (the pose leg); a walk without its motion read as running (the walk leg).
 
 ## 12. Every number, and where it comes from
 
@@ -14458,6 +14507,7 @@ snapshot, from D2) is a prerequisite for everything from step 3 onward.
 | 51 | card#13033 stage 2 slice 2 — built 2026-11-11 (`docs/design/plan-13033-stage2-3d-floor.md` § 3.1, § 3.6, § 3.7, § 4, § 9 slice 2): the floor page's wiring hoisted out of `floor/main.js` into `floor/floor-page.js` with its **renderer contract** (`startFloorPage(document, window, { renderer, route })`: the renderer's camera bound at once — show, current, fit, resize, the pointer's gestures and the keys' acts — and its drawing created once the art answers; `route` the URL shape, `'2d'` or `'3d'`), the 2-D renderer `floor/painter-renderer.js` (the painter, and the one home of `cameraGestures()` and `cameraView()` on the floor pages) and `floor/main.js` its thin caller; the door view's wall classification, cell placement and desk slabs hoisted into `floor/floor-walls.js`, which the scene now calls too for its `walls`; `worldOf()`, `topOf()` and `UNIT` hoisted out of `building/stack-model.js` into the **floor world** (`floor/floor-world.js`: `floorWorld()`, `anchor3d()`, `walkerAt()`, the heights in units — the scene lifted into the stage-1 world, re-exported by the stack model); the **3-D view limits** (`floor3d/view-limits.js`: the polar, distance, near and far limits, the target's box, the entry pose, `cutaway()`); the **3-D camera acts** (`floor3d/camera-acts.js`: the keyboard map over injected controls), with the keys wire handing a key's modifiers (`{ shift }`) to `drag()` and a drag's turn (`turnOf()`) hoisted into `wire/camera.js` from the building acts. No page draws in 3-D yet — the 3-D route, its view and its renderer are the plan's slice 4 | [AT-D3-38](#at-d3-38-the-floor-in-3-d-is-the-scenes-third-renderer) **(world half)**; `Tests\Feature\Floor\TheThreeDFloorsCameraStaysAboveTheFloorTest` (`view-limits-probe.mjs`, `camera-acts-probe.mjs`, each plant seen red); every existing floor page test as the hoist's control — `FloorPageWiringTest`, `TheListViewRendersEveryDeskMemberTest`, `TheKeyPrimitiveIsTheOnlyKeyBuilderTest` and `BuildingPageWiringTest` re-pointed to the files the wiring moved to, `tools/design/floor-ride.browser.mjs`'s rows with their plants re-anchored in `floor/floor-page.js` — `tools/design/door-view.selftest.mjs` and `TheElevatorIsAControlOnTheDrawingTest`'s door-view leg as the walls' (their wall plants re-anchored in `floor/floor-walls.js`), and `stack-model-probe.mjs`'s `worldOf()` leg as the world map's |
 | 52 | card#13033 stage 2 slice 3 — built 2026-11-11 (`docs/design/plan-13033-stage2-3d-floor.md` § 3.3, § 8 items 1 and 2, § 9 slice 3): the species' **one shape** — each species' half-outlines, features and anchors moved out of its 2-D `build()` into DATA on its entry (`SPECIES[k].shape`), which the frame draws from as before and the 3-D half reads, the paws' and feet's colours with them (`toneOf()`), and the raccoon's mask and the mole's nose as face paint; the **body paint** (`paintDocument()`: the frame's body layers alone, which `creature-paint.js` projects onto every part of the 3-D body from the front — the operator's Q6 answer A, 2026-11-12); `faceDocument()` (the frame's eyes, brows, mouth, blush and face paint alone, in `faceBoxOf()`'s rectangle) and `lidDocument()` (the intern's laptop lid); the **3-D creatures** — `resources/characters/creatures-3d.js` (`BONES`, `POSES`, `CLIPS`, `bodyParts()`, `chibiParts()`: a key's part list at the rest pose, pure, no Three) and `server/public/js/floor3d/creature-paint.js` (one skinned mesh over one skeleton per character, the body and its face one material over a face atlas, an intern's laptop the second); the SVG-onto-canvas step hoisted out of `building/floor-picture.js` into `floor3d/svg-texture.js` at its second caller; and the operator's reading sheet, `tools/characters/sheet3d.browser.mjs`, every species from the front, the side, above and three-quarters beside its 2-D frame and its intern. No page draws in 3-D yet — the 3-D route is the plan's slice 4 | [AT-D3-38](#at-d3-38-the-floor-in-3-d-is-the-scenes-third-renderer) **(characters half)** (`tools/characters/selftest.mjs` § 8c, `tools/characters/sheet3d.browser.mjs --calls --selftest`, `tools/characters/distinct.browser.mjs --source 3d --selftest`, each plant seen red, the last over bodies wearing their 2-D paint); the hoist's control — `tools/characters/digest.mjs` holding every species' documents byte-equal before and after (its plant: one outline point moved → that species differs), `sheet.browser.mjs`'s capture pixel-equal, `selftest.mjs`'s sections 1–9 and `distinct.browser.mjs --selftest` green and unedited — and the rasteriser's, `TheBuildingViewStacksTheFloorsTest` (`picture-probe.mjs`, its plants re-anchored in `floor-picture.js` unchanged) and `BuildingPageWiringTest` |
 | 53 | card#13033 stage 2 slice 4 — built 2026-11-11 (`docs/design/plan-13033-stage2-3d-floor.md` §§ 3.4–3.9, § 4, § 6, § 7, § 8 items 4 and 5, § 9 slice 4): **the floor in 3-D, beside the 2-D page** ([§ 4.4](#44-routes-and-what-each-one-fetches)'s `/floor/{floor}/3d` and `/floor/{floor}/3d/{seat_id}`, registered before the seat route, and the seat id `3d` refused where seats are minted, `App\Fleet\SeatTokens::RESERVED_IDS`) — one Blade body for both floor routes (`partials/floor-page.blade.php`, `partials/floor-header.blade.php`), the 2-D page gaining a *Floor in 3D* pill and the 3-D page a *2D* one; `floor3d/main.js`, the hoisted page's second caller, which runs the page over a renderer that draws nothing where there is no WebGL 2; the 3-D renderer `floor3d/floor-paint.js` — the plane and the band rasterised from the theme's documents, the walls instanced by height, the screens facing their sitters, the characters (`creature-paint.js`), `OrbitControls` configured from `view-limits.js` with the one target clamp, the floor-plane pan, the entry pose and the wheel released at a dolly limit, the cut-away, the lights, and the frame loop that runs only while something moves and steps held loops at their own rate; `floor3d/furniture.js` (the kit's files loaded once and instanced per primitive, their unlit materials replaced by toon ones in the floor's `PALETTE` through the kind map's new `PAINT`, the desk set fitted to each desk's slab and parts — the world's desks now carry `parts`, and every piece, sitter and intern its drawn height); `floor3d/floor-labels.js` (`CSS2DRenderer` labels inserted in reading order, overlaps culled by stage 1's `cullOverlaps()` and faded, never removed); the house theme's `piece3d()` (`resources/floor/themes/studio/pieces-3d.js`) drawing the kinds the kit lacks (the kind map's `PIECE3D` list in `resources/floor/models/kenney-furniture-kit/map.js`, which `tools/floor-models/selftest.mjs` re-prints on its `MEASURED` line); the part geometry hoisted out of `creature-paint.js` into `floor3d/part-geometry.js` at its second caller, with an intern's facets coarser than a seat's (§ 6's triangle budget); and the cut-away's test counting a box the eye-to-target segment only touches at the target as no box between them | `Tests\Feature\Floor\Floor3dPageWiringTest` (the routes in order, the gate, `route:cache`, the ids both ways, the wiring, each plant seen red); `SeatTokenConsoleTest`'s refusal of `3d` through the page and the CLI (seen red on a planted acceptance); `tools/design/floor3d.browser.mjs --selftest` — its `still`, `no-webgl`, `url`, `camera`, `cutaway`, `loop`, `labels`, `face`, `budget` and `churn` rows with every plant seen red, `still` and `no-webgl` in the `browser-smoke` job; [AT-D3-38](#at-d3-38-the-floor-in-3-d-is-the-scenes-third-renderer)'s world half gaining its `parts` leg (`floor-world-probe.mjs`, its plant red); `view-limits-probe.mjs`'s target-on-the-band's-line legs; `tools/floor-models/selftest.mjs`'s `piece3d` and `paint` legs; `tools/characters/sheet3d.browser.mjs --calls --selftest`; every floor page test as the control — `FloorPageWiringTest`, `TheNewDeskKeepsEveryLeafTest`, `LobbyPageWiringTest` and `DrillDownOffersTheConsoleToOperatorsTest` re-pointed to the floor page's body partial |
+| 54 | card#13033 stage 2 slice 5 — built 2026-11-12 (`docs/design/plan-13033-stage2-3d-floor.md` § 3.5, § 6, § 8 items 2 and 5, § 9 slice 5): **the 3-D floor animated** — first the renderer split, `floor3d/floor-paint.js` the composer over `floor3d/frame-loop.js` (the one frame queue, one frame pending, a held step on a timer), `floor3d/room-paint.js`, `floor3d/body-paint.js`, `floor3d/transient-paint.js` and `floor3d/terms.js`; the clock, `floor3d/clip-clock.js`, which every frame SETS each body's form from the time since the latest paint and its key's own loop offset ([§ 6.3](#63-forbidden-forms-named-so-they-cannot-be-written-in-good-faith)'s timer bullet) — A3's typing and A4's lean with their blink, A23's sway, A6's z's and A7's and A9's markers lit by the 2-D pulse as labels in a layer of their own (`#floor3d-marks`), A15's replay marker swept across the screen, a walk's steps, each still under reduced motion; the elevator's two leaves over the cab's dark interior and each restroom door's leaf and field at the scene's rects, stepped a frame at a time from the world's new `doors` and `restroom_doors` (the house theme's `piece3d()` no longer drawing the restroom leaf, [§ 6.7](#67-the-restroom-door-and-the-restroom-break--a26-card12786) item 2); A19's and A22's birds and their envelopes on the world's new `effects` and `birdAt()`, A20's ring and its singing bird; A5's screen cross-fade, A11's badge fade, A24's and A10's laptop opacity, and a break walker's thought bubble; `HOP_SCALE` hoisted into `floor/bird.js`; and the 3-D floor's `+` key and zoom-in button, which moved the camera away, bringing it closer | `Tests\Feature\Floor\TheThreeDFloorsClockIsSetNotAccumulatedTest` (`clip-clock-probe.mjs`: the frame each time and offset name, two keys apart in phase, the still under no motion, the walk, each plant seen red); [AT-D3-38](#at-d3-38-the-floor-in-3-d-is-the-scenes-third-renderer)'s world half over the walking runs of AT-D3-23, -31, -32, -33 and -36 and `fx-coord`'s runs — walkers on open lattice, the leaf timeline, the restroom rects, the effects both ways, the birds' ends and arc, each plant seen red; `TheThreeDFloorsCameraStaysAboveTheFloorTest`'s `toward` leg; `tools/design/floor3d.browser.mjs --selftest` — its new `clips`, `motion`, `birds` and `reduced` rows, the `camera` row's zoom buttons, and the `budget` row's fixed and transient terms against what is drawn, every plant seen red, the split's control every row before and after it |
 
 **Three of these are hard requirements before anything downstream may treat this floor as honest:**
 **AT-D3-1** (no animation without its event — the operator's principle, made into a test),

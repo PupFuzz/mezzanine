@@ -5,23 +5,35 @@
  * `floor3d/floor-paint.js`, which owns the frame; `docs/design/plan-13033-stage2-3d-floor.md` §§ 3.3 and 3.5.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ THE CLOCK (plan § 3.5): a held loop steps from the PAINT — `T = (now − paintedAt) / 1000`, its frame `⌊T × fps⌋` plus
- * the character's own loop offset (`loopOffset(key, length)`, keyed by its seat or intern key) — and a walker's time is
- * its effect's `elapsed_ms` plus the time since the paint. The time is set, never accumulated. The rows this slice
- * steps are the held loops whose clip `creatures-3d.js`'s `CLIPS` names (A3's `work`, A4's `think`, A23's
- * `intern-type`) and the walk; every other row is drawn at its still pose until the plan's slice 5 gives it its clip.
+ * ⛔ THE CLOCK (plan § 3.5) IS `floor3d/clip-clock.js`'s, ASKED WHEN THE FRAME RUNS: a seated body's form `since` the paint
+ * that drew it (its held loop's clip, its blink, its marks), a walker's time its effect's `elapsed_ms` plus the time since
+ * that paint. The time is set on every frame, never accumulated, and a body whose held rendering does not move is its
+ * still — no time is set for it at all.
+ *
+ * ⛔ THE MARKS OVER A BODY ARE LABELS (plan § 3.5's A6, A7, A9 rows; § 3.9): the sleeper's three z's and a state marker,
+ * each lit as the 2-D pulse lights it (`data-level` 0–3, the character tree's `zLevels()` and `markerLevel()`), and a
+ * walker's thought bubble (A25's food thought, A26's restroom line), positioned by the marks' own `CSS2DRenderer` over
+ * the canvas — DOM, so they cost no draw call — in the marks layer, apart from the desks' reading-ordered labels.
+ *
+ * ⛔ AN INTERN's LAPTOP IS ITS MATERIAL's OPACITY (A24, A10): shown or not as its stool's activity says, faded over the
+ * row's frames a step a frame — from the opacity the scene says it starts at — and, on a walk, faded over the walk's
+ * `seat` leg (in as it sits, out before it stands) and not carried while it walks.
  *
  * ⛔ A WALKER IS ITS BODY AWAY FROM ITS DESK: drawn under the walk, never twice; a body is built once per key and species,
  * and a body the world no longer draws is disposed.
  */
 
 import { CircleGeometry, InstancedMesh, Matrix4, MeshBasicMaterial, Vector3 } from '../vendor/three/three.module.js';
+import { CSS2DObject } from '../vendor/three/examples/jsm/renderers/CSS2DRenderer.js';
 import { createCreature } from './creature-paint.js';
+import { heldAt, inFlightAt, walkAt } from './clip-clock.js';
 import { onTerm } from './terms.js';
 import { walkerAt } from '../floor/floor-world.js';
 
-/** The held loops this slice steps, by animation id: the clip of `CLIPS` each draws (plan § 3.5's table). */
-const HELD_CLIPS = Object.freeze({ A3: 'work', A4: 'think', A23: 'intern-type' });
+/** Where a body's marks float: this share of its height above its feet (over the head, clear of a raised hand). */
+const MARK_RISE = 1.08;
+/** Where a walker's thought bubble floats: this share of its height above its feet. */
+const THOUGHT_RISE = 1.45;
 
 /** The contact disc under each character: its radius as a share of the character's height. */
 const DISC = 0.22;
@@ -37,12 +49,15 @@ const DISC = 0.22;
  * @param {function(): object} ctx.art the art modules, once the page has them
  * @param {function(string[]): void} ctx.failed § 9 F14's report of an asset that could not be drawn
  * @param {function(): number} ctx.now the clock a body built between frames is placed at (`performance.now()`)
+ * @param {object} ctx.marks the group the marks' label objects stand in (the marks layer's scene)
  */
-export function floorBodies({ document, creatures, room, wake, art, failed, now: clock }) {
+export function floorBodies({ document, creatures, room, wake, art, failed, now: clock, marks }) {
     let world = null;
     let paintedAt = 0;
-    /** key → `{ creature | null, spec, dead }` */
+    /** key → `{ creature | null, spec, dead, mark, thought, read }` — `read` the clock's last answer, for `inspect()` */
     const bodies = new Map();
+    /** intern key → its A24 fade in flight this paint (the world's desk rows) */
+    let fades = new Map();
     const discGeometry = new CircleGeometry(1, 20).rotateX(-Math.PI / 2);
     const discMaterial = new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.18, depthWrite: false });
     let discs = null;
@@ -62,7 +77,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             }
 
             for (const n of d.interns) {
-                out.set(n.key, { key: n.key, species: n.seat_species, chibi: true, h: n.h, at: n.at, pose: 'present', held: n.animation ?? null, walker: null });
+                out.set(n.key, { key: n.key, species: n.seat_species, chibi: true, h: n.h, at: n.at, pose: 'present', held: n.animation ?? null, walker: null, laptop: n.laptop });
             }
         }
 
@@ -107,13 +122,14 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
                 b.creature?.dispose();
                 b.creature && creatures.remove(b.creature.mesh);
                 b.dead = true;
+                unmark(b);
                 bodies.delete(key);
             }
         }
 
         for (const [key, spec] of wanted) {
             if (!bodies.has(key)) {
-                const b = { creature: null, spec, dead: false };
+                const b = { creature: null, spec, dead: false, mark: null, thought: null, read: null };
 
                 bodies.set(key, b);
                 createCreature(document, art().characters, key, { species: spec.species ?? undefined, chibi: spec.chibi, pose: 'stand', height: spec.h })
@@ -141,15 +157,148 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
         standDiscs(wanted);
     };
 
+    /** A label over the scene in the marks layer: an element and its object. */
+    const markOf = (className, hidden) => {
+        const element = document.createElement('div');
+
+        element.className = className;
+        if (hidden) {
+            element.setAttribute('aria-hidden', 'true');
+        }
+
+        const object = new CSS2DObject(element);
+
+        marks.add(object);
+
+        return { element, object, sig: null };
+    };
+
+    const drop = (m) => {
+        if (m !== null) {
+            marks.remove(m.object);
+            m.element.remove();
+        }
+
+        return null;
+    };
+
+    const unmark = (b) => {
+        b.mark = drop(b.mark);
+        b.thought = drop(b.thought);
+    };
+
+    /** The body's marks at the clock's answer: the z's or the marker over its head, lit as the pulse says, or none. */
+    const markBody = (b, state) => {
+        const m = state?.marks ?? null;
+
+        if (m === null) {
+            b.mark = drop(b.mark);
+
+            return;
+        }
+
+        b.mark ??= markOf('floor3d-mark', true);
+        b.mark.element.dataset.key = b.spec.key;
+
+        const glyphs = m.kind === 'zs' ? ['z', 'z', 'Z'] : [m.kind];
+        const sig = JSON.stringify([m.kind, m.levels]);
+
+        if (sig !== b.mark.sig) {
+            b.mark.sig = sig;
+            b.mark.element.dataset.kind = m.kind === 'zs' ? 'zs' : 'marker';
+            b.mark.element.replaceChildren(...glyphs.map((g, k) => {
+                const glyph = document.createElement('span');
+
+                glyph.className = 'floor3d-glyph';
+                glyph.textContent = g;
+                glyph.dataset.level = String(m.levels[k]);
+
+                return glyph;
+            }));
+        }
+
+        b.mark.object.position.set(b.spec.at.x, b.spec.h * MARK_RISE, b.spec.at.z);
+    };
+
+    /** A walker's thought bubble (A25, A26: the scene's `thought` on its effect), over its head wherever it is. */
+    const thinkBody = (b, p) => {
+        const lines = b.spec.walker?.effect.thought?.lines ?? null;
+
+        if (lines === null || p === null) {
+            b.thought = drop(b.thought);
+
+            return;
+        }
+
+        b.thought ??= markOf('floor3d-label floor3d-bubble floor3d-thought', false);
+
+        const sig = JSON.stringify(lines.map((l) => l.text));
+
+        if (sig !== b.thought.sig) {
+            b.thought.sig = sig;
+            b.thought.element.replaceChildren(...lines.map((l) => {
+                const span = document.createElement('span');
+
+                span.textContent = l.text;
+
+                return span;
+            }));
+        }
+
+        b.thought.object.position.set(p.x, b.spec.h * THOUGHT_RISE, p.z);
+        b.thought.object.visible = b.creature?.mesh.visible ?? false;
+    };
+
+    /**
+     * An intern's laptop `since` the paint: an A24 fade in flight from its start opacity to its end, a step a frame, else
+     * the stool's activity (`laptop`) — with the ms to its next step while it fades (`null` once it has ended).
+     */
+    const laptopAt = (s, since) => {
+        const fx = fades.get(s.key);
+
+        if (fx === undefined) {
+            return { opacity: s.laptop ? 1 : 0, next: null };
+        }
+
+        const t = (fx.elapsed_ms ?? 0) + since;
+        const f = Math.floor(t / fx.frame_interval_ms);
+
+        if (!(fx.frames > 0) || f >= fx.frames) {
+            return { opacity: fx.to, next: null };
+        }
+
+        return { opacity: fx.from + (fx.to - fx.from) * (f / fx.frames), next: fx.frame_interval_ms - (t % fx.frame_interval_ms) };
+    };
+
+    /** A walking intern's laptop at `t` ms into its walk: faded over the walk's `seat` leg, and not carried off it. */
+    const walkerLaptop = (fx, t) => {
+        const seat = fx.legs.find((l) => l.kind === 'seat');
+
+        if (seat === undefined) {
+            return 0;
+        }
+
+        const f = t / fx.frame_interval_ms;
+        const arriving = fx.leg_kind === 'arrive';
+        const [from, to] = arriving ? [0, 1] : [1, 0];
+
+        if (f < seat.start) {
+            return from;
+        }
+
+        return f >= seat.start + seat.frames ? to : from + (to - from) * (Math.floor(f - seat.start) / seat.frames);
+    };
+
     /**
      * One body at `now` (plan § 3.5's clock): a walker at its route's point, turned along its leg and stepping its walk; a
-     * seated body at its place, its held loop's pose from the paint. Answers when it next needs a frame: `0` every display
-     * frame (a walker in flight), a delay in ms (a held loop's next step), or `null` (still).
+     * seated body at its place in its held form `since` the paint. Answers when it next needs a frame: `0` every display
+     * frame (a walker in flight), a delay in ms (a held loop's or a laptop fade's next step), or `null` (still).
      */
     const place = (b, now) => {
         const c = b.creature;
         const s = b.spec;
         const characters = art().characters;
+        const since = now - paintedAt;
 
         if (c === null) {
             return null;
@@ -157,10 +306,11 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
 
         if (s.walker !== null) {
             const fx = s.walker.effect;
-            const t = fx.elapsed_ms + (now - paintedAt);
             const span = Math.max(...fx.legs.map((l) => l.start + l.frames)) * fx.frame_interval_ms;
+            const { t, running } = inFlightAt(fx, span, since);
             const p = walkerAt(world.slab, s.walker, Math.min(t, span));
             const q = walkerAt(world.slab, s.walker, Math.max(0, Math.min(t, span) - 60));
+            const pose = walkAt(characters, fx, t, running);
 
             c.mesh.visible = p !== null && p.where === 'floor';
 
@@ -172,35 +322,40 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
                 }
             }
 
-            const moving = fx.frames > 0 && t < span;
-            const walk = characters.CLIPS.walk;
+            c.pose(pose);
+            c.blink(false);
 
-            c.pose(moving ? walk[Math.floor(t / fx.frame_interval_ms) % walk.length] : 'stand');
+            if (s.chibi) {
+                c.fade(walkerLaptop(fx, Math.min(t, span)));
+            }
 
-            return moving ? 0 : null;
+            b.mark = drop(b.mark);
+            thinkBody(b, p);
+            b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, pose, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
+
+            return running ? 0 : null;
         }
+
+        const state = heldAt(characters, { key: s.key, pose: s.pose, held: s.held }, since);
+        const laptop = s.chibi ? laptopAt(s, since) : null;
 
         c.mesh.visible = true;
         c.mesh.position.set(s.at.x, 0, s.at.z);
         c.mesh.rotation.y = 0;
+        c.pose(state.pose);
+        c.blink(state.blink);
 
-        const clipName = s.held?.motion === true ? HELD_CLIPS[s.held.animation_id] : undefined;
-        const base = characters.POSES[s.pose] !== undefined ? s.pose : 'stand';
-
-        if (clipName === undefined || typeof s.held.frame_interval_ms !== 'number') {
-            c.pose(base);
-
-            return null;
+        if (laptop !== null) {
+            c.fade(laptop.opacity);
         }
 
-        const clip = characters.CLIPS[clipName];
-        const ms = s.held.frame_interval_ms;
-        const T = now - paintedAt;
-        const step = Math.floor(T / ms) + characters.loopOffset(s.key, clip.length);
+        markBody(b, state);
+        b.thought = drop(b.thought);
+        b.read = { key: s.key, kind: 'held', animation_id: s.held?.animation_id ?? null, motion: s.held?.motion === true, t: state.frame === null ? null : since, pose: state.pose, blink: state.blink, frame: state.frame, marks: state.marks, now };
 
-        c.pose(clip[step % clip.length]);
+        const waits = [state.next, laptop?.next ?? null].filter((n) => n !== null);
 
-        return clip.length > 1 ? ms - (T % ms) : null;
+        return waits.length === 0 ? null : Math.min(...waits);
     };
 
     const built = () => [...bodies.values()].filter((b) => b.creature !== null);
@@ -210,6 +365,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
         paint(worldIn, at) {
             world = worldIn;
             paintedAt = at;
+            fades = new Map(world.effects.filter((e) => e.kind === 'desk' && e.effect.animation_id === 'A24').map((e) => [e.key, e.effect]));
             standBodies();
         },
 
@@ -241,6 +397,8 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
 
             return {
                 textures,
+                // the clock's last answer for every built body: its time, its pose and its loop frame (the clip row's read)
+                clock: built().map((b) => b.read).filter((r) => r !== null),
                 meshes: new Set(built().map((b) => b.creature.mesh)),
                 bodies: built().length,
                 seats: built().filter((b) => !b.spec.chibi).length,
