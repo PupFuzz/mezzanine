@@ -27,34 +27,22 @@
  */
 
 import {
-    BoxGeometry,
     Bone,
     CanvasTexture,
-    CatmullRomCurve3,
     Color,
-    ConeGeometry,
     CylinderGeometry,
-    Euler,
-    ExtrudeGeometry,
     Float32BufferAttribute,
-    LatheGeometry,
-    Matrix4,
     MeshToonMaterial,
     PlaneGeometry,
-    Quaternion,
     SRGBColorSpace,
-    Shape,
     Skeleton,
     SkinnedMesh,
-    SphereGeometry,
-    TorusGeometry,
-    TubeGeometry,
     Uint16BufferAttribute,
-    Vector2,
     Vector3,
 } from '../vendor/three/three.module.js';
 import { mergeGeometries } from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rasterise } from './svg-texture.js';
+import { DETAIL, partGeometry } from './part-geometry.js';
 
 /** The face atlas's side, px, by default — § 6's 256 bucket; the near bucket (512) is the caller's to ask for. */
 export const FACE_TEXTURE = 256;
@@ -130,49 +118,6 @@ export function atlasLayout(size, faceBox, lidAspect) {
         lid: px(0, size * 0.75 + 1, lidW, lidH),
         white: px(size - 8, size - 8, 8, 8),
     };
-}
-
-/** One part's geometry in frame units, moved to where the part stands. */
-function partGeometry(part) {
-    const { shape, params } = part;
-    let geo;
-
-    if (shape === 'lathe') {
-        // Three's lathe turns its points from the foot up; the profile is written from the crown down
-        geo = new LatheGeometry([...params.points].reverse().map(([r, y]) => new Vector2(r, y)), 24);
-    } else if (shape === 'extrude') {
-        const outline = new Shape(params.points.map(([x, y]) => new Vector2(x, y)));
-        geo = new ExtrudeGeometry(outline, {
-            depth: params.depth, bevelEnabled: params.bevel > 0, bevelThickness: params.bevel, bevelSize: params.bevelSize, bevelOffset: -params.bevelSize, bevelSegments: 2, curveSegments: 4,
-        });
-    } else if (shape === 'sphere') {
-        // a small ball (a bump, a bead, a nose) needs few facets to read round; a head or a belly more
-        const big = Math.max(...part.scale) >= 12;
-
-        geo = new SphereGeometry(params.r, big ? 16 : 8, big ? 10 : 6);
-    } else if (shape === 'tube') {
-        const curve = new CatmullRomCurve3(params.points.map(([x, y, z]) => new Vector3(x, y, z)));
-        geo = new TubeGeometry(curve, Math.max(4, params.points.length * 2), params.radius, 6, false);
-    } else if (shape === 'cone') {
-        geo = new ConeGeometry(params.radius, params.height, 8);
-        geo.translate(0, params.height / 2, 0);
-        geo.applyQuaternion(new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), new Vector3(...params.dir).normalize()));
-    } else if (shape === 'cylinder') {
-        geo = new CylinderGeometry(params.radius, params.radius, params.height, 20);
-    } else if (shape === 'torus') {
-        geo = new TorusGeometry(params.radius, params.tube, 8, 24);
-    } else if (shape === 'box') {
-        geo = new BoxGeometry(...params.size);
-    } else {
-        throw new Error(`no geometry for a part of shape "${shape}"`);
-    }
-
-    const [sx, sy, sz] = part.scale;
-    const m = new Matrix4().compose(new Vector3(...part.at), new Quaternion().setFromEuler(new Euler(...part.rotate.map((d) => d * DEG))), new Vector3(sx, sy, sz));
-
-    geo.applyMatrix4(m);
-
-    return geo.index ? geo.toNonIndexed() : geo;
 }
 
 /**
@@ -302,7 +247,7 @@ export async function createCreature(document, characters, key, { species, chibi
     const own = [], laptop = [];
 
     for (const part of body.parts) {
-        const geo = partGeometry(part);
+        const geo = partGeometry(part, chibi ? DETAIL.chibi : DETAIL.seat);
 
         if (part.laptop) {
             // the lid's back (+z, toward the viewer) carries the lid texture; every other face the shell's plain colour

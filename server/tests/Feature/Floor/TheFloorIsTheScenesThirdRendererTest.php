@@ -73,6 +73,8 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
         extent: Object.freeze({ w: slab.box.w, d: slab.box.d }),', 'frame', false],
             'a bubble\'s anchor given its drawn y for depth' => ['../floor/floor-world.js',
                 'return Object.freeze({ x: el.x + el.w / 2, depth: desk.depth_y,', 'return Object.freeze({ x: el.x + el.w / 2, depth: el.y,', 'labels', false],
+            'a desk\'s chair stood in front of its slab, not behind it with its sitter' => ['../floor/floor-world.js',
+                "chair: part('chair', () => sitterZ),", "chair: part('chair', () => plan.y + plan.h * 2),", 'parts', false],
             'a standing piece placed at its cell\'s top, not its foot' => ['../floor/floor-world.js',
                 'at: at({ x: s.x + s.w / 2, y: s.y + s.h }),', 'at: at({ x: s.x + s.w / 2, y: s.y }),', 'pieces', false],
         ];

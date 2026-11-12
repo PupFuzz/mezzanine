@@ -241,6 +241,31 @@ class SeatTokenConsoleTest extends TestCase
             ->assertSuccessful();
     }
 
+    /**
+     * Hazard (card#13033 stage 2, `docs/design/plan-13033-stage2-3d-floor.md` § 3.8): a seat named `3d` is issued, and its
+     * drill-down address `/floor/{floor}/3d` is the 3-D floor's — refused by name through the page and through the CLI,
+     * both of which mint through `SeatTokens::issue()`, and nothing is written.
+     */
+    public function test_the_seat_id_3d_is_refused_by_the_page_and_by_the_cli_and_nothing_is_written(): void
+    {
+        $this->confirmedOperator();
+
+        $this->issueOnPage('3d')
+            ->assertRedirect(route('admin.tokens.index'))
+            ->assertSessionHasErrors(['seat_id' => 'seat_id "3d" is reserved: it is a segment of the floor\'s own addresses (/floor/{floor}/3d). Nothing was issued.']);
+
+        $this->assertSame(1, Artisan::call('mezzanine:ingest-token:issue', ['seat_id' => '3d', '--by' => 'suite']));
+        $this->assertStringContainsString('seat_id "3d" is reserved', Artisan::output());
+        $this->assertStringNotContainsString('mzn_', Artisan::output());
+
+        foreach (['installs', 'seats', 'seat_state', 'ingest_tokens'] as $table) {
+            $this->assertSame(0, DB::table($table)->count(), "$table gained a row");
+        }
+
+        // The control: an id that merely contains the segment is a seat like any other.
+        $this->assertNotNull($this->plaintextIn($this->issueOnPage('3d-printer')->assertOk()));
+    }
+
     /** Hazard: a long operator email is refused or truncated. */
     public function test_a_long_operator_address_is_recorded_whole_as_issuer_and_revoker(): void
     {

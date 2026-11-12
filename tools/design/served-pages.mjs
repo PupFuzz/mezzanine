@@ -34,9 +34,15 @@ export function fixtureRun(name) {
   return resolve(holders[0].runs[name]);
 }
 
-/** Each view the layout serves here, rendered once, its absolute origins made local. */
-export const VIEWS = Object.fromEntries(['floor', 'dashboard', 'login', 'console', 'building'].map((v) => [v,
-  execFileSync('php', [join(HERE, 'render-floor-view.php'), v], { encoding: 'utf8' }).replace(/https?:\/\/[a-z0-9.-]+(:\d+)?(\/|(?=["']))/gi, '/')]));
+/**
+ * Each view the layout serves here, rendered once, its absolute origins made local — in markup, and in the import map's
+ * JSON, whose slashes are escaped (`http:\/\/host\/js\/…`): its bare `three` entry is an absolute URL the vendored
+ * add-ons resolve through (card#13033 stage 2), so an origin left there is a request to a host nobody serves.
+ */
+export const VIEWS = Object.fromEntries(['floor', 'floor3d', 'dashboard', 'login', 'console', 'building'].map((v) => [v,
+  execFileSync('php', [join(HERE, 'render-floor-view.php'), v], { encoding: 'utf8' })
+    .replace(/https?:\/\/[a-z0-9.-]+(:\d+)?(\/|(?=["']))/gi, '/')
+    .replace(/https?:\\\/\\\/[a-z0-9.-]+(:\d+)?(?=\\\/)/gi, '')]));
 
 for (const [v, html] of Object.entries(VIEWS)) {
   if (!html.includes('<script>') || !html.includes('<link rel="stylesheet"')) throw new Error(`the ${v} view rendered no head script or no stylesheet link`);
@@ -153,7 +159,9 @@ export class StaleAnchor extends Error {
 }
 
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png',
-  '.json': 'application/json', '.tmj': 'application/json', '.tsx': 'application/xml', '.svg': 'image/svg+xml' };
+  '.json': 'application/json', '.tmj': 'application/json', '.tsx': 'application/xml', '.svg': 'image/svg+xml', '.glb': 'model/gltf-binary' };
+/** The files served as bytes, never read as text: a plant edits text, and a binary read as UTF-8 is a different file. */
+const BINARY = new Set(['.png', '.glb']);
 
 /**
  * One row's server. `c` — the row's page conditions: `run` (the fixture run, `floor_rides` by default), `delay` (ms
@@ -163,6 +171,9 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * asset that failed to load), `stream` (ms added to every message's `at_ms`, so a run's messages land after the page
  * has settled on a slow host), `busy` (ms the page spends in one long task as each message lands, before it is
  * handled — the next frame's time is then taken before the message's paint runs, as on a busy live floor); and
+ * `late` (`path pattern → ms` before a static file whose path matches the pattern, a regular expression, is answered —
+ * an asset the page draws without, then gets),
+ * `files` (`path → bytes` served as though on disk — a file a plant names that no tree holds), and
  * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public`, `art:<path>` for a
  * file the asset route serves as `/art/<path>` (card#13033), `page:<view>` (that view's rendered page) or `page`
  * (every rendered page).
@@ -172,7 +183,8 @@ const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'te
  * a plant that no longer exists, never as a row that went red. Any failure while applying them is that refusal.
  */
 export function serve(c = {}) {
-  const run = fixtureRun(c.run ?? 'floor_rides');
+  // `run` names a fixture run, or is a run already built (a tool's composition of fixture runs, card#13033 stage 2).
+  const run = typeof c.run === 'object' && c.run !== null ? c.run : fixtureRun(c.run ?? 'floor_rides');
   const plants = c.plant ?? [];
   const edit = (file, text) => plants.filter((p) => p.file === file).reduce((t, p) => {
     if (!t.includes(p.from)) throw new StaleAnchor(file, p.from);
@@ -180,7 +192,7 @@ export function serve(c = {}) {
   }, text);
   const pageOf = (view, key, seat = '') => {
     let html = VIEWS[view];
-    if (view === 'floor') html = html.replace(/data-floor="[^"]*"/, `data-floor="${key}"`).replace(/data-seat="[^"]*"/, `data-seat="${seat}"`);
+    if (view === 'floor' || view === 'floor3d') html = html.replace(/data-floor="[^"]*"/, `data-floor="${key}"`).replace(/data-seat="[^"]*"/, `data-seat="${seat}"`);
     const at = html.indexOf('<link rel="stylesheet"');
     return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0, c.busy ?? 0) + html.slice(at)));
   };
@@ -210,23 +222,31 @@ export function serve(c = {}) {
     }
     if (path === '/release') { release?.(); release = null; res.end('ok'); return; }
     const documents = { '/building': () => pageOf('building'), '/dashboard': () => pageOf('dashboard'), '/login': () => pageOf('login'), '/admin': () => pageOf('console'), '/admin/other': () => pageOf('console') };
-    const floor = /^\/floor\/([^/]+)(?:\/([^/]+))?$/.exec(path);
-    if (floor !== null || Object.hasOwn(documents, path)) {
+    // `/floor/{floor}/3d[/{seat}]` first, as `routes/web.php` registers it: the 3-D floor's view (card#13033 stage 2).
+    const floor3d = /^\/floor\/([^/]+)\/3d(?:\/([^/]+))?$/.exec(path);
+    const floor = floor3d === null ? /^\/floor\/([^/]+)(?:\/([^/]+))?$/.exec(path) : null;
+    if (floor3d !== null || floor !== null || Object.hasOwn(documents, path)) {
       if (c.redirect?.[path] !== undefined) { res.writeHead(302, { location: c.redirect[path] }); res.end(); return; }
-      const body = () => doc(floor !== null ? pageOf('floor', floor[1], floor[2] ?? '') : documents[path]());
+      const body = () => doc(floor3d !== null ? pageOf('floor3d', floor3d[1], floor3d[2] ?? '')
+        : floor !== null ? pageOf('floor', floor[1], floor[2] ?? '') : documents[path]());
       const wait = c.doc?.[path];
       if (wait === 'gate') { release = body; return; }
       setTimeout(body, wait ?? 0);
       return;
     }
     if ((c.missing ?? []).includes(path)) { res.writeHead(404); res.end(); return; }
+    const lateBy = Object.entries(c.late ?? {}).find(([pattern]) => new RegExp(pattern).test(path))?.[1] ?? 0;
+    if (Object.hasOwn(c.files ?? {}, path)) {
+      setTimeout(() => { res.writeHead(200, { 'content-type': TYPES[extname(path)] ?? 'application/octet-stream', 'cache-control': 'no-store' }); res.end(c.files[path]); }, lateBy);
+      return;
+    }
     for (const [prefix, root] of roots) {
       if (!path.startsWith(prefix)) continue;
       const file = normalize(join(root, path.slice(prefix.length)));
       if (file.startsWith(root) && existsSync(file)) {
         const rel = prefix === '/' ? file.slice(join(REPO, 'server', 'public').length + 1) : `art:${path.slice('/art/'.length)}`;
-        const body = edit(rel, readFileSync(file, 'utf8'));
-        const late = (path.startsWith('/js/') || path.startsWith('/css/')) ? (c.delay ?? 0) : 0;
+        const body = BINARY.has(extname(file)) ? readFileSync(file) : edit(rel, readFileSync(file, 'utf8'));
+        const late = ((path.startsWith('/js/') || path.startsWith('/css/')) ? (c.delay ?? 0) : 0) + lateBy;
         setTimeout(() => { res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' }); res.end(body); }, late);
         return;
       }

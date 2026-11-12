@@ -152,6 +152,14 @@ export function floorWorld(scene) {
         const [monitor] = of('monitor');
         const [screenText] = of('monitor-text');
         const monitorAt = monitorFrame(plan);
+        const sitterZ = plan.y - plan.h / 2;
+        // One of the desk's pieces of furniture: where its art element's centre is across, at the plan depth `y` (scene
+        // px) it stands at, its drawn width and height in units — or `null` for a desk the scene draws without it (a placeholder's).
+        const part = (kind, y) => {
+            const [e] = of(kind);
+
+            return e === undefined ? null : Object.freeze({ at: at({ x: e.x + e.w / 2, y: y(e) }), w: e.w / UNIT, h: e.h / UNIT });
+        };
 
         desks.push(Object.freeze({
             key: d.key,
@@ -161,13 +169,23 @@ export function floorWorld(scene) {
             placeholder: d.placeholder,
             lighting: d.lighting,
             slab: Object.freeze({ left: back.x, right: front.x, back: back.z, front: front.z, top: DESK_H_U, drawers: 'sitter' }),
+            // The furniture the theme draws for the desk (plan § 3.1's `parts`), each where its 2-D element stands: the
+            // chair where its sitter sits, the monitor and the props on the slab, the side table at its foot.
+            parts: Object.freeze({
+                chair: part('chair', () => sitterZ),
+                monitor: part('monitor-frame', () => plan.y + plan.h / 2),
+                props: part('desk-props', () => plan.y + plan.h / 2),
+                sideTable: part('side-table', (e) => e.y + e.h),
+            }),
             sitter: character === undefined ? null : Object.freeze({
                 key: d.key,
                 species: character.species,
                 pose: character.pose,
                 glyph: character.glyph,
                 animation: character.animation,
-                at: at({ x: d.anchor_x, y: plan.y - plan.h / 2 }),
+                at: at({ x: d.anchor_x, y: sitterZ }),
+                // as tall as its 2-D character is drawn (§ 3.1's heights: the door view's arithmetic, so no new figure)
+                h: character.h / UNIT,
                 facing: '+z',
             }),
             interns: Object.freeze(of('stool').map((e) => Object.freeze({
@@ -179,6 +197,7 @@ export function floorWorld(scene) {
                 lid: 'intern',
                 animation: e.animation,
                 at: at({ x: e.x + e.w / 2, y: e.y + e.h }),
+                h: e.h / UNIT,
             }))),
             screen: monitor === undefined ? null : Object.freeze({
                 facing: 'sitter',
@@ -259,6 +278,7 @@ export function floorWorld(scene) {
             cell: Object.freeze({ x: s.x, y: s.y }),
             at: at({ x: s.x + s.w / 2, y: s.y + s.h }),
             w: s.w / UNIT,
+            h: s.h / UNIT,
             decoration: s.decoration,
             doc: s.doc,
         }))),

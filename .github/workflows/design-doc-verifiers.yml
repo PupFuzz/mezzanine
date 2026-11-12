@@ -90,6 +90,9 @@
 #       (card#13033): each times a glide, a keyboard path, a wheel stream or the page's start, which nobody has
 #       measured on a runner.
 #       Its `still` and `no-webgl` rows are the `browser-smoke` job's.
+#   `floor3d.browser.mjs --selftest`, its `url`, `camera`, `cutaway`, `loop`, `labels`, `face`, `budget`, `churn` and
+#       `first` rows — the same browser (card#13033 stage 2): each times a gesture, a tween, a frame rate or a load on
+#       the shell, which nobody has measured on a runner. Its `still` and `no-webgl` rows are the `browser-smoke` job's.
 #
 # ⛔ NONE IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this
 # very defect one layer down — a check reported as passed that never ran. They are absent and
@@ -302,6 +305,14 @@ jobs:
       - name: The building view starts and draws its pictures, and is its list without WebGL 2, with the rows' own planted controls
         if: ${{ !cancelled() }}
         run: node tools/design/building-view.browser.mjs --row still --row no-webgl --selftest
+
+      # card#13033 stage 2: the 3-D floor (`/floor/{floor}/3d`) draws in this pinned Chromium — no uncaught exception, a
+      # WebGL 2 context, the entry pose at the home tilt, every label one element in reading order after a desk that
+      # arrives late, each kit file fetched once — and without WebGL 2 is its statement and its list. Its two static rows
+      # only, with their planted controls; its rows that time a gesture, a tween or a frame rate are run by hand.
+      - name: The 3-D floor draws its world and labels, and is its statement and list without WebGL 2, with the rows' own planted controls
+        if: ${{ !cancelled() }}
+        run: node tools/design/floor3d.browser.mjs --row still --row no-webgl --selftest
 
       # card#12796, card#12842: every pair of character species is told apart by silhouette or by body colour, measured
       # from the generator's standing frames as this pinned Chromium draws them. `--selftest`

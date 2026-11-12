@@ -57,6 +57,7 @@ class TheThreeDFloorsCameraStaysAboveTheFloorTest extends TestCase
             'the fit ignoring the stage\'s aspect' => [$limits, 'const fit = fitDistance(bounds, FOV, surface.width / surface.height);', 'const fit = fitDistance(bounds, FOV, 1);', 'limits', 'view-limits'],
             'the entry from straight above' => [$limits, 'entry: orbitCamera({ x: 0, y: 0, z: 0 }, HOME_POLAR, 0, fit),', 'entry: orbitCamera({ x: 0, y: 0, z: 0 }, 0, 0, fit),', 'limits', 'view-limits'],
             'the cut-away meeting nothing' => [$limits, '        if (t0 > t1) {', '        if (true) {', 'cutaway', 'view-limits'],
+            'the cut-away counting a box the segment only touches at the target' => [$limits, '    return t0 < 1 ? t0 : null;', '    return t0;', 'cutaway', 'view-limits'],
             'the cut-away ignoring the band' => [$limits, "...(world.band === null ? [] : [{ id: 'band',", "...(true ? [] : [{ id: 'band',", 'cutaway', 'view-limits'],
             'ArrowUp reaching the pan' => [$acts, '            if (modifiers.shift) {', '            if (modifiers.shift || dy !== 0) {', 'tilt', 'camera-acts'],
             'a Shift-arrow reaching the turn' => [$acts, '            if (modifiers.shift) {', '            if (false) {', 'pan', 'camera-acts'],

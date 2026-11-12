@@ -18,9 +18,9 @@
  * `tokenFileIngestUrl()` from `app.url` — the second argument, `https://mezzanine.example` when absent.
  *
  * `building-view.browser.mjs` (card#13033) needs the building view (`building`), the same way — through the layout, as the
- * route serves it.
+ * route serves it; and `floor3d.browser.mjs` (card#13033 stage 2) the 3-D floor (`floor3d`), `/floor/{floor}/3d`'s view.
  *
- *   php tools/design/render-floor-view.php [floor|dashboard|login|console|building|tokens-issued [<app.url>]]
+ *   php tools/design/render-floor-view.php [floor|floor3d|dashboard|login|console|building|tokens-issued [<app.url>]]
  */
 
 use App\Admin\ConsoleModules;
@@ -43,7 +43,7 @@ view()->share('errors', new ViewErrorBag);
 
 $which = $argv[1] ?? 'floor';
 
-if ($which !== 'floor') {
+if (! in_array($which, ['floor', 'floor3d'], true)) {
     $user = new User(['email' => 'viewer@example.test']);
     $user->role = User::OPERATOR;
     auth()->setUser($user);
@@ -55,6 +55,7 @@ if ($which !== 'floor') {
 
 echo match ($which) {
     'floor' => view('floor', ['floor' => 'aimla', 'seat' => null])->render(),
+    'floor3d' => view('floor3d', ['floor' => 'aimla', 'seat' => null])->render(),
     'dashboard' => view('dashboard')->render(),
     'building' => view('building')->render(),
     'login' => view('auth.login')->render(),
