@@ -26,8 +26,8 @@ import { draw, pick, chance } from './seed.js';
 function hex2rgb(h) { h = h.replace('#', ''); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); }
 function rgb2hex(r) { return '#' + r.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join(''); }
 function mix(a, b, t) { const A = hex2rgb(a), B = hex2rgb(b); return rgb2hex(A.map((v, i) => v + (B[i] - v) * t)); }
-const shade = (c, t) => mix(c, '#3d2b3c', t);   // shadows lean cool plum, painterly
-const tint = (c, t) => mix(c, '#fff6e6', t);    // highlights lean warm cream
+export const shade = (c, t) => mix(c, '#3d2b3c', t);   // shadows lean cool plum, painterly
+export const tint = (c, t) => mix(c, '#fff6e6', t);    // highlights lean warm cream
 const line = (c) => mix(c, '#3a2420', 0.58);    // a coloured line, never black
 const EYE = '#2b1f24', MOUTH = '#4e2a2a', GLINT = '#fffaf0';
 const f = (v) => +v.toFixed(2);
@@ -56,19 +56,37 @@ class Pen {
   clip(d) { const id = this.uid(); this.defs.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>`); return `url(#${id})`; }
 }
 
+/**
+ * A closed Catmull-Rom through points, as cubic segments — each [control 1, control 2, end], the first starting at
+ * `pts[0]`: the curve every smooth 2-D outline is drawn through (`smooth()`) and `creatures-3d.js` samples.
+ */
+export function smoothSegments(pts) {
+  const n = pts.length;
+  return pts.map((p1, i) => {
+    const p0 = pts[(i - 1 + n) % n], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+    return [[p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6], p2];
+  });
+}
+
 // closed Catmull-Rom through points -> smooth cubic path
 function smooth(pts) {
-  const n = pts.length; let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
-  for (let i = 0; i < n; i++) {
-    const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
-    d += `C${f(p1[0] + (p2[0] - p0[0]) / 6)} ${f(p1[1] + (p2[1] - p0[1]) / 6)} ${f(p2[0] - (p3[0] - p1[0]) / 6)} ${f(p2[1] - (p3[1] - p1[1]) / 6)} ${f(p2[0])} ${f(p2[1])}`;
-  }
+  let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
+  for (const [c1, c2, p2] of smoothSegments(pts)) d += `C${f(c1[0])} ${f(c1[1])} ${f(c2[0])} ${f(c2[1])} ${f(p2[0])} ${f(p2[1])}`;
   return d + 'Z';
+}
+
+/**
+ * A leaf pointing "up" (angle 0) from its base at the origin, as its two cubics — each [start, control 1, control 2,
+ * end], in the frame's y-down units: what `leafD()` draws and `creatures-3d.js` samples.
+ */
+export function leafCurves(len, wid) {
+  return [[[0, 0], [wid, -len * 0.22], [wid * 0.85, -len * 0.78], [0, -len]], [[0, -len], [-wid * 0.85, -len * 0.78], [-wid, -len * 0.22], [0, 0]]];
 }
 
 // a leaf pointing "up" (angle 0) from its base (x, y)
 function leafD(len, wid) {
-  return `M0 0C${f(wid)} ${f(-len * 0.22)} ${f(wid * 0.85)} ${f(-len * 0.78)} 0 ${f(-len)}C${f(-wid * 0.85)} ${f(-len * 0.78)} ${f(-wid)} ${f(-len * 0.22)} 0 0Z`;
+  const [[a0, a1, a2, a3], [, b1, b2, b3]] = leafCurves(len, wid), P = ([x, y]) => `${f(x)} ${f(y)}`;
+  return `M${P(a0)}C${P(a1)} ${P(a2)} ${P(a3)}C${P(b1)} ${P(b2)} ${P(b3)}Z`;
 }
 
 // a scalloped closed outline: n soft bumps, each `bulge` deep, around the ellipse (cx, cy, rx, ry) — a fleece, a
@@ -93,11 +111,74 @@ function curve(pts) {
   return d;
 }
 
+// ---- THE SPECIES' SHAPE (card#13033 stage 2 slice 3, docs/design/plan-13033-stage2-3d-floor.md § 3.3's M7) ----
+// Each species entry carries `shape`: the DATA its 2-D `build()` draws from and `creatures-3d.js`'s `bodyParts()` builds
+// its 3-D body from — one statement of the creature's form, never a second recipe table. In frame units at girth 1,
+// `dx` across from the centre line (x 54) and `y` down from the frame's top, the foot line at FOOT:
+// - `profiles` — named half-outlines, each from the crown (dx 0) down one side to the foot (dx 0): what `c.sym()`
+//   mirrors into the 2-D outline and the 3-D lathe turns. `solid: 'extrude'` marks a body that is no solid of revolution
+//   (`outline`, its whole closed outline as [dx, y] points, the 3-D body extruded from it).
+// - `features` — the parts the outline does not hold, each named (`ear`, `tail`, `leaf`, …): a `path` (a closed shape,
+//   its commands as [op, [dx, y]…]), a `stroke` (a line of `width`), an `ell` (an ellipse at `at`, radii `r`), a `leaf`
+//   fan (`at`, and [angle, length, width] per leaf) or a `scallop` (an ellipse with `n` bumps `bulge` deep); `side`
+//   says where it is drawn — `pair` mirrored to both sides, `key` once on the key's side, `away` on the other,
+//   `centre` on the centre line.
+// - the anchors — `face`, `hat` (`dx`, or `x` where it stands at a fixed x; `sided` where it follows the key's side),
+//   `neck`, `arms`, `feet`, `shadow` — what the species' `build()` returns, girth applied by `anchorsOf()` (a `fixed`
+//   width or reach is not girth-scaled).
+// What stays inline in a `build()` is paint: the inner ear, a stripe, a spot, a whisker — never a part's outline.
+
+/** A path's commands drawn as SVG path data, each `dx` mapped to its x by `x` (the species' `X`, a side applied). */
+function pathD(cmds, x) {
+  return cmds.map(([op, ...pts]) => op + pts.map(([dx, y]) => `${x(dx)} ${y}`).join(' ')).join('');
+}
+
+/** The x a feature drawn on `side` (1 or −1) puts its `dx` at. */
+const sideX = (c, side) => (dx) => c.X(side * dx);
+/** The x a `fixed` feature puts its `dx` at: drawn at its own width, never girth-scaled. */
+const fixedX = (dx) => f(54 + dx);
+
+/**
+ * A colour the shape data names — `tone`: a member of the key's colourway by index, a hex, `'green'` (the key's own green
+ * draw), `'pale'` (the first member tinted), or `{ of, shade | tint }`, a tone shaded or tinted; absent, the first member.
+ * One reading for both generators: the paws and feet the 2-D frame draws, and every part `creatures-3d.js` colours.
+ */
+export function toneOf(key, P, tone) {
+  if (tone === undefined) return P[0];
+  if (typeof tone === 'number') return P[tone];
+  if (tone === 'green') return pick(key, 'green', GREENS);
+  if (tone === 'pale') return tint(P[0], 0.4);
+  if (typeof tone === 'string') return tone;
+  const base = toneOf(key, P, tone.of);
+  return tone.shade !== undefined ? shade(base, tone.shade) : tint(base, tone.tint);
+}
+
+/** A species' anchors from its `shape`, girth applied — what its `build()` returns beside its drawing. */
+function anchorsOf(c) {
+  const S = c.S, { arms, feet } = S, cols = { arms: arms && toneOf(c.key, c.P, arms.tone), feet: feet && toneOf(c.key, c.P, feet.tone) };
+  const A = {
+    face: S.face,
+    hat: { x: S.hat.x ?? c.X(S.hat.sided ? c.side * S.hat.dx : S.hat.dx), y: S.hat.y, w: S.hat.w },
+    neck: S.neck && { y: S.neck.y, w: S.neck.fixed ? S.neck.w : S.neck.w * c.st },
+    arms: arms && { y: arms.y, dx: arms.fixed ? arms.dx : arms.dx * c.st, col: cols.arms, ...(arms.small && { small: true }), ...(arms.clasp && { clasp: true }) },
+    feet: feet && { dx: feet.dx * c.st, col: cols.feet, ...(feet.rx !== undefined && { rx: feet.rx }), ...(feet.talon && { talon: true }) },
+    shadow: S.shadow * c.st,
+  };
+  if (S.blushDx !== undefined) A.blushDx = S.blushDx;
+  return A;
+}
+
+/** A species' feature by name — the first of that name drawn by the key's variant (a feature with no `variant` is every variant's). */
+const featureOf = (c, name) => c.S.features.find((ft) => ft.name === name && (ft.variant === undefined || ft.variant === c.variant));
+
+/** The side a key draws its one-sided parts on (a tail, a shell's away side): 1 or −1, its own `side` draw. */
+export function sideOf(key) { return chance(key, 'side', 1, 2) ? 1 : -1; }
+
 // ---- the drawing context handed to a species ----
 function makeCtx(pen, key, P, st) {
   const c = {
     pen, key, P, st,
-    side: chance(key, 'side', 1, 2) ? 1 : -1,
+    side: sideOf(key),
     layers: { back: [], body: [], front: [] },
     X: (dx) => f(54 + dx * st),
     back(s) { c.layers.back.push(s); }, body(s) { c.layers.body.push(s); }, front(s) { c.layers.front.push(s); },
@@ -128,48 +209,75 @@ const APPROVED = {
     kind: 'animal', label: 'fox-ish',
     pals: [['#d9733a', '#fbf1e2'], ['#e3a85c', '#fcf4e4'], ['#a5704f', '#f3e6d2'], ['#c4beb6', '#fdfaf4'], ['#b9563b', '#f7e8d7']],
     hats: ['beret', 'flower', 'sprig', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        head: [[0, 62], [20, 64], [33, 75], [39, 94], [36, 108], [26, 121], [0, 127]],
+        body: [[0, 112], [21, 117], [29, 138], [32, 162], [27, 182], [0, 185]],
+      },
+      features: [
+        { name: 'tail', kind: 'path', side: 'key', d: [['M', [18, 178]], ['C', [46, 184], [52, 146], [45, 116]], ['C', [38, 136], [33, 152], [20, 154]], ['Z']] },
+        { name: 'ear', kind: 'path', side: 'pair', d: [['M', [11, 74]], ['Q', [15, 36], [30, 26]], ['Q', [42, 48], [36, 86]], ['Z']] },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 148], r: [15, 21], tone: 1 },
+        { name: 'nose', kind: 'ell', side: 'centre', at: [0, 111], r: [3.6, 2.7], tone: EYE },
+      ],
+      face: { y: 98, es: 14, s: 1, my: 116.5, ms: 0.9 }, hat: { dx: 0, y: 64, w: 18 }, neck: { y: 121, w: 27 },
+      arms: { y: 150, dx: 29, tone: 0 }, feet: { dx: 14, tone: { of: 0, shade: 0.55 } }, shadow: 34,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, t = c.side;
-      const head = c.sym([[0, 62], [20, 64], [33, 75], [39, 94], [36, 108], [26, 121], [0, 127]]);
-      const body = c.sym([[0, 112], [21, 117], [29, 138], [32, 162], [27, 182], [0, 185]]);
-      const tail = `M${X(t * 18)} 178C${X(t * 46)} 184 ${X(t * 52)} 146 ${X(t * 45)} 116C${X(t * 38)} 136 ${X(t * 33)} 152 ${X(t * 20)} 154Z`;
+      const [b, m] = c.P, X = c.X, t = c.side, S = c.S;
+      const head = c.sym(S.profiles.head);
+      const body = c.sym(S.profiles.body);
+      const tail = pathD(featureOf(c, 'tail').d, sideX(c, t));
       c.back(c.shape(tail, b));
       c.back(`<ellipse cx="${X(t * 45)}" cy="120" rx="9" ry="11" fill="${c.pen.paint(m)}" clip-path="${c.pen.clip(tail)}"/>`);
       for (const s of [-1, 1]) {
-        c.back(c.shape(`M${X(s * 11)} 74Q${X(s * 15)} 36 ${X(s * 30)} 26Q${X(s * 42)} 48 ${X(s * 36)} 86Z`, b));
+        c.back(c.shape(pathD(featureOf(c, 'ear').d, sideX(c, s)), b));
         c.back(c.flat(`M${X(s * 17)} 72Q${X(s * 20)} 46 ${X(s * 29.5)} 37Q${X(s * 36)} 54 ${X(s * 32)} 78Z`, tint(m, 0.1), 'opacity=".85"'));
         c.back(c.flat(`M${X(s * 26)} 31Q${X(s * 30)} 26 ${X(s * 30)} 26Q${X(s * 35)} 33 ${X(s * 36.5)} 40Q${X(s * 31)} 38 ${X(s * 26)} 31Z`, shade(b, 0.5)));
       }
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="148" rx="${f(15 * c.st)}" ry="21" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
+      const belly = featureOf(c, 'belly'), nose = featureOf(c, 'nose');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
       c.body(c.shape(head, b));
       c.body(`<path d="M${X(-41)} 97C${X(-34)} 122 ${X(-14)} 131 54 131C${X(14)} 131 ${X(34)} 122 ${X(41)} 97C${X(28)} 104 ${X(13)} 101 54 110C${X(-13)} 101 ${X(-28)} 104 ${X(-41)} 97Z" fill="${m}" clip-path="${c.pen.clip(head)}"/>`);
-      c.body(`<ellipse cx="54" cy="111" rx="3.6" ry="2.7" fill="${EYE}"/><ellipse cx="53" cy="110.2" rx="1.2" ry=".7" fill="${GLINT}" opacity=".8"/>`);
-      return { face: { y: 98, es: 14, s: 1, my: 116.5, ms: 0.9 }, hat: { x: 54, y: 64, w: 18 }, neck: { y: 121, w: 27 * c.st },
-        arms: { y: 150, dx: 29 * c.st, col: b }, feet: { dx: 14 * c.st, col: shade(b, 0.55) }, shadow: 34 * c.st };
+      c.body(`<ellipse cx="${X(nose.at[0])}" cy="${nose.at[1]}" rx="${nose.r[0]}" ry="${nose.r[1]}" fill="${EYE}"/><ellipse cx="53" cy="110.2" rx="1.2" ry=".7" fill="${GLINT}" opacity=".8"/>`);
+      return anchorsOf(c);
     },
   },
   bear: {
     kind: 'animal', label: 'bear-ish',
     pals: [['#c98d4e', '#f1dcb8'], ['#7d5539', '#dcc09b'], ['#e6cfaa', '#fbf2e2'], ['#ad683b', '#efd6b4'], ['#5d4b43', '#e2cfb4']],
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        head: [[0, 58], [24, 60], [37, 74], [41, 95], [36, 115], [22, 128], [0, 131]],
+        body: [[0, 116], [26, 122], [36, 146], [37, 168], [29, 183], [0, 186]],
+      },
+      features: [
+        { name: 'ear', kind: 'ell', side: 'pair', at: [31, 61], r: [15, 14.5] },
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 113], r: [15, 11], tone: 1 },
+      ],
+      face: { y: 97, es: 15, s: 1, my: 116.5, ms: 0.9 }, hat: { dx: 0, y: 58, w: 31 }, neck: { y: 126, w: 31 },
+      arms: { y: 150, dx: 34, tone: 0 }, feet: { dx: 16, tone: { of: 0, shade: 0.15 } }, shadow: 38,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X;
+      const [b, m] = c.P, X = c.X, S = c.S;
       // card#12842: big round ears set high and wide on the crown — the bear's outline is a round head with two round
       // ears standing clear of it, never the owl's one tall egg with its pointed tufts
+      const ear = featureOf(c, 'ear');
       for (const s of [-1, 1]) {
-        c.back(c.ell(X(s * 31), 61, 15, 14.5, b));
-        c.back(`<ellipse cx="${X(s * 31)}" cy="62.5" rx="8" ry="7.5" fill="${c.pen.paint(m)}"/>`);
+        c.back(c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], b));
+        c.back(`<ellipse cx="${X(s * ear.at[0])}" cy="62.5" rx="8" ry="7.5" fill="${c.pen.paint(m)}"/>`);
       }
-      const body = c.sym([[0, 116], [26, 122], [36, 146], [37, 168], [29, 183], [0, 186]]);
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       if (chance(c.key, 'mark', 1, 3)) c.body(c.flat(`M${X(-16)} 134Q54 152 ${X(16)} 134Q54 145 ${X(-16)} 134Z`, m));
-      c.body(c.shape(c.sym([[0, 58], [24, 60], [37, 74], [41, 95], [36, 115], [22, 128], [0, 131]]), b));
-      c.body(`<ellipse cx="54" cy="113" rx="15" ry="11" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width=".9" opacity=".97"/>`);
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      const muzzle = featureOf(c, 'muzzle');
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width=".9" opacity=".97"/>`);
       c.body(c.flat(`M48.5 105.5Q54 102.5 59.5 105.5Q57.5 111 54 111.5Q50.5 111 48.5 105.5Z`, EYE));
       c.body(`<ellipse cx="52.5" cy="105" rx="1.6" ry=".8" fill="${GLINT}" opacity=".7"/>`);
-      return { face: { y: 97, es: 15, s: 1, my: 116.5, ms: 0.9 }, hat: { x: 54, y: 58, w: 31 }, neck: { y: 126, w: 31 * c.st },
-        arms: { y: 150, dx: 34 * c.st, col: b }, feet: { dx: 16 * c.st, col: shade(b, 0.15) }, shadow: 38 * c.st };
+      return anchorsOf(c);
     },
   },
   rabbit: {
@@ -177,171 +285,275 @@ const APPROVED = {
     pals: [['#d8b48a', '#fbf3e6'], ['#8f6a52', '#efe1cf'], ['#efe2cb', '#fffaf1'], ['#c7a79c', '#f8ece6'], ['#c98f62', '#fbf0e0']],
     hats: ['flower', 'sprig', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
     variant(key) { return chance(key, 'lop', 1, 3) ? 'lop' : 'upright'; },
+    shape: {
+      profiles: {
+        body: [[0, 118], [22, 123], [30, 146], [32, 168], [26, 183], [0, 186]],
+        head: [[0, 64], [22, 66], [34, 80], [37, 98], [33, 115], [20, 126], [0, 129]],
+      },
+      features: [
+        // an upright ear stands `tilt` degrees out about `pivot`; the key's `flop` draw may lay one ear over as `flop` says
+        { name: 'ear', variant: 'upright', kind: 'ell', side: 'pair', at: [13, 40], r: [9.5, 28], pivot: [13, 70], tilt: 9, flop: { at: [13, 46], r: [9.5, 22], tilt: 34 } },
+        { name: 'ear', variant: 'lop', kind: 'ell', side: 'pair', at: [31, 104], r: [10.5, 32], pivot: [28, 74], tilt: -21 },
+        { name: 'muzzle', kind: 'ell', side: 'pair', at: [5.5, 112.5], r: [6.6, 5.4], tone: 1 },
+      ],
+      face: { y: 97, es: 13, s: 1, my: 118, ms: 0.8 }, hat: { dx: 0, y: 65, w: 29 }, neck: { y: 124, w: 27 },
+      arms: { y: 150, dx: 28, tone: 0 }, feet: { dx: 13, rx: 10, tone: { of: 0, shade: 0.1 } }, shadow: 32,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, lop = c.variant === 'lop';
-      const inner = '#efbcb6';
+      const [b, m] = c.P, X = c.X, lop = c.variant === 'lop', S = c.S;
+      const inner = '#efbcb6', ear = featureOf(c, 'ear');
       if (!lop) {
         const flop = chance(c.key, 'flop', 1, 3) ? c.side : 0;
         for (const s of [-1, 1]) {
-          const a = s === flop ? s * 34 : s * 9;
-          c.back(`<g transform="rotate(${a} ${X(s * 13)} 70)">${c.ell(X(s * 13), s === flop ? 46 : 40, 9.5, s === flop ? 22 : 28, b)}<ellipse cx="${X(s * 13)}" cy="${s === flop ? 48 : 42}" rx="4.6" ry="${s === flop ? 15 : 20}" fill="${inner}" opacity=".9"/></g>`);
+          const e = s === flop ? ear.flop : ear;
+          c.back(`<g transform="rotate(${s * e.tilt} ${X(s * ear.pivot[0])} ${ear.pivot[1]})">${c.ell(X(s * e.at[0]), e.at[1], e.r[0], e.r[1], b)}<ellipse cx="${X(s * e.at[0])}" cy="${e.at[1] + 2}" rx="4.6" ry="${s === flop ? 15 : 20}" fill="${inner}" opacity=".9"/></g>`);
         }
       }
-      c.body(c.shape(c.sym([[0, 118], [22, 123], [30, 146], [32, 168], [26, 183], [0, 186]]), b));
-            c.body(c.shape(c.sym([[0, 64], [22, 66], [34, 80], [37, 98], [33, 115], [20, 126], [0, 129]]), b));
+      c.body(c.shape(c.sym(S.profiles.body), b));
+            c.body(c.shape(c.sym(S.profiles.head), b));
       // card#12842: the lop's ears are long and swing out wide from the crown — a wide, long-eared outline where the
       // hedgehog's ring of spines narrows to its body (no wider than the pumpkin, the widest intern the stool frame holds)
-      if (lop) for (const s of [-1, 1]) c.body(`<g transform="rotate(${-s * 21} ${X(s * 28)} 74)">${c.ell(X(s * 31), 104, 10.5, 32, b)}<ellipse cx="${X(s * 31)}" cy="107" rx="5" ry="23" fill="${inner}" opacity=".75"/></g>`);
-      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 5.5)}" cy="112.5" rx="6.6" ry="5.4" fill="${c.pen.paint(m)}"/>`);
+      if (lop) for (const s of [-1, 1]) c.body(`<g transform="rotate(${s * ear.tilt} ${X(s * ear.pivot[0])} ${ear.pivot[1]})">${c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], b)}<ellipse cx="${X(s * ear.at[0])}" cy="107" rx="5" ry="23" fill="${inner}" opacity=".75"/></g>`);
+      const muzzle = featureOf(c, 'muzzle');
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}"/>`);
       c.body(c.flat(`M50.8 106.6Q54 105.2 57.2 106.6Q55.6 110 54 110.4Q52.4 110 50.8 106.6Z`, '#e08c88'));
-      return { face: { y: 97, es: 13, s: 1, my: 118, ms: 0.8 }, hat: { x: 54, y: 65, w: 29 }, neck: { y: 124, w: 27 * c.st },
-        arms: { y: 150, dx: 28 * c.st, col: b }, feet: { dx: 13 * c.st, col: shade(b, 0.1), rx: 10 }, shadow: 32 * c.st,
-        hats: lop ? ['beret', 'beanie', 'straw', 'flower', 'ladybug'].filter(keepHat) : null };
+      const A = anchorsOf(c);
+      A.hats = lop ? ['beret', 'beanie', 'straw', 'flower', 'ladybug'].filter(keepHat) : null;
+      return A;
     },
   },
   owl: {
     kind: 'animal', label: 'owl-ish',
     pals: [['#b07a48', '#f0dfc4'], ['#d6a35a', '#fcf4e6'], ['#a65b3c', '#f0d8bf'], ['#8a8450', '#ece3c8'], ['#e9e2d4', '#fffaf2']],
     hats: ['beret', 'beanie', 'flower', 'ladybug', 'straw'], necks: ['scarf', 'neckerchief'], extras: ['glasses', 'satchel'],
+    shape: {
+      profiles: {
+        body: [[0, 52], [26, 55], [40, 72], [44, 102], [44, 140], [38, 168], [24, 183], [0, 186]],
+        // the pale facial disc, a patch on the body's front
+        disc: [[0, 79], [13, 73], [28, 77], [33, 95], [27, 111], [13, 118], [0, 115]],
+      },
+      tones: { disc: 1 },
+      features: [
+        // card#12842: tall pointed ear tufts, a horned owl's, rising well over the crown
+        { name: 'tuft', kind: 'path', side: 'pair', d: [['M', [16, 62]], ['Q', [27, 48], [32, 30]], ['Q', [36, 42], [35, 50]], ['Q', [40, 52], [40, 72]], ['Z']] },
+        { name: 'wing', kind: 'path', side: 'pair', d: [['M', [36, 108]], ['C', [55, 122], [56, 162], [36, 178]], ['C', [33, 152], [30, 128], [36, 108]], ['Z']] },
+        // the beak, where a mouth would be; drawn at its own width, never girth-scaled
+        { name: 'beak', kind: 'path', side: 'centre', fixed: true, d: [['M', [-4.6, 103]], ['Q', [0, 100.4], [4.6, 103]], ['Q', [2, 111], [0, 113]], ['Q', [-2, 111], [-4.6, 103]], ['Z']], tone: '#e3a447' },
+      ],
+      face: { y: 94, es: 13.5, s: 1.22, my: null, ms: 1, beak: true }, hat: { dx: 0, y: 54, w: 28 }, neck: { y: 121, w: 40 },
+      arms: null, feet: { dx: 13, talon: true, tone: '#d99a45' }, shadow: 40,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X;
-      // card#12842: tall pointed ear tufts, a horned owl's, rising well over the crown
-      for (const s of [-1, 1]) c.back(c.shape(`M${X(s * 16)} 62Q${X(s * 27)} 48 ${X(s * 32)} 30Q${X(s * 36)} 42 ${X(s * 35)} 50Q${X(s * 40)} 52 ${X(s * 40)} 72Z`, b));
-      const body = c.sym([[0, 52], [26, 55], [40, 72], [44, 102], [44, 140], [38, 168], [24, 183], [0, 186]]);
+      const [b, m] = c.P, X = c.X, S = c.S;
+      for (const s of [-1, 1]) c.back(c.shape(pathD(featureOf(c, 'tuft').d, sideX(c, s)), b));
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       const dots = [[-14, 134, 1.6], [9, 140, 1.3], [-4, 152, 1.8], [16, 158, 1.4], [-17, 164, 1.3], [4, 170, 1.5]];
       for (const [dx, y, r] of dots) c.body(`<circle cx="${X(dx)}" cy="${y}" r="${r}" fill="${shade(b, 0.3)}" opacity=".45"/>`);
-      c.body(`<path d="${c.sym([[0, 79], [13, 73], [28, 77], [33, 95], [27, 111], [13, 118], [0, 115]])}" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width=".9" opacity=".97"/>`);
+      c.body(`<path d="${c.sym(S.profiles.disc)}" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width=".9" opacity=".97"/>`);
       for (const s of [-1, 1]) {
-        c.front(c.shape(`M${X(s * 36)} 108C${X(s * 55)} 122 ${X(s * 56)} 162 ${X(s * 36)} 178C${X(s * 33)} 152 ${X(s * 30)} 128 ${X(s * 36)} 108Z`, shade(b, 0.12)));
+        c.front(c.shape(pathD(featureOf(c, 'wing').d, sideX(c, s)), shade(b, 0.12)));
         c.front(`<path d="M${X(s * 43)} 130Q${X(s * 47)} 146 ${X(s * 43)} 162M${X(s * 38)} 134Q${X(s * 41)} 150 ${X(s * 38)} 166" stroke="${shade(b, 0.4)}" stroke-width="1" fill="none" opacity=".5" stroke-linecap="round"/>`);
       }
-      c.front(`<g data-part="mouth"><path d="M49.4 103Q54 100.4 58.6 103Q56 111 54 113Q52 111 49.4 103Z" fill="${c.pen.paint('#e3a447')}" stroke="#8a5a2a" stroke-width="1" stroke-linejoin="round"/></g>`);
-      return { face: { y: 94, es: 13.5, s: 1.22, my: null, ms: 1, beak: true }, hat: { x: 54, y: 54, w: 28 }, neck: { y: 121, w: 40 * c.st },
-        arms: null, feet: { dx: 13 * c.st, col: '#d99a45', talon: true }, shadow: 40 * c.st };
+      c.front(`<g data-part="mouth"><path d="${pathD(featureOf(c, 'beak').d, fixedX)}" fill="${c.pen.paint('#e3a447')}" stroke="#8a5a2a" stroke-width="1" stroke-linejoin="round"/></g>`);
+      return anchorsOf(c);
     },
   },
   frog: {
     kind: 'animal', label: 'frog-ish',
     pals: [['#83b46a', '#eef0c8'], ['#9aa35c', '#f1edc6'], ['#d46c48', '#f8e0c4'], ['#62a79c', '#e6f1dc'], ['#d6b24c', '#f8efcc']],
     hats: ['ladybug', 'flower', 'sprig'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        // card#12842: a frog SITTING — tall eye domes over a wide head, a waist, and the folded back legs bulging out low
+        // on either side, so the frog's outline widens to its foot where the bell pepper's narrows to its lobes
+        body: [[0, 80], [11, 76], [16, 63], [25, 57], [34, 62], [40, 78], [46, 100], [43, 124], [37, 146], [35, 168], [26, 184], [0, 186]],
+      },
+      features: [
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 160], r: [25, 25], tone: 1 },
+        { name: 'haunch', kind: 'ell', side: 'pair', at: [37, 165], r: [16, 20] },
+      ],
+      // the eyes stand on the domes, so their spacing follows the girth (`build()` scales it)
+      face: { y: 79, es: 24, s: 1.05, my: 101, ms: 1.6 }, hat: { dx: 0, y: 78, w: 10 }, neck: { y: 118, w: 44 },
+      arms: { y: 157, dx: 40, tone: 0 }, feet: { dx: 24, rx: 13, tone: { of: 0, shade: 0.12 } }, shadow: 44, blushDx: 8,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X;
-      // card#12842: a frog SITTING — tall eye domes over a wide head, a waist, and the folded back legs bulging out low
-      // on either side, so the frog's outline widens to its foot where the bell pepper's narrows to its lobes
-      const body = c.sym([[0, 80], [11, 76], [16, 63], [25, 57], [34, 62], [40, 78], [46, 100], [43, 124], [37, 146], [35, 168], [26, 184], [0, 186]]);
+      const [b, m] = c.P, X = c.X, S = c.S;
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="160" rx="${f(25 * c.st)}" ry="25" fill="${c.pen.paint(m)}" clip-path="${c.pen.clip(body)}" opacity=".95"/>`);
+      const belly = featureOf(c, 'belly'), haunch = featureOf(c, 'haunch');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${c.pen.paint(m)}" clip-path="${c.pen.clip(body)}" opacity=".95"/>`);
       for (const s of [-1, 1]) {
-        c.body(c.ell(X(s * 37), 165, 16 * c.st, 20, shade(b, 0.04)));
+        c.body(c.ell(X(s * haunch.at[0]), haunch.at[1], haunch.r[0] * c.st, haunch.r[1], shade(b, 0.04)));
         c.body(`<path d="M${X(s * 30)} 152Q${X(s * 40)} 146 ${X(s * 47)} 156" stroke="${tint(b, 0.4)}" stroke-width="1.6" fill="none" opacity=".6" stroke-linecap="round"/>`);
       }
       if (chance(c.key, 'spots', 1, 2)) for (const [dx, y, r] of [[-37, 116, 4], [38, 122, 3.2], [-30, 136, 3], [33, 140, 3.6]]) c.body(`<circle cx="${X(dx)}" cy="${y}" r="${r}" fill="${shade(b, 0.18)}" opacity=".5"/>`);
-      return { face: { y: 79, es: 24 * c.st, s: 1.05, my: 101, ms: 1.6 }, hat: { x: 54, y: 78, w: 10 }, neck: { y: 118, w: 44 * c.st },
-        arms: { y: 157, dx: 40 * c.st, col: b }, feet: { dx: 24 * c.st, col: shade(b, 0.12), rx: 13 }, shadow: 44 * c.st, blushDx: 8 };
+      const A = anchorsOf(c);
+      A.face = { ...S.face, es: S.face.es * c.st };
+      return A;
     },
   },
   mole: {
     kind: 'animal', label: 'mole-ish',
     pals: [['#5f5452', '#8d807c'], ['#715646', '#a08672'], ['#8f7d6c', '#b8a896'], ['#b8976b', '#d8c19c'], ['#5f6272', '#8f92a0']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel'],
+    shape: {
+      profiles: { body: [[0, 62], [20, 64], [32, 80], [38, 106], [42, 138], [40, 166], [28, 183], [0, 186]] },
+      features: [
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 111], r: [16, 10.5], tone: 1 },
+        // the pink nose, at its own size — face paint, drawn into the face (`faceDocument()`) as well as the frame
+        { name: 'nose', kind: 'path', side: 'centre', fixed: true, face: true, tone: '#f0a69e', d: [['M', [-6.4, 106.4]], ['Q', [0, 103], [6.4, 106.4]], ['Q', [5, 112.6], [0, 114.4]], ['Q', [-5, 112.6], [-6.4, 106.4]], ['Z']] },
+        // the digging claws, turned `tilt` degrees about their own centre
+        { name: 'claw', kind: 'ell', side: 'pair', at: [37, 138], r: [10, 12], tilt: -18, tone: '#f0a69e' },
+      ],
+      face: { y: 98, es: 13, s: 0.82, my: 119.5, ms: 0.75 }, hat: { dx: 0, y: 63, w: 26 }, neck: { y: 125, w: 37 },
+      arms: null, feet: { dx: 16, tone: '#f0a69e' }, shadow: 40,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, pink = '#f0a69e';
-      c.body(c.shape(c.sym([[0, 62], [20, 64], [32, 80], [38, 106], [42, 138], [40, 166], [28, 183], [0, 186]]), b));
-      c.body(`<ellipse cx="54" cy="111" rx="16" ry="10.5" fill="${c.pen.paint(m)}" opacity=".95"/>`);
+      const [b, m] = c.P, X = c.X, pink = '#f0a69e', S = c.S;
+      c.body(c.shape(c.sym(S.profiles.body), b));
+      const muzzle = featureOf(c, 'muzzle'), claw = featureOf(c, 'claw');
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}" opacity=".95"/>`);
       for (const s of [-1, 1]) c.body(`<path d="M${X(s * 11)} 110L${X(s * 25)} 106M${X(s * 11)} 113L${X(s * 25)} 115" stroke="${tint(b, 0.55)}" stroke-width=".9" stroke-linecap="round"/>`);
-      c.body(`<path d="M47.6 106.4Q54 103 60.4 106.4Q59 112.6 54 114.4Q49 112.6 47.6 106.4Z" fill="${c.pen.paint(pink)}" stroke="${line(pink)}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="52" cy="106.6" rx="2" ry="1" fill="#fff" opacity=".6"/>`);
+      c.body(`<path d="${pathD(featureOf(c, 'nose').d, fixedX)}" fill="${c.pen.paint(pink)}" stroke="${line(pink)}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="52" cy="106.6" rx="2" ry="1" fill="#fff" opacity=".6"/>`);
       for (const s of [-1, 1]) {
-        c.front(`<g transform="rotate(${-s * 18} ${X(s * 37)} 138)">${c.ell(X(s * 37), 138, 10, 12, pink)}<path d="M${X(s * 37) - 5} 146L${X(s * 37) - 5.5} 152M${X(s * 37)} 148L${X(s * 37)} 154.5M${X(s * 37) + 5} 146L${X(s * 37) + 5.5} 152" stroke="#f6ece2" stroke-width="2" stroke-linecap="round"/></g>`);
+        const cx = X(s * claw.at[0]), cy = claw.at[1];
+        c.front(`<g transform="rotate(${s * claw.tilt} ${cx} ${cy})">${c.ell(cx, cy, claw.r[0], claw.r[1], pink)}<path d="M${cx - 5} 146L${cx - 5.5} 152M${cx} 148L${cx} 154.5M${cx + 5} 146L${cx + 5.5} 152" stroke="#f6ece2" stroke-width="2" stroke-linecap="round"/></g>`);
       }
-      return { face: { y: 98, es: 13, s: 0.82, my: 119.5, ms: 0.75 }, hat: { x: 54, y: 63, w: 26 }, neck: { y: 125, w: 37 * c.st },
-        arms: null, feet: { dx: 16 * c.st, col: pink }, shadow: 40 * c.st };
+      return anchorsOf(c);
     },
   },
   hedgehog: {
     kind: 'animal', label: 'hedgehog-ish',
     pals: [['#7c5a40', '#f1dcc0'], ['#b39572', '#f6e6cf'], ['#5b4636', '#eed8bb'], ['#cdb48c', '#fbf0de'], ['#6f6a66', '#efe2d0']],
     hats: ['flower', 'ladybug', 'beret', 'sprig'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: { body: [[0, 68], [24, 71], [34, 86], [36, 110], [33, 140], [31, 166], [24, 183], [0, 186]] },
+      // the face and belly are the pale tone; the spines the dark one
+      tones: { body: 1 },
+      features: [
+        // `n` spines round an arc of `arc` degrees about `at`, their roots `r` out, their tips `len` out at the sides
+        // rising to `crest` over the crown (card#12842)
+        { name: 'spines', kind: 'spines', side: 'centre', at: [0, 112], n: 15, arc: [-205, 25], r: 41, len: 50, crest: 68 },
+        { name: 'ear', kind: 'ell', side: 'pair', at: [23, 73], r: [6.5, 6.5], tone: 1 },
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 111], r: [10, 7.5], tone: 1 },
+        { name: 'nose', kind: 'ell', side: 'centre', at: [0, 108.5], r: [3.7, 3.7], tone: EYE },
+      ],
+      face: { y: 98, es: 13, s: 1, my: 118.5, ms: 0.85 }, hat: { dx: 0, y: 69, w: 22 }, neck: { y: 126, w: 31 },
+      arms: { y: 150, dx: 31, tone: { of: 1, shade: 0.08 } }, feet: { dx: 14, tone: 0 }, shadow: 36,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, cy = 112;
+      const [b, m] = c.P, X = c.X, S = c.S, SP = featureOf(c, 'spines'), cy = SP.at[1];
       // Softer, curved spines (card#11046): each spine a rounded tip swept a little toward the back,
       // valleys and tips joined by curves — never the straight saw-tooth a zigzag polyline reads as at 4x.
       // card#12842: the crown's spines longer and pointier, a spiky crest over the face that the rabbit's soft round head
       // never has; toward the sides they shorten back to card#11046's length, so the body's width at the lap is unchanged
-      const N = 15, a0 = -205, a1 = 25, at = (i) => (a0 + (a1 - a0) * i / (N * 2)) * Math.PI / 180;
+      const N = SP.n, a0 = SP.arc[0], a1 = SP.arc[1], at = (i) => (a0 + (a1 - a0) * i / (N * 2)) * Math.PI / 180;
       const pt = (a, r) => [54 + Math.cos(a) * r * c.st, cy + Math.sin(a) * r * 1.02];
-      // how far a spine's tip stands out at angle a: 50 at the sides, rising to CREST over the crown (a = −90°)
-      const CREST = 68, up = (a) => Math.max(0, Math.cos(a + Math.PI / 2) * 1.4 - 0.4);
-      let spikes = `M${X(-30)} 168L${pt(at(0), 41).map(f).join(' ')}`;
+      // how far a spine's tip stands out at angle a: SP.len at the sides, rising to CREST over the crown (a = −90°)
+      const CREST = SP.crest, up = (a) => Math.max(0, Math.cos(a + Math.PI / 2) * 1.4 - 0.4);
+      let spikes = `M${X(-30)} 168L${pt(at(0), SP.r).map(f).join(' ')}`;
       for (let i = 1; i < N * 2; i += 2) {
-        const len = 50 + (CREST - 50) * up(at(i)), tip = pt(at(i) + 0.05, len), v = pt(at(i + 1), 41.5);
+        const len = SP.len + (CREST - SP.len) * up(at(i)), tip = pt(at(i) + 0.05, len), v = pt(at(i + 1), 41.5);
         const c1 = pt(at(i - 0.55), 47.5 + (len - 50) * 0.5), c2 = pt(at(i + 0.45), 47.5 + (len - 50) * 0.5);
         spikes += `Q${c1.map(f).join(' ')} ${tip.map(f).join(' ')}Q${c2.map(f).join(' ')} ${v.map(f).join(' ')}`;
       }
       spikes += `L${X(30)} 168Z`;
       c.back(`<path d="${spikes}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.5" stroke-linejoin="round"/>`);
       for (let i = 1; i < N * 2; i += 2) {
-        const len = 50 + (CREST - 50) * up(at(i)), p0 = pt(at(i), 36), p1 = pt(at(i) + 0.03, 41 + (len - 50) * 0.4), p2 = pt(at(i) + 0.04, len - 4.5);
+        const len = SP.len + (CREST - SP.len) * up(at(i)), p0 = pt(at(i), 36), p1 = pt(at(i) + 0.03, 41 + (len - 50) * 0.4), p2 = pt(at(i) + 0.04, len - 4.5);
         c.back(`<path d="M${p0.map(f).join(' ')}Q${p1.map(f).join(' ')} ${p2.map(f).join(' ')}" stroke="${tint(b, 0.35)}" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".55"/>`);
       }
-      for (const s of [-1, 1]) c.back(c.ell(X(s * 23), 73, 6.5, 6.5, m));
-      c.body(c.shape(c.sym([[0, 68], [24, 71], [34, 86], [36, 110], [33, 140], [31, 166], [24, 183], [0, 186]]), m));
-      c.body(`<ellipse cx="54" cy="111" rx="10" ry="7.5" fill="${c.pen.paint(tint(m, 0.4))}"/>`);
-      c.body(`<circle cx="54" cy="108.5" r="3.7" fill="${EYE}"/><circle cx="52.8" cy="107.4" r="1.1" fill="${GLINT}" opacity=".8"/>`);
-      return { face: { y: 98, es: 13, s: 1, my: 118.5, ms: 0.85 }, hat: { x: 54, y: 69, w: 22 }, neck: { y: 126, w: 31 * c.st },
-        arms: { y: 150, dx: 31 * c.st, col: shade(m, 0.08) }, feet: { dx: 14 * c.st, col: b }, shadow: 36 * c.st };
+      const ear = featureOf(c, 'ear'), muzzle = featureOf(c, 'muzzle'), nose = featureOf(c, 'nose');
+      for (const s of [-1, 1]) c.back(c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], m));
+      c.body(c.shape(c.sym(S.profiles.body), m));
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(tint(m, 0.4))}"/>`);
+      c.body(`<circle cx="${X(nose.at[0])}" cy="${nose.at[1]}" r="${nose.r[0]}" fill="${EYE}"/><circle cx="52.8" cy="107.4" r="1.1" fill="${GLINT}" opacity=".8"/>`);
+      return anchorsOf(c);
     },
   },
   otter: {
     kind: 'animal', label: 'otter-ish',
     pals: [['#8a6448', '#ecd9bf'], ['#b08e6a', '#f4e6d2'], ['#5e4a3e', '#d9c4a6'], ['#7e7468', '#e6ddcf'], ['#9b5e3c', '#f0dcc2']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: { body: [[0, 52], [20, 54], [30, 66], [33, 88], [30, 112], [30, 140], [33, 164], [27, 183], [0, 186]] },
+      features: [
+        { name: 'ear', kind: 'ell', side: 'pair', at: [26, 63], r: [6.5, 6.5] },
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 101], r: [26, 15.5], tone: 1 },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 152], r: [19, 30], tone: 1 },
+      ],
+      // the otter's paws clasp at its chest, a fixed reach either side of the centre line
+      face: { y: 84, es: 13, s: 1, my: 103, ms: 0.85 }, hat: { dx: 0, y: 53, w: 24 }, neck: { y: 113, w: 30 },
+      arms: { y: 126, dx: 7, fixed: true, clasp: true, tone: { of: 0, shade: 0.05 } }, feet: { dx: 14, tone: { of: 0, shade: 0.25 } }, shadow: 34,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X;
-      for (const s of [-1, 1]) { c.back(c.ell(X(s * 26), 63, 6.5, 6.5, b)); c.back(`<circle cx="${X(s * 26)}" cy="64" r="3" fill="${shade(b, 0.3)}"/>`); }
-      const body = c.sym([[0, 52], [20, 54], [30, 66], [33, 88], [30, 112], [30, 140], [33, 164], [27, 183], [0, 186]]);
+      const [b, m] = c.P, X = c.X, S = c.S;
+      const ear = featureOf(c, 'ear'), muzzle = featureOf(c, 'muzzle'), belly = featureOf(c, 'belly');
+      for (const s of [-1, 1]) { c.back(c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], b)); c.back(`<circle cx="${X(s * ear.at[0])}" cy="64" r="3" fill="${shade(b, 0.3)}"/>`); }
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       const clip = c.pen.clip(body);
-      c.body(`<ellipse cx="54" cy="101" rx="${f(26 * c.st)}" ry="15.5" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
-      c.body(`<ellipse cx="54" cy="152" rx="${f(19 * c.st)}" ry="30" fill="${c.pen.paint(m)}" clip-path="${clip}" opacity=".92"/>`);
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${f(muzzle.r[0] * c.st)}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${c.pen.paint(m)}" clip-path="${clip}" opacity=".92"/>`);
       for (const s of [-1, 1]) c.body(`<path d="M${X(s * 10)} 98L${X(s * 24)} 95M${X(s * 10)} 101L${X(s * 24)} 102" stroke="${shade(m, 0.35)}" stroke-width=".85" stroke-linecap="round" opacity=".7"/>`);
       c.body(c.flat(`M48.6 93.5Q54 91 59.4 93.5Q57.6 98.6 54 99Q50.4 98.6 48.6 93.5Z`, EYE));
       c.body(`<ellipse cx="52.4" cy="93.2" rx="1.6" ry=".7" fill="${GLINT}" opacity=".7"/>`);
-      return { face: { y: 84, es: 13, s: 1, my: 103, ms: 0.85 }, hat: { x: 54, y: 53, w: 24 }, neck: { y: 113, w: 30 * c.st },
-        arms: { y: 126, dx: 7, col: shade(b, 0.05), clasp: true }, feet: { dx: 14 * c.st, col: shade(b, 0.25) }, shadow: 34 * c.st };
+      return anchorsOf(c);
     },
   },
   radish: {
     kind: 'vegetable', label: 'radish',
     pals: [['#d4485a'], ['#e57b97'], ['#8f4c8c'], ['#c8443c'], ['#e9d6d2']],
     hats: ['ladybug', 'flower'], necks: ['bow'], extras: ['glasses'],
+    shape: {
+      profiles: { body: [[0, 72], [24, 74], [40, 88], [44, 108], [40, 132], [28, 154], [12, 170], [0, 176]] },
+      features: [
+        // the leaves fan from `at`, each [angle, length, width]; the key's `leaf4` draw adds `more`
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [0, 76], fan: [[-32, 46, 13], [3, 56, 14], [34, 46, 12]], more: [[-12, 40, 10]], tone: 'green' },
+        { name: 'root', kind: 'stroke', side: 'centre', fixed: true, width: 2.2, d: [['M', [0, 174]], ['Q', [1, 186], [9, 187.5]], ['Q', [13, 188], [15, 185]]], tone: '#f4e8e2' },
+      ],
+      face: { y: 104, es: 15, s: 1.05, my: 119.5, ms: 0.95 }, hat: { dx: 0, y: 74, w: 22 }, neck: { y: 76, w: 9, fixed: true },
+      arms: { y: 128, dx: 42, small: true, tone: 0 }, feet: { dx: 9, rx: 5, tone: '#f4e8e2' }, shadow: 30,
+    },
     build(c) {
-      const [b] = c.P, X = c.X, g = pick(c.key, 'green', GREENS), root = '#f4e8e2';
-      const lf = [[-32, 46, 13], [3, 56, 14], [34, 46, 12]];
-      if (chance(c.key, 'leaf4', 1, 2)) lf.push([-12, 40, 10]);
-      for (const [a, l, w] of lf) c.back(c.leaf(54, 76, a, l, w, g));
-      c.body(`<path d="M54 174Q55 186 63 187.5Q67 188 69 185" stroke="${root}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
-      const bulb = c.sym([[0, 72], [24, 74], [40, 88], [44, 108], [40, 132], [28, 154], [12, 170], [0, 176]]);
+      const [b] = c.P, X = c.X, g = pick(c.key, 'green', GREENS), root = '#f4e8e2', S = c.S;
+      const leaf = featureOf(c, 'leaf');
+      const lf = [...leaf.fan];
+      if (chance(c.key, 'leaf4', 1, 2)) lf.push(...leaf.more);
+      for (const [a, l, w] of lf) c.back(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, g));
+      c.body(`<path d="${pathD(featureOf(c, 'root').d, fixedX)}" stroke="${root}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
+      const bulb = c.sym(S.profiles.body);
       c.body(c.shape(bulb, b));
       c.body(`<ellipse cx="54" cy="176" rx="34" ry="36" fill="${c.pen.soft(root, 0.95)}" clip-path="${c.pen.clip(bulb)}"/>`);
-      return { face: { y: 104, es: 15, s: 1.05, my: 119.5, ms: 0.95 }, hat: { x: 54, y: 74, w: 22 }, neck: { y: 76, w: 9 },
-        arms: { y: 128, dx: 42 * c.st, col: b, small: true }, feet: { dx: 9 * c.st, col: root, rx: 5 }, shadow: 30 * c.st };
+      return anchorsOf(c);
     },
   },
   turnip: {
     kind: 'vegetable', label: 'turnip',
     pals: [['#9a5c9e', '#f4ede4'], ['#d7849a', '#f6efe6'], ['#d9b96a', '#f6efdd'], ['#c45a5a', '#f6ede6'], ['#7d6aa8', '#f3eef0']],
     hats: ['ladybug', 'flower'], necks: ['bow'], extras: ['glasses'],
+    shape: {
+      profiles: { body: [[0, 76], [30, 78], [46, 94], [48, 116], [42, 140], [28, 160], [12, 172], [0, 176]] },
+      // the pale root, its shoulders washed in the colourway's colour
+      tones: { body: 1 },
+      features: [
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [0, 80], fan: [[-44, 42, 15], [-14, 54, 16], [14, 52, 16], [44, 42, 14]], tone: 'green' },
+        { name: 'root', kind: 'stroke', side: 'centre', fixed: true, width: 2.2, d: [['M', [0, 174]], ['Q', [-1, 185], [-9, 187.5]], ['Q', [-13, 188], [-15, 185]]], tone: 1 },
+      ],
+      face: { y: 108, es: 16, s: 1.05, my: 123, ms: 1 }, hat: { dx: 0, y: 78, w: 22 }, neck: { y: 80, w: 9, fixed: true },
+      arms: { y: 132, dx: 45, small: true, tone: 1 }, feet: { dx: 9, rx: 5, tone: 1 }, shadow: 32,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, g = pick(c.key, 'green', GREENS);
-      for (const [a, l, w] of [[-44, 42, 15], [-14, 54, 16], [14, 52, 16], [44, 42, 14]]) c.back(c.leaf(54, 80, a, l, w, shade(g, 0.08)));
-      c.body(`<path d="M54 174Q53 185 45 187.5Q41 188 39 185" stroke="${m}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
-      const bulb = c.sym([[0, 76], [30, 78], [46, 94], [48, 116], [42, 140], [28, 160], [12, 172], [0, 176]]);
+      const [b, m] = c.P, X = c.X, g = pick(c.key, 'green', GREENS), S = c.S;
+      const leaf = featureOf(c, 'leaf');
+      for (const [a, l, w] of leaf.fan) c.back(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, shade(g, 0.08)));
+      c.body(`<path d="${pathD(featureOf(c, 'root').d, fixedX)}" stroke="${m}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
+      const bulb = c.sym(S.profiles.body);
       c.body(c.shape(bulb, m));
       c.body(`<rect x="0" y="70" width="108" height="56" fill="${c.pen.vfade(b, 0.35, 1)}" clip-path="${c.pen.clip(bulb)}"/>`);
       c.body(`<path d="${bulb}" fill="none" stroke="${line(b)}" stroke-width="1.6" opacity=".35"/>`);
-      return { face: { y: 108, es: 16, s: 1.05, my: 123, ms: 1 }, hat: { x: 54, y: 78, w: 22 }, neck: { y: 80, w: 9 },
-        arms: { y: 132, dx: 45 * c.st, col: m, small: true }, feet: { dx: 9 * c.st, col: m, rx: 5 }, shadow: 32 * c.st };
+      return anchorsOf(c);
     },
   },
   mushroom: {
@@ -349,75 +561,116 @@ const APPROVED = {
     pals: [['#9a5a36'], ['#c79a62'], ['#b5482f'], ['#6b4630'], ['#d9a441']],
     hats: ['ladybug', 'flower', 'sprig'], necks: ['scarf', 'bow', 'neckerchief'], extras: ['glasses', 'satchel', 'mug', 'book'],
     variant(key) { return pick(key, 'cap', ['dome', 'wide', 'bell']); },
+    shape: {
+      // the stem; the cap is the colourway's
+      profiles: { body: [[0, 80], [22, 82], [27, 100], [29, 128], [33, 160], [30, 182], [0, 186]] },
+      tones: { body: '#f1e2c8' },
+      features: [
+        // each variant's cap, its `top` the crown the hat sits on
+        { name: 'cap', variant: 'dome', kind: 'path', side: 'centre', top: 31, d: [['M', [-48, 87]], ['C', [-52, 54], [-30, 30], [0, 30]], ['C', [30, 30], [52, 54], [48, 87]], ['C', [30, 95], [-30, 95], [-48, 87]], ['Z']] },
+        { name: 'cap', variant: 'wide', kind: 'path', side: 'centre', top: 45, d: [['M', [-52, 84]], ['C', [-51, 60], [-28, 44], [0, 44]], ['C', [28, 44], [51, 60], [52, 84]], ['C', [32, 93], [-32, 93], [-52, 84]], ['Z']] },
+        { name: 'cap', variant: 'bell', kind: 'path', side: 'centre', top: 21, d: [['M', [-41, 89]], ['C', [-43, 60], [-22, 22], [0, 20]], ['C', [22, 22], [43, 60], [41, 89]], ['C', [26, 96], [-26, 96], [-41, 89]], ['Z']] },
+      ],
+      face: { y: 110, es: 12.5, s: 0.98, my: 123.5, ms: 0.85 }, hat: { dx: 0, y: 31, w: 26 }, neck: { y: 98, w: 27 },
+      arms: { y: 140, dx: 30, tone: '#f1e2c8' }, feet: { dx: 14, tone: { of: '#f1e2c8', shade: 0.2 } }, shadow: 34,
+    },
     build(c) {
-      const [b] = c.P, X = c.X, stem = '#f1e2c8';
-      c.body(c.shape(c.sym([[0, 80], [22, 82], [27, 100], [29, 128], [33, 160], [30, 182], [0, 186]]), stem));
+      const [b] = c.P, X = c.X, stem = '#f1e2c8', S = c.S;
+      c.body(c.shape(c.sym(S.profiles.body), stem));
       c.body(`<ellipse cx="54" cy="92" rx="${f(36 * c.st)}" ry="7" fill="${shade(stem, 0.3)}"/>`);
       for (let i = -4; i <= 4; i++) c.body(`<path d="M${X(i * 3)} 88L${X(i * 8)} 97" stroke="${shade(stem, 0.45)}" stroke-width=".8" opacity=".6"/>`);
-      const caps = {
-        dome: { d: `M${X(-48)} 87C${X(-52)} 54 ${X(-30)} 30 54 30C${X(30)} 30 ${X(52)} 54 ${X(48)} 87C${X(30)} 95 ${X(-30)} 95 ${X(-48)} 87Z`, top: 31 },
-        wide: { d: `M${X(-52)} 84C${X(-51)} 60 ${X(-28)} 44 54 44C${X(28)} 44 ${X(51)} 60 ${X(52)} 84C${X(32)} 93 ${X(-32)} 93 ${X(-52)} 84Z`, top: 45 },
-        bell: { d: `M${X(-41)} 89C${X(-43)} 60 ${X(-22)} 22 54 20C${X(22)} 22 ${X(43)} 60 ${X(41)} 89C${X(26)} 96 ${X(-26)} 96 ${X(-41)} 89Z`, top: 21 },
-      };
-      const cap = caps[c.variant];
-      c.body(c.shape(cap.d, b));
+      const cap = featureOf(c, 'cap');
+      c.body(c.shape(pathD(cap.d, X), b));
       if (b !== '#b5482f' && chance(c.key, 'speckle', 1, 2)) for (const [dx, y, r] of [[-26, 66, 3], [-6, 52, 2.4], [18, 60, 3.2], [32, 76, 2.2], [-38, 80, 2]]) c.body(`<circle cx="${X(dx)}" cy="${y + (cap.top - 30) * 0.6}" r="${r}" fill="${tint(b, 0.6)}" opacity=".75"/>`);
-      return { face: { y: 110, es: 12.5, s: 0.98, my: 123.5, ms: 0.85 }, hat: { x: 54, y: cap.top, w: 26 }, neck: { y: 98, w: 27 * c.st },
-        arms: { y: 140, dx: 30 * c.st, col: stem }, feet: { dx: 14 * c.st, col: shade(stem, 0.2) }, shadow: 34 * c.st };
+      const A = anchorsOf(c);
+      A.hat.y = cap.top;
+      return A;
     },
   },
   peapod: {
     kind: 'vegetable', label: 'pea-pod',
     pals: [['#8cbf5a', '#b8dc7a'], ['#5f9a48', '#9ccc6a'], ['#d9c45a', '#ece08a'], ['#8a5a96', '#9fc86c']],
     hats: ['ladybug', 'flower'], necks: ['scarf', 'bow', 'neckerchief'], extras: ['glasses', 'satchel'],
+    shape: {
+      profiles: { body: [[0, 36], [14, 40], [24, 58], [29, 84], [30, 112], [29, 140], [27, 162], [18, 180], [0, 186]] },
+      features: [
+        { name: 'tendril', kind: 'stroke', side: 'centre', fixed: true, width: 1.8, d: [['M', [0, 40]], ['L', [1, 28]], ['C', [3, 18], [13, 18], [11, 27]], ['C', [9.5, 33], [2, 31], [5, 23]]], tone: GREENS[0] },
+        // the three peas showing in the open slit
+        { name: 'pea', kind: 'ell', side: 'centre', at: [0, 141], r: [7, 7], tone: 1 },
+        { name: 'pea', kind: 'ell', side: 'centre', at: [0, 156], r: [7, 7], tone: 1 },
+        { name: 'pea', kind: 'ell', side: 'centre', at: [0, 170], r: [6, 6], tone: 1 },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [0, 40], fan: [[-75, 13, 5], [-38, 13, 5], [0, 13, 5], [38, 13, 5], [75, 13, 5]], tone: GREENS[2] },
+      ],
+      face: { y: 88, es: 12, s: 0.98, my: 102, ms: 0.85 }, hat: { dx: 0, y: 36, w: 14 }, neck: { y: 111, w: 30 },
+      arms: { y: 118, dx: 30, small: true, tone: 0 }, feet: { dx: 11, rx: 6, tone: { of: 0, shade: 0.18 } }, shadow: 28,
+    },
     build(c) {
-      const [b, pea] = c.P, X = c.X, dk = shade(b, 0.18);
-      c.back(`<path d="M54 40L55 28C57 18 67 18 65 27C63.5 33 56 31 59 23" stroke="${shade(GREENS[0], 0.15)}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`);
-      const pod = c.sym([[0, 36], [14, 40], [24, 58], [29, 84], [30, 112], [29, 140], [27, 162], [18, 180], [0, 186]]);
+      const [b, pea] = c.P, X = c.X, S = c.S;
+      c.back(`<path d="${pathD(featureOf(c, 'tendril').d, fixedX)}" stroke="${shade(GREENS[0], 0.15)}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`);
+      const pod = c.sym(S.profiles.body);
       c.body(c.shape(pod, b));
       const slit = `M54 128C${X(17)} 140 ${X(17)} 168 54 181C${X(-17)} 168 ${X(-17)} 140 54 128Z`;
       c.body(`<path d="${slit}" fill="${shade(b, 0.4)}"/>`);
-      for (const y of [141, 156, 170]) c.body(`<circle cx="54" cy="${y}" r="${y === 170 ? 6 : 7}" fill="${c.pen.paint(pea)}" stroke="${line(pea)}" stroke-width="1" clip-path="${c.pen.clip(slit)}"/>`);
+      for (const p of S.features.filter((ft) => ft.name === 'pea')) c.body(`<circle cx="${X(p.at[0])}" cy="${p.at[1]}" r="${p.r[0]}" fill="${c.pen.paint(pea)}" stroke="${line(pea)}" stroke-width="1" clip-path="${c.pen.clip(slit)}"/>`);
       c.body(`<path d="M${X(-1.5)} 44Q${X(-7)} 90 ${X(-2)} 126" stroke="${shade(b, 0.3)}" stroke-width="1.1" fill="none" opacity=".5"/>`);
-      for (const a of [-75, -38, 0, 38, 75]) c.body(c.leaf(54, 40, a, 13, 5, GREENS[2]));
-      return { face: { y: 88, es: 12, s: 0.98, my: 102, ms: 0.85 }, hat: { x: 54, y: 36, w: 14 }, neck: { y: 111, w: 30 * c.st },
-        arms: { y: 118, dx: 30 * c.st, col: b, small: true }, feet: { dx: 11 * c.st, col: dk, rx: 6 }, shadow: 28 * c.st };
+      const leaf = featureOf(c, 'leaf');
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, GREENS[2]));
+      return anchorsOf(c);
     },
   },
   carrot: {
     kind: 'vegetable', label: 'carrot',
     pals: [['#e8873a'], ['#8a4a7a'], ['#e8bf4a'], ['#d0573a'], ['#f0a64a']],
     hats: ['ladybug', 'flower'], necks: ['scarf', 'bow', 'neckerchief'], extras: ['glasses', 'satchel'],
+    shape: {
+      profiles: { body: [[0, 56], [24, 58], [36, 70], [38, 92], [33, 122], [25, 150], [15, 170], [0, 186]] },
+      features: [
+        // the feathery fronds fan from `at`, each [angle, length]
+        { name: 'frond', kind: 'frond', side: 'centre', at: [0, 60], fan: [[-34, 44], [-8, 52], [18, 50], [40, 40]], tone: 'green' },
+      ],
+      face: { y: 88, es: 14, s: 1, my: 103.5, ms: 0.9 }, hat: { dx: 0, y: 57, w: 24 }, neck: { y: 109, w: 34 },
+      arms: { y: 116, dx: 35, small: true, tone: 0 }, feet: { dx: 11, rx: 6, tone: { of: 0, shade: 0.2 } }, shadow: 26,
+    },
     build(c) {
-      const [b] = c.P, X = c.X, g = pick(c.key, 'green', GREENS);
-      for (const [a, len] of [[-34, 44], [-8, 52], [18, 50], [40, 40]]) {
-        let s = `<g transform="translate(54 60) rotate(${a})"><path d="M0 0Q2 ${-len * 0.5} 0 ${-len}" stroke="${shade(g, 0.15)}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
+      const [b] = c.P, X = c.X, g = pick(c.key, 'green', GREENS), S = c.S;
+      const frond = featureOf(c, 'frond');
+      for (const [a, len] of frond.fan) {
+        let s = `<g transform="translate(${X(frond.at[0])} ${frond.at[1]}) rotate(${a})"><path d="M0 0Q2 ${-len * 0.5} 0 ${-len}" stroke="${shade(g, 0.15)}" stroke-width="2" fill="none" stroke-linecap="round"/>`;
         for (let k = 1; k <= 4; k++) { const y = -len * (0.25 + k * 0.17); s += `<ellipse cx="-4.5" cy="${f(y)}" rx="2.6" ry="5.4" transform="rotate(-38 -4.5 ${f(y)})" fill="${c.pen.paint(g)}"/><ellipse cx="4.5" cy="${f(y)}" rx="2.6" ry="5.4" transform="rotate(38 4.5 ${f(y)})" fill="${c.pen.paint(g)}"/>`; }
         c.back(s + `<ellipse cx="0" cy="${-len}" rx="2.6" ry="5" fill="${c.pen.paint(g)}"/></g>`);
       }
-      const prof = [[0, 56], [24, 58], [36, 70], [38, 92], [33, 122], [25, 150], [15, 170], [0, 186]];
+      const prof = S.profiles.body;
       c.body(c.shape(c.sym(prof), b));
       const half = (y) => { for (let i = 1; i < prof.length; i++) if (y <= prof[i][1]) { const [d0, y0] = prof[i - 1], [d1, y1] = prof[i]; return d0 + (d1 - d0) * (y - y0) / (y1 - y0); } return 0; };
       for (const [y, s] of [[96, -1], [116, 1], [136, -1], [154, 1], [128, -1]]) { const w = half(y) * c.st; c.body(`<path d="M${f(54 + s * (w - 0.5))} ${y}Q${f(54 + s * (w - 6))} ${y + 2.2} ${f(54 + s * (w - 11))} ${y + 1}" stroke="${shade(b, 0.3)}" stroke-width="1.2" fill="none" stroke-linecap="round" opacity=".6"/>`); }
-      return { face: { y: 88, es: 14, s: 1, my: 103.5, ms: 0.9 }, hat: { x: 54, y: 57, w: 24 }, neck: { y: 109, w: 34 * c.st },
-        arms: { y: 116, dx: 35 * c.st, col: b, small: true }, feet: { dx: 11 * c.st, col: shade(b, 0.2), rx: 6 }, shadow: 26 * c.st };
+      return anchorsOf(c);
     },
   },
   eggplant: {
     kind: 'vegetable', label: 'eggplant',
     pals: [['#5e3b6e'], ['#7a4a8c'], ['#b593c4', 'stripe'], ['#efe8e0'], ['#86a85a']],
     hats: ['ladybug', 'flower'], necks: ['bow', 'scarf'], extras: ['glasses', 'satchel', 'book'],
+    shape: {
+      profiles: { body: [[0, 50], [14, 52], [22, 66], [28, 90], [38, 124], [43, 152], [37, 175], [21, 185], [0, 186]] },
+      features: [
+        { name: 'stem', kind: 'stroke', side: 'centre', fixed: true, width: 5, d: [['M', [0, 52]], ['L', [2, 35]]], tone: '#6f9a4e' },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [0, 50], fan: [[128, 17, 7.5], [156, 17, 7.5], [180, 20, 7.5], [204, 17, 7.5], [232, 17, 7.5]], tone: '#6f9a4e' },
+        { name: 'calyx', kind: 'ell', side: 'centre', at: [0, 50], r: [13, 5.5], tone: '#6f9a4e' },
+      ],
+      face: { y: 104, es: 15, s: 1.02, my: 119, ms: 0.95 }, hat: { dx: 0, y: 45, w: 12 }, neck: { y: 76, w: 24 },
+      arms: { y: 140, dx: 41, small: true, tone: 0 }, feet: { dx: 16, tone: { of: 0, shade: 0.2 } }, shadow: 38,
+    },
     build(c) {
-      const [b, stripe] = c.P, X = c.X, cal = '#6f9a4e';
-      const body = c.sym([[0, 50], [14, 52], [22, 66], [28, 90], [38, 124], [43, 152], [37, 175], [21, 185], [0, 186]]);
+      const [b, stripe] = c.P, X = c.X, cal = '#6f9a4e', S = c.S;
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       if (stripe) for (const dx of [-26, -9, 9, 26]) c.body(`<path d="M${X(dx * 0.4)} 56Q${X(dx * 1.3)} 120 ${X(dx * 0.6)} 186" stroke="${tint(b, 0.7)}" stroke-width="4" fill="none" opacity=".65" clip-path="${c.pen.clip(body)}"/>`);
       c.body(`<path d="M${X(-26)} 108Q${X(-33)} 134 ${X(-27)} 160" stroke="#fff" stroke-width="3.6" fill="none" opacity=".3" stroke-linecap="round"/>`);
-      c.body(`<path d="M54 52L56 35" stroke="${shade(cal, 0.25)}" stroke-width="5" stroke-linecap="round"/>`);
-      for (const a of [128, 156, 180, 204, 232]) c.body(c.leaf(54, 50, a, a === 180 ? 20 : 17, 7.5, cal));
-      c.body(c.ell(54, 50, 13, 5.5, cal));
-      return { face: { y: 104, es: 15, s: 1.02, my: 119, ms: 0.95 }, hat: { x: 54, y: 45, w: 12 }, neck: { y: 76, w: 24 * c.st },
-        arms: { y: 140, dx: 41 * c.st, col: b, small: true }, feet: { dx: 16 * c.st, col: shade(b, 0.2) }, shadow: 38 * c.st };
+      c.body(`<path d="${pathD(featureOf(c, 'stem').d, fixedX)}" stroke="${shade(cal, 0.25)}" stroke-width="5" stroke-linecap="round"/>`);
+      const leaf = featureOf(c, 'leaf'), calyx = featureOf(c, 'calyx');
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, cal));
+      c.body(c.ell(X(calyx.at[0]), calyx.at[1], calyx.r[0], calyx.r[1], cal));
+      return anchorsOf(c);
     },
   },
   pumpkin: {
@@ -429,40 +682,57 @@ const APPROVED = {
     // section 2b holds the colours and its outline leg the shape.
     pals: [['#cc5800'], ['#c45200'], ['#ba4a00'], ['#c85600', 'stripe'], ['#b04400']],
     hats: ['ladybug', 'flower', 'sprig'], necks: [], extras: ['glasses', 'mug', 'book'],
+    shape: {
+      features: [
+        // the lobes, back to front, each [dx, y, rx, ry, how much darker]: the outer pair turned away, the inner pair, the
+        // front lobe; each lobe's own outline and its own light are the deep ribs between them
+        { name: 'lobes', kind: 'lobes', side: 'centre', lobes: [[-33, 143, 21, 40, 0.16], [33, 143, 21, 40, 0.16], [-18, 141, 22, 44, 0.07], [18, 141, 22, 44, 0.07], [0, 142, 20, 44, 0]] },
+        // the stem in the top's hollow, leaning aside, and its curling tendril, at their own size
+        { name: 'stem', kind: 'path', side: 'centre', fixed: true, d: [['M', [-4, 102]], ['C', [-5, 91], [0, 83], [6, 79]], ['L', [9.5, 83.5]], ['C', [5, 86], [3, 93], [3.5, 102]], ['Z']], tone: PUMPKIN_STEM },
+        { name: 'tendril', kind: 'stroke', side: 'centre', fixed: true, width: 1.7, d: [['M', [5.5, 89]], ['C', [14, 84], [22, 89], [18.5, 95]], ['C', [15.5, 99.5], [10.5, 95.5], [13.5, 92.5]]], tone: GREENS[2] },
+        { name: 'leaf', kind: 'leaf', side: 'centre', fixed: true, at: [-5, 100], fan: [[-62, 18, 8]], tone: GREENS[1] },
+      ],
+      face: { y: 124, es: 18, s: 1.05, my: 139, ms: 1 }, hat: { x: 37, y: 99, w: 18 }, neck: null,
+      arms: { y: 152, dx: 52, small: true, tone: 0 }, feet: { dx: 24, tone: { of: 0, shade: 0.25 } }, shadow: 54,
+    },
     build(c) {
       const [b, stripe] = c.P, X = c.X;
-      // the lobes, back to front: the outer pair turned away (a shade darker), the inner pair, the front lobe; each lobe's
-      // own outline and its own light are the deep ribs between them
-      const lobes = [[-33, 143, 21, 40, 0.16], [33, 143, 21, 40, 0.16], [-18, 141, 22, 44, 0.07], [18, 141, 22, 44, 0.07], [0, 142, 20, 44, 0]];
-      for (const [dx, cy, rx, ry, dark] of lobes) {
+      for (const [dx, cy, rx, ry, dark] of featureOf(c, 'lobes').lobes) {
         const col = shade(b, dark);
         c.body(c.ell(X(dx), cy, rx * c.st, ry, col));
         if (stripe) c.body(`<path d="M${X(dx)} ${cy - ry + 6}C${X(dx - rx * 0.18)} ${f(cy - ry * 0.3)} ${X(dx - rx * 0.18)} ${f(cy + ry * 0.3)} ${X(dx)} ${cy + ry - 6}" stroke="${tint(col, 0.55)}" stroke-width="3.4" fill="none" opacity=".65" stroke-linecap="round"/>`);
       }
-      // the stem in the top's hollow, leaning aside, and its curling tendril
-      c.body(c.shape(`M50 102C49 91 54 83 60 79L63.5 83.5C59 86 57 93 57.5 102Z`, PUMPKIN_STEM));
-      c.body(`<path d="M59.5 89C68 84 76 89 72.5 95C69.5 99.5 64.5 95.5 67.5 92.5" stroke="${GREENS[2]}" stroke-width="1.7" fill="none" stroke-linecap="round"/>`);
-      if (chance(c.key, 'pleaf', 1, 2)) c.body(c.leaf(49, 100, -62, 18, 8, GREENS[1]));
-      return { face: { y: 124, es: 18, s: 1.05, my: 139, ms: 1 }, hat: { x: 37, y: 99, w: 18 }, neck: null,
-        arms: { y: 152, dx: 52 * c.st, col: b, small: true }, feet: { dx: 24 * c.st, col: shade(b, 0.25) }, shadow: 54 * c.st };
+      c.body(c.shape(pathD(featureOf(c, 'stem').d, fixedX), PUMPKIN_STEM));
+      c.body(`<path d="${pathD(featureOf(c, 'tendril').d, fixedX)}" stroke="${GREENS[2]}" stroke-width="1.7" fill="none" stroke-linecap="round"/>`);
+      const leaf = featureOf(c, 'leaf');
+      if (chance(c.key, 'pleaf', 1, 2)) for (const [a, l, w] of leaf.fan) c.body(c.leaf(fixedX(leaf.at[0]), leaf.at[1], a, l, w, GREENS[1]));
+      return anchorsOf(c);
     },
   },
   potato: {
     kind: 'vegetable', label: 'potato',
     pals: [['#b4875a'], ['#d6b072'], ['#b8644e'], ['#7a5468'], ['#cfa774']],
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'bow', 'neckerchief'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      features: [
+        // one lumpy oval: `n` points round the ellipse at `at`, radii `r`, each pushed out or in by up to four `lump`s by
+        // the key's own draw
+        { name: 'body', kind: 'lumps', side: 'centre', at: [0, 124], r: [38, 59], n: 10, lump: 0.013 },
+      ],
+      face: { y: 106, es: 15, s: 1, my: 121, ms: 0.95 }, hat: { dx: 0, y: 66, w: 30 }, neck: { y: 128, w: 38 },
+      arms: { y: 140, dx: 39, tone: 0 }, feet: { dx: 16, tone: { of: 0, shade: 0.2 } }, shadow: 38,
+    },
     build(c) {
-      const [b] = c.P, N = 10, pts = [];
+      const [b] = c.P, L = featureOf(c, 'body'), N = L.n, pts = [];
       for (let i = 0; i < N; i++) {
-        const a = -Math.PI / 2 + i * 2 * Math.PI / N, k = 1 + ((draw(c.key, 'lump' + i) % 9) - 4) * 0.013;
-        pts.push([54 + Math.cos(a) * 38 * c.st * k, Math.min(185, 124 + Math.sin(a) * 59 * (i === 0 ? 1 : k))]);
+        const a = -Math.PI / 2 + i * 2 * Math.PI / N, k = 1 + ((draw(c.key, 'lump' + i) % 9) - 4) * L.lump;
+        pts.push([54 + Math.cos(a) * L.r[0] * c.st * k, Math.min(185, L.at[1] + Math.sin(a) * L.r[1] * (i === 0 ? 1 : k))]);
       }
       c.body(c.shape(smooth(pts), b));
       const spots = [[-26, 148], [22, 158], [28, 84], [-30, 96], [8, 170], [-14, 166]];
       for (let i = 0; i < 6; i++) if (draw(c.key, 'dimple' + i) % 2) { const [dx, y] = spots[i]; c.body(`<path d="M${c.X(dx) - 2.4} ${y}Q${c.X(dx)} ${y + 2.4} ${c.X(dx) + 2.4} ${y}" stroke="${shade(b, 0.35)}" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".7"/>`); }
       if (chance(c.key, 'sprout', 1, 3)) { c.back(`<path d="M62 70Q63 62 66 58" stroke="#8a6a8a" stroke-width="1.6" fill="none" stroke-linecap="round"/>`); c.back(c.leaf(66, 59, 40, 9, 4, '#9ab062')); c.back(c.leaf(65.5, 60, -30, 7, 3.5, '#9ab062')); }
-      return { face: { y: 106, es: 15, s: 1, my: 121, ms: 0.95 }, hat: { x: 54, y: 66, w: 30 }, neck: { y: 128, w: 38 * c.st },
-        arms: { y: 140, dx: 39 * c.st, col: b }, feet: { dx: 16 * c.st, col: shade(b, 0.2) }, shadow: 38 * c.st };
+      return anchorsOf(c);
     },
   },
   // ---- card#12212: four more animals and four more vegetables, drawn to the approved look and appended to the list ----
@@ -473,126 +743,191 @@ const APPROVED = {
     kind: 'animal', label: 'penguin-ish', added: 'card#12212',
     pals: [['#3e4a5c', '#f6f1e6'], ['#2d3a4f', '#fbf5ea'], ['#55657a', '#f4f0e8'], ['#5a4a44', '#f5ecdf'], ['#3f6b72', '#eef4ee']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: { body: [[0, 50], [22, 53], [35, 72], [42, 104], [44, 140], [39, 170], [25, 184], [0, 186]] },
+      features: [
+        // the pale front, one tall oval from the chest to the feet, and the two face patches meeting over the beak
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 144], r: [29, 42], tone: 1 },
+        { name: 'mask', kind: 'ell', side: 'pair', at: [14, 93], r: [14, 16], tone: 1 },
+        // a little tuft at the crown, and the beak pointing down between the eyes
+        { name: 'tuft', kind: 'stroke', side: 'centre', width: 1.6, d: [['M', [-4, 52]], ['Q', [-1, 42], [3, 45]], ['Q', [5, 38], [8, 46]]] },
+        { name: 'beak', kind: 'path', side: 'centre', d: [['M', [-5.5, 104]], ['Q', [0, 101.5], [5.5, 104]], ['Q', [3, 113], [0, 115]], ['Q', [-3, 113], [-5.5, 104]], ['Z']], tone: '#e8a04a' },
+      ],
+      face: { y: 94, es: 14, s: 1.05, my: null, ms: 1, beak: true }, hat: { dx: 0, y: 51, w: 24 }, neck: { y: 118, w: 42 },
+      arms: { y: 136, dx: 41, tone: { of: 0, shade: 0.08 } }, feet: { dx: 15, rx: 10, tone: '#e3a24f' }, shadow: 40,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, beak = '#e8a04a', foot = '#e3a24f';
-      const body = c.sym([[0, 50], [22, 53], [35, 72], [42, 104], [44, 140], [39, 170], [25, 184], [0, 186]]);
+      const [b, m] = c.P, X = c.X, beak = '#e8a04a', S = c.S;
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       const clip = c.pen.clip(body);
-      // the pale front, one tall oval from the chest to the feet, and the two face patches meeting over the beak
-      c.body(`<ellipse cx="54" cy="144" rx="${f(29 * c.st)}" ry="42" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
-      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 14)}" cy="93" rx="${f(14 * c.st)}" ry="16" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
-      // a little tuft at the crown, and the beak pointing down between the eyes
-      c.body(`<path d="M${X(-4)} 52Q${X(-1)} 42 ${X(3)} 45Q${X(5)} 38 ${X(8)} 46" stroke="${line(b)}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
-      c.front(`<g data-part="mouth"><path d="M${X(-5.5)} 104Q54 101.5 ${X(5.5)} 104Q${X(3)} 113 54 115Q${X(-3)} 113 ${X(-5.5)} 104Z" fill="${c.pen.paint(beak)}" stroke="${line(beak)}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="52.4" cy="105.2" rx="1.6" ry=".7" fill="#fff" opacity=".55"/></g>`);
-      return { face: { y: 94, es: 14, s: 1.05, my: null, ms: 1, beak: true }, hat: { x: 54, y: 51, w: 24 }, neck: { y: 118, w: 42 * c.st },
-        arms: { y: 136, dx: 41 * c.st, col: shade(b, 0.08) }, feet: { dx: 15 * c.st, col: foot, rx: 10 }, shadow: 40 * c.st };
+      const belly = featureOf(c, 'belly'), mask = featureOf(c, 'mask');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * mask.at[0])}" cy="${mask.at[1]}" rx="${f(mask.r[0] * c.st)}" ry="${mask.r[1]}" fill="${c.pen.paint(m)}" clip-path="${clip}"/>`);
+      c.body(`<path d="${pathD(featureOf(c, 'tuft').d, X)}" stroke="${line(b)}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
+      c.front(`<g data-part="mouth"><path d="${pathD(featureOf(c, 'beak').d, X)}" fill="${c.pen.paint(beak)}" stroke="${line(beak)}" stroke-width="1" stroke-linejoin="round"/><ellipse cx="52.4" cy="105.2" rx="1.6" ry=".7" fill="#fff" opacity=".55"/></g>`);
+      return anchorsOf(c);
     },
   },
   snail: {
     kind: 'animal', label: 'snail-ish', added: 'card#12212',
     pals: [['#c98a5a', '#f3dfc4'], ['#9a6b8f', '#efe0e6'], ['#7f9f6a', '#e9efd6'], ['#d9a05a', '#f8ecd6'], ['#6f7fa6', '#e6e8f0']],
     hats: ['beret', 'flower', 'ladybug', 'straw'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'book', 'mug'],
+    shape: {
+      // the soft body, head and foot in one, in the pale tone; the shell is the colourway's colour
+      profiles: { body: [[0, 88], [18, 90], [24, 112], [26, 138], [32, 162], [40, 182], [0, 186]] },
+      tones: { body: 1 },
+      features: [
+        // the shell, behind and over one shoulder — the shoulder AWAY from the key's side, which is the side the sleeper
+        // rolls toward, so the shell swings in and not out of the frame
+        { name: 'shell', kind: 'ell', side: 'away', at: [16, 112], r: [24, 24] },
+        // the feelers, two soft stalks from the crown, each with a bulb
+        { name: 'feeler', kind: 'stroke', side: 'pair', width: 2.6, d: [['M', [8, 92]], ['Q', [11, 78], [14, 68]]], tone: 1 },
+        { name: 'bulb', kind: 'ell', side: 'pair', at: [14.5, 66], r: [4.2, 4.2], tone: 1 },
+      ],
+      // card#12502: the face (eyes and mouth together) sits 1.1 units above its approved 106 / 119 — the least lift that
+      // takes the snail off the standard laptop's binding row, so the lid's top rises to where the next species binds it
+      // (the seat's ruling of 2026-10-28, reversible; tools/characters/selftest.mjs § 6b prints the binding drawing)
+      face: { y: 104.9, es: 12, s: 1, my: 117.9, ms: 0.85 }, hat: { dx: 0, y: 89, w: 18 }, neck: { y: 130, w: 27 },
+      arms: { y: 150, dx: 28, small: true, tone: 1 }, feet: null, shadow: 44,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, t = -c.side;
-      // the shell, behind and over one shoulder — the shoulder AWAY from the key's side, which is the side the sleeper
-      // rolls toward, so the shell swings in and not out of the frame; a round shell with its spiral drawn in its own shadow
-      const sx = X(t * 16), sy = 112, R = 24;
-      c.back(`<ellipse cx="${f(sx)}" cy="${sy}" rx="${f(R * c.st)}" ry="${R}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.6"/>`);
+      const [b, m] = c.P, X = c.X, t = -c.side, S = c.S;
+      // a round shell with its spiral drawn in its own shadow
+      const shell = featureOf(c, 'shell'), sx = X(t * shell.at[0]), sy = shell.at[1], R = shell.r[1];
+      c.back(`<ellipse cx="${f(sx)}" cy="${sy}" rx="${f(shell.r[0] * c.st)}" ry="${R}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.6"/>`);
       const turns = 2.3, pts = [];
       for (let i = 0; i <= 48; i++) { const a = i / 48 * turns * 2 * Math.PI, r = (R - 4) * (1 - i / 48) ** 0.8; pts.push([sx + Math.cos(a + 0.6) * r * c.st * t, sy + 2 + Math.sin(a + 0.6) * r]); }
       c.back(`<path d="${curve(pts)}" stroke="${shade(b, 0.45)}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".8"/>`);
       c.back(`<ellipse cx="${f(sx - 7 * c.st)}" cy="${sy - 9}" rx="${f(5.5 * c.st)}" ry="4" fill="${tint(b, 0.55)}" opacity=".6" transform="rotate(-30 ${f(sx - 7 * c.st)} ${sy - 9})"/>`);
-      // the feelers, two soft stalks from the crown, each with a bulb
-      for (const s of [-1, 1]) c.back(`<path d="M${X(s * 8)} 92Q${X(s * 11)} 78 ${X(s * 14)} 68" stroke="${line(m)}" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="${X(s * 14.5)}" cy="66" r="4.2" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width="1.2"/>`);
-      // the soft body, head and foot in one, a shade darker under the shell
-      const body = c.sym([[0, 88], [18, 90], [24, 112], [26, 138], [32, 162], [40, 182], [0, 186]]);
+      const feeler = featureOf(c, 'feeler'), bulb = featureOf(c, 'bulb');
+      for (const s of [-1, 1]) c.back(`<path d="${pathD(feeler.d, sideX(c, s))}" stroke="${line(m)}" stroke-width="2.6" fill="none" stroke-linecap="round"/><circle cx="${X(s * bulb.at[0])}" cy="${bulb.at[1]}" r="${bulb.r[0]}" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width="1.2"/>`);
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, m));
       c.body(`<ellipse cx="54" cy="168" rx="${f(38 * c.st)}" ry="14" fill="${shade(m, 0.16)}" clip-path="${c.pen.clip(body)}" opacity=".6"/>`);
-      // card#12502: the face (eyes and mouth together) sits 1.1 units above its approved 106 / 119 — the least lift that
-      // takes the snail off the standard laptop's binding row, so the lid's top rises to where the next species binds it
-      // (the seat's ruling of 2026-10-28, reversible; tools/characters/selftest.mjs § 6b prints the binding drawing)
-      return { face: { y: 104.9, es: 12, s: 1, my: 117.9, ms: 0.85 }, hat: { x: 54, y: 89, w: 18 }, neck: { y: 130, w: 27 * c.st },
-        arms: { y: 150, dx: 28 * c.st, col: m, small: true }, feet: null, shadow: 44 * c.st };
+      return anchorsOf(c);
     },
   },
   sheep: {
     kind: 'animal', label: 'sheep-ish', added: 'card#12212',
     pals: [['#f4ecdc', '#7a5f55'], ['#fbf4e8', '#b07a4a'], ['#f2dfd6', '#8c6f78'], ['#e5dcea', '#6f7488'], ['#e9dfc8', '#5e4b45']],
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      features: [
+        // ears out to the sides, behind the face, turned `tilt` degrees about their own centre
+        { name: 'ear', kind: 'ell', side: 'pair', at: [25, 96], r: [11, 6], tilt: 22, tone: 1 },
+        // the fleece: one scalloped cloud, body and crown in one
+        { name: 'body', kind: 'scallop', side: 'centre', at: [0, 134], r: [37, 47], n: 16, bulge: 6 },
+        // the face, an oval set into the fleece, with the fleece's forelock over the brow
+        { name: 'face', kind: 'ell', side: 'centre', at: [0, 104], r: [19, 23], tone: 1 },
+        { name: 'forelock', kind: 'scallop', side: 'centre', at: [0, 80], r: [20, 9], n: 7, bulge: 4.5 },
+      ],
+      face: { y: 104, es: 11, s: 0.95, my: 123, ms: 0.75 }, hat: { dx: 0, y: 72, w: 20 }, neck: { y: 128, w: 32 },
+      arms: { y: 152, dx: 34, small: true, tone: 1 }, feet: { dx: 14, tone: 1 }, shadow: 42,
+    },
     build(c) {
       const [b, m] = c.P, X = c.X, nose = '#d98c8c';
-      // ears out to the sides, behind the face
-      for (const s of [-1, 1]) c.back(`<g transform="rotate(${s * 22} ${X(s * 25)} 96)">${c.ell(X(s * 25), 96, 11, 6, m)}</g>`);
-      // the fleece: one scalloped cloud, body and crown in one
-      c.body(c.shape(scallop(54, 134, 37 * c.st, 47, 16, 6), b));
-      // the face, an oval set into the fleece, with the fleece's forelock over the brow
-      c.body(c.ell(54, 104, 19 * c.st, 23, m));
-      c.body(c.shape(scallop(54, 80, 20 * c.st, 9, 7, 4.5), b));
+      const ear = featureOf(c, 'ear'), fleece = featureOf(c, 'body'), face = featureOf(c, 'face'), lock = featureOf(c, 'forelock');
+      for (const s of [-1, 1]) c.back(`<g transform="rotate(${s * ear.tilt} ${X(s * ear.at[0])} ${ear.at[1]})">${c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], m)}</g>`);
+      c.body(c.shape(scallop(X(fleece.at[0]), fleece.at[1], fleece.r[0] * c.st, fleece.r[1], fleece.n, fleece.bulge), b));
+      c.body(c.ell(X(face.at[0]), face.at[1], face.r[0] * c.st, face.r[1], m));
+      c.body(c.shape(scallop(X(lock.at[0]), lock.at[1], lock.r[0] * c.st, lock.r[1], lock.n, lock.bulge), b));
       c.body(`<path d="M50.6 118Q54 116 57.4 118Q56 122.4 54 123Q52 122.4 50.6 118Z" fill="${c.pen.paint(nose)}" stroke="${line(nose)}" stroke-width=".9" stroke-linejoin="round"/>`);
-      return { face: { y: 104, es: 11, s: 0.95, my: 123, ms: 0.75 }, hat: { x: 54, y: 72, w: 20 }, neck: { y: 128, w: 32 * c.st },
-        arms: { y: 152, dx: 34 * c.st, col: m, small: true }, feet: { dx: 14 * c.st, col: m }, shadow: 42 * c.st };
+      return anchorsOf(c);
     },
   },
   deer: {
     kind: 'animal', label: 'deer-ish', added: 'card#12212',
     pals: [['#c48a5a', '#f6e8d2'], ['#a86b48', '#f3e2cc'], ['#8f7a66', '#efe4d6'], ['#d9a86a', '#fbf1de'], ['#b89a86', '#f6ebe3']],
     hats: ['flower', 'ladybug', 'beret', 'straw'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 116], [20, 121], [28, 142], [31, 164], [26, 182], [0, 185]],
+        head: [[0, 66], [18, 68], [29, 80], [33, 98], [30, 114], [20, 126], [0, 130]],
+      },
+      features: [
+        // young antlers — a beam and one fork each — and the ears, out and up
+        { name: 'antler', kind: 'stroke', side: 'pair', width: 3.2, d: [['M', [12, 72]], ['C', [15, 60], [17, 50], [22, 40]], ['M', [16, 56]], ['C', [21, 54], [26, 50], [30, 44]], ['M', [19, 46]], ['C', [16, 42], [15, 38], [16, 31]]], tone: '#b39a78' },
+        { name: 'ear', kind: 'ell', side: 'pair', at: [30, 86], r: [8, 15], tilt: -40 },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 152], r: [14, 22], tone: 1 },
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 117], r: [13, 10], tone: 1 },
+      ],
+      face: { y: 98, es: 13, s: 1, my: 121.5, ms: 0.8 }, hat: { dx: 0, y: 67, w: 18 }, neck: { y: 124, w: 26 },
+      arms: { y: 150, dx: 27, tone: 0 }, feet: { dx: 13, rx: 7, tone: { of: 0, shade: 0.5 } }, shadow: 32,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, horn = '#b39a78';
-      // young antlers — a beam and one fork each — and the ears, out and up
+      const [b, m] = c.P, X = c.X, horn = '#b39a78', S = c.S;
+      const antler = featureOf(c, 'antler'), ear = featureOf(c, 'ear');
       for (const s of [-1, 1]) {
-        const d = `M${X(s * 12)} 72C${X(s * 15)} 60 ${X(s * 17)} 50 ${X(s * 22)} 40M${X(s * 16)} 56C${X(s * 21)} 54 ${X(s * 26)} 50 ${X(s * 30)} 44M${X(s * 19)} 46C${X(s * 16)} 42 ${X(s * 15)} 38 ${X(s * 16)} 31`;
+        const d = pathD(antler.d, sideX(c, s));
         c.back(`<path d="${d}" stroke="${line(horn)}" stroke-width="5.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" stroke="${horn}" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
-        c.back(`<g transform="rotate(${-s * 40} ${X(s * 30)} 86)">${c.ell(X(s * 30), 86, 8, 15, b)}<ellipse cx="${X(s * 30)}" cy="88" rx="4" ry="10" fill="${m}" opacity=".85"/></g>`);
+        c.back(`<g transform="rotate(${s * ear.tilt} ${X(s * ear.at[0])} ${ear.at[1]})">${c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], b)}<ellipse cx="${X(s * ear.at[0])}" cy="88" rx="4" ry="10" fill="${m}" opacity=".85"/></g>`);
       }
-      const body = c.sym([[0, 116], [20, 121], [28, 142], [31, 164], [26, 182], [0, 185]]);
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="152" rx="${f(14 * c.st)}" ry="22" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
+      const belly = featureOf(c, 'belly'), muzzle = featureOf(c, 'muzzle');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
       if (chance(c.key, 'spots', 1, 2)) for (const [dx, y, r] of [[-22, 130, 2.2], [24, 136, 2], [-25, 150, 1.8], [26, 156, 2.1], [-20, 168, 1.9], [22, 172, 1.7]]) c.body(`<circle cx="${X(dx)}" cy="${y}" r="${r}" fill="${tint(m, 0.3)}" opacity=".8"/>`);
-      c.body(c.shape(c.sym([[0, 66], [18, 68], [29, 80], [33, 98], [30, 114], [20, 126], [0, 130]]), b));
-      c.body(`<ellipse cx="54" cy="117" rx="${f(13 * c.st)}" ry="10" fill="${c.pen.paint(m)}" opacity=".95"/>`);
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${f(muzzle.r[0] * c.st)}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}" opacity=".95"/>`);
       c.body(`<path d="M50.2 112.4Q54 110.4 57.8 112.4Q56.4 117.4 54 118Q51.6 117.4 50.2 112.4Z" fill="${EYE}"/><ellipse cx="52.6" cy="112.4" rx="1.4" ry=".7" fill="${GLINT}" opacity=".7"/>`);
-      return { face: { y: 98, es: 13, s: 1, my: 121.5, ms: 0.8 }, hat: { x: 54, y: 67, w: 18 }, neck: { y: 124, w: 26 * c.st },
-        arms: { y: 150, dx: 27 * c.st, col: b }, feet: { dx: 13 * c.st, col: shade(b, 0.5), rx: 7 }, shadow: 32 * c.st };
+      return anchorsOf(c);
     },
   },
   corn: {
     kind: 'vegetable', label: 'corn', added: 'card#12212',
     pals: [['#f0c84a', '#7fa65a'], ['#f6e7b8', '#8db55e'], ['#b8503a', '#6b9a52'], ['#6f6aa8', '#8aa06a'], ['#e89a3c', '#79a85a']],
     hats: ['ladybug', 'flower', 'straw'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'satchel'],
+    shape: {
+      profiles: { body: [[0, 54], [16, 58], [25, 80], [28, 110], [27, 140], [23, 166], [14, 182], [0, 186]] },
+      features: [
+        // the silk, a few pale wisps from the tip
+        { name: 'silk', kind: 'stroke', side: 'centre', width: 1.7, d: [['M', [-4, 58]], ['Q', [-10, 46], [-6, 36]], ['M', [0, 56]], ['Q', [2, 44], [-2, 33]], ['M', [4, 58]], ['Q', [10, 48], [6, 38]]] },
+        // the husk: two leaves wrapping the lower cob, their tips peeled out and up
+        { name: 'husk', kind: 'path', side: 'pair', d: [['M', [2, 186]], ['C', [30, 184], [38, 150], [33, 118]], ['C', [31, 100], [38, 94], [42, 84]], ['C', [36, 88], [29, 98], [22, 110]], ['C', [14, 124], [10, 156], [2, 186]], ['Z']], tone: 1 },
+      ],
+      face: { y: 98, es: 13, s: 1, my: 113, ms: 0.9 }, hat: { dx: 0, y: 55, w: 16 }, neck: { y: 124, w: 26 },
+      arms: { y: 142, dx: 34, small: true, tone: 1 }, feet: { dx: 10, rx: 6, tone: { of: 1, shade: 0.2 } }, shadow: 28,
+    },
     build(c) {
-      const [b, g] = c.P, X = c.X;
-      // the silk, a few pale wisps from the tip
-      c.back(`<path d="M${X(-4)} 58Q${X(-10)} 46 ${X(-6)} 36M54 56Q${X(2)} 44 ${X(-2)} 33M${X(4)} 58Q${X(10)} 48 ${X(6)} 38" stroke="${tint(b, 0.45)}" stroke-width="1.7" fill="none" stroke-linecap="round" opacity=".9"/>`);
-      const cob = c.sym([[0, 54], [16, 58], [25, 80], [28, 110], [27, 140], [23, 166], [14, 182], [0, 186]]);
+      const [b, g] = c.P, X = c.X, S = c.S;
+      c.back(`<path d="${pathD(featureOf(c, 'silk').d, X)}" stroke="${tint(b, 0.45)}" stroke-width="1.7" fill="none" stroke-linecap="round" opacity=".9"/>`);
+      const cob = c.sym(S.profiles.body);
       c.body(c.shape(cob, b));
       // the kernels: one pattern of staggered rounded squares, clipped to the cob
       const pid = c.pen.uid(), cw = f(8 * c.st), cl = shade(b, 0.3), hl = tint(b, 0.55);
       const kernel = (x, y) => `<rect x="${f(x - 3 * c.st)}" y="${f(y - 3.4)}" width="${f(6 * c.st)}" height="6.8" rx="2.2" fill="none" stroke="${cl}" stroke-width=".9" opacity=".5"/><ellipse cx="${f(x - 1 * c.st)}" cy="${f(y - 1.4)}" rx="${f(1.1 * c.st)}" ry=".9" fill="${hl}" opacity=".8"/>`;
       c.pen.defs.push(`<pattern id="${pid}" patternUnits="userSpaceOnUse" x="${f(54 - 4 * c.st)}" y="0" width="${cw}" height="10">${kernel(4 * c.st, 2.5)}${kernel(0, 7.5)}${kernel(8 * c.st, 7.5)}</pattern>`);
       c.body(`<path d="${cob}" fill="url(#${pid})" clip-path="${c.pen.clip(cob)}"/>`);
-      // the husk: two leaves wrapping the lower cob, their tips peeled out and up
+      const husk = featureOf(c, 'husk');
       for (const s of [-1, 1]) {
-        c.body(c.shape(`M${X(s * 2)} 186C${X(s * 30)} 184 ${X(s * 38)} 150 ${X(s * 33)} 118C${X(s * 31)} 100 ${X(s * 38)} 94 ${X(s * 42)} 84C${X(s * 36)} 88 ${X(s * 29)} 98 ${X(s * 22)} 110C${X(s * 14)} 124 ${X(s * 10)} 156 ${X(s * 2)} 186Z`, g));
+        c.body(c.shape(pathD(husk.d, sideX(c, s)), g));
         c.body(`<path d="M${X(s * 8)} 180C${X(s * 20)} 150 ${X(s * 29)} 122 ${X(s * 38)} 92" stroke="${tint(g, 0.45)}" stroke-width="1.1" fill="none" stroke-linecap="round" opacity=".7"/>`);
       }
-      return { face: { y: 98, es: 13, s: 1, my: 113, ms: 0.9 }, hat: { x: 54, y: 55, w: 16 }, neck: { y: 124, w: 26 * c.st },
-        arms: { y: 142, dx: 34 * c.st, col: g, small: true }, feet: { dx: 10 * c.st, col: shade(g, 0.2), rx: 6 }, shadow: 28 * c.st };
+      return anchorsOf(c);
     },
   },
   broccoli: {
     kind: 'vegetable', label: 'broccoli', added: 'card#12212',
     pals: [['#4f8a4a', '#cfe0b0'], ['#6aa05a', '#d8e6b8'], ['#7a5f9a', '#e2d8ea'], ['#a9c04e', '#e8ecc0'], ['#3f7f70', '#cfe3d8']],
     hats: ['beret', 'beanie', 'ladybug', 'flower'], necks: ['bow', 'scarf', 'neckerchief'], extras: ['glasses', 'mug', 'book'],
-    build(c) {
-      const [b, m] = c.P, X = c.X;
+    shape: {
       // the stalk, flaring at its foot (its neck sits low on it, so no satchel: one would hang below the foot line)
-      c.body(c.shape(c.sym([[0, 98], [18, 100], [21, 124], [22, 150], [28, 172], [31, 184], [0, 186]]), m));
-      // the crown: a scalloped canopy with its floret clusters
-      c.body(c.shape(scallop(54, 75, 40 * c.st, 34, 18, 6), b));
+      profiles: { body: [[0, 98], [18, 100], [21, 124], [22, 150], [28, 172], [31, 184], [0, 186]] },
+      tones: { body: 1 },
+      features: [
+        // the crown: a scalloped canopy
+        { name: 'crown', kind: 'scallop', side: 'centre', at: [0, 75], r: [40, 34], n: 18, bulge: 6 },
+      ],
+      face: { y: 126, es: 11, s: 0.9, my: 139, ms: 0.8 }, hat: { dx: 0, y: 42, w: 26 }, neck: { y: 150, w: 22 },
+      arms: { y: 148, dx: 25, small: true, tone: 1 }, feet: { dx: 14, tone: { of: 1, shade: 0.2 } }, shadow: 36,
+    },
+    build(c) {
+      const [b, m] = c.P, X = c.X, S = c.S, crown = featureOf(c, 'crown');
+      c.body(c.shape(c.sym(S.profiles.body), m));
+      c.body(c.shape(scallop(X(crown.at[0]), crown.at[1], crown.r[0] * c.st, crown.r[1], crown.n, crown.bulge), b));
       for (const [dx, y, r] of [[-20, 65, 9], [6, 55, 10], [24, 73, 8], [-6, 85, 9], [18, 95, 6.5], [-27, 89, 6.5]]) c.body(`<path d="${scallop(X(dx), y, r * c.st, r * 0.85, 7, 2)}" fill="${shade(b, 0.22)}" opacity=".5"/>`);
-      return { face: { y: 126, es: 11, s: 0.9, my: 139, ms: 0.8 }, hat: { x: 54, y: 42, w: 26 }, neck: { y: 150, w: 22 * c.st },
-        arms: { y: 148, dx: 25 * c.st, col: m, small: true }, feet: { dx: 14 * c.st, col: shade(m, 0.2) }, shadow: 36 * c.st };
+      return anchorsOf(c);
     },
   },
   pepper: {
@@ -601,44 +936,61 @@ const APPROVED = {
     // ruling of 2026-11-02)
     pals: [['#d8453a'], ['#e9b63a'], ['#a8c040'], ['#6f9a3c'], ['#6a4a86']],
     hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
-    build(c) {
-      const [b] = c.P, X = c.X, stem = '#6f9a4e';
+    shape: {
       // card#12842: the blocky bell — broad square shoulders with a deep dip for the stem, tapering to three round lobes
       // with clear notches between them, so the pepper's outline is its own beside the cabbage's round head and the
       // frog's wide sitting haunches
-      const body = c.sym([[0, 78], [10, 66], [24, 58], [38, 60], [47, 74], [49, 96], [46, 120], [40, 142], [33, 160], [29, 174], [22, 185], [14, 177], [6, 184], [0, 184]]);
+      profiles: { body: [[0, 78], [10, 66], [24, 58], [38, 60], [47, 74], [49, 96], [46, 120], [40, 142], [33, 160], [29, 174], [22, 185], [14, 177], [6, 184], [0, 184]] },
+      features: [
+        // the stem: thick and hooked, rising from a star-shaped calyx in the shoulders' dip
+        { name: 'stem', kind: 'stroke', side: 'centre', width: 6.4, d: [['M', [2, 74]], ['C', [1, 62], [4, 50], [12, 44]], ['C', [17, 41], [21, 44], [20, 48]]], tone: '#6f9a4e' },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [2, 75], fan: [[-75, 12, 5.5], [-38, 12, 5.5], [0, 12, 5.5], [38, 12, 5.5], [75, 12, 5.5]], tone: '#6f9a4e' },
+      ],
+      face: { y: 108, es: 15, s: 1.05, my: 124, ms: 1 }, hat: { dx: -8, y: 66, w: 18 }, neck: null,
+      arms: { y: 146, dx: 42, small: true, tone: 0 }, feet: { dx: 18, tone: { of: 0, shade: 0.25 } }, shadow: 42,
+    },
+    build(c) {
+      const [b] = c.P, X = c.X, stem = '#6f9a4e', S = c.S;
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       // the grooves between the lobes, deep and running into the notches
       for (const dx of [-15, 15]) c.body(`<path d="M${X(dx * 0.75)} 70C${X(dx * 1.7)} 106 ${X(dx * 1.5)} 150 ${X(dx * 1.07)} 176" stroke="${shade(b, 0.34)}" stroke-width="2" fill="none" opacity=".55" stroke-linecap="round"/>`);
       // the gloss: a long shine down the left shoulder and a short one on the right lobe
       c.body(`<path d="M${X(-33)} 82Q${X(-41)} 116 ${X(-32)} 154" stroke="#fff" stroke-width="5" fill="none" opacity=".4" stroke-linecap="round"/>`);
       c.body(`<path d="M${X(28)} 150Q${X(31)} 160 ${X(27)} 168" stroke="#fff" stroke-width="3" fill="none" opacity=".3" stroke-linecap="round"/>`);
-      // the stem: thick and hooked, rising from a star-shaped calyx in the shoulders' dip
-      const sd = `M${X(2)} 74C${X(1)} 62 ${X(4)} 50 ${X(12)} 44C${X(17)} 41 ${X(21)} 44 ${X(20)} 48`;
+      const sd = pathD(featureOf(c, 'stem').d, X);
       c.body(`<path d="${sd}" stroke="${line(stem)}" stroke-width="9" fill="none" stroke-linecap="round"/><path d="${sd}" stroke="${stem}" stroke-width="6.4" fill="none" stroke-linecap="round"/><path d="M${X(0)} 70C${X(-0.5)} 60 ${X(2)} 52 ${X(7)} 48" stroke="${tint(stem, 0.4)}" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".7"/>`);
-      for (const a of [-75, -38, 0, 38, 75]) c.body(c.leaf(X(2), 75, a, 12, 5.5, shade(stem, 0.08)));
-      return { face: { y: 108, es: 15, s: 1.05, my: 124, ms: 1 }, hat: { x: X(-8), y: 66, w: 18 }, neck: null,
-        arms: { y: 146, dx: 42 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 42 * c.st };
+      const leaf = featureOf(c, 'leaf');
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, shade(stem, 0.08)));
+      return anchorsOf(c);
     },
   },
   cabbage: {
     kind: 'vegetable', label: 'cabbage', added: 'card#12212',
     pals: [['#bfd48a', '#6f9a52'], ['#9a6aa8', '#5e3b6e'], ['#d6dc8c', '#4f7f44'], ['#dfe8cf', '#8aa678'], ['#d9a6c8', '#8a5a96']],
     hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'mug', 'book'],
+    shape: {
+      profiles: { body: [[0, 74], [24, 76], [38, 92], [42, 118], [41, 148], [33, 173], [18, 184], [0, 186]] },
+      features: [
+        // card#12842: the head in a ruffled collar — two wide outer leaves flare out low on either side, their frilled
+        // edges past the head, so the cabbage's outline widens at its foot where the bell pepper's narrows to its lobes
+        { name: 'leaf', kind: 'scallop', side: 'pair', at: [26, 150], r: [20, 32], n: 11, bulge: 4.2, tilt: 38, tone: 1 },
+      ],
+      face: { y: 110, es: 15, s: 1.05, my: 126, ms: 1 }, hat: { dx: 0, y: 74, w: 24 }, neck: { y: 150, w: 35 },
+      arms: { y: 148, dx: 40, small: true, tone: 0 }, feet: { dx: 18, tone: { of: 0, shade: 0.25 } }, shadow: 40,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X;
-      // card#12842: the head in a ruffled collar — two wide outer leaves flare out low on either side, their frilled
-      // edges past the head, so the cabbage's outline widens at its foot where the bell pepper's narrows to its lobes
+      const [b, m] = c.P, X = c.X, S = c.S, leaf = featureOf(c, 'leaf');
       for (const s of [-1, 1]) {
-        c.back(`<g transform="rotate(${s * 38} ${X(s * 26)} 150)">${c.shape(scallop(X(s * 26), 150, 20 * c.st, 32, 11, 4.2), m)}<path d="M${X(s * 26)} 176L${X(s * 26)} 126" stroke="${tint(m, 0.45)}" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>${[-1, 1].map((v) => `<path d="M${X(s * 26)} ${150 + v * 8}L${X(s * 26 + v * 9)} ${144 + v * 8}" stroke="${tint(m, 0.45)}" stroke-width="1" stroke-linecap="round" opacity=".6"/>`).join('')}</g>`);
+        const lx = X(s * leaf.at[0]), ly = leaf.at[1];
+        c.back(`<g transform="rotate(${s * leaf.tilt} ${lx} ${ly})">${c.shape(scallop(lx, ly, leaf.r[0] * c.st, leaf.r[1], leaf.n, leaf.bulge), m)}<path d="M${lx} 176L${lx} 126" stroke="${tint(m, 0.45)}" stroke-width="1.5" stroke-linecap="round" opacity=".75"/>${[-1, 1].map((v) => `<path d="M${lx} ${150 + v * 8}L${X(s * 26 + v * 9)} ${144 + v * 8}" stroke="${tint(m, 0.45)}" stroke-width="1" stroke-linecap="round" opacity=".6"/>`).join('')}</g>`);
       }
-      const head = c.sym([[0, 74], [24, 76], [38, 92], [42, 118], [41, 148], [33, 173], [18, 184], [0, 186]]);
+      const head = c.sym(S.profiles.body);
       c.body(c.shape(head, b));
       // the inner leaves folded over the head: a curl at the crown and the veins running up from the heart
       c.body(`<path d="M${X(-22)} 92Q54 74 ${X(24)} 94" stroke="${shade(b, 0.22)}" stroke-width="1.6" fill="none" opacity=".55" stroke-linecap="round"/>`);
       for (const a of [-40, -14, 14, 40]) c.body(`<path d="M54 185Q${X(a * 0.9)} 160 ${X(a * 1.1)} 138" stroke="${tint(b, 0.4)}" stroke-width="1.6" fill="none" opacity=".6" stroke-linecap="round"/>`);
-      return { face: { y: 110, es: 15, s: 1.05, my: 126, ms: 1 }, hat: { x: 54, y: 74, w: 24 }, neck: { y: 150, w: 35 * c.st },
-        arms: { y: 148, dx: 40 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 40 * c.st };
+      return anchorsOf(c);
     },
   },
   // ---- card#12796: twelve more animals and twelve fruits, drawn to the approved look and appended to the list ----
@@ -648,397 +1000,631 @@ const APPROVED = {
     kind: 'animal', label: 'cat-ish', added: 'card#12796',
     pals: [['#8f93a6', '#f1eee9'], ['#3b3842', '#f5f1ea'], ['#b7a9b8', '#f6eff2'], ['#6e7f9a', '#e9edf2'], ['#d9cfc4', '#7a5e52']],
     hats: ['beret', 'beanie', 'flower', 'ladybug'], necks: ['bow', 'neckerchief', 'scarf'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 114], [20, 119], [27, 140], [30, 164], [26, 182], [0, 185]],
+        // a wide round head, cheeks fuller than the crown
+        head: [[0, 64], [22, 66], [36, 78], [42, 98], [39, 113], [28, 124], [0, 128]],
+      },
+      features: [
+        // the tail, a long soft S up the side, its tip curling in over the shoulder
+        { name: 'tail', kind: 'stroke', side: 'key', width: 8.2, d: [['M', [16, 178]], ['C', [38, 180], [41, 150], [35, 130]], ['C', [30, 114], [33, 96], [40, 92]], ['C', [45, 90], [45, 99], [40, 100]]] },
+        // the ears: tall soft triangles, pink inside
+        { name: 'ear', kind: 'path', side: 'pair', d: [['M', [12, 74]], ['L', [22, 42]], ['Q', [25, 38], [29, 42]], ['L', [38, 82]], ['Z']] },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 146], r: [13, 20], tone: 1 },
+        { name: 'muzzle', kind: 'ell', side: 'pair', at: [5.6, 114], r: [6.4, 5], tone: 1 },
+      ],
+      face: { y: 98, es: 14, s: 1, my: 117, ms: 0.85 }, hat: { dx: 0, y: 65, w: 22 }, neck: { y: 122, w: 26 },
+      arms: { y: 150, dx: 27, tone: 0 }, feet: { dx: 13, tone: 1 }, shadow: 32,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, t = c.side, pink = '#eea2ab';
-      // the tail, a long soft S up the side, its tip curling in over the shoulder
-      const tail = `M${X(t * 16)} 178C${X(t * 38)} 180 ${X(t * 41)} 150 ${X(t * 35)} 130C${X(t * 30)} 114 ${X(t * 33)} 96 ${X(t * 40)} 92C${X(t * 45)} 90 ${X(t * 45)} 99 ${X(t * 40)} 100`;
+      const [b, m] = c.P, X = c.X, t = c.side, pink = '#eea2ab', S = c.S;
+      const tail = pathD(featureOf(c, 'tail').d, sideX(c, t));
       c.back(`<path d="${tail}" stroke="${line(b)}" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="${tail}" stroke="${b}" stroke-width="8.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`);
-      // the ears: tall soft triangles, pink inside
       for (const s of [-1, 1]) {
-        c.back(c.shape(`M${X(s * 12)} 74L${X(s * 22)} 42Q${X(s * 25)} 38 ${X(s * 29)} 42L${X(s * 38)} 82Z`, b));
+        c.back(c.shape(pathD(featureOf(c, 'ear').d, sideX(c, s)), b));
         c.back(c.flat(`M${X(s * 18)} 72L${X(s * 24)} 50Q${X(s * 25.5)} 48 ${X(s * 27.5)} 51L${X(s * 33)} 76Z`, pink, 'opacity=".85"'));
       }
-      const body = c.sym([[0, 114], [20, 119], [27, 140], [30, 164], [26, 182], [0, 185]]);
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="146" rx="${f(13 * c.st)}" ry="20" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
-      // a wide round head, cheeks fuller than the crown
-      const head = c.sym([[0, 64], [22, 66], [36, 78], [42, 98], [39, 113], [28, 124], [0, 128]]);
+      const belly = featureOf(c, 'belly'), muzzle = featureOf(c, 'muzzle');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${m}" clip-path="${c.pen.clip(body)}"/>`);
+      const head = c.sym(S.profiles.head);
       c.body(c.shape(head, b));
       // card#12796's named draw `tabby`: three soft stripes on the brow
       if (chance(c.key, 'tabby', 1, 2)) for (const [dx, a] of [[-7, -10], [0, 0], [7, 10]]) c.body(`<path d="M${X(dx)} 67Q${X(dx * 1.2)} 73 ${X(dx * 1.1)} 79" stroke="${shade(b, 0.4)}" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".7" transform="rotate(${a} ${X(dx)} 67)"/>`);
-      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 5.6)}" cy="114" rx="6.4" ry="5" fill="${c.pen.paint(m)}"/>`);
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}"/>`);
       c.body(c.flat('M51 108.6Q54 107.4 57 108.6Q55.4 111.6 54 112Q52.6 111.6 51 108.6Z', pink));
       for (const s of [-1, 1]) c.body(`<path d="M${X(s * 12)} 112L${X(s * 28)} 108M${X(s * 12)} 115L${X(s * 28)} 116" stroke="${line(b)}" stroke-width=".9" stroke-linecap="round" opacity=".6"/>`);
-      return { face: { y: 98, es: 14, s: 1, my: 117, ms: 0.85 }, hat: { x: 54, y: 65, w: 22 }, neck: { y: 122, w: 26 * c.st },
-        arms: { y: 150, dx: 27 * c.st, col: b }, feet: { dx: 13 * c.st, col: m }, shadow: 32 * c.st };
+      return anchorsOf(c);
     },
   },
   panda: {
     kind: 'animal', label: 'panda-ish', added: 'card#12796',
     pals: [['#f7f4ef', '#2e2a31'], ['#f4ebdc', '#6b4a3b'], ['#f3f2f6', '#3b405c'], ['#fbf0f1', '#5c3a4c'], ['#eef3ec', '#2f4a3c']],
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        // a round, chubby body with the dark band over the shoulders and the dark legs
+        body: [[0, 112], [28, 118], [40, 142], [41, 166], [32, 183], [0, 186]],
+        head: [[0, 56], [26, 58], [39, 72], [43, 94], [39, 112], [26, 125], [0, 129]],
+      },
+      features: [
+        { name: 'ear', kind: 'ell', side: 'pair', at: [29, 63], r: [12.5, 12], tone: 1 },
+        // the eye patches, tilted, a little lighter than the ears so the eyes read on them
+        { name: 'patch', kind: 'ell', side: 'pair', at: [14, 99], r: [9.5, 12], tilt: -28, tone: 1 },
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 114], r: [11, 8], tone: 'pale' },
+      ],
+      face: { y: 98, es: 14, s: 1, my: 118, ms: 0.85 }, hat: { dx: 0, y: 57, w: 30 }, neck: { y: 127, w: 34 },
+      arms: { y: 150, dx: 37, tone: 1 }, feet: { dx: 17, tone: 1 }, shadow: 40,
+    },
     build(c) {
-      const [b, d] = c.P, X = c.X;
-      for (const s of [-1, 1]) c.back(c.ell(X(s * 29), 63, 12.5, 12, d));
-      // a round, chubby body with the dark band over the shoulders and the dark legs
-      const body = c.sym([[0, 112], [28, 118], [40, 142], [41, 166], [32, 183], [0, 186]]);
+      const [b, d] = c.P, X = c.X, S = c.S;
+      const ear = featureOf(c, 'ear'), patch = featureOf(c, 'patch'), muzzle = featureOf(c, 'muzzle');
+      for (const s of [-1, 1]) c.back(c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], d));
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       const clip = c.pen.clip(body);
       c.body(`<path d="M${X(-46)} 116Q54 136 ${X(46)} 116L${X(46)} 142Q54 152 ${X(-46)} 142Z" fill="${c.pen.paint(d)}" clip-path="${clip}"/>`);
       for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 22)}" cy="182" rx="${f(15 * c.st)}" ry="14" fill="${c.pen.paint(d)}" clip-path="${clip}"/>`);
-      c.body(c.shape(c.sym([[0, 56], [26, 58], [39, 72], [43, 94], [39, 112], [26, 125], [0, 129]]), b));
-      // the eye patches, tilted, a little lighter than the ears so the eyes read on them
-      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 14)}" cy="99" rx="9.5" ry="12" transform="rotate(${s * -28} ${X(s * 14)} 99)" fill="${tint(d, 0.18)}"/>`);
-      c.body(`<ellipse cx="54" cy="114" rx="11" ry="8" fill="${tint(b, 0.3)}" opacity=".9"/>`);
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * patch.at[0])}" cy="${patch.at[1]}" rx="${patch.r[0]}" ry="${patch.r[1]}" transform="rotate(${s * patch.tilt} ${X(s * patch.at[0])} ${patch.at[1]})" fill="${tint(d, 0.18)}"/>`);
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${tint(b, 0.3)}" opacity=".9"/>`);
       c.body(c.flat('M49.5 108.5Q54 106 58.5 108.5Q57 113 54 113.5Q51 113 49.5 108.5Z', d));
-      return { face: { y: 98, es: 14, s: 1, my: 118, ms: 0.85 }, hat: { x: 54, y: 57, w: 30 }, neck: { y: 127, w: 34 * c.st },
-        arms: { y: 150, dx: 37 * c.st, col: d }, feet: { dx: 17 * c.st, col: d }, shadow: 40 * c.st };
+      return anchorsOf(c);
     },
   },
   koala: {
     kind: 'animal', label: 'koala-ish', added: 'card#12796',
     pals: [['#9b9ca6', '#eceaea'], ['#8b8f99', '#e8e8ea'], ['#7e8794', '#e3e6ea'], ['#a7aab4', '#f1f0ee'], ['#9a948f', '#efebe6']],
     hats: ['beret', 'beanie', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 116], [22, 121], [31, 144], [33, 166], [28, 183], [0, 186]],
+        head: [[0, 64], [24, 66], [36, 79], [39, 98], [35, 115], [23, 126], [0, 129]],
+      },
+      features: [
+        // the ears: big round fluffy discs out to the sides, pale tufts inside
+        { name: 'ear', kind: 'scallop', side: 'pair', at: [33, 76], r: [16, 15], n: 11, bulge: 1.6 },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 152], r: [17, 24], tone: 1 },
+        // the big dark nose, longer than wide, at its own size
+        { name: 'nose', kind: 'path', side: 'centre', fixed: true, d: [['M', [-6.4, 102]], ['C', [-6.4, 97], [6.4, 97], [6.4, 102]], ['C', [6.4, 110], [4, 116], [0, 116]], ['C', [-4, 116], [-6.4, 110], [-6.4, 102]], ['Z']], tone: '#3d3438' },
+      ],
+      face: { y: 95, es: 16, s: 0.95, my: 121, ms: 0.75 }, hat: { dx: 0, y: 65, w: 22 }, neck: { y: 125, w: 30 },
+      arms: { y: 150, dx: 31, tone: 0 }, feet: { dx: 14, tone: { of: 0, shade: 0.2 } }, shadow: 34,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X;
-      // the ears: big round fluffy discs out to the sides, pale tufts inside
+      const [b, m] = c.P, X = c.X, S = c.S, ear = featureOf(c, 'ear');
       for (const s of [-1, 1]) {
-        c.back(c.shape(scallop(X(s * 33), 76, 16 * c.st, 15, 11, 1.6), b));
+        c.back(c.shape(scallop(X(s * ear.at[0]), ear.at[1], ear.r[0] * c.st, ear.r[1], ear.n, ear.bulge), b));
         c.back(`<path d="${scallop(X(s * 34), 78, 9.5 * c.st, 9, 9, 1.2)}" fill="${m}" opacity=".95"/>`);
       }
-      const body = c.sym([[0, 116], [22, 121], [31, 144], [33, 166], [28, 183], [0, 186]]);
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="152" rx="${f(17 * c.st)}" ry="24" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".9"/>`);
-      c.body(c.shape(c.sym([[0, 64], [24, 66], [36, 79], [39, 98], [35, 115], [23, 126], [0, 129]]), b));
-      // the big dark nose, longer than wide
-      c.body(`<path d="M47.6 102C47.6 97 60.4 97 60.4 102C60.4 110 58 116 54 116C50 116 47.6 110 47.6 102Z" fill="${c.pen.paint('#3d3438')}" stroke="#241c20" stroke-width="1"/><ellipse cx="51.8" cy="101.4" rx="2" ry="1.2" fill="#fff" opacity=".45"/>`);
-      return { face: { y: 95, es: 16, s: 0.95, my: 121, ms: 0.75 }, hat: { x: 54, y: 65, w: 22 }, neck: { y: 125, w: 30 * c.st },
-        arms: { y: 150, dx: 31 * c.st, col: b }, feet: { dx: 14 * c.st, col: shade(b, 0.2) }, shadow: 34 * c.st };
+      const belly = featureOf(c, 'belly');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".9"/>`);
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      c.body(`<path d="${pathD(featureOf(c, 'nose').d, fixedX)}" fill="${c.pen.paint('#3d3438')}" stroke="#241c20" stroke-width="1"/><ellipse cx="51.8" cy="101.4" rx="2" ry="1.2" fill="#fff" opacity=".45"/>`);
+      return anchorsOf(c);
     },
   },
   raccoon: {
     kind: 'animal', label: 'raccoon-ish', added: 'card#12796',
     pals: [['#8a7f78', '#efe9e2', '#3a3236'], ['#9a8a7a', '#f2ebe0', '#45362e'], ['#7a7470', '#e9e6e2', '#2e2a2c'], ['#a89a86', '#f6efe2', '#4f4034'], ['#857a84', '#efe8ee', '#3a3040']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 114], [21, 119], [29, 140], [31, 164], [27, 182], [0, 185]],
+        head: [[0, 64], [20, 66], [34, 80], [42, 100], [34, 114], [18, 124], [0, 127]],
+      },
+      features: [
+        // the ringed tail, fat and bushy, out to one side
+        { name: 'tail', kind: 'path', side: 'key', d: [['M', [16, 176]], ['C', [30, 186], [52, 170], [54, 146]], ['C', [56, 124], [48, 108], [40, 108]], ['C', [30, 110], [30, 140], [20, 156]], ['Z']] },
+        { name: 'ear', kind: 'path', side: 'pair', d: [['M', [14, 74]], ['Q', [20, 52], [28, 50]], ['Q', [35, 56], [34, 80]], ['Z']] },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 150], r: [14, 22], tone: 1 },
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 114], r: [12, 8.5], tone: 1 },
+        // the dark mask band across the eyes — face paint, drawn into the face (`faceDocument()`) as well as the frame
+        { name: 'mask', kind: 'path', side: 'centre', face: true, tone: 2, d: [['M', [-42, 104]], ['Q', [-30, 88], [-12, 92]], ['Q', [0, 98], [12, 92]], ['Q', [30, 88], [42, 104]], ['Q', [30, 110], [16, 106]], ['Q', [0, 102], [-16, 106]], ['Q', [-30, 110], [-42, 104]], ['Z']] },
+      ],
+      face: { y: 98, es: 14, s: 1, my: 118.5, ms: 0.8 }, hat: { dx: 0, y: 65, w: 22 }, neck: { y: 122, w: 27 },
+      arms: { y: 150, dx: 28, tone: 2 }, feet: { dx: 13, tone: 2 }, shadow: 33,
+    },
     build(c) {
-      const [b, m, d] = c.P, X = c.X, t = c.side;
-      // the ringed tail, fat and bushy, out to one side
-      const tc = X(t * 38), tail = `M${X(t * 16)} 176C${X(t * 30)} 186 ${X(t * 52)} 170 ${X(t * 54)} 146C${X(t * 56)} 124 ${X(t * 48)} 108 ${X(t * 40)} 108C${X(t * 30)} 110 ${X(t * 30)} 140 ${X(t * 20)} 156Z`;
+      const [b, m, d] = c.P, X = c.X, t = c.side, S = c.S;
+      const tc = X(t * 38), tail = pathD(featureOf(c, 'tail').d, sideX(c, t));
       c.back(c.shape(tail, b));
       const tclip = c.pen.clip(tail);
       for (const y of [118, 138, 160]) c.back(`<path d="M${f(tc - 30)} ${y}L${f(tc + 30)} ${y - 6 * t}" stroke="${d}" stroke-width="7" clip-path="${tclip}" opacity=".9"/>`);
       for (const s of [-1, 1]) {
-        c.back(c.shape(`M${X(s * 14)} 74Q${X(s * 20)} 52 ${X(s * 28)} 50Q${X(s * 35)} 56 ${X(s * 34)} 80Z`, b));
+        c.back(c.shape(pathD(featureOf(c, 'ear').d, sideX(c, s)), b));
         c.back(c.flat(`M${X(s * 19)} 72Q${X(s * 22)} 58 ${X(s * 27.5)} 57Q${X(s * 31)} 62 ${X(s * 30)} 76Z`, m, 'opacity=".9"'));
       }
-      const body = c.sym([[0, 114], [21, 119], [29, 140], [31, 164], [27, 182], [0, 185]]);
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="150" rx="${f(14 * c.st)}" ry="22" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".85"/>`);
-      const head = c.sym([[0, 64], [20, 66], [34, 80], [42, 100], [34, 114], [18, 124], [0, 127]]);
+      const belly = featureOf(c, 'belly'), muzzle = featureOf(c, 'muzzle');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".85"/>`);
+      const head = c.sym(S.profiles.head);
       c.body(c.shape(head, b));
       const hclip = c.pen.clip(head);
       // the white brows and muzzle, and the dark mask band across the eyes
       c.body(`<path d="M${X(-40)} 92Q54 76 ${X(40)} 92L${X(40)} 86Q54 70 ${X(-40)} 86Z" fill="${m}" clip-path="${hclip}" opacity=".95"/>`);
-      c.body(`<path d="M${X(-42)} 104Q${X(-30)} 88 ${X(-12)} 92Q54 98 ${X(12)} 92Q${X(30)} 88 ${X(42)} 104Q${X(30)} 110 ${X(16)} 106Q54 102 ${X(-16)} 106Q${X(-30)} 110 ${X(-42)} 104Z" fill="${c.pen.paint(d)}" clip-path="${hclip}"/>`);
-      c.body(`<ellipse cx="54" cy="114" rx="12" ry="8.5" fill="${c.pen.paint(m)}"/>`);
+      c.body(`<path d="${pathD(featureOf(c, 'mask').d, X)}" fill="${c.pen.paint(d)}" clip-path="${hclip}"/>`);
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}"/>`);
       c.body(c.flat('M50 109Q54 107 58 109Q56.6 113 54 113.4Q51.4 113 50 109Z', d));
-      return { face: { y: 98, es: 14, s: 1, my: 118.5, ms: 0.8 }, hat: { x: 54, y: 65, w: 22 }, neck: { y: 122, w: 27 * c.st },
-        arms: { y: 150, dx: 28 * c.st, col: d }, feet: { dx: 13 * c.st, col: d }, shadow: 33 * c.st };
+      return anchorsOf(c);
     },
   },
   duck: {
     kind: 'animal', label: 'duck-ish', added: 'card#12796',
     pals: [['#f4d04a', '#f29a38'], ['#b9d7f0', '#f0a23c'], ['#7aa0d8', '#efa04a'], ['#8fcfe0', '#ec9436'], ['#f7c8d8', '#e88f3a']],
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel'],
+    shape: {
+      profiles: {
+        // a round body, wider than the head, and the head a ball on it
+        body: [[0, 118], [26, 122], [40, 138], [44, 158], [38, 176], [24, 185], [0, 186]],
+        head: [[0, 66], [18, 68], [29, 80], [31, 98], [27, 114], [16, 124], [0, 127]],
+      },
+      features: [
+        // a tail tuft flicked up behind, and a curl of down on the crown
+        { name: 'tail', kind: 'path', side: 'key', d: [['M', [28, 150]], ['Q', [50, 140], [50, 124]], ['Q', [44, 136], [32, 136]], ['Z']] },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 160], r: [26, 20], tone: 'pale' },
+        { name: 'tuft', kind: 'stroke', side: 'centre', width: 2.2, d: [['M', [-2, 68]], ['Q', [-4, 56], [4, 54]], ['Q', [10, 54], [8, 60]]] },
+        // the flat bill, wider than deep, over where a mouth would be
+        { name: 'beak', kind: 'path', side: 'centre', d: [['M', [-11, 107]], ['Q', [0, 102], [11, 107]], ['Q', [12, 114], [0, 116]], ['Q', [-12, 114], [-11, 107]], ['Z']], tone: 1 },
+      ],
+      face: { y: 94, es: 12.5, s: 1, my: null, ms: 1, beak: true }, hat: { dx: 0, y: 67, w: 18 }, neck: { y: 122, w: 26 },
+      arms: { y: 148, dx: 40, tone: { of: 0, shade: 0.08 } }, feet: { dx: 15, rx: 11, tone: 1 }, shadow: 42,
+    },
     build(c) {
-      const [b, bill] = c.P, X = c.X, t = c.side;
-      // a round body, wider than the head, with a tail tuft flicked up behind
-      c.back(c.shape(`M${X(t * 28)} 150Q${X(t * 50)} 140 ${X(t * 50)} 124Q${X(t * 44)} 136 ${X(t * 32)} 136Z`, shade(b, 0.06)));
-      const body = c.sym([[0, 118], [26, 122], [40, 138], [44, 158], [38, 176], [24, 185], [0, 186]]);
+      const [b, bill] = c.P, X = c.X, t = c.side, S = c.S;
+      c.back(c.shape(pathD(featureOf(c, 'tail').d, sideX(c, t)), shade(b, 0.06)));
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="160" rx="${f(26 * c.st)}" ry="20" fill="${tint(b, 0.35)}" clip-path="${c.pen.clip(body)}" opacity=".7"/>`);
-      // the head, a ball on the body, with a curl of down on the crown
-      c.body(c.shape(c.sym([[0, 66], [18, 68], [29, 80], [31, 98], [27, 114], [16, 124], [0, 127]]), b));
-      c.body(`<path d="M${X(-2)} 68Q${X(-4)} 56 ${X(4)} 54Q${X(10)} 54 ${X(8)} 60" stroke="${line(b)}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
-      // the flat bill, wider than deep, over where a mouth would be
-      c.front(`<g data-part="mouth"><path d="M${X(-11)} 107Q54 102 ${X(11)} 107Q${X(12)} 114 54 116Q${X(-12)} 114 ${X(-11)} 107Z" fill="${c.pen.paint(bill)}" stroke="${line(bill)}" stroke-width="1.1" stroke-linejoin="round"/><path d="M${X(-8)} 110.5Q54 112.5 ${X(8)} 110.5" stroke="${line(bill)}" stroke-width=".9" fill="none" opacity=".6"/><ellipse cx="51" cy="106" rx="2.4" ry=".9" fill="#fff" opacity=".5"/></g>`);
-      return { face: { y: 94, es: 12.5, s: 1, my: null, ms: 1, beak: true }, hat: { x: 54, y: 67, w: 18 }, neck: { y: 122, w: 26 * c.st },
-        arms: { y: 148, dx: 40 * c.st, col: shade(b, 0.08) }, feet: { dx: 15 * c.st, col: bill, rx: 11 }, shadow: 42 * c.st };
+      const belly = featureOf(c, 'belly');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${tint(b, 0.35)}" clip-path="${c.pen.clip(body)}" opacity=".7"/>`);
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      c.body(`<path d="${pathD(featureOf(c, 'tuft').d, X)}" stroke="${line(b)}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
+      c.front(`<g data-part="mouth"><path d="${pathD(featureOf(c, 'beak').d, X)}" fill="${c.pen.paint(bill)}" stroke="${line(bill)}" stroke-width="1.1" stroke-linejoin="round"/><path d="M${X(-8)} 110.5Q54 112.5 ${X(8)} 110.5" stroke="${line(bill)}" stroke-width=".9" fill="none" opacity=".6"/><ellipse cx="51" cy="106" rx="2.4" ry=".9" fill="#fff" opacity=".5"/></g>`);
+      return anchorsOf(c);
     },
   },
   axolotl: {
     kind: 'animal', label: 'axolotl-ish', added: 'card#12796',
     pals: [['#f5aabb', '#e05f7e'], ['#f4eaee', '#e889a6'], ['#c6b2e6', '#8f62c4'], ['#f3d07c', '#e3895a'], ['#7f8f76', '#b9c47a']],
     hats: ['flower', 'ladybug', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 116], [18, 120], [24, 142], [26, 166], [22, 183], [0, 186]],
+        // the wide, flat-topped head
+        head: [[0, 72], [24, 73], [37, 82], [41, 98], [37, 113], [24, 122], [0, 124]],
+      },
+      features: [
+        // the tail fin, curling out behind
+        { name: 'tail', kind: 'path', side: 'key', d: [['M', [18, 176]], ['C', [40, 184], [50, 168], [46, 150]], ['C', [44, 162], [34, 168], [20, 160]], ['Z']], tone: 'pale' },
+        // the gill fronds, three a side, fanning out from behind the head
+        { name: 'gill', kind: 'leaf', side: 'pair', at: [36, 84], fan: [[52, 17, 4.6]], tone: 1 },
+        { name: 'gill', kind: 'leaf', side: 'pair', at: [36, 94], fan: [[78, 18, 4.6]], tone: 1 },
+        { name: 'gill', kind: 'leaf', side: 'pair', at: [36, 104], fan: [[102, 15, 4.6]], tone: 1 },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 156], r: [13, 22], tone: 'pale' },
+      ],
+      face: { y: 98, es: 19, s: 0.95, my: 110, ms: 1.25 }, hat: { dx: 0, y: 72, w: 22 }, neck: { y: 120, w: 22 },
+      arms: { y: 148, dx: 25, small: true, tone: 0 }, feet: { dx: 12, rx: 7, tone: { of: 0, shade: 0.1 } }, shadow: 32, blushDx: 2,
+    },
     build(c) {
-      const [b, g] = c.P, X = c.X, t = c.side;
-      // the tail fin, curling out behind
-      c.back(c.shape(`M${X(t * 18)} 176C${X(t * 40)} 184 ${X(t * 50)} 168 ${X(t * 46)} 150C${X(t * 44)} 162 ${X(t * 34)} 168 ${X(t * 20)} 160Z`, tint(b, 0.12)));
-      // the gill fronds, three a side, fanning out from behind the head
-      for (const s of [-1, 1]) for (const [y, a, l] of [[84, 52, 17], [94, 78, 18], [104, 102, 15]]) {
-        c.back(`<g transform="translate(${X(s * 36)} ${y}) rotate(${s * a})"><path d="${leafD(l, 4.6)}" fill="${c.pen.paint(g)}" stroke="${line(g)}" stroke-width="1.3" stroke-linejoin="round"/>${[0.35, 0.55, 0.75].map((k) => `<path d="M0 ${f(-l * k)}l${f(3.6)} ${f(-2)}M0 ${f(-l * k)}l${f(-3.6)} ${f(-2)}" stroke="${tint(g, 0.4)}" stroke-width="1" stroke-linecap="round" opacity=".8"/>`).join('')}</g>`);
+      const [b, g] = c.P, X = c.X, t = c.side, S = c.S;
+      c.back(c.shape(pathD(featureOf(c, 'tail').d, sideX(c, t)), tint(b, 0.12)));
+      const gills = S.features.filter((ft) => ft.name === 'gill');
+      for (const s of [-1, 1]) for (const { at: [dx, y], fan: [[a, l, w]] } of gills) {
+        c.back(`<g transform="translate(${X(s * dx)} ${y}) rotate(${s * a})"><path d="${leafD(l, w)}" fill="${c.pen.paint(g)}" stroke="${line(g)}" stroke-width="1.3" stroke-linejoin="round"/>${[0.35, 0.55, 0.75].map((k) => `<path d="M0 ${f(-l * k)}l${f(3.6)} ${f(-2)}M0 ${f(-l * k)}l${f(-3.6)} ${f(-2)}" stroke="${tint(g, 0.4)}" stroke-width="1" stroke-linecap="round" opacity=".8"/>`).join('')}</g>`);
       }
-      const body = c.sym([[0, 116], [18, 120], [24, 142], [26, 166], [22, 183], [0, 186]]);
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="156" rx="${f(13 * c.st)}" ry="22" fill="${tint(b, 0.4)}" clip-path="${c.pen.clip(body)}" opacity=".8"/>`);
-      // the wide, flat-topped head
-      c.body(c.shape(c.sym([[0, 72], [24, 73], [37, 82], [41, 98], [37, 113], [24, 122], [0, 124]]), b));
-      return { face: { y: 98, es: 19, s: 0.95, my: 110, ms: 1.25 }, hat: { x: 54, y: 72, w: 22 }, neck: { y: 120, w: 22 * c.st },
-        arms: { y: 148, dx: 25 * c.st, col: b, small: true }, feet: { dx: 12 * c.st, col: shade(b, 0.1), rx: 7 }, shadow: 32 * c.st, blushDx: 2 };
+      const belly = featureOf(c, 'belly');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${tint(b, 0.4)}" clip-path="${c.pen.clip(body)}" opacity=".8"/>`);
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      return anchorsOf(c);
     },
   },
   capybara: {
     kind: 'animal', label: 'capybara-ish', added: 'card#12796',
     pals: [['#b07f50', '#d9ad7c'], ['#9a7356', '#c9a07a'], ['#a07a5a', '#cfa886'], ['#8c7462', '#b8a08a'], ['#a8885c', '#d4b886']],
     hats: ['straw', 'beret', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
-    build(c) {
-      const [b, m] = c.P, X = c.X, yuzu = '#f2b23a';
+    shape: {
       // one blocky loaf of a body, flat on top, with little round ears at the corners
-      for (const s of [-1, 1]) c.back(c.ell(X(s * 30), 84, 6, 5.4, shade(b, 0.12)));
-      const body = c.sym([[0, 84], [28, 84], [41, 90], [46, 106], [47, 140], [47, 168], [39, 184], [0, 186]]);
+      profiles: { body: [[0, 84], [28, 84], [41, 90], [46, 106], [47, 140], [47, 168], [39, 184], [0, 186]] },
+      features: [
+        { name: 'ear', kind: 'ell', side: 'pair', at: [30, 84], r: [6, 5.4] },
+        // the big square snout (a rounded rect from its top-left corner `at`, `size` across and down) and the chest
+        { name: 'muzzle', kind: 'rect', side: 'centre', at: [-23, 108], size: [46, 25], round: 11, tone: 1 },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 164], r: [24, 20], tone: 1 },
+        // the yuzu it carries on its head, with a leaf
+        { name: 'yuzu', kind: 'ell', side: 'centre', at: [4, 74], r: [10, 10], tone: '#f2b23a' },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [6, 65], fan: [[40, 10, 4.4]], tone: GREENS[1] },
+      ],
+      face: { y: 98, es: 18, s: 0.92, my: 127, ms: 0.8 }, hat: { dx: -14, y: 84, w: 18 }, neck: { y: 138, w: 40 },
+      arms: { y: 156, dx: 44, tone: { of: 0, shade: 0.06 } }, feet: { dx: 20, tone: { of: 0, shade: 0.3 } }, shadow: 46,
+    },
+    build(c) {
+      const [b, m] = c.P, X = c.X, yuzu = '#f2b23a', S = c.S;
+      const ear = featureOf(c, 'ear'), muzzle = featureOf(c, 'muzzle'), belly = featureOf(c, 'belly'), fruit = featureOf(c, 'yuzu'), leaf = featureOf(c, 'leaf');
+      for (const s of [-1, 1]) c.back(c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], shade(b, 0.12)));
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
       const clip = c.pen.clip(body);
-      // the big square snout and the chest, a shade lighter
-      c.body(`<rect x="${X(-23)}" y="108" width="${f(46 * c.st)}" height="25" rx="11" fill="${c.pen.paint(m)}" opacity=".95"/>`);
-      c.body(`<ellipse cx="54" cy="164" rx="${f(24 * c.st)}" ry="20" fill="${m}" clip-path="${clip}" opacity=".55"/>`);
+      c.body(`<rect x="${X(muzzle.at[0])}" y="${muzzle.at[1]}" width="${f(muzzle.size[0] * c.st)}" height="${muzzle.size[1]}" rx="${muzzle.round}" fill="${c.pen.paint(m)}" opacity=".95"/>`);
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${m}" clip-path="${clip}" opacity=".55"/>`);
       for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 6)}" cy="115" rx="2.2" ry="2.8" fill="${shade(b, 0.6)}"/>`);
-      // the yuzu it carries on its head, with a leaf
-      c.body(`<circle cx="${X(4)}" cy="74" r="10" fill="${c.pen.paint(yuzu)}" stroke="${line(yuzu)}" stroke-width="1.3"/>`);
-      c.body(c.leaf(X(6), 65, 40, 10, 4.4, GREENS[1]));
-      return { face: { y: 98, es: 18, s: 0.92, my: 127, ms: 0.8 }, hat: { x: X(-14), y: 84, w: 18 }, neck: { y: 138, w: 40 * c.st },
-        arms: { y: 156, dx: 44 * c.st, col: shade(b, 0.06) }, feet: { dx: 20 * c.st, col: shade(b, 0.3) }, shadow: 46 * c.st };
+      c.body(`<circle cx="${X(fruit.at[0])}" cy="${fruit.at[1]}" r="${fruit.r[0]}" fill="${c.pen.paint(yuzu)}" stroke="${line(yuzu)}" stroke-width="1.3"/>`);
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, GREENS[1]));
+      return anchorsOf(c);
     },
   },
   pig: {
     kind: 'animal', label: 'pig-ish', added: 'card#12796',
     pals: [['#f5b7be', '#e68f9c'], ['#f9cdd6', '#e9a2b0'], ['#f4a6b0', '#e2849a'], ['#c9837a', '#e8a8a0'], ['#6a5068', '#c0909e']],
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 118], [23, 122], [31, 146], [32, 168], [27, 183], [0, 186]],
+        head: [[0, 66], [24, 68], [37, 82], [41, 100], [37, 116], [25, 127], [0, 130]],
+      },
+      features: [
+        // the curly tail
+        { name: 'tail', kind: 'stroke', side: 'key', width: 2, d: [['M', [30, 160]], ['Q', [44, 154], [44, 146]], ['Q', [44, 138], [38, 140]], ['Q', [33, 143], [38, 148]], ['Q', [44, 152], [48, 146]]] },
+        // the ears, folded forward over the brow
+        { name: 'ear', kind: 'path', side: 'pair', d: [['M', [18, 72]], ['Q', [30, 60], [42, 66]], ['Q', [40, 82], [32, 86]], ['Q', [26, 78], [18, 72]], ['Z']] },
+        // the snout, a disc with two nostrils
+        { name: 'muzzle', kind: 'ell', side: 'centre', at: [0, 112], r: [12, 8.6], tone: 1 },
+      ],
+      face: { y: 97, es: 16, s: 1, my: 124, ms: 0.75 }, hat: { dx: 0, y: 67, w: 20 }, neck: { y: 128, w: 32 },
+      arms: { y: 150, dx: 29, tone: 0 }, feet: { dx: 14, rx: 7, tone: { of: 1, shade: 0.2 } }, shadow: 34,
+    },
     build(c) {
-      const [b, m] = c.P, X = c.X, t = c.side;
-      // the curly tail
-      c.back(`<path d="M${X(t * 30)} 160Q${X(t * 44)} 154 ${X(t * 44)} 146Q${X(t * 44)} 138 ${X(t * 38)} 140Q${X(t * 33)} 143 ${X(t * 38)} 148Q${X(t * 44)} 152 ${X(t * 48)} 146" stroke="${line(b)}" stroke-width="3.6" fill="none" stroke-linecap="round"/><path d="M${X(t * 30)} 160Q${X(t * 44)} 154 ${X(t * 44)} 146Q${X(t * 44)} 138 ${X(t * 38)} 140Q${X(t * 33)} 143 ${X(t * 38)} 148Q${X(t * 44)} 152 ${X(t * 48)} 146" stroke="${b}" stroke-width="2" fill="none" stroke-linecap="round"/>`);
-      c.body(c.shape(c.sym([[0, 118], [23, 122], [31, 146], [32, 168], [27, 183], [0, 186]]), b));
-      c.body(c.shape(c.sym([[0, 66], [24, 68], [37, 82], [41, 100], [37, 116], [25, 127], [0, 130]]), b));
-      // the ears, folded forward over the brow
-      for (const s of [-1, 1]) c.body(c.shape(`M${X(s * 18)} 72Q${X(s * 30)} 60 ${X(s * 42)} 66Q${X(s * 40)} 82 ${X(s * 32)} 86Q${X(s * 26)} 78 ${X(s * 18)} 72Z`, shade(b, 0.05)));
-      // the snout, a disc with two nostrils
-      c.body(`<ellipse cx="54" cy="112" rx="12" ry="8.6" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width="1.2"/>`);
+      const [b, m] = c.P, X = c.X, t = c.side, S = c.S;
+      const tail = pathD(featureOf(c, 'tail').d, sideX(c, t));
+      c.back(`<path d="${tail}" stroke="${line(b)}" stroke-width="3.6" fill="none" stroke-linecap="round"/><path d="${tail}" stroke="${b}" stroke-width="2" fill="none" stroke-linecap="round"/>`);
+      c.body(c.shape(c.sym(S.profiles.body), b));
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      for (const s of [-1, 1]) c.body(c.shape(pathD(featureOf(c, 'ear').d, sideX(c, s)), shade(b, 0.05)));
+      const muzzle = featureOf(c, 'muzzle');
+      c.body(`<ellipse cx="${X(muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}" stroke="${line(m)}" stroke-width="1.2"/>`);
       for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 4.4)}" cy="112.4" rx="2" ry="3" fill="${shade(m, 0.55)}"/>`);
-      return { face: { y: 97, es: 16, s: 1, my: 124, ms: 0.75 }, hat: { x: 54, y: 67, w: 20 }, neck: { y: 128, w: 32 * c.st },
-        arms: { y: 150, dx: 29 * c.st, col: b }, feet: { dx: 14 * c.st, col: shade(m, 0.2), rx: 7 }, shadow: 34 * c.st };
+      return anchorsOf(c);
     },
   },
   elephant: {
     kind: 'animal', label: 'elephant-ish', added: 'card#12796',
     pals: [['#8fa3c9', '#e2b8c8'], ['#a99bc9', '#e8c2d6'], ['#9ab0d8', '#e2bcd0'], ['#c0a6c8', '#ecc8dc'], ['#a9b8ea', '#e9cad8']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 116], [26, 121], [35, 146], [36, 168], [30, 183], [0, 186]],
+        head: [[0, 62], [22, 64], [32, 76], [35, 96], [30, 112], [18, 122], [0, 124]],
+      },
+      features: [
+        // the great ears, flapped out to the sides, pink inside
+        { name: 'ear', kind: 'path', side: 'pair', d: [['M', [22, 72]], ['C', [40, 58], [54, 72], [52, 96]], ['C', [50, 116], [40, 124], [26, 116]], ['Z']] },
+        // the trunk, curling to the key's side, drawn where a mouth would be (the owl's beak's place): each point's dx is
+        // [across, toward the key's side]
+        { name: 'trunk', kind: 'path', side: 'key', d: [['M', [[-6, 0], 104]], ['C', [[-6, 0], 122], [[-4, 2], 134], [[0, 10], 140]], ['C', [[0, 16], 143], [[0, 20], 138], [[0, 17], 134]], ['C', [[0, 12], 134], [[6, 0], 126], [[6, 0], 104]], ['Z']] },
+      ],
+      face: { y: 94, es: 15, s: 1, my: null, ms: 1, beak: true }, hat: { dx: 0, y: 63, w: 22 }, neck: { y: 122, w: 30 },
+      arms: { y: 152, dx: 33, tone: 0 }, feet: { dx: 16, rx: 10, tone: { of: 0, tint: 0.25 } }, shadow: 38,
+    },
     build(c) {
-      const [b, inner] = c.P, X = c.X, t = c.side;
-      // the great ears, flapped out to the sides, pink inside
+      const [b, inner] = c.P, X = c.X, t = c.side, S = c.S;
       for (const s of [-1, 1]) {
-        const ear = `M${X(s * 22)} 72C${X(s * 40)} 58 ${X(s * 54)} 72 ${X(s * 52)} 96C${X(s * 50)} 116 ${X(s * 40)} 124 ${X(s * 26)} 116Z`;
-        c.back(c.shape(ear, b));
+        c.back(c.shape(pathD(featureOf(c, 'ear').d, sideX(c, s)), b));
         c.back(`<path d="M${X(s * 26)} 80C${X(s * 38)} 70 ${X(s * 48)} 80 ${X(s * 46)} 96C${X(s * 45)} 110 ${X(s * 38)} 115 ${X(s * 28)} 110Z" fill="${inner}" opacity=".75"/>`);
       }
-      c.body(c.shape(c.sym([[0, 116], [26, 121], [35, 146], [36, 168], [30, 183], [0, 186]]), b));
-      c.body(c.shape(c.sym([[0, 62], [22, 64], [32, 76], [35, 96], [30, 112], [18, 122], [0, 124]]), b));
-      // the trunk, curling to one side, drawn where a mouth would be (the owl's beak's place)
-      const tr = `M${X(-6)} 104C${X(-6)} 122 ${X(-4 + t * 2)} 134 ${X(t * 10)} 140C${X(t * 16)} 143 ${X(t * 20)} 138 ${X(t * 17)} 134C${X(t * 12)} 134 ${X(6)} 126 ${X(6)} 104Z`;
+      c.body(c.shape(c.sym(S.profiles.body), b));
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      const tr = pathD(featureOf(c, 'trunk').d, ([across, toward]) => X(across + t * toward));
       c.front(`<g data-part="mouth"><path d="${tr}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.5" stroke-linejoin="round"/>${[112, 120, 128].map((y) => `<path d="M${X(-5)} ${y}Q54 ${y + 2} ${X(5)} ${y}" stroke="${shade(b, 0.3)}" stroke-width=".9" fill="none" opacity=".6"/>`).join('')}</g>`);
-      return { face: { y: 94, es: 15, s: 1, my: null, ms: 1, beak: true }, hat: { x: 54, y: 63, w: 22 }, neck: { y: 122, w: 30 * c.st },
-        arms: { y: 152, dx: 33 * c.st, col: b }, feet: { dx: 16 * c.st, col: tint(b, 0.25), rx: 10 }, shadow: 38 * c.st };
+      return anchorsOf(c);
     },
   },
   turtle: {
     kind: 'animal', label: 'turtle-ish', added: 'card#12796',
     pals: [['#8fc07c', '#8a6038', '#f0dc9a'], ['#9ccaa2', '#4f7a5c', '#e9e2a8'], ['#c4d48c', '#a06a3c', '#f4e4b0'], ['#80b8b2', '#3f6a7a', '#e6e8c0'], ['#b2c98a', '#7a5a7c', '#efe0b4']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'mug', 'book'],
+    shape: {
+      profiles: {
+        // the plastron, the pale belly plate, and the head, round and a little small, on a short neck
+        body: [[0, 118], [22, 121], [29, 140], [30, 164], [24, 182], [0, 185]],
+        head: [[0, 70], [20, 72], [30, 84], [32, 100], [28, 113], [16, 121], [0, 123]],
+      },
+      tones: { body: 2 },
+      features: [
+        // the shell, a wide dome behind the body
+        { name: 'shell', kind: 'path', side: 'centre', d: [['M', [-44, 176]], ['C', [-50, 128], [-34, 104], [0, 102]], ['C', [34, 104], [50, 128], [44, 176]], ['Z']], tone: 1 },
+      ],
+      face: { y: 96, es: 12.5, s: 0.95, my: 111, ms: 0.8 }, hat: { dx: 0, y: 71, w: 19 }, neck: { y: 120, w: 22 },
+      arms: { y: 146, dx: 33, tone: 0 }, feet: { dx: 18, tone: 0 }, shadow: 46,
+    },
     build(c) {
-      const [skin, shell, belly] = c.P, X = c.X;
-      // the shell, a wide dome behind the body, its scutes a shade lighter
-      const dome = `M${X(-44)} 176C${X(-50)} 128 ${X(-34)} 104 54 102C${X(34)} 104 ${X(50)} 128 ${X(44)} 176Z`;
+      const [skin, shell, belly] = c.P, X = c.X, S = c.S;
+      // its scutes a shade lighter than the shell
+      const dome = pathD(featureOf(c, 'shell').d, X);
       c.back(c.shape(dome, shell));
       c.back(`<path d="${dome}" fill="none" stroke="${tint(shell, 0.35)}" stroke-width="3" opacity=".6" transform="translate(0 2)"/>`);
       for (const [dx, y] of [[-34, 132], [34, 132], [-38, 160], [38, 160]]) c.back(`<ellipse cx="${X(dx)}" cy="${y}" rx="${f(6 * c.st)}" ry="9" fill="${tint(shell, 0.28)}" opacity=".7"/>`);
-      // the plastron, the pale belly plate with its seams
-      const plate = c.sym([[0, 118], [22, 121], [29, 140], [30, 164], [24, 182], [0, 185]]);
+      // the plastron's seams
+      const plate = c.sym(S.profiles.body);
       c.body(c.shape(plate, belly));
       for (const y of [140, 160]) c.body(`<path d="M${X(-28)} ${y}Q54 ${y + 3} ${X(28)} ${y}" stroke="${shade(belly, 0.3)}" stroke-width="1.2" fill="none" opacity=".6" clip-path="${c.pen.clip(plate)}"/>`);
       c.body(`<path d="M54 120V184" stroke="${shade(belly, 0.3)}" stroke-width="1.2" opacity=".5"/>`);
-      // the head, round and a little small, on a short neck
-      c.body(c.shape(c.sym([[0, 70], [20, 72], [30, 84], [32, 100], [28, 113], [16, 121], [0, 123]]), skin));
-      return { face: { y: 96, es: 12.5, s: 0.95, my: 111, ms: 0.8 }, hat: { x: 54, y: 71, w: 19 }, neck: { y: 120, w: 22 * c.st },
-        arms: { y: 146, dx: 33 * c.st, col: skin }, feet: { dx: 18 * c.st, col: skin }, shadow: 46 * c.st };
+      c.body(c.shape(c.sym(S.profiles.head), skin));
+      return anchorsOf(c);
     },
   },
   sloth: {
     kind: 'animal', label: 'sloth-ish', added: 'card#12796',
     pals: [['#9aa08a', '#ebe6d2', '#4f4a3a'], ['#8a8e7c', '#e4e2d2', '#463f34'], ['#8f9a84', '#e6e8d6', '#3f4636'], ['#a3a58c', '#efecd8', '#57503e'], ['#949a90', '#e6e6de', '#44443e']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'bow'], extras: ['glasses', 'satchel'],
+    shape: {
+      features: [
+        // a shaggy body and a shaggy round head, each a softly scalloped outline
+        { name: 'body', kind: 'scallop', side: 'centre', at: [0, 152], r: [32, 33], n: 16, bulge: 1.8 },
+        { name: 'head', kind: 'scallop', side: 'centre', at: [0, 97], r: [35, 32], n: 18, bulge: 1.6 },
+        // the pale face mask and the dark nose
+        { name: 'mask', kind: 'ell', side: 'centre', at: [0, 101], r: [26, 20], tone: 1 },
+        { name: 'nose', kind: 'ell', side: 'centre', at: [0, 108], r: [4.6, 3.4], tone: 2 },
+        // the long arms, wrapped round the belly in a hug
+        { name: 'arm', kind: 'stroke', side: 'pair', width: 9.4, d: [['M', [30, 128]], ['C', [40, 148], [30, 168], [6, 162]]] },
+      ],
+      face: { y: 97, es: 15, s: 0.95, my: 115, ms: 0.85 }, hat: { dx: 0, y: 66, w: 22 }, neck: { y: 126, w: 28 },
+      arms: null, feet: { dx: 14, tone: { of: 0, shade: 0.2 } }, shadow: 34,
+    },
     build(c) {
       const [b, m, d] = c.P, X = c.X;
-      // a shaggy body and a shaggy round head, each a softly scalloped outline
-      c.body(c.shape(scallop(54, 152, 32 * c.st, 33, 16, 1.8), b));
-      c.body(c.shape(scallop(54, 97, 35 * c.st, 32, 18, 1.6), b));
-      // the pale face mask, the dark streaks from the eyes, the dark nose
-      c.body(`<ellipse cx="54" cy="101" rx="${f(26 * c.st)}" ry="20" fill="${c.pen.paint(m)}"/>`);
+      const body = featureOf(c, 'body'), head = featureOf(c, 'head'), mask = featureOf(c, 'mask'), nose = featureOf(c, 'nose'), arm = featureOf(c, 'arm');
+      c.body(c.shape(scallop(X(body.at[0]), body.at[1], body.r[0] * c.st, body.r[1], body.n, body.bulge), b));
+      c.body(c.shape(scallop(X(head.at[0]), head.at[1], head.r[0] * c.st, head.r[1], head.n, head.bulge), b));
+      // the dark streaks from the eyes
+      c.body(`<ellipse cx="${X(mask.at[0])}" cy="${mask.at[1]}" rx="${f(mask.r[0] * c.st)}" ry="${mask.r[1]}" fill="${c.pen.paint(m)}"/>`);
       for (const s of [-1, 1]) c.body(`<path d="M${X(s * 6)} 94Q${X(s * 14)} 90 ${X(s * 22)} 96Q${X(s * 28)} 104 ${X(s * 24)} 110Q${X(s * 16)} 106 ${X(s * 10)} 100Z" fill="${d}" opacity=".85"/>`);
-      c.body(`<ellipse cx="54" cy="108" rx="4.6" ry="3.4" fill="${shade(d, 0.2)}"/>`);
-      // the long arms, wrapped round the belly in a hug, three claws a paw
+      c.body(`<ellipse cx="${X(nose.at[0])}" cy="${nose.at[1]}" rx="${nose.r[0]}" ry="${nose.r[1]}" fill="${shade(d, 0.2)}"/>`);
+      // three claws a paw
       for (const s of [-1, 1]) {
-        c.front(`<path d="M${X(s * 30)} 128C${X(s * 40)} 148 ${X(s * 30)} 168 ${X(s * 6)} 162" stroke="${line(b)}" stroke-width="12" fill="none" stroke-linecap="round"/><path d="M${X(s * 30)} 128C${X(s * 40)} 148 ${X(s * 30)} 168 ${X(s * 6)} 162" stroke="${shade(b, 0.08)}" stroke-width="9.4" fill="none" stroke-linecap="round"/>`);
+        const hug = pathD(arm.d, sideX(c, s));
+        c.front(`<path d="${hug}" stroke="${line(b)}" stroke-width="12" fill="none" stroke-linecap="round"/><path d="${hug}" stroke="${shade(b, 0.08)}" stroke-width="9.4" fill="none" stroke-linecap="round"/>`);
         c.front(`<path d="M${X(s * 4)} 158l${f(-s * 5)} -2M${X(s * 3)} 162l${f(-s * 6)} 0M${X(s * 4)} 166l${f(-s * 5)} 2" stroke="${tint(m, 0.2)}" stroke-width="1.8" stroke-linecap="round"/>`);
       }
-      return { face: { y: 97, es: 15, s: 0.95, my: 115, ms: 0.85 }, hat: { x: 54, y: 66, w: 22 }, neck: { y: 126, w: 28 * c.st },
-        arms: null, feet: { dx: 14 * c.st, col: shade(b, 0.2) }, shadow: 34 * c.st };
+      return anchorsOf(c);
     },
   },
   lion: {
     kind: 'animal', label: 'lion cub-ish', added: 'card#12796',
     pals: [['#e8b450', '#b8692f', '#f7e4c0'], ['#efc14e', '#c45a2a', '#fbe8c0'], ['#f6d77c', '#c47a3a', '#fbecd0'], ['#cba36b', '#7a5236', '#f0dcbc'], ['#e9b96b', '#a8562e', '#f8e6c4']],
     hats: ['beret', 'beanie', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
+    shape: {
+      profiles: {
+        body: [[0, 118], [18, 122], [24, 142], [26, 164], [23, 182], [0, 185]],
+        head: [[0, 66], [22, 68], [32, 80], [35, 98], [31, 113], [20, 123], [0, 126]],
+      },
+      features: [
+        // the tail, thin, with its dark tuft
+        { name: 'tail', kind: 'stroke', side: 'key', width: 3.2, d: [['M', [20, 176]], ['C', [40, 178], [44, 158], [40, 146]]] },
+        { name: 'tuft', kind: 'ell', side: 'key', at: [40, 142], r: [5.4, 7], tone: 1 },
+        // the mane, a scalloped ring framing the face
+        { name: 'mane', kind: 'scallop', side: 'centre', at: [0, 96], r: [47, 43], n: 15, bulge: 3.8, tone: 1 },
+        { name: 'ear', kind: 'ell', side: 'pair', at: [26, 66], r: [7.5, 7.5] },
+        { name: 'belly', kind: 'ell', side: 'centre', at: [0, 152], r: [12, 20], tone: 2 },
+        { name: 'muzzle', kind: 'ell', side: 'pair', at: [5.6, 113], r: [6.6, 5.2], tone: 2 },
+      ],
+      face: { y: 97, es: 13.5, s: 1, my: 117, ms: 0.85 }, hat: { dx: 0, y: 67, w: 20 }, neck: { y: 122, w: 26 },
+      arms: { y: 150, dx: 24, tone: 0 }, feet: { dx: 12, tone: { of: 0, shade: 0.12 } }, shadow: 30,
+    },
     build(c) {
-      const [b, mane, m] = c.P, X = c.X, t = c.side;
-      // the tail, thin, with its dark tuft
-      c.back(`<path d="M${X(t * 20)} 176C${X(t * 40)} 178 ${X(t * 44)} 158 ${X(t * 40)} 146" stroke="${line(b)}" stroke-width="5.4" fill="none" stroke-linecap="round"/><path d="M${X(t * 20)} 176C${X(t * 40)} 178 ${X(t * 44)} 158 ${X(t * 40)} 146" stroke="${b}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`);
-      c.back(`<ellipse cx="${X(t * 40)}" cy="142" rx="5.4" ry="7" fill="${c.pen.paint(mane)}" stroke="${line(mane)}" stroke-width="1.2"/>`);
-      // the mane, a scalloped ring framing the face
-      c.back(c.shape(scallop(54, 96, 47 * c.st, 43, 15, 3.8), mane));
-      for (const s of [-1, 1]) c.back(c.ell(X(s * 26), 66, 7.5, 7.5, b));
-      const body = c.sym([[0, 118], [18, 122], [24, 142], [26, 164], [23, 182], [0, 185]]);
+      const [b, mane, m] = c.P, X = c.X, t = c.side, S = c.S;
+      const tail = pathD(featureOf(c, 'tail').d, sideX(c, t)), tuft = featureOf(c, 'tuft'), ring = featureOf(c, 'mane'), ear = featureOf(c, 'ear');
+      c.back(`<path d="${tail}" stroke="${line(b)}" stroke-width="5.4" fill="none" stroke-linecap="round"/><path d="${tail}" stroke="${b}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`);
+      c.back(`<ellipse cx="${X(t * tuft.at[0])}" cy="${tuft.at[1]}" rx="${tuft.r[0]}" ry="${tuft.r[1]}" fill="${c.pen.paint(mane)}" stroke="${line(mane)}" stroke-width="1.2"/>`);
+      c.back(c.shape(scallop(X(ring.at[0]), ring.at[1], ring.r[0] * c.st, ring.r[1], ring.n, ring.bulge), mane));
+      for (const s of [-1, 1]) c.back(c.ell(X(s * ear.at[0]), ear.at[1], ear.r[0], ear.r[1], b));
+      const body = c.sym(S.profiles.body);
       c.body(c.shape(body, b));
-      c.body(`<ellipse cx="54" cy="152" rx="${f(12 * c.st)}" ry="20" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".8"/>`);
-      c.body(c.shape(c.sym([[0, 66], [22, 68], [32, 80], [35, 98], [31, 113], [20, 123], [0, 126]]), b));
-      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * 5.6)}" cy="113" rx="6.6" ry="5.2" fill="${c.pen.paint(m)}"/>`);
+      const belly = featureOf(c, 'belly'), muzzle = featureOf(c, 'muzzle');
+      c.body(`<ellipse cx="${X(belly.at[0])}" cy="${belly.at[1]}" rx="${f(belly.r[0] * c.st)}" ry="${belly.r[1]}" fill="${m}" clip-path="${c.pen.clip(body)}" opacity=".8"/>`);
+      c.body(c.shape(c.sym(S.profiles.head), b));
+      for (const s of [-1, 1]) c.body(`<ellipse cx="${X(s * muzzle.at[0])}" cy="${muzzle.at[1]}" rx="${muzzle.r[0]}" ry="${muzzle.r[1]}" fill="${c.pen.paint(m)}"/>`);
       c.body(c.flat('M50.2 107.6Q54 105.6 57.8 107.6Q56.4 111.4 54 112Q51.6 111.4 50.2 107.6Z', shade(mane, 0.35)));
-      return { face: { y: 97, es: 13.5, s: 1, my: 117, ms: 0.85 }, hat: { x: 54, y: 67, w: 20 }, neck: { y: 122, w: 26 * c.st },
-        arms: { y: 150, dx: 24 * c.st, col: b }, feet: { dx: 12 * c.st, col: shade(b, 0.12) }, shadow: 30 * c.st };
+      return anchorsOf(c);
     },
   },
   strawberry: {
     kind: 'fruit', label: 'strawberry', added: 'card#12796',
     pals: [['#e2384c', '#5f9a48'], ['#f27fa0', '#6aa05a'], ['#b8243e', '#4f8a44'], ['#ec5a78', '#5f9a48'], ['#c83c5a', '#6aa05a']],
     hats: ['ladybug', 'flower', 'beret'], necks: ['bow'], extras: ['glasses', 'book'],
-    build(c) {
-      const [b, g] = c.P, X = c.X, seed = '#f6dd84';
+    shape: {
       // a broad heart of a berry, full at the shoulders and round at its foot
-      const berry = c.sym([[0, 78], [18, 74], [35, 80], [44, 98], [41, 120], [32, 144], [21, 164], [10, 178], [0, 183]]);
+      profiles: { body: [[0, 78], [18, 74], [35, 80], [44, 98], [41, 120], [32, 144], [21, 164], [10, 178], [0, 183]] },
+      features: [
+        // the calyx, a flat star of leaves over the shoulders, and its stalk
+        { name: 'stalk', kind: 'stroke', side: 'centre', width: 2, d: [['M', [0, 76]], ['L', [3, 62]]], tone: 1 },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [0, 78], fan: [[-118, 15, 6], [-80, 15, 6], [-40, 15, 6], [0, 10, 6], [40, 15, 6], [80, 15, 6], [118, 15, 6]], tone: 1 },
+      ],
+      face: { y: 110, es: 15, s: 1.02, my: 125, ms: 0.95 }, hat: { dx: 0, y: 66, w: 22 }, neck: { y: 152, w: 24 },
+      arms: { y: 138, dx: 39, small: true, tone: 0 }, feet: { dx: 11, rx: 6, tone: { of: 0, shade: 0.25 } }, shadow: 30,
+    },
+    build(c) {
+      const [b, g] = c.P, X = c.X, seed = '#f6dd84', S = c.S;
+      const berry = c.sym(S.profiles.body);
       c.body(c.shape(berry, b));
       const clip = c.pen.clip(berry);
       for (const [dx, y] of [[-30, 96], [30, 96], [-33, 118], [33, 118], [-23, 140], [23, 140], [-12, 160], [12, 160], [0, 172], [-18, 128], [18, 128], [-7, 150], [7, 150]]) {
         c.body(`<ellipse cx="${X(dx)}" cy="${y}" rx="1.5" ry="2.3" fill="${seed}" clip-path="${clip}"/>`);
       }
-      // the calyx, a flat star of leaves over the shoulders, and its stalk
-      c.body(`<path d="M54 76L${X(3)} 62" stroke="${line(g)}" stroke-width="3.6" stroke-linecap="round"/><path d="M54 76L${X(3)} 62" stroke="${g}" stroke-width="2" stroke-linecap="round"/>`);
-      for (const a of [-118, -80, -40, 0, 40, 80, 118]) c.body(c.leaf(54, 78, a, a === 0 ? 10 : 15, 6, g));
-      return { face: { y: 110, es: 15, s: 1.02, my: 125, ms: 0.95 }, hat: { x: 54, y: 66, w: 22 }, neck: { y: 152, w: 24 * c.st },
-        arms: { y: 138, dx: 39 * c.st, col: b, small: true }, feet: { dx: 11 * c.st, col: shade(b, 0.25), rx: 6 }, shadow: 30 * c.st };
+      const stalk = pathD(featureOf(c, 'stalk').d, X), leaf = featureOf(c, 'leaf');
+      c.body(`<path d="${stalk}" stroke="${line(g)}" stroke-width="3.6" stroke-linecap="round"/><path d="${stalk}" stroke="${g}" stroke-width="2" stroke-linecap="round"/>`);
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, g));
+      return anchorsOf(c);
     },
   },
   apple: {
     kind: 'fruit', label: 'apple', added: 'card#12796',
     pals: [['#d8343c'], ['#9fcb4c'], ['#f0d04c'], ['#c63a5a'], ['#7fbf6a', 'blush']],
     hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
-    build(c) {
-      const [b, blush] = c.P, X = c.X;
+    shape: {
       // round and full above, tapering a little to its foot, with the dip where the stalk sits
-      const apple = c.sym([[0, 98], [10, 92], [26, 90], [40, 100], [46, 120], [44, 146], [36, 168], [22, 182], [10, 182], [0, 186]]);
+      profiles: { body: [[0, 98], [10, 92], [26, 90], [40, 100], [46, 120], [44, 146], [36, 168], [22, 182], [10, 182], [0, 186]] },
+      features: [
+        // a tall stalk and its one big leaf — the apple's crest
+        { name: 'stalk', kind: 'stroke', side: 'centre', width: 2.8, d: [['M', [0, 98]], ['C', [0, 84], [2, 72], [6, 62]]], tone: '#8a5a34' },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [4, 76], fan: [[58, 26, 10]], tone: GREENS[0] },
+      ],
+      face: { y: 124, es: 15, s: 1.02, my: 139, ms: 0.95 }, hat: { dx: -14, y: 92, w: 18 }, neck: null,
+      arms: { y: 148, dx: 44, small: true, tone: 0 }, feet: { dx: 14, rx: 7, tone: { of: 0, shade: 0.28 } }, shadow: 38,
+    },
+    build(c) {
+      const [b, blush] = c.P, X = c.X, S = c.S;
+      const apple = c.sym(S.profiles.body);
       c.body(c.shape(apple, b));
       if (blush) c.body(`<ellipse cx="${X(c.side * 16)}" cy="124" rx="28" ry="26" fill="${c.pen.soft('#e04a4a', 0.75)}" clip-path="${c.pen.clip(apple)}"/>`);
       c.body(`<path d="M${X(-30)} 112Q${X(-36)} 132 ${X(-30)} 150" stroke="#fff" stroke-width="4" fill="none" opacity=".35" stroke-linecap="round"/>`);
-      // a tall stalk and its one big leaf — the apple's crest
-      c.body(`<path d="M54 98C54 84 ${X(2)} 72 ${X(6)} 62" stroke="#5a3a24" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M54 98C54 84 ${X(2)} 72 ${X(6)} 62" stroke="#8a5a34" stroke-width="2.8" fill="none" stroke-linecap="round"/>`);
-      c.body(c.leaf(X(4), 76, 58, 26, 10, GREENS[0]));
-      return { face: { y: 124, es: 15, s: 1.02, my: 139, ms: 0.95 }, hat: { x: X(-14), y: 92, w: 18 }, neck: null,
-        arms: { y: 148, dx: 44 * c.st, col: b, small: true }, feet: { dx: 14 * c.st, col: shade(b, 0.28), rx: 7 }, shadow: 38 * c.st };
+      const stalk = pathD(featureOf(c, 'stalk').d, X), leaf = featureOf(c, 'leaf');
+      c.body(`<path d="${stalk}" stroke="#5a3a24" stroke-width="5" fill="none" stroke-linecap="round"/><path d="${stalk}" stroke="#8a5a34" stroke-width="2.8" fill="none" stroke-linecap="round"/>`);
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, GREENS[0]));
+      return anchorsOf(c);
     },
   },
   banana: {
     kind: 'fruit', label: 'banana', added: 'card#12796',
     pals: [['#f4d44a'], ['#dfe06e'], ['#f2c43a', 'spots'], ['#c4574a'], ['#b8c8dc']],
     hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'scarf'], extras: ['glasses', 'satchel'],
+    shape: {
+      solid: 'extrude',
+      features: [
+        // one long crescent standing on its end, curving away to the key's side, its stalk at the top: its whole outline
+        { name: 'body', kind: 'outline', side: 'key', pts: [[2, 44], [12, 60], [22, 86], [26, 116], [24, 146], [16, 170], [4, 184], [-6, 184], [-14, 170], [-20, 146], [-22, 116], [-18, 88], [-10, 62], [-4, 46]] },
+        { name: 'stalk', kind: 'stroke', side: 'away', width: 4, d: [['M', [1, 48]], ['L', [3, 34]]], tone: '#8a7a4a' },
+        { name: 'tip', kind: 'ell', side: 'away', at: [1, 183], r: [4, 2.4], tone: '#5a4232' },
+      ],
+      face: { y: 100, es: 11.5, s: 0.95, my: 113, ms: 0.85 }, hat: { dx: -3, sided: true, y: 48, w: 12 }, neck: { y: 126, w: 22 },
+      arms: { y: 132, dx: 25, small: true, tone: 0 }, feet: { dx: 9, rx: 5, tone: { of: 0, shade: 0.3 } }, shadow: 24,
+    },
     build(c) {
       const [b, spots] = c.P, X = c.X, t = c.side, tip = '#5a4232';
-      // one long crescent standing on its end, curving away to the key's side, its stalk at the top
-      const pts = [[2, 44], [12, 60], [22, 86], [26, 116], [24, 146], [16, 170], [4, 184], [-6, 184], [-14, 170], [-20, 146], [-22, 116], [-18, 88], [-10, 62], [-4, 46]].map(([dx, y]) => [54 + t * dx * c.st, y]);
+      const pts = featureOf(c, 'body').pts.map(([dx, y]) => [54 + t * dx * c.st, y]);
       const body = smooth(pts);
       c.body(c.shape(body, b));
       c.body(`<path d="M${X(t * 12)} 66C${X(t * 20)} 96 ${X(t * 20)} 140 ${X(t * 8)} 176" stroke="${shade(b, 0.2)}" stroke-width="1.6" fill="none" opacity=".55" stroke-linecap="round"/>`);
       c.body(`<path d="M${X(-t * 15)} 98Q${X(-t * 18)} 124 ${X(-t * 15)} 150" stroke="#fff" stroke-width="3.4" fill="none" opacity=".35" stroke-linecap="round"/>`);
       if (spots) for (const [dx, y, r] of [[-12, 96, 1.6], [14, 120, 1.9], [-10, 150, 1.5], [10, 164, 1.7], [16, 90, 1.3]]) c.body(`<circle cx="${X(t * dx)}" cy="${y}" r="${r}" fill="#6a4a2a" opacity=".55"/>`);
-      c.body(`<path d="M${X(-t * 1)} 48L${X(-t * 3)} 34" stroke="${tip}" stroke-width="6.4" stroke-linecap="round"/><path d="M${X(-t * 1)} 48L${X(-t * 3)} 34" stroke="#8a7a4a" stroke-width="4" stroke-linecap="round"/>`);
-      c.body(`<ellipse cx="${X(-t * 1)}" cy="183" rx="4" ry="2.4" fill="${tip}"/>`);
-      return { face: { y: 100, es: 11.5, s: 0.95, my: 113, ms: 0.85 }, hat: { x: X(-t * 3), y: 48, w: 12 }, neck: { y: 126, w: 22 * c.st },
-        arms: { y: 132, dx: 25 * c.st, col: b, small: true }, feet: { dx: 9 * c.st, col: shade(b, 0.3), rx: 5 }, shadow: 24 * c.st };
+      const stalk = pathD(featureOf(c, 'stalk').d, sideX(c, -t)), end = featureOf(c, 'tip');
+      c.body(`<path d="${stalk}" stroke="${tip}" stroke-width="6.4" stroke-linecap="round"/><path d="${stalk}" stroke="#8a7a4a" stroke-width="4" stroke-linecap="round"/>`);
+      c.body(`<ellipse cx="${X(-t * end.at[0])}" cy="${end.at[1]}" rx="${end.r[0]}" ry="${end.r[1]}" fill="${tip}"/>`);
+      return anchorsOf(c);
     },
   },
   lemon: {
     kind: 'fruit', label: 'lemon', added: 'card#12796',
     pals: [['#f6dc3c'], ['#c9dc4c'], ['#f6c94a'], ['#f2e88a'], ['#ead23c', 'leaf']],
     hats: ['ladybug', 'flower', 'beret', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
+    shape: {
+      solid: 'extrude',
+      features: [
+        // lying on its side: a wide oval with a nub at each end, low and broad — its whole outline
+        { name: 'body', kind: 'outline', side: 'centre', pts: [[0, 98], [22, 100], [38, 112], [45, 132], [50, 146], [43, 160], [32, 178], [0, 184], [-32, 178], [-43, 160], [-50, 146], [-45, 132], [-38, 112], [-22, 100]] },
+        // a little stalk and two leaves on top
+        { name: 'stalk', kind: 'stroke', side: 'centre', width: 3, d: [['M', [0, 100]], ['L', [2, 92]]], tone: '#6a5a3a' },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [2, 94], fan: [[62, 18, 7]], tone: GREENS[1] },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [1, 94], fan: [[-48, 14, 6]], tone: GREENS[2] },
+      ],
+      face: { y: 124, es: 15, s: 1, my: 138, ms: 0.95 }, hat: { dx: -14, y: 100, w: 18 }, neck: null,
+      arms: { y: 156, dx: 42, small: true, tone: 0 }, feet: { dx: 15, rx: 6, tone: { of: 0, shade: 0.3 } }, shadow: 40,
+    },
     build(c) {
-      const [b] = c.P, X = c.X;
-      // lying on its side: a wide oval with a nub at each end, low and broad
-      const lemon = smooth([[54, 98], [X(22), 100], [X(38), 112], [X(45), 132], [X(50), 146], [X(43), 160], [X(32), 178], [54, 184], [X(-32), 178], [X(-43), 160], [X(-50), 146], [X(-45), 132], [X(-38), 112], [X(-22), 100]]);
+      const [b] = c.P, X = c.X, S = c.S;
+      const lemon = smooth(featureOf(c, 'body').pts.map(([dx, y]) => [X(dx), y]));
       c.body(c.shape(lemon, b));
       const clip = c.pen.clip(lemon);
       for (const [dx, y] of [[-24, 120], [-14, 112], [20, 116], [30, 132], [-32, 146], [14, 170], [-20, 168], [32, 158]]) c.body(`<circle cx="${X(dx)}" cy="${y}" r="1" fill="${shade(b, 0.25)}" opacity=".55" clip-path="${clip}"/>`);
       c.body(`<path d="M${X(-30)} 126Q${X(-36)} 140 ${X(-32)} 156" stroke="#fff" stroke-width="3.8" fill="none" opacity=".4" stroke-linecap="round"/>`);
-      // a little stalk and two leaves on top
-      c.body(`<path d="M54 100L${X(2)} 92" stroke="#6a5a3a" stroke-width="3" stroke-linecap="round"/>`);
-      c.body(c.leaf(X(2), 94, 62, 18, 7, GREENS[1]));
-      c.body(c.leaf(X(1), 94, -48, 14, 6, GREENS[2]));
-      return { face: { y: 124, es: 15, s: 1, my: 138, ms: 0.95 }, hat: { x: X(-14), y: 100, w: 18 }, neck: null,
-        arms: { y: 156, dx: 42 * c.st, col: b, small: true }, feet: { dx: 15 * c.st, col: shade(b, 0.3), rx: 6 }, shadow: 40 * c.st };
+      c.body(`<path d="${pathD(featureOf(c, 'stalk').d, X)}" stroke="#6a5a3a" stroke-width="3" stroke-linecap="round"/>`);
+      for (const leaf of S.features.filter((ft) => ft.name === 'leaf')) for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, leaf.tone));
+      return anchorsOf(c);
     },
   },
   dragonfruit: {
     kind: 'fruit', label: 'dragon fruit', added: 'card#12796',
     pals: [['#e2408a', '#8fc24a'], ['#d84aa0', '#9ac04a'], ['#c3306c', '#6fa04a'], ['#f27ab0', '#a8c84a'], ['#f0607e', '#7fb04a']],
     hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'satchel', 'book'],
+    shape: {
+      profiles: { body: [[0, 64], [22, 68], [36, 84], [42, 110], [42, 140], [36, 166], [22, 182], [0, 186]] },
+      features: [
+        // the scale-flames standing out of the outline, and the crown at the top, green at their tips
+        { name: 'flame', kind: 'leaf', side: 'pair', at: [28, 88], fan: [[50, 14, 6.5]] },
+        { name: 'flame', kind: 'leaf', side: 'pair', at: [36, 116], fan: [[75, 14, 6.5]] },
+        { name: 'flame', kind: 'leaf', side: 'pair', at: [36, 146], fan: [[100, 14, 6.5]] },
+        { name: 'flame', kind: 'leaf', side: 'pair', at: [26, 170], fan: [[125, 14, 6.5]] },
+        { name: 'crown', kind: 'leaf', side: 'centre', at: [-8, 70], fan: [[-24, 22, 7.5]] },
+        { name: 'crown', kind: 'leaf', side: 'centre', at: [0, 70], fan: [[0, 26, 7.5]] },
+        { name: 'crown', kind: 'leaf', side: 'centre', at: [8, 70], fan: [[24, 22, 7.5]] },
+      ],
+      face: { y: 108, es: 15, s: 1.02, my: 122, ms: 0.95 }, hat: { dx: 0, y: 62, w: 20 }, neck: { y: 136, w: 30 },
+      arms: { y: 146, dx: 40, small: true, tone: 0 }, feet: { dx: 15, tone: { of: 0, shade: 0.25 } }, shadow: 38,
+    },
     build(c) {
-      const [b, g] = c.P, X = c.X;
-      // the scale-flames standing out of the outline, and the crown at the top, green at their tips
+      const [b, g] = c.P, X = c.X, S = c.S;
       const flame = (x, y, ang, len, wid) => `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(ang)})"><path d="${leafD(len, wid)}" fill="${c.pen.paint(b)}" stroke="${line(b)}" stroke-width="1.3" stroke-linejoin="round"/><path d="M0 ${f(-len * 0.55)}C${f(wid * 0.6)} ${f(-len * 0.7)} ${f(wid * 0.3)} ${f(-len * 0.92)} 0 ${f(-len)}C${f(-wid * 0.3)} ${f(-len * 0.92)} ${f(-wid * 0.6)} ${f(-len * 0.7)} 0 ${f(-len * 0.55)}Z" fill="${g}"/></g>`;
-      for (const [dx, y, a] of [[-28, 88, -50], [28, 88, 50], [-36, 116, -75], [36, 116, 75], [-36, 146, -100], [36, 146, 100], [-26, 170, -125], [26, 170, 125]]) c.back(flame(X(dx), y, a, 14, 6.5));
-      for (const [dx, a, l] of [[-8, -24, 22], [0, 0, 26], [8, 24, 22]]) c.back(flame(X(dx), 70, a, l, 7.5));
-      const fruit = c.sym([[0, 64], [22, 68], [36, 84], [42, 110], [42, 140], [36, 166], [22, 182], [0, 186]]);
+      for (const { at: [dx, y], fan: [[a, l, w]] } of S.features.filter((ft) => ft.name === 'flame')) for (const s of [-1, 1]) c.back(flame(X(s * dx), y, s * a, l, w));
+      for (const { at: [dx, y], fan: [[a, l, w]] } of S.features.filter((ft) => ft.name === 'crown')) c.back(flame(X(dx), y, a, l, w));
+      const fruit = c.sym(S.profiles.body);
       c.body(c.shape(fruit, b));
       // the flat scales on the skin, in rows, each a soft green-tipped arc
       for (const [dx, y] of [[-18, 86], [18, 86], [0, 150], [-24, 132], [24, 132], [-14, 172], [14, 172]]) c.body(`<path d="M${X(dx - 8)} ${y + 6}Q${X(dx)} ${y - 6} ${X(dx + 8)} ${y + 6}" stroke="${g}" stroke-width="2.6" fill="none" stroke-linecap="round" opacity=".85"/>`);
-      return { face: { y: 108, es: 15, s: 1.02, my: 122, ms: 0.95 }, hat: { x: 54, y: 62, w: 20 }, neck: { y: 136, w: 30 * c.st },
-        arms: { y: 146, dx: 40 * c.st, col: b, small: true }, feet: { dx: 15 * c.st, col: shade(b, 0.25) }, shadow: 38 * c.st };
+      return anchorsOf(c);
     },
   },
   peach: {
     kind: 'fruit', label: 'peach', added: 'card#12796',
     pals: [['#f7b48c', '#ef6f62'], ['#f7d2c8', '#f08f9c'], ['#f5a07a', '#e8584a'], ['#f2c0a8', '#e27a86'], ['#eea69a', '#d9586e']],
     hats: ['ladybug', 'flower', 'beret', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
-    build(c) {
-      const [b, blush] = c.P, X = c.X, t = c.side;
+    shape: {
       // a squat, heart-topped peach with its pointed tip, broad and low
-      const peach = c.sym([[0, 96], [8, 88], [22, 86], [38, 96], [48, 118], [48, 144], [42, 164], [30, 180], [12, 186], [0, 186]]);
+      profiles: { body: [[0, 96], [8, 88], [22, 86], [38, 96], [48, 118], [48, 144], [42, 164], [30, 180], [12, 186], [0, 186]] },
+      features: [
+        { name: 'stalk', kind: 'stroke', side: 'centre', width: 3.4, d: [['M', [0, 92]], ['L', [-2, 82]]], tone: '#6a4a2a' },
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [-2, 84], fan: [[-58, 18, 7.5], [52, 18, 7.5]], tone: GREENS[2] },
+      ],
+      face: { y: 122, es: 16, s: 1.02, my: 137, ms: 0.95 }, hat: { dx: 18, sided: true, y: 90, w: 18 }, neck: null,
+      arms: { y: 150, dx: 47, small: true, tone: 0 }, feet: { dx: 18, tone: { of: 0, shade: 0.25 } }, shadow: 44,
+    },
+    build(c) {
+      const [b, blush] = c.P, X = c.X, t = c.side, S = c.S;
+      const peach = c.sym(S.profiles.body);
       c.body(c.shape(peach, b));
       const clip = c.pen.clip(peach);
       c.body(`<ellipse cx="${X(t * 22)}" cy="132" rx="34" ry="40" fill="${c.pen.soft(blush, 0.8)}" clip-path="${clip}"/>`);
       // the cleft, a soft line from the top down one side, and the fuzz's sheen
       c.body(`<path d="M54 96C${X(-t * 6)} 120 ${X(-t * 8)} 150 ${X(-t * 2)} 184" stroke="${shade(b, 0.28)}" stroke-width="1.8" fill="none" opacity=".6" stroke-linecap="round"/>`);
       c.body(`<path d="M${X(-34)} 116Q${X(-40)} 134 ${X(-34)} 152" stroke="#fff" stroke-width="5" fill="none" opacity=".3" stroke-linecap="round"/>`);
-      c.body(`<path d="M54 92L${X(-2)} 82" stroke="#6a4a2a" stroke-width="3.4" stroke-linecap="round"/>`);
-      for (const a of [-58, 52]) c.body(c.leaf(X(-2), 84, a, 18, 7.5, GREENS[2]));
-      return { face: { y: 122, es: 16, s: 1.02, my: 137, ms: 0.95 }, hat: { x: X(t * 18), y: 90, w: 18 }, neck: null,
-        arms: { y: 150, dx: 47 * c.st, col: b, small: true }, feet: { dx: 18 * c.st, col: shade(b, 0.25) }, shadow: 44 * c.st };
+      c.body(`<path d="${pathD(featureOf(c, 'stalk').d, X)}" stroke="#6a4a2a" stroke-width="3.4" stroke-linecap="round"/>`);
+      const leaf = featureOf(c, 'leaf');
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, GREENS[2]));
+      return anchorsOf(c);
     },
   },
   pineapple: {
     kind: 'fruit', label: 'pineapple', added: 'card#12796',
     pals: [['#e8b33a', '#5f9a48'], ['#f2cc5c', '#4f8a44'], ['#d89a3c', '#6aa05a'], ['#c97a3a', '#3f7f50'], ['#f0d48a', '#79a85a']],
     hats: ['ladybug', 'flower'], necks: ['bow', 'scarf'], extras: ['glasses', 'mug', 'book'],
+    shape: {
+      profiles: { body: [[0, 94], [19, 96], [29, 110], [33, 134], [32, 158], [26, 176], [13, 185], [0, 186]] },
+      features: [
+        // the crown (its neck sits low on the fruit, so no satchel: one would hang below the foot line): tall spiky leaves
+        // fanned up from the top
+        { name: 'leaf', kind: 'leaf', side: 'centre', at: [0, 98], fan: [[-52, 30, 6], [52, 30, 6], [-30, 40, 6.5], [30, 40, 6.5], [-12, 50, 6.5], [12, 50, 6.5], [0, 58, 6]], tone: 1 },
+      ],
+      face: { y: 122, es: 12, s: 0.95, my: 136, ms: 0.9 }, hat: { dx: 0, y: 46, w: 12 }, neck: { y: 150, w: 26 },
+      arms: { y: 148, dx: 31, small: true, tone: 0 }, feet: { dx: 12, tone: { of: 0, shade: 0.3 } }, shadow: 30,
+    },
     build(c) {
-      const [b, g] = c.P, X = c.X;
-      // the crown (its neck sits low on the fruit, so no satchel: one would hang below the foot line): tall spiky leaves fanned up from the top
-      for (const [a, l, w] of [[-52, 30, 6], [52, 30, 6], [-30, 40, 6.5], [30, 40, 6.5], [-12, 50, 6.5], [12, 50, 6.5], [0, 58, 6]]) c.back(c.leaf(54, 98, a, l, w, a === 0 ? tint(g, 0.1) : g));
-      const fruit = c.sym([[0, 94], [19, 96], [29, 110], [33, 134], [32, 158], [26, 176], [13, 185], [0, 186]]);
+      const [b, g] = c.P, X = c.X, S = c.S, leaf = featureOf(c, 'leaf');
+      for (const [a, l, w] of leaf.fan) c.back(c.leaf(X(leaf.at[0]), leaf.at[1], a, l, w, a === 0 ? tint(g, 0.1) : g));
+      const fruit = c.sym(S.profiles.body);
       c.body(c.shape(fruit, b));
       // the diamond weave, clipped to the fruit, a dot at each crossing
       const clip = c.pen.clip(fruit), lc = shade(b, 0.3);
@@ -1046,101 +1632,145 @@ const APPROVED = {
       for (let k = -6; k <= 6; k++) weave += `M${X(k * 12 - 40)} 90L${X(k * 12 + 60)} 190M${X(k * 12 + 40)} 90L${X(k * 12 - 60)} 190`;
       c.body(`<path d="${weave}" stroke="${lc}" stroke-width="1.2" fill="none" opacity=".55" clip-path="${clip}"/>`);
       for (let r = 0; r < 8; r++) for (let k = -4; k <= 4; k++) { const y = 102 + r * 12, dx = k * 12 + (r % 2 ? 6 : 0); c.body(`<circle cx="${X(dx)}" cy="${y}" r="1.2" fill="${shade(b, 0.45)}" opacity=".5" clip-path="${clip}"/>`); }
-      return { face: { y: 122, es: 12, s: 0.95, my: 136, ms: 0.9 }, hat: { x: 54, y: 46, w: 12 }, neck: { y: 150, w: 26 * c.st },
-        arms: { y: 148, dx: 31 * c.st, col: b, small: true }, feet: { dx: 12 * c.st, col: shade(b, 0.3) }, shadow: 30 * c.st };
+      return anchorsOf(c);
     },
   },
   watermelon: {
     kind: 'fruit', label: 'watermelon slice', added: 'card#12796',
     pals: [['#ef4a5c', '#3f8a4a'], ['#f4d24a', '#3f8a4a'], ['#f58a9a', '#4f9a5a'], ['#e13248', '#2f6f3c'], ['#f6a0b8', '#6aa05a']],
     hats: ['ladybug', 'flower', 'straw'], necks: [], extras: ['glasses', 'book'],
+    shape: {
+      solid: 'extrude',
+      features: [
+        // a wedge standing on its rind: a soft point at the top, the rind's arc for its foot (the cut face the flesh's
+        // colour, its pale band and rind paint)
+        { name: 'body', kind: 'path', side: 'centre', d: [['M', [-4, 66]], ['Q', [0, 60], [4, 66]], ['L', [46, 160]], ['Q', [52, 170], [44, 176]], ['Q', [0, 192], [-44, 176]], ['Q', [-52, 170], [-46, 160]], ['Z']] },
+      ],
+      face: { y: 120, es: 13, s: 0.98, my: 134, ms: 0.9 }, hat: { dx: 0, y: 64, w: 12 }, neck: null,
+      arms: { y: 148, dx: 38, small: true, tone: { of: 0, shade: 0.05 } }, feet: { dx: 16, rx: 7, tone: 1 }, shadow: 44,
+    },
     build(c) {
       const [b, rind] = c.P, X = c.X, pale = '#f4f6e2';
-      // a wedge standing on its rind: a soft point at the top, the rind's arc for its foot
-      const wedge = `M${X(-4)} 66Q54 60 ${X(4)} 66L${X(46)} 160Q${X(52)} 170 ${X(44)} 176Q54 192 ${X(-44)} 176Q${X(-52)} 170 ${X(-46)} 160Z`;
-      c.body(c.shape(wedge, rind));
+      c.body(c.shape(pathD(featureOf(c, 'body').d, X), rind));
       const flesh = `M${X(-3.4)} 72Q54 67 ${X(3.4)} 72L${X(40)} 158Q${X(44)} 165 ${X(38)} 168Q54 180 ${X(-38)} 168Q${X(-44)} 165 ${X(-40)} 158Z`;
       c.body(`<path d="${flesh}" fill="${pale}" stroke="${tint(rind, 0.5)}" stroke-width="1"/>`);
       const inner = `M${X(-3)} 76Q54 72 ${X(3)} 76L${X(36)} 154Q${X(39)} 160 ${X(34)} 162Q54 172 ${X(-34)} 162Q${X(-39)} 160 ${X(-36)} 154Z`;
       c.body(`<path d="${inner}" fill="${c.pen.paint(b)}"/>`);
       for (const [dx, y, a] of [[-8, 100, -20], [10, 108, 20], [-22, 142, -30], [22, 144, 30], [-4, 152, 0], [-14, 124, -10], [16, 128, 15]]) c.body(`<ellipse cx="${X(dx)}" cy="${y}" rx="1.7" ry="3" transform="rotate(${a} ${X(dx)} ${y})" fill="#2e2428"/>`);
-      return { face: { y: 120, es: 13, s: 0.98, my: 134, ms: 0.9 }, hat: { x: 54, y: 64, w: 12 }, neck: null,
-        arms: { y: 148, dx: 38 * c.st, col: shade(b, 0.05), small: true }, feet: { dx: 16 * c.st, col: rind, rx: 7 }, shadow: 44 * c.st };
+      return anchorsOf(c);
     },
   },
   avocado: {
     kind: 'fruit', label: 'avocado half', added: 'card#12796',
     pals: [['#4f7a30', '#dfe48e', '#8a5a3a'], ['#3a4a2c', '#e6e89c', '#7a4a2c'], ['#6f9a3c', '#ecebaa', '#9a6a3a'], ['#59683c', '#d6dc8a', '#6a4030'], ['#4a6a4c', '#e2e6ac', '#a0703c']],
     hats: ['ladybug', 'flower', 'beret'], necks: ['bow'], extras: ['glasses', 'book'],
+    shape: {
+      profiles: {
+        // the half, cut face to the viewer: a pear of dark skin, the pale flesh inside it greening toward the skin
+        body: [[0, 66], [14, 68], [23, 80], [29, 102], [39, 130], [42, 154], [36, 175], [20, 185], [0, 186]],
+        flesh: [[0, 71], [11, 73], [19, 84], [25, 104], [34, 131], [37, 154], [31, 172], [17, 180], [0, 181]],
+      },
+      tones: { flesh: 1 },
+      features: [
+        // the pit, round and glossy, low in the belly
+        { name: 'pit', kind: 'ell', side: 'centre', at: [0, 152], r: [16, 16], tone: 2 },
+      ],
+      face: { y: 104, es: 12, s: 0.95, my: 117, ms: 0.85 }, hat: { dx: 0, y: 67, w: 16 }, neck: { y: 132, w: 30 },
+      arms: { y: 140, dx: 37, small: true, tone: 0 }, feet: { dx: 15, tone: 0 }, shadow: 38,
+    },
     build(c) {
-      const [skin, flesh, pit] = c.P, X = c.X;
-      // the half, cut face to the viewer: a pear of dark skin, the pale flesh inside it greening toward the skin
-      const outer = c.sym([[0, 66], [14, 68], [23, 80], [29, 102], [39, 130], [42, 154], [36, 175], [20, 185], [0, 186]]);
+      const [skin, flesh, pit] = c.P, X = c.X, S = c.S;
+      const outer = c.sym(S.profiles.body);
       c.body(c.shape(outer, skin));
-      const inner = c.sym([[0, 71], [11, 73], [19, 84], [25, 104], [34, 131], [37, 154], [31, 172], [17, 180], [0, 181]]);
+      const inner = c.sym(S.profiles.flesh);
       const id = c.pen.uid();
       c.pen.defs.push(`<radialGradient id="${id}" cx=".5" cy=".62" r=".62"><stop offset="0" stop-color="${tint(flesh, 0.3)}"/><stop offset=".62" stop-color="${flesh}"/><stop offset="1" stop-color="${mix(flesh, skin, 0.45)}"/></radialGradient>`);
       c.body(`<path d="${inner}" fill="url(#${id})"/>`);
-      // the pit, round and glossy, low in the belly
-      c.body(`<circle cx="54" cy="152" r="${f(16 * c.st)}" fill="${c.pen.paint(pit)}" stroke="${line(pit)}" stroke-width="1.4"/><ellipse cx="${X(-6)}" cy="145" rx="4.6" ry="3" fill="#fff" opacity=".35"/>`);
-      return { face: { y: 104, es: 12, s: 0.95, my: 117, ms: 0.85 }, hat: { x: 54, y: 67, w: 16 }, neck: { y: 132, w: 30 * c.st },
-        arms: { y: 140, dx: 37 * c.st, col: skin, small: true }, feet: { dx: 15 * c.st, col: skin }, shadow: 38 * c.st };
+      const P = featureOf(c, 'pit');
+      c.body(`<circle cx="${X(P.at[0])}" cy="${P.at[1]}" r="${f(P.r[0] * c.st)}" fill="${c.pen.paint(pit)}" stroke="${line(pit)}" stroke-width="1.4"/><ellipse cx="${X(-6)}" cy="145" rx="4.6" ry="3" fill="#fff" opacity=".35"/>`);
+      return anchorsOf(c);
     },
   },
   mango: {
     kind: 'fruit', label: 'mango', added: 'card#12796',
     pals: [['#8fc04c', '#f2c84a', '#ec5e4a'], ['#f2c84a', '#f4a03a', '#e6484a'], ['#f4d85c', '#f6b23a', '#f08a4a'], ['#a8c85a', '#e8d05a', '#d6485c'], ['#e8a43a', '#ec6a3a', '#c8304a']],
     hats: ['ladybug', 'flower', 'beret'], necks: ['bow', 'neckerchief'], extras: ['glasses', 'satchel', 'book'],
+    shape: {
+      solid: 'extrude',
+      features: [
+        // a kidney: one long oval leaning to the key's side, the inner curve dented, green below ripening to a red cheek —
+        // its whole outline
+        { name: 'body', kind: 'outline', side: 'key', pts: [[6, 60], [22, 66], [36, 84], [42, 112], [40, 142], [32, 166], [18, 182], [0, 186], [-16, 180], [-28, 160], [-30, 136], [-26, 114], [-26, 96], [-22, 76], [-10, 62]], tone: 1 },
+        { name: 'stalk', kind: 'stroke', side: 'key', width: 3.4, d: [['M', [4, 62]], ['L', [6, 50]]], tone: '#5a4028' },
+        { name: 'leaf', kind: 'leaf', side: 'key', at: [6, 52], fan: [[70, 16, 6.5]], tone: GREENS[2] },
+      ],
+      face: { y: 110, es: 14, s: 1, my: 124, ms: 0.9 }, hat: { dx: -6, sided: true, y: 62, w: 16 }, neck: { y: 138, w: 28 },
+      arms: { y: 146, dx: 36, small: true, tone: 1 }, feet: { dx: 13, rx: 6, tone: { of: 0, shade: 0.3 } }, shadow: 34,
+    },
     build(c) {
       const [g, y, r] = c.P, X = c.X, t = c.side;
-      // a kidney: one long oval leaning to the key's side, the inner curve dented, green below ripening to a red cheek
-      const pts = [[6, 60], [22, 66], [36, 84], [42, 112], [40, 142], [32, 166], [18, 182], [0, 186], [-16, 180], [-28, 160], [-30, 136], [-26, 114], [-26, 96], [-22, 76], [-10, 62]].map(([dx, yy]) => [54 + t * dx * c.st, yy]);
+      const pts = featureOf(c, 'body').pts.map(([dx, yy]) => [54 + t * dx * c.st, yy]);
       const body = smooth(pts);
       const id = c.pen.uid();
       c.pen.defs.push(`<linearGradient id="${id}" x1="${t < 0 ? 1 : 0}" y1="1" x2="${t < 0 ? 0 : 1}" y2="0"><stop offset=".08" stop-color="${g}"/><stop offset=".5" stop-color="${y}"/><stop offset=".92" stop-color="${r}"/></linearGradient>`);
       c.body(`<path d="${body}" fill="url(#${id})" stroke="${line(y)}" stroke-width="1.6" stroke-linejoin="round"/>`);
       c.body(`<ellipse cx="${X(t * 14)}" cy="96" rx="20" ry="22" fill="${c.pen.soft(tint(y, 0.6), 0.55)}" clip-path="${c.pen.clip(body)}"/>`);
-      c.body(`<path d="M${X(t * 4)} 62L${X(t * 6)} 50" stroke="#5a4028" stroke-width="3.4" stroke-linecap="round"/>`);
-      c.body(c.leaf(X(t * 6), 52, t * 70, 16, 6.5, GREENS[2]));
-      return { face: { y: 110, es: 14, s: 1, my: 124, ms: 0.9 }, hat: { x: X(-t * 6), y: 62, w: 16 }, neck: { y: 138, w: 28 * c.st },
-        arms: { y: 146, dx: 36 * c.st, col: y, small: true }, feet: { dx: 13 * c.st, col: shade(g, 0.3), rx: 6 }, shadow: 34 * c.st };
+      const leaf = featureOf(c, 'leaf');
+      c.body(`<path d="${pathD(featureOf(c, 'stalk').d, sideX(c, t))}" stroke="#5a4028" stroke-width="3.4" stroke-linecap="round"/>`);
+      for (const [a, l, w] of leaf.fan) c.body(c.leaf(X(t * leaf.at[0]), leaf.at[1], t * a, l, w, GREENS[2]));
+      return anchorsOf(c);
     },
   },
   kiwi: {
     kind: 'fruit', label: 'kiwi half', added: 'card#12796',
     pals: [['#86c43c', '#7a5a3a'], ['#e6d84a', '#8a6a40'], ['#a2d24e', '#6a4a30'], ['#c4d84a', '#7a5a3a'], ['#70b040', '#5a4030']],
     hats: ['ladybug', 'flower', 'beret', 'straw'], necks: [], extras: ['glasses', 'mug', 'book'],
+    shape: {
+      solid: 'extrude',
+      features: [
+        // the half, cut face to the viewer: the fuzzy brown skin's rim, the bright flesh, its pale heart and its ring of seeds
+        { name: 'body', kind: 'scallop', side: 'centre', at: [0, 132], r: [48, 48], n: 34, bulge: 0.9, tone: 1 },
+        { name: 'flesh', kind: 'ell', side: 'centre', at: [0, 132], r: [43, 43] },
+      ],
+      face: { y: 104, es: 15, s: 0.98, my: 118, ms: 0.85 }, hat: { dx: 0, y: 86, w: 20 }, neck: null,
+      arms: { y: 140, dx: 47, small: true, tone: 1 }, feet: { dx: 16, tone: 1 }, shadow: 42,
+    },
     build(c) {
-      const [flesh, skin] = c.P, X = c.X, cy = 132, R = 48;
-      // the half, cut face to the viewer: the fuzzy brown skin's rim, the bright flesh, its pale heart and its ring of seeds
-      c.body(c.shape(scallop(54, cy, R * c.st, R, 34, 0.9), skin));
+      const [flesh, skin] = c.P, X = c.X, rim = featureOf(c, 'body'), cut = featureOf(c, 'flesh'), cy = rim.at[1], R = rim.r[1];
+      c.body(c.shape(scallop(X(rim.at[0]), cy, rim.r[0] * c.st, R, rim.n, rim.bulge), skin));
       const id = c.pen.uid();
       c.pen.defs.push(`<radialGradient id="${id}" cx=".5" cy=".55" r=".55"><stop offset="0" stop-color="${tint(flesh, 0.55)}"/><stop offset=".45" stop-color="${flesh}"/><stop offset="1" stop-color="${shade(flesh, 0.12)}"/></radialGradient>`);
-      c.body(`<ellipse cx="54" cy="${cy}" rx="${f((R - 5) * c.st)}" ry="${R - 5}" fill="url(#${id})"/>`);
+      c.body(`<ellipse cx="${X(cut.at[0])}" cy="${cut.at[1]}" rx="${f(cut.r[0] * c.st)}" ry="${cut.r[1]}" fill="url(#${id})"/>`);
       const hy = cy + 12;
       for (let i = 0; i < 16; i++) { const a = (i / 16) * 2 * Math.PI, rr = 15 + (i % 2) * 3; c.body(`<ellipse cx="${f(54 + Math.cos(a) * rr * c.st)}" cy="${f(hy + Math.sin(a) * rr * 0.9)}" rx="1.3" ry="2.3" transform="rotate(${f(a * 180 / Math.PI + 90)} ${f(54 + Math.cos(a) * rr * c.st)} ${f(hy + Math.sin(a) * rr * 0.9)})" fill="#2a2024"/>`); }
       c.body(`<ellipse cx="54" cy="${hy}" rx="${f(8 * c.st)}" ry="7" fill="${c.pen.soft('#fbf8e2', 0.95)}"/>`);
       for (let i = 0; i < 12; i++) { const a = (i / 12) * 2 * Math.PI; c.body(`<path d="M${f(54 + Math.cos(a) * 9 * c.st)} ${f(hy + Math.sin(a) * 8)}L${f(54 + Math.cos(a) * 34 * c.st)} ${f(hy + Math.sin(a) * 30)}" stroke="${tint(flesh, 0.5)}" stroke-width=".8" opacity=".5"/>`); }
-      return { face: { y: 104, es: 15, s: 0.98, my: 118, ms: 0.85 }, hat: { x: 54, y: 86, w: 20 }, neck: null,
-        arms: { y: 140, dx: 47 * c.st, col: skin, small: true }, feet: { dx: 16 * c.st, col: skin }, shadow: 42 * c.st };
+      return anchorsOf(c);
     },
   },
   starfruit: {
     kind: 'fruit', label: 'starfruit', added: 'card#12796',
     pals: [['#f2cf4a'], ['#e3dc72'], ['#f6b84c'], ['#cfe074'], ['#f7e3a0']],
     hats: ['ladybug', 'flower', 'beret'], necks: [], extras: ['glasses'],
+    shape: {
+      solid: 'extrude',
+      features: [
+        // a five-pointed star with rounded points, centred at `at`, its points `r[0]` out and its notches `r[1]`: the
+        // top point its crown, two its arms and two its feet
+        { name: 'body', kind: 'star', side: 'centre', at: [0, 142], r: [54, 30], n: 5 },
+      ],
+      face: { y: 124, es: 12, s: 0.95, my: 137, ms: 0.85 }, hat: { dx: 0, y: 88, w: 12 }, neck: null,
+      arms: null, feet: null, shadow: 36,
+    },
     build(c) {
-      const [b] = c.P, cy = 142, Ro = 54, Ri = 30;
-      // a five-pointed star with rounded points: the top point its crown, two its arms and two its feet
+      const [b] = c.P, star = featureOf(c, 'body'), cy = star.at[1], Ro = star.r[0], Ri = star.r[1];
       const pts = [];
-      for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? Ri : Ro; pts.push([54 + Math.cos(a) * r * c.st, cy + Math.sin(a) * r * (i === 4 || i === 6 ? 0.96 : 1)]); }
-      const star = smooth(pts);
-      c.body(c.shape(star, b));
+      for (let i = 0; i < star.n * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / star.n, r = i % 2 ? Ri : Ro; pts.push([54 + Math.cos(a) * r * c.st, cy + Math.sin(a) * r * (i === 4 || i === 6 ? 0.96 : 1)]); }
+      c.body(c.shape(smooth(pts), b));
       // the ridges, a pale line from the heart out to each point
-      for (let i = 0; i < 10; i += 2) { const a = -Math.PI / 2 + i * Math.PI / 5; c.body(`<path d="M54 ${cy}L${f(54 + Math.cos(a) * (Ro - 10) * c.st)} ${f(cy + Math.sin(a) * (Ro - 10))}" stroke="${tint(b, 0.5)}" stroke-width="2" stroke-linecap="round" opacity=".7"/>`); }
+      for (let i = 0; i < star.n * 2; i += 2) { const a = -Math.PI / 2 + i * Math.PI / star.n; c.body(`<path d="M54 ${cy}L${f(54 + Math.cos(a) * (Ro - 10) * c.st)} ${f(cy + Math.sin(a) * (Ro - 10))}" stroke="${tint(b, 0.5)}" stroke-width="2" stroke-linecap="round" opacity=".7"/>`); }
       c.body(`<path d="M${f(54 - 6)} ${cy - 46}L54 ${cy - 56}" stroke="#6a5a3a" stroke-width="2.6" stroke-linecap="round"/>`);
-      return { face: { y: 124, es: 12, s: 0.95, my: 137, ms: 0.85 }, hat: { x: 54, y: 88, w: 12 }, neck: null,
-        arms: null, feet: null, shadow: 36 * c.st };
+      return anchorsOf(c);
     },
   },
 };
@@ -1697,6 +2327,7 @@ function build(key, force) {
   const P = sp.pals[r.pal];
   const c = makeCtx(pen, key, P, r.stout);
   c.variant = r.variant;
+  c.S = sp.shape;
   const A = sp.build(c);
   return { r, sp, pen, c, A };
 }
@@ -1825,6 +2456,74 @@ export function frameDocument(key, opt = {}) {
   const marker = X.marker && !opt.chibi ? markerSvg(markerStand(key, r, A, c.side, opt.clear), X.marker, level) : '';
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" width="${vb.w}" height="${vb.h}" preserveAspectRatio="xMidYMax meet"><defs>${pen.defs.join('')}</defs>${shadow}<g transform="${tf}">${inner}</g>${laptop}${marker}</svg>`;
+}
+
+// ---- the face alone, for the 3-D floor (card#13033 stage 2 slice 3; docs/design/plan-13033-stage2-3d-floor.md § 3.3) ----
+/**
+ * Where a face is drawn, in frame units at size 1: the box its eyes, brows, mouth and blush can reach — every eye style
+ * at its widest expression, the raised brow, the tallest mouth, the blush past the eyes — over a species' face anchors
+ * `F` and its blush offset. `faceDocument()` draws in it and `creatures-3d.js` puts the face patch over it, so the
+ * texture and the patch it is mapped onto are one rectangle.
+ * @param {{y: number, es: number, s: number, my: number|null, ms: number}} F @param {number} [blushDx]
+ * @returns {{x: number, y: number, w: number, h: number}}
+ */
+export function faceBox(F, blushDx = 0) {
+  const half = F.es + Math.max((6.4 + blushDx + 5.8) * F.s * 1.15, 4.3 * F.s * EYE_K * EXPRESSIONS.attention.wide) + 1;
+  const top = F.y - Math.max((6.6 + 3.2 + 2.6) * F.s * BROW_K, 5.4 * F.s * EYE_K * EXPRESSIONS.attention.wide + 1.1 * F.s * EYE_K) - 1;
+  const bottom = Math.max(F.y + (7.6 + 3.6) * F.s * 1.15, F.my == null ? -Infinity : F.my + 1.2 + 9 * F.ms * MOUTH_K) + 1;
+  return { x: f(54 - half), y: f(top), w: f(2 * half), h: f(bottom - top) };
+}
+
+/** A built key's face paint — its species' features marked `face` (a mask, a nose), each with its path drawn. */
+function facePaint(c) {
+  return c.S.features.filter((ft) => ft.face && (ft.variant === undefined || ft.variant === c.variant)).map((ft) => ({ ft, d: pathD(ft.d, ft.fixed ? fixedX : c.X) }));
+}
+
+/**
+ * The rectangle a key's face document is drawn in — `faceBox()` over its built face (its girth applied), widened to hold
+ * its face paint — the one box `faceDocument()` draws in and `creatures-3d.js` lays the face patch over.
+ * @param {string} key @param {string} [species] @returns {{x: number, y: number, w: number, h: number}}
+ */
+export function faceBoxOf(key, species) {
+  const { c, A } = build(key, species);
+  const B = faceBox(A.face, A.blushDx || 0);
+  const xs = [B.x, B.x + B.w], ys = [B.y, B.y + B.h];
+  for (const { ft } of facePaint(c)) for (const [, ...pts] of ft.d) for (const [dx, y] of pts) { xs.push(ft.fixed ? fixedX(dx) : c.X(dx)); ys.push(y); }
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  // symmetric about the centre line, as the patch is
+  const half = Math.max(54 - x0, x1 - 54);
+  return { x: f(54 - half), y: f(y0), w: f(2 * half), h: f(y1 - y0) };
+}
+
+/**
+ * THE FACE ALONE — `frameDocument()`'s eyes, brows, mouth and blush for a key in a pose, and nothing else, on a
+ * transparent ground in `faceBox()`'s rectangle: the 3-D floor's face texture (plan § 3.3's *the face is the 2-D
+ * generator's face*). `blink` draws the eyes shut — the face texture's second frame. A beaked species draws no mouth: its
+ * beak is a part of its body (`shape`), as in the frame.
+ * @param {string} key the seat key, or an intern key
+ * @param {{pose?: string, glyph?: string|null, species?: string, blink?: boolean}} [opt]
+ * @returns {string} an SVG document
+ */
+export function faceDocument(key, { pose = 'present', glyph = null, species, blink = false } = {}) {
+  const { r, pen, c, A } = build(key, species);
+  const F = A.face, X = EXPRESSIONS[expressionOf(pose, glyph)];
+  const eyes = blink ? sleepingEyesSvg(F) : eyesSvg(pen, F, r.eyes, X);
+  const paint = facePaint(c).map(({ ft, d }) => `<path d="${d}" fill="${pen.paint(toneOf(key, c.P, ft.tone))}"/>`).join('');
+  const face = `${paint}${blushSvg(pen, F, r.blush, A.blushDx || 0)}<g data-part="face">${eyes}${browsSvg(F, X.brows ?? r.brows)}<g data-part="mouth">${mouthSvg(F, F.beak ? null : (X.mouth ?? r.mouth))}</g></g>`;
+  const B = faceBoxOf(key, species);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${B.x} ${B.y} ${B.w} ${B.h}" width="${B.w}" height="${B.h}"><defs>${pen.defs.join('')}</defs>${face}</svg>`;
+}
+
+/**
+ * THE LAPTOP LID's BACK ALONE — the intern's laptop lid as `frameDocument()` draws it on the lap (its key's metallic
+ * shell, sheen, rim and two stickers), cut to the lid's own rectangle: the 3-D laptop's lid texture.
+ * @param {string} key an intern key @returns {string} an SVG document
+ */
+export function lidDocument(key) {
+  const pen = new Pen('l');
+  const { w, y0, yH, x0 } = laptopGeometry();
+  const lid = laptopSvg(pen, laptopOf(key));
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f(x0)} ${f(y0)} ${f(w)} ${f(yH - y0)}" width="${f(w)}" height="${f(yH - y0)}"><defs>${pen.defs.join('')}</defs>${lid}</svg>`;
 }
 
 // ---- the sleeper (FLOOR.md § 6.2 A6, § 10.4's frame contract item 4; card#12159, card#12187) ----

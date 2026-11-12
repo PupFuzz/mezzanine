@@ -940,6 +940,39 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    **for the operator's reading of the bodies** — the reading at which the toy look (§ 3.2's accepted cost) is judged,
    before the page exists — and the 3-D distinctness run; test 2's character half. Split in two PRs if the reviewer
    asks (the kit and the animal kind, then the rest), but the totality leg is green before slice 4.
+   **As built (2026-11-11), where it departs from the text above, each the coder's to argue at review:** (a) the shape
+   data is `profiles` (the half-outlines `c.sym()` mirrors), `features` (each named, of a kind — `path`, `stroke`,
+   `ell`, `leaf`, `frond`, `scallop`, `lumps`, `lobes`, `outline`, `star`, `spines`, `rect` — with a `side`), the anchors
+   and `tones`; what stays inline in a `build()` is paint (an inner ear, a stripe, a whisker), never a part's outline;
+   the paws' and feet's colours moved too (`toneOf()`, one reading for both generators), and so did two pieces of face
+   paint — the raccoon's mask and the mole's nose, marked `face` and drawn into `faceDocument()` — because without them
+   the 3-D distinctness bar read cat / raccoon and mole / potato too close; (b) `bodyParts()` answers an object, not a
+   bare list — `parts`, the `joints` the bones stand at (they differ by species), the `face` patch over `faceBoxOf()`'s
+   rectangle, and `size`, `tilt`, `top`, `chin`, `tall` — and a part's shapes are also `tube`, `cone`, `cylinder` and
+   `torus` (the hats, neckwear and extras are small part groups); (c) the hoist's control is byte equality, stronger
+   than pixel equality: `tools/characters/digest.mjs --write` before and `--against` after holds every species'
+   documents (every frame, expression, sleeper and intern document over a corpus of keys) byte-equal, its plant a moved
+   outline point reddening that species alone, and `sheet.browser.mjs`'s capture compared byte-identical — the digest
+   file is the caller's, never committed; (d) `svg-texture.js` hoists the SVG-onto-canvas step alone (`rasterise()`):
+   `pictureSvg()` has no second caller and stays the floor picture's, and a `CanvasTexture` is one line each caller
+   makes; (e) `CLIPS['intern-type']` is the 2-D sway's four loop frames (centre, left, centre, right — `INTERN_LOOP`),
+   not two, and `CLIPS` carries a one-entry clip for each `DESK` pose that draws a body and for `stand`; (f) the blink
+   is two atlases a character — the face open and shut, each holding the laptop lid's back and the white block — the
+   material's map swapped, so § 6's two face textures a character hold; (g) the node legs are `selftest.mjs` § 8c, and
+   AT-D3-38 is split into its world half (row 51) and its characters half (row 52); (h) the triangles a creature draws
+   read above § 6's per-creature estimate for the interns — `node tools/characters/sheet3d.browser.mjs --calls` prints
+   them (read 2026-11-11: seats median 2,352, interns median 2,296, the sloth the most at 7,552 and 8,292, against
+   2,500 and 1,200) — so § 6's triangle total at the cap is re-derived with this reading in slice 4, where it is
+   asserted; (i) ⚠ **OPEN — `distinct.browser.mjs --source 3d` REDS at this build**: on 2026-11-11 it read owl / panda
+   too close (IoU 0.836, ΔE 9.0) with every extruded part's bevel held inside its outline, the most faithful reading
+   of the 2-D outline; each earlier interpretation had put a different pair at or over the bar (cat / raccoon, then mole
+   / potato, then apple / lemon), and mole / potato, fox / cat and cabbage / apple read within a few hundredths of
+   `IOU_BAR`. The 3-D bodies carry each species' outline, parts and paw colours, but not most of its 2-D body paint (the
+   panda's shoulder band, the stripes, the spots, the fox's mask), which is what holds several pairs apart in 2-D — so
+   the gap is a class (the body paint), not a pair, and was stopped rather than patched pair by pair. Whether the
+   code-built bodies are the direction at all is the operator's reading of the sheet (§ 10's first falsifier); if they
+   are, the class's fix — the body paint carried onto the 3-D body, e.g. the 2-D frame's body layer projected as a front
+   texture — is a design decision ahead of slice 4.
 4. **The page** — the routes (B2) and their test, the view, `floor3d/main.js` as the hoisted page's second caller,
    `floor-paint.js`, `furniture.js`, the labels through `CSS2DRenderer` in reading order, `OrbitControls` configured
    from `view-limits.js` with the clamp, the explicit pan mode and the entry pose, the keys through the contract,

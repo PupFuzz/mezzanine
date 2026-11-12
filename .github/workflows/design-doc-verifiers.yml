@@ -52,7 +52,10 @@
 # red on the same checkout. It is the only floor-ride row wired, and it drives no ride and no timing. The building
 # view's two static rows (card#13033, `building-view.browser.mjs --row still --row no-webgl --selftest`) run after it. The same
 # job runs the character species distinctness check (card#12796, card#12842, `tools/characters/distinct.browser.mjs
-# --selftest`): a static render of the generator's standing frames, with its own planted controls.
+# --selftest`): a static render of the generator's standing frames, with its own planted controls — and its 3-D
+# source (card#13033 stage 2 slice 3, `--source 3d --selftest`), the 3-D bodies' front silhouettes under the same bar,
+# and the 3-D creatures' draw-call leg (`tools/characters/sheet3d.browser.mjs --calls --selftest`): one seat drawn alone
+# is one call, one intern with its laptop two, each plant required to red.
 # The job also runs `seat-token-file.selftest.mjs` (card#12571), which needs its PHP and no browser.
 #
 # WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — the gates in `tools/design/` named below.
@@ -308,3 +311,9 @@ jobs:
       - name: Character species are told apart (silhouette or colour), with the check's own planted controls
         if: ${{ !cancelled() }}
         run: node tools/characters/distinct.browser.mjs --selftest
+      - name: The 3-D creatures are told apart from the front (the same bar), with the check's planted twin
+        if: ${{ !cancelled() }}
+        run: node tools/characters/distinct.browser.mjs --source 3d --selftest
+      - name: A 3-D seat is one draw call and an intern two, read off a page holding one character, each plant red
+        if: ${{ !cancelled() }}
+        run: node tools/characters/sheet3d.browser.mjs --calls --selftest

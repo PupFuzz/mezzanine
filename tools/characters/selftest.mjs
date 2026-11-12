@@ -997,6 +997,87 @@ check(pushedOver > 0, `CONTROL — a standing frame pushed ${PUSH} units sideway
 const unpushedOver = past(inkBounds(C.frameDocument('bounds/control', { species: KEYS[0] })), C.SEAT_VIEWBOX);
 check(unpushedOver <= 0, `CONTROL — the same frame unpushed is inside (${unpushedOver.toFixed(1)}), so the push alone made the difference`);
 
+// ---- 8c. the 3-D creatures (card#13033 stage 2 slice 3; docs/design/plan-13033-stage2-3d-floor.md § 8 item 2's character half) ----
+// Each leg is a function of the population it is handed, so its planted control runs the SAME function over a planted
+// population and must red. The renderer's half — one seat one draw call, an intern two — is `sheet3d.browser.mjs --calls`;
+// the 3-D silhouettes' distinctness is `distinct.browser.mjs --source 3d`.
+section('8c. the 3-D creatures: every species a body from its one shape, standing on the foot inside its frame; the chibi head share on the parts; the poses and clips closed');
+// TOTALITY — every species has a SOLID in its shape: a lathe profile (`body` or `head`) or a body feature. A species with
+// none would draw no 3-D body, which is a red (the ruling's *every species included*).
+const solidless = (species) => Object.keys(species).filter((k) => {
+  const S = species[k].shape;
+  return !S || !((S.profiles && (S.profiles.body || S.profiles.head)) || (S.features ?? []).some((ft) => ft.name === 'body' || ft.kind === 'lobes'));
+});
+check(solidless(C.SPECIES).length === 0, `every one of SPECIES_KEYS' ${KEYS.length} species has a 3-D solid in its shape${solidless(C.SPECIES).length ? ` — none: ${solidless(C.SPECIES).join(', ')}` : ''}`);
+{
+  const planted = { ...C.SPECIES, [KEYS[0]]: { ...C.SPECIES[KEYS[0]], shape: undefined } };
+  check(solidless(planted).join() === KEYS[0], `CONTROL — the ${KEYS[0]}'s shape removed, the totality leg names it (${solidless(planted).join(', ')})`);
+}
+// THE FOOT AND THE FRAME — every part list, seat and intern, every variant: its lowest point within FOOT_SLACK of the foot
+// line, its highest inside its frame's top (the seat's SEAT_VIEWBOX, the intern's CHIBI_VIEWBOX).
+const FOOT_SLACK = 4;
+const DEG = Math.PI / 180;
+function partSpan(p) {
+  const rz = (p.rotate?.[2] ?? 0) * DEG;
+  const turn = ([x, y]) => [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+  let ys;
+  if (p.params.points) {
+    // a tube stands its radius out of its line; an extrusion's bevel starts inside its outline, so the outline is its extent
+    const pad = p.shape === 'tube' ? p.params.radius : 0;
+    ys = p.params.points.flatMap((q) => { const y = turn(q)[1] * (p.scale?.[1] ?? 1) + p.at[1]; return [y - pad, y + pad]; });
+  } else if (p.shape === 'sphere') { const r = rz ? Math.max(p.scale[0], p.scale[1]) : p.scale[1]; ys = [p.at[1] - r, p.at[1] + r]; }
+  else if (p.shape === 'cone') ys = [p.at[1], p.at[1] + p.params.dir[1] * p.params.height];
+  else if (p.shape === 'box') ys = [p.at[1] - p.params.size[1] / 2, p.at[1] + p.params.size[1] / 2];
+  else if (p.shape === 'cylinder') ys = [p.at[1] - p.params.height / 2, p.at[1] + p.params.height / 2];
+  // a ring turned a quarter about x (a scarf) lies flat: its height is its tube's
+  else if (p.shape === 'torus') { const h = Math.abs(p.rotate?.[0] ?? 0) === 90 ? p.params.tube : p.params.radius + p.params.tube; ys = [p.at[1] - h, p.at[1] + h]; }
+  else ys = [p.at[1], p.at[1]];
+  return [Math.min(...ys), Math.max(...ys)];
+}
+const spanOf = (body) => body.parts.reduce(([lo, hi], p) => { const [a, b] = partSpan(p); return [Math.min(lo, a), Math.max(hi, b)]; }, [Infinity, -Infinity]);
+const SEAT_TOP = C.FOOT - C.SEAT_VIEWBOX.y, CHIBI_TOP = C.FOOT - C.CHIBI_VIEWBOX.y;
+const bodies3d = [], threw3d = [];
+for (const sp of KEYS) for (const key of [`d3/${sp}`, ...variantsOf(sp).map((v) => keyOfVariant('d3', sp, v))]) for (const chibi of [false, true]) {
+  try { bodies3d.push({ sp, key, chibi, body: C.bodyParts(key, { species: sp, chibi }) }); } catch (e) { threw3d.push(`${sp}${chibi ? ' (intern)' : ''}: ${e.message}`); }
+}
+check(threw3d.length === 0, `bodyParts() answers a part list for every species and variant, seat and intern (${bodies3d.length} lists)${threw3d.length ? ` — threw: ${threw3d.slice(0, 3).join('; ')}` : ''}`);
+const footFaults = (list) => list.filter(({ body, chibi }) => { const [lo, hi] = spanOf(body); return Math.abs(lo) > FOOT_SLACK || hi > (chibi ? CHIBI_TOP : SEAT_TOP); }).map(({ sp, chibi, body }) => `${sp}${chibi ? ' (intern)' : ''} ${spanOf(body).map((v) => v.toFixed(1)).join('..')}`);
+const lows = bodies3d.map(({ body }) => spanOf(body)[0]);
+measure(`the part lists' lowest points ${Math.min(...lows).toFixed(1)} to ${Math.max(...lows).toFixed(1)} units off the foot line; the seats' highest ${Math.max(...bodies3d.filter((b) => !b.chibi).map(({ body }) => spanOf(body)[1])).toFixed(1)} of ${SEAT_TOP.toFixed(1)}, the interns' ${Math.max(...bodies3d.filter((b) => b.chibi).map(({ body }) => spanOf(body)[1])).toFixed(1)} of ${CHIBI_TOP.toFixed(1)}`);
+check(footFaults(bodies3d).length === 0, `every part list stands on the foot line (within ${FOOT_SLACK} units) and inside its frame's top${footFaults(bodies3d).length ? ` — ${footFaults(bodies3d).slice(0, 4).join('; ')}` : ''}`);
+{
+  const lifted = [{ ...bodies3d[0], body: { ...bodies3d[0].body, parts: bodies3d[0].body.parts.map((p) => ({ ...p, at: [p.at[0], p.at[1] + 20, p.at[2]] })) } }];
+  check(footFaults(lifted).length === 1, `CONTROL — a part list lifted 20 units off the foot is named by the leg (${footFaults(lifted).join('; ')})`);
+}
+// THE CHIBI HEAD SHARE, MEASURED ON THE PARTS — the head (the parts' top down to the chin) at least CHIBI_HEAD_SHARE of the
+// intern's measured height, as the 2-D chibi frame holds it on its drawing.
+const shareOf = (body) => { const [lo, hi] = spanOf(body); return (hi - body.chin) / (hi - lo); };
+const interns3d = bodies3d.filter((b) => b.chibi);
+const leastShare = interns3d.reduce((m, b) => (shareOf(b.body) < m.share ? { share: shareOf(b.body), sp: b.sp } : m), { share: Infinity, sp: null });
+measure(`the interns' least head share on their parts ${leastShare.share.toFixed(3)} (${leastShare.sp}), over ${interns3d.length} interns`);
+check(leastShare.share >= C.CHIBI_HEAD_SHARE, `every intern's head is at least ${C.CHIBI_HEAD_SHARE} of its height, measured on its part list`);
+{
+  // the plant: every part above the chin squashed to a third about the chin — the head scaled down
+  const b = interns3d[0].body, ch = b.chin;
+  const squash = (y) => (y > ch ? ch + (y - ch) / 3 : y);
+  const small = { ...b, parts: b.parts.map((p) => (p.params.points ? { ...p, params: { ...p.params, points: p.params.points.map(([x, y, ...r]) => [x, squash(y), ...r]) } } : { ...p, at: [p.at[0], squash(p.at[1]), p.at[2]], scale: p.at[1] > ch ? [p.scale[0], p.scale[1] / 3, p.scale[2]] : p.scale })) };
+  check(shareOf(small) < C.CHIBI_HEAD_SHARE, `CONTROL — the ${interns3d[0].sp} intern's head scaled to a third reads a share of ${shareOf(small).toFixed(3)}, under ${C.CHIBI_HEAD_SHARE}`);
+}
+// THE POSES AND THE CLIPS — closed: every pose of DESK that draws a body is a pose, every bone a pose names is a bone, every
+// clip names poses that exist, and the walk's three phases are three different poses.
+const bodyPoses = (desk) => [...new Set(Object.values(desk).map((d) => d.pose))].filter((p) => p !== 'empty-chair');
+const missingPoses = (poses) => bodyPoses(DESK).filter((p) => !(p in poses));
+check(missingPoses(C.POSES).length === 0, `every pose of desk-poses.js's DESK that draws a body (${bodyPoses(DESK).join(', ')}) is in POSES`);
+check(missingPoses(Object.fromEntries(Object.entries(C.POSES).filter(([k]) => k !== 'asleep'))).join() === 'asleep', 'CONTROL — POSES without `asleep` is named by the leg');
+const strayBones = Object.entries(C.POSES).flatMap(([p, m]) => Object.keys(m).filter((b) => !C.BONES.includes(b)).map((b) => `${p}:${b}`));
+check(strayBones.length === 0, `every bone a pose moves is one of BONES${strayBones.length ? ` — ${strayBones.join(', ')}` : ''}`);
+const clipFaults = (clips) => Object.entries(clips).flatMap(([c, seq]) => (seq.length === 0 ? [`${c}: empty`] : seq.filter((p) => !(p in C.POSES)).map((p) => `${c}: ${p}`)));
+check(clipFaults(C.CLIPS).length === 0, `every one of CLIPS' ${Object.keys(C.CLIPS).length} clips names poses that exist${clipFaults(C.CLIPS).length ? ` — ${clipFaults(C.CLIPS).join(', ')}` : ''}`);
+check(clipFaults({ ...C.CLIPS, walk: ['stand', 'nope'] }).length === 1, 'CONTROL — a clip naming a pose that does not exist is named by the leg');
+const walkPoses = [...new Set(C.CLIPS.walk)];
+check(walkPoses.length === 3 && new Set(walkPoses.map((p) => JSON.stringify(C.POSES[p]))).size === 3, `the walk steps through three different poses (${walkPoses.join(', ')})`);
+check(C.CLIPS['intern-type'].length === C.INTERN_LOOP, `the intern's typing clip is the 2-D sway's ${C.INTERN_LOOP} loop frames`);
+
 // ---- 9. the controls — each leg above is known to be able to say both things ----
 section('9. controls');
 const gaps = coverage(() => 0).filter(([, hit, total]) => hit !== total);

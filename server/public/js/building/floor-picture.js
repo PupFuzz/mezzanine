@@ -29,6 +29,7 @@
  */
 
 import { STYLE, createPainter } from '../floor/painter.js';
+import { rasterise as rasteriseImage } from '../floor3d/svg-texture.js';
 import { createCamera, fit, frameOn } from '../wire/camera.js';
 import { textureSize } from './stack-model.js';
 
@@ -115,32 +116,6 @@ export function pictureGate() {
  */
 export function pictureFailedLine(name, error) {
     return `the picture of the floor ${name} could not be drawn (${error.message}); it keeps its last picture and is drawn again at its next repaint`;
-}
-
-/** A canvas holding the SVG text drawn at `width × height`, through an image of it. */
-async function rasteriseImage(canvas, svg, width, height) {
-    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
-
-    try {
-        const image = new Image();
-
-        image.src = url;
-        await image.decode();
-
-        // Before the canvas is resized, so a canvas the browser could not give a context leaves its last picture whole.
-        const context = canvas.getContext('2d');
-
-        if (context === null) {
-            throw new Error('the browser gave the picture no 2-D context');
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        context.clearRect(0, 0, width, height);
-        context.drawImage(image, 0, 0, width, height);
-    } finally {
-        URL.revokeObjectURL(url);
-    }
 }
 
 /**

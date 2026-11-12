@@ -6,6 +6,7 @@
 //   node tools/characters/distinct.browser.mjs               # the closest pairs, and a red on any pair under the bar
 //   node tools/characters/distinct.browser.mjs --selftest    # the same, plus the planted controls, each required to red
 //   node tools/characters/distinct.browser.mjs --all         # every pair, closest first
+//   node tools/characters/distinct.browser.mjs --source 3d --selftest   # the 3-D bodies' front silhouettes, the same bar
 //
 // THE MEASUREMENT. For each species, each of its variants and each of its colourways, ONE CANONICAL STANDING FRAME:
 // the first key (`distinct/<species>/<n>`) whose recipe draws that variant and colourway at size 1, girth 1 and tilt
@@ -30,6 +31,13 @@
 // the generator makes pumpkin / hedgehog too close; a species appended to that copy as the hedgehog's twin is too close;
 // one difference alone clears a pair; a colour shift reads apart. Why each figure is what it is:
 // FLOOR.md § 10.4's distinctness bullet and § 12's *Species distinctness bar*.
+//
+// `--source 3d` (card#13033 stage 2 slice 3; docs/design/plan-13033-stage2-3d-floor.md § 8 item 2): the same canonical
+// keys, each drawn as its 3-D body (`server/public/js/floor3d/creature-paint.js` over `creatures-3d.js`'s part list) from
+// the front through `stage3d.js`, an orthographic camera framing exactly the frame's rectangle at the same px a unit — so
+// ONE measure and ONE bar judge both generators. Its control is the twin (2): a species appended as the hedgehog's copy,
+// `shape` and all, is too close in 3-D too. Dev's pumpkin (1) is the 2-D drawing's control and is not run there — that
+// entry predates `shape` and has no 3-D body.
 //
 // NO BUILD STEP, NO DEPENDENCY, NO NETWORK — `sheet.browser.mjs`'s shape: a static server on 127.0.0.1 serves the
 // repository root to the browser `tools/design/headless-chromium.mjs` launches (`--chrome <path>`, `$CHROME`, or the
@@ -193,9 +201,14 @@ export const tooClose = (p) => p.iou >= IOU_BAR && p.de <= DE_BAR;
 export const clearance = (p) => Math.max((IOU_BAR - p.iou) / IOU_BAR, (p.de - DE_BAR) / DE_BAR);
 
 // ---- the page ----
-const PAGE = (base) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>loading</title></head><body>
+const SOURCE = argv.includes('--source') ? argv[argv.indexOf('--source') + 1] : '2d';
+if (!['2d', '3d'].includes(SOURCE)) { console.error(`--source is 2d or 3d, not ${SOURCE}`); process.exit(2); }
+const PAGE = (base) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>loading</title><script type="importmap">{"imports":{"three":"/server/public/js/vendor/three/three.module.js"}}</script></head><body>
 <script type="module">
   const C = await import('${base}/index.js');
+  const SOURCE = '${SOURCE}';
+  // the 3-D source: the body built by the floor's creature renderer, shot from the front over exactly the frame's rectangle
+  const three = SOURCE === '3d' ? { P: await import('/server/public/js/floor3d/creature-paint.js'), S: await import('/tools/characters/stage3d.js') } : null;
   const U = ${UNIT}, SV = C.SEAT_VIEWBOX;
   const W = Math.round(SV.w * U), H = Math.round(SV.h * U);
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
@@ -231,9 +244,18 @@ const PAGE = (base) => `<!doctype html><html lang="en"><head><meta charset="utf-
       for (const variant of variants) for (let pal = 0; pal < S.pals.length; pal++) {
         const key = canonical(sp, variant, pal);
         if (key === null) { out[sp].push({ variant, pal, key: null }); continue; }
-        const img = new Image(); img.width = W; img.height = H; img.src = uri(C.frameDocument(key, { species: sp }));
-        await img.decode();
-        g.clearRect(0, 0, W, H); g.drawImage(img, 0, 0, W, H);
+        g.clearRect(0, 0, W, H);
+        if (three === null) {
+          const img = new Image(); img.width = W; img.height = H; img.src = uri(C.frameDocument(key, { species: sp }));
+          await img.decode();
+          g.drawImage(img, 0, 0, W, H);
+        } else {
+          const st = window.stage3d ??= three.S.stage(W, H);
+          const body = await three.P.createCreature(document, C, key, { species: sp, height: C.SEAT_RECT.h });
+          st.shoot(body.mesh, 'front', { x0: SV.x - 54, x1: SV.x + SV.w - 54, y0: C.FOOT - (SV.y + SV.h), y1: C.FOOT - SV.y });
+          body.dispose();
+          g.drawImage(st.canvas, 0, 0, W, H);
+        }
         out[sp].push({ variant, pal, key, read: readFrame(g.getImageData(0, 0, W, H).data, W, H, U) });
       }
     }
@@ -320,6 +342,7 @@ try {
   const { species, keys, missing } = await measure(chrome, server, '__distinct.html');
   const pairs = pairsOf(species).sort((x, y) => clearance(x) - clearance(y));
   const n = Object.keys(species).length, all = keys.length * (keys.length - 1) / 2;
+  console.log(`source: ${SOURCE === '3d' ? 'the 3-D bodies (creature-paint.js), from the front' : 'the 2-D standing frames'}`);
   console.log(`species distinctness over ${n} species — too close at IoU >= ${IOU_BAR} AND colour layout ΔE2000 <= ${DE_BAR} (silhouette in ${SIL_CELL}-unit cells, colour layout in ${COL_CELL}-unit cells, at ${UNIT} px a unit)`);
   console.log(`THE GATE holds every pair of the ${keys.length} species in SPECIES_KEYS: ${pairs.length} pairs`);
   const show = (title, list) => {
@@ -338,10 +361,12 @@ try {
     console.log('\ncontrols:');
     // (1) dev's pumpkin, planted back: the pale cream colourway beside the hedgehog is the pair the operator named.
     // (2) a planted species appended to the list, copying an existing one, is flagged.
-    const planted = await measure(chrome, server, '__control.html', ['pumpkin', 'hedgehog', TWIN]);
-    const ph = pairsOf({ pumpkin: planted.species.pumpkin, hedgehog: planted.species.hedgehog })[0];
-    console.log(`  dev's pumpkin (its afacf5ce entry) / hedgehog: ${fmt(ph)}`);
-    check(tooClose(ph), `CONTROL — dev's pumpkin (its afacf5ce entry) planted back makes pumpkin / hedgehog TOO CLOSE (IoU ${ph.iou.toFixed(3)}, ΔE ${ph.de.toFixed(1)} at colourways ${ph.pals.join(' / ')}), so the bar flags the pair the operator named`);
+    const planted = await measure(chrome, server, '__control.html', SOURCE === '3d' ? ['hedgehog', TWIN] : ['pumpkin', 'hedgehog', TWIN]);
+    if (SOURCE === '2d') {
+      const ph = pairsOf({ pumpkin: planted.species.pumpkin, hedgehog: planted.species.hedgehog })[0];
+      console.log(`  dev's pumpkin (its afacf5ce entry) / hedgehog: ${fmt(ph)}`);
+      check(tooClose(ph), `CONTROL — dev's pumpkin (its afacf5ce entry) planted back makes pumpkin / hedgehog TOO CLOSE (IoU ${ph.iou.toFixed(3)}, ΔE ${ph.de.toFixed(1)} at colourways ${ph.pals.join(' / ')}), so the bar flags the pair the operator named`);
+    }
     const twin = pairsOf({ [TWIN]: planted.species[TWIN] ?? [], [TWIN_OF]: planted.species[TWIN_OF] })[0];
     console.log(`  a planted '${TWIN}' appended as a copy of the ${TWIN_OF}: ${fmt(twin)}`);
     check(planted.keys.includes(TWIN) && tooClose(twin), `CONTROL — a species appended to the list as a copy of the ${TWIN_OF} is TOO CLOSE (IoU ${twin.iou.toFixed(3)}, ΔE ${twin.de.toFixed(1)})`);
