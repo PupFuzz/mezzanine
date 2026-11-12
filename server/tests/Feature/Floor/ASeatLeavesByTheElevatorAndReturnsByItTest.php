@@ -2294,10 +2294,14 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertNotSame([], $this->boardingDefects($frame, $this->door())[0], 'four boarders stepped in together and the boarding guard saw nothing');
     }
 
-    /** H4: the wait from `Math.random()` — two replays of one event wait differently, and neither is the seeded draw. */
-    public function test_red_the_wait_from_math_random(): void
+    /**
+     * H4: the wait one frame off its seeded draw (the draw plus one, wrapped over the wait's range) — a wait that is not
+     * the seeded draw on every replay. The plant is deterministic: a random one coincides with the draw it replaces on one
+     * replay in `WAIT_MAX_FRAMES + 1` and passes there.
+     */
+    public function test_red_the_wait_off_its_seeded_draw(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, 'draw(seat, `elevator-wait:${cause}`) % (WAIT_MAX_FRAMES + 1)', 'Math.floor(Math.random() * (WAIT_MAX_FRAMES + 1))']);
+        $dir = $this->mutatedModules([self::SCENE, 'draw(seat, `elevator-wait:${cause}`) % (WAIT_MAX_FRAMES + 1)', '(draw(seat, `elevator-wait:${cause}`) + 1) % (WAIT_MAX_FRAMES + 1)']);
         $draws = $this->firstDraws($this->floorRun('leave-stale', $dir));
 
         $this->assertNotSame([], array_merge(...array_map(fn ($fw) => $this->pathDefects($fw[0], $fw[1]), $draws)));

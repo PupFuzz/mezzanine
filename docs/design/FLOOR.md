@@ -10722,8 +10722,10 @@ only a browser shows.*
 - **RED (card#12747):** no call point handed to A2 → a departure walks straight to the threshold and presses
   nothing (leave-stale); a seat handed the low plate → a seat presses `low` (leave-stale); the turn at the plates
   dropped → mass-departure's walkers press as their routes bring them there, one walking onto another pressing.
-- **RED:** the wait from `Math.random()`; separately, the earlier walker's remaining frames added to the
-  later's own wait → an own wait that is not its seeded draw. Caught by: leave-stale, two-walkers (H4).
+- **RED:** the wait one frame off its seeded draw (the draw plus one, wrapped — deterministic, where a wait from
+  `Math.random()` coincides with the draw on one replay in `WAIT_MAX_FRAMES + 1`); separately, the earlier walker's
+  remaining frames added to the later's own wait → an own wait that is not its seeded draw. Caught by: leave-stale,
+  two-walkers (H4).
 - **RED:** the frames counted from the straight-line distance → a walk leg's frames are not its path's. Caught
   by: leave-stale (H12).
 - **RED:** the walk drawn under `reduce` → the reduced replays' scenes carry a walker. Caught by:
