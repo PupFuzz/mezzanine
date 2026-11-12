@@ -186,8 +186,11 @@ export function serve(c = {}) {
   const roots = [['/art/floor/', join(REPO, 'resources', 'floor')], ['/art/characters/', join(REPO, 'resources', 'characters')], ['/', join(REPO, 'server', 'public')]];
   // Each planted file edited once now, as it would be served: an edit inside a request would throw past the server.
   for (const view of Object.keys(VIEWS)) pageOf(view, 'aimla');
+  for (const p of plants) if (p.file.startsWith('page:') && !(p.file.slice('page:'.length) in VIEWS)) throw new StaleAnchor(p.file, p.from);
   for (const file of new Set(plants.map((p) => p.file).filter((f) => f !== 'page' && !f.startsWith('page:')))) {
-    edit(file, readFileSync(file.startsWith('art:') ? join(REPO, 'resources', file.slice('art:'.length)) : join(REPO, 'server', 'public', file), 'utf8'));
+    const path = file.startsWith('art:') ? join(REPO, 'resources', file.slice('art:'.length)) : join(REPO, 'server', 'public', file);
+    if (!existsSync(path)) throw new StaleAnchor(file, plants.find((p) => p.file === file).from);
+    edit(file, readFileSync(path, 'utf8'));
   }
   const beacons = [];
   let release = null;
