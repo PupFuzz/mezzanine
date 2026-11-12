@@ -77,7 +77,7 @@ very fact it exists to check.
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `025b287ea0f0c89a8aeebf54a44f4489adc9e4d9ee5c22ba57514aad6b5ca38a` |
 | `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `4dc1acb3c0e8a074766db39d16d4baac67c09eec87a59e6eb770ac0d48ea416a` |
 | `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `ef1143a9c160dd5a52805012ecf6746a9af6d991850b2518057130aaa30ea583` |
-| `resources/floor/themes/studio/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `10dfe5892a75599844465ab78a3915c9e83b7acf81285684c28a589dc842a6f8` |
+| `resources/floor/themes/studio/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-12 | `52ab82329006edc3747587cf28193b3e1a4e86918c3bf1e5cb30c5907fb6c685` |
 | `resources/floor/themes/cottage/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-08 | `5e85ec3c27a1498e9a98839104c67b52bcb2f755ae9a18e8fc73fab9fea4245f` |
 | `resources/floor/themes/paint.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `673bf79eba995a33bd285aa08488a92a2b8e6fef665f1cc20440cbab1fdbb6a0` |
 | `resources/floor/tiles/floor-plane/accent.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `437c9295c17acba54ee563516aa8f24ad73431b1a9e6d25bd72013c97de6fdd3` |
