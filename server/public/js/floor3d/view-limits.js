@@ -34,6 +34,9 @@ export const CUTAWAY_H = 0.15;
 
 export const CUTAWAY_MS = 150;
 
+/** How thick the band is stood for the cut-away's test, world units, behind its face — a hundredth of a unit. */
+const BAND_D = 0.01;
+
 /**
  * The limits over a floor of `extent` world units, seen on a stage `surface` CSS px, by a viewer whose characters are
  * `character`'s frame (the scene's `input.character`).
@@ -69,7 +72,8 @@ export function limits(extent, surface, character) {
 
 /**
  * Where the segment from `a` to `b` first enters `box` (`{x, y, z, w, h, d}`, min corner and size), as a share of the
- * segment, or `null` where it does not meet it — the slab test, a zero-thickness box (the band) included.
+ * segment, or `null` where it does not meet it before `b` — the slab test. A box the segment only touches AT `b`
+ * stands at the target, not between the eye and it.
  */
 function meets(a, b, box) {
     let t0 = 0;
@@ -100,7 +104,7 @@ function meets(a, b, box) {
         }
     }
 
-    return t0;
+    return t0 < 1 ? t0 : null;
 }
 
 /**
@@ -115,7 +119,9 @@ function meets(a, b, box) {
 export function cutaway(eye, target, world) {
     const bodies = [
         ...world.walls,
-        ...(world.band === null ? [] : [{ id: 'band', box: { x: world.band.x, y: 0, z: world.band.z, w: world.band.w, h: world.band.h, d: 0 } }]),
+        // The band is a face on the floor's back edge with the room in front of it: stood here as a thin wall BEHIND that
+        // face, so an eye behind the room passes through it to a target on its line, and one in front only touches it.
+        ...(world.band === null ? [] : [{ id: 'band', box: { x: world.band.x, y: 0, z: world.band.z - BAND_D, w: world.band.w, h: world.band.h, d: BAND_D } }]),
     ];
 
     return new Set(bodies.filter((body) => meets(eye, target, body.box) !== null).map((body) => body.id));

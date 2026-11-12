@@ -28,6 +28,7 @@
 // the drawing primitives are the themes' shared ones (`../paint.js`, card#12845), handed this theme's paint rules.
 
 import { brushes, doc, draw, f, finite, leafPath, mix, pick, rr, stream, wallRuns } from '../paint.js';
+import { pieces3d } from './pieces-3d.js';
 
 /** The paint rules (§ 10.6, the creatures' own): the shade, the highlight and the line colour. */
 export const RULES = Object.freeze({ shade: '#3d2b3c', highlight: '#fff6e6', line: '#3a2420' });
@@ -1489,4 +1490,12 @@ export function sideTable({ seat_id: seatId, seats }) {
     }
 
     return doc(pen, TABLE.w, TABLE.h, s.join(''));
+}
+
+/**
+ * § 10.6 item 1's optional `piece3d` (card#13033 stage 2): a standing kind the furniture kit carries no piece for, as the
+ * part list the 3-D floor builds — `./pieces-3d.js`'s, in this theme's `PALETTE` — or `null` for a kind it does not draw.
+ */
+export function piece3d(kind, inputs) {
+    return pieces3d(PALETTE, kind, inputs);
 }

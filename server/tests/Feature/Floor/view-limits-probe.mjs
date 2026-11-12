@@ -143,4 +143,17 @@ if (cut(behind(centre), centre).includes('band')) {
     legs.cutaway.push('the floor\'s centre, seen from behind the room, cuts the band — the ray passes over it (plan § 3.7\'s derivation)');
 }
 
+// A target ON the band's line (the target's box lets it reach the back edge) seen from the room's front: the band is at
+// the target, behind it, and stands; from behind the room it is between, and lowers.
+const onBand = { x: 0, y: 0, z: -extent.d / 2 };
+const ahead = (target) => eyeAt(target, (50 * Math.PI) / 180, 0, a.distance.max / L.MAX_FIT_SHARE);
+
+if (cut(ahead(onBand), onBand).includes('band')) {
+    legs.cutaway.push('a target on the band\'s line, seen from the room\'s front, cuts the band — the band is behind the target, not between');
+}
+
+if (!cut(behind(onBand), onBand).includes('band')) {
+    legs.cutaway.push('a target on the band\'s line, seen from behind the room, does not cut the band');
+}
+
 process.stdout.write(JSON.stringify({ legs, printed }));

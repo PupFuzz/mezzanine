@@ -14,12 +14,15 @@
 // The legs — each answers its defects, `[]` for a clean tree:
 // - every member is in EXACTLY ONE of the map's `FILES`, `PIECE3D` and `MISSING`, and the map names nothing else;
 // - every `FILES` value is a `.glb` beside the map, and every `.glb` beside it is a `FILES` value;
-// - a non-empty `PIECE3D` has the house theme exporting `piece3d`, which is where a kind it lists is drawn.
+// - a non-empty `PIECE3D` has the house theme exporting `piece3d`, which draws every kind it lists (a part list, each
+//   part coloured);
+// - `PAINT` names, for every `FILES` kind, exactly the materials its file carries (read off the `.glb`'s own JSON
+//   chunk), each mapped for every theme of the registry to a `PALETTE` path holding a colour in that theme.
 //
 // ⛔ EVERY LEG IS WATCHED FAILING ON EVERY RUN: each plant below perturbs one input of the shipped tree's reading and
 // the leg must red naming what the plant broke. A plant that stays green fails this run.
 
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -43,12 +46,23 @@ async function reading() {
         load('resources', 'floor', 'models', 'kenney-furniture-kit', 'map.js'),
     ]);
     const house = await load('resources', 'floor', 'themes', registry.HOUSE_THEME, 'theme.js');
+    const themes = Object.fromEntries(await Promise.all(registry.THEMES.map(async (t) => [t, (await load('resources', 'floor', 'themes', t, 'theme.js')).PALETTE])));
+    const glb = (file) => {
+        const b = readFileSync(join(KIT_DIR, file));
+
+        return JSON.parse(b.subarray(20, 20 + b.readUInt32LE(12)).toString('utf8'));
+    };
 
     return {
         kinds: [...registry.KINDS],
         planeKinds: [...tiles.PLANE_KINDS],
         api: [...registry.API],
         houseHasPiece3d: typeof house.piece3d === 'function',
+        // what the house theme's `piece3d` answers for each kind PIECE3D lists, at a tile's size
+        drawn: Object.fromEntries(map.PIECE3D.map((k) => [k, typeof house.piece3d === 'function' ? house.piece3d(k, { w: 0.6, h: 1 }) : null])),
+        materials: Object.fromEntries(Object.entries(map.FILES).map(([k, f]) => [k, (glb(f).materials ?? []).map((m) => m.name)])),
+        paint: structuredClone(map.PAINT),
+        palettes: themes,
         files: { ...map.FILES },
         piece3d: [...map.PIECE3D],
         missing: [...map.MISSING],
@@ -111,12 +125,51 @@ function fileDefects(r) {
 }
 
 function piece3dDefects(r) {
-    return r.piece3d.length > 0 && !r.houseHasPiece3d
-        ? [`PIECE3D lists ${r.piece3d.join(', ')} and the house theme exports no \`piece3d\` to draw them`]
-        : [];
+    if (r.piece3d.length > 0 && !r.houseHasPiece3d) {
+        return [`PIECE3D lists ${r.piece3d.join(', ')} and the house theme exports no \`piece3d\` to draw them`];
+    }
+
+    return r.piece3d.filter((k) => !Array.isArray(r.drawn[k]) || r.drawn[k].length === 0 || !r.drawn[k].every((p) => /^#[0-9a-f]{6}$/i.test(p.colour)))
+        .map((k) => `PIECE3D lists \`${k}\` and the house theme's \`piece3d\` draws it as ${JSON.stringify(r.drawn[k])?.slice(0, 60)} — not a part list of coloured parts`);
 }
 
-const LEGS = { totality: totalityDefects, files: fileDefects, piece3d: piece3dDefects };
+/** A `PALETTE` path's colour — `row.key` or `row.key.index` — or `undefined`. */
+const colourAt = (palette, path) => path.split('.').reduce((v, step) => (v === undefined || v === null ? undefined : v[step]), palette);
+
+function paintDefects(r) {
+    const defects = [];
+
+    for (const [kind, materials] of Object.entries(r.materials)) {
+        const mapped = Object.keys(r.paint[kind] ?? {});
+
+        for (const m of materials.filter((x) => !mapped.includes(x))) {
+            defects.push(`\`${kind}\`'s file carries the material \`${m}\` and PAINT does not recolour it`);
+        }
+
+        for (const m of mapped.filter((x) => !materials.includes(x))) {
+            defects.push(`PAINT recolours \`${kind}\`'s \`${m}\`, a material its file does not carry`);
+        }
+
+        for (const m of mapped) {
+            for (const [theme, palette] of Object.entries(r.palettes)) {
+                const path = r.paint[kind][m][theme];
+                const colour = typeof path === 'string' ? colourAt(palette, path) : undefined;
+
+                if (typeof colour !== 'string' || !/^#[0-9a-f]{6}$/i.test(colour)) {
+                    defects.push(`PAINT maps \`${kind}\`'s \`${m}\` in ${theme} to ${JSON.stringify(path)}, which is no colour of that theme's PALETTE`);
+                }
+            }
+        }
+    }
+
+    for (const kind of Object.keys(r.paint).filter((k) => !Object.hasOwn(r.files, k))) {
+        defects.push(`PAINT recolours \`${kind}\`, which FILES does not map to a file`);
+    }
+
+    return defects;
+}
+
+const LEGS = { totality: totalityDefects, files: fileDefects, piece3d: piece3dDefects, paint: paintDefects };
 
 const shipped = await reading();
 const { standing, parts } = population(shipped);
@@ -128,7 +181,7 @@ for (const [leg, defects] of Object.entries(LEGS)) {
 
     check(found.length === 0, `${leg}: clean${found.length ? ` — ${found.join('; ')}` : ''}`);
 }
-console.log(`  MEASURED FILES ${Object.keys(shipped.files).length} · PIECE3D ${shipped.piece3d.length} · MISSING ${shipped.missing.length} (${shipped.missing.join(', ')}) — the missing list is the first-party work slice 4 owes`);
+console.log(`  MEASURED FILES ${Object.keys(shipped.files).length} · PIECE3D ${shipped.piece3d.length} · MISSING ${shipped.missing.length} (${shipped.missing.join(', ')}) — a MISSING kind is one nothing draws in 3-D`);
 
 // ── the plants: each perturbs ONE input and its leg must red, naming the defect ─────────────────────────────
 const plant = (patch) => ({ ...structuredClone(shipped), ...patch(structuredClone(shipped)) });
@@ -142,7 +195,11 @@ const PLANTS = [
     ['totality', 'a NEW theme API member nobody classified', (r) => ({ api: [...r.api, 'lampshade'] }), '`lampshade` is in none of'],
     ['files', 'a FILES entry naming a file not beside the map', (r) => ({ files: { ...r.files, [firstFile]: 'nobodyShipsThis.glb' } }), 'not a .glb beside the map'],
     ['files', 'a .glb shipped that no kind is mapped to', (r) => ({ beside: [...r.beside, 'bathtub.glb'] }), 'no kind is mapped to it'],
-    ['piece3d', 'PIECE3D naming a kind while the house theme exports no piece3d', (r) => ({ piece3d: [...r.piece3d, 'globe'], missing: r.missing.filter((k) => k !== 'globe') }), 'exports no `piece3d`'],
+    ['piece3d', 'PIECE3D naming kinds while the house theme exports no piece3d', () => ({ houseHasPiece3d: false }), 'exports no `piece3d`'],
+    ['piece3d', 'a PIECE3D kind the house theme\'s piece3d does not draw', (r) => ({ drawn: { ...r.drawn, globe: null } }), '`globe` and the house theme'],
+    ['paint', 'a material of a file PAINT does not recolour', (r) => ({ paint: { ...r.paint, desk: { wood: r.paint.desk.wood } } }), 'carries the material `metal`'],
+    ['paint', 'a recolour naming no colour of a theme', (r) => ({ paint: { ...r.paint, desk: { ...r.paint.desk, wood: { ...r.paint.desk.wood, cottage: 'desk.wood' } } } }), 'in cottage to "desk.wood"'],
+    ['paint', 'a theme added to the registry with no recolour', (r) => ({ palettes: { ...r.palettes, attic: r.palettes.studio } }), 'in attic to undefined'],
 ];
 
 console.log('\nthe plants — each must red its leg, naming the defect');

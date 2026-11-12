@@ -147,7 +147,8 @@ async function planted(name) {
   }
   return src.replace("from '../vendor/three/three.module.js'", "from '/server/public/js/vendor/three/three.module.js'")
     .replace("from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js'", "from '/server/public/js/vendor/three/examples/jsm/utils/BufferGeometryUtils.js'")
-    .replace("from './svg-texture.js'", "from '/server/public/js/floor3d/svg-texture.js'");
+    .replace("from './svg-texture.js'", "from '/server/public/js/floor3d/svg-texture.js'")
+    .replace("from './part-geometry.js'", "from '/server/public/js/floor3d/part-geometry.js'");
 }
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);

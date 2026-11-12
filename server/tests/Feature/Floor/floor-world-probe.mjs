@@ -30,8 +30,8 @@ const { deskSlab } = await import(pathToFileURL(join(floor, 'desk-geometry.js'))
 const { scenes } = JSON.parse(readFileSync(0, 'utf8'));
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
-const legs = { frame: [], desks: [], facing: [], interns: [], pieces: [], walls: [], walkers: [], labels: [], status: [] };
-const printed = { scenes: scenes.length, desks: 0, interns: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {} };
+const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], pieces: [], walls: [], walkers: [], labels: [], status: [] };
+const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {} };
 const WORLD_MEMBERS = ['band', 'desks', 'extent', 'labels', 'pieces', 'planes', 'slab', 'walkers', 'walls'];
 const LABEL_ORDER = ['name', 'status', 'chip', 'facts', 'bubble'];
 const FACT_KINDS = ['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age'];
@@ -92,6 +92,36 @@ for (const { run, i, scene } of scenes) {
             legs.facing.push(`${at} ${d.key}'s drawers, monitor or a laptop do not face their user`);
         }
 
+        // The desk's furniture (plan § 3.1's `parts`): each present exactly where the scene draws its art element, at
+        // that element's centre across — the chair behind the slab where its sitter sits, the monitor and the props over
+        // the slab, the side table at its element's foot.
+        const PARTS = { chair: 'chair', monitor: 'monitor-frame', props: 'desk-props', sideTable: 'side-table' };
+
+        for (const [name, kind] of Object.entries(PARTS)) {
+            const [e] = d.elements.filter((x) => x.kind === kind);
+            const p = w.parts[name];
+
+            if ((p === null) !== (e === undefined)) {
+                legs.parts.push(`${at} ${d.key} has ${p === null ? 'no' : 'a'} ${name} where the scene draws ${e === undefined ? 'no' : 'a'} ${kind}`);
+                continue;
+            }
+
+            if (p === null) {
+                continue;
+            }
+
+            printed.parts++;
+            const depth = { chair: Z(plan.y - plan.h / 2), monitor: Z(plan.y + plan.h / 2), props: Z(plan.y + plan.h / 2), sideTable: Z(e.y + e.h) }[name];
+
+            if (!same(p.at, X(e.x + e.w / 2), depth) || !near(p.w, e.w / W.UNIT) || !near(p.h, e.h / W.UNIT)) {
+                legs.parts.push(`${at} ${d.key}'s ${name} stands at ${JSON.stringify(p.at)} ${p.w} × ${p.h}, not where and as its ${kind} is drawn`);
+            }
+
+            if (name === 'chair' && w.sitter !== null && (!near(p.at.z, w.sitter.at.z) || !near(w.sitter.h, d.elements.find((x) => x.kind === 'character').h / W.UNIT))) {
+                legs.parts.push(`${at} ${d.key}'s chair is at z ${p.at.z}, its sitter at ${w.sitter.at.z} and ${w.sitter.h} tall — not its character's height`);
+            }
+        }
+
         // Every intern a chibi at its stool's foot.
         const stools = d.elements.filter((e) => e.kind === 'stool');
 
@@ -104,8 +134,8 @@ for (const { run, i, scene } of scenes) {
 
             printed.interns++;
 
-            if (intern !== undefined && (!intern.chibi || !same(intern.at, X(s.x + s.w / 2), Z(s.y + s.h)) || intern.laptop !== (s.activity === 'working'))) {
-                legs.interns.push(`${at} ${s.key} is not a chibi at its stool's foot with its laptop as its activity says`);
+            if (intern !== undefined && (!intern.chibi || !same(intern.at, X(s.x + s.w / 2), Z(s.y + s.h)) || !near(intern.h, s.h / W.UNIT) || intern.laptop !== (s.activity === 'working'))) {
+                legs.interns.push(`${at} ${s.key} is not a chibi at its stool's foot, its stool's height, with its laptop as its activity says`);
             }
         });
 
@@ -192,6 +222,10 @@ for (const { run, i, scene } of scenes) {
         if (p !== undefined && !same(p.at, X(s.x + s.w / 2), Z(s.y + s.h))) {
             legs.pieces.push(`${at} ${s.kind} at ${s.x},${s.y} stands at ${JSON.stringify(p.at)}, not at its cell's foot line`);
         }
+
+        if (p !== undefined && (!near(p.w, s.w / W.UNIT) || !near(p.h, s.h / W.UNIT))) {
+            legs.pieces.push(`${at} ${s.kind} at ${s.x},${s.y} is ${p.w} × ${p.h} units, not its cell's ${s.w} × ${s.h} px`);
+        }
     });
 
     // ── the walls: every standing wall cell a box, as tall as its footprint position makes it ──
@@ -256,9 +290,9 @@ for (const { run, i, scene } of scenes) {
 }
 
 // The controls: a population this probe reads nothing of is a pass that measured nothing.
-if (printed.desks === 0 || printed.interns === 0 || printed.pieces === 0 || printed.walls.edge === 0 || printed.walls.partition === 0
+if (printed.desks === 0 || printed.parts === 0 || printed.interns === 0 || printed.pieces === 0 || printed.walls.edge === 0 || printed.walls.partition === 0
     || printed.sampled === 0 || (printed.labels.bubble ?? 0) === 0) {
-    legs.frame.push(`CONTROL: the scenes hold no desk, intern, piece, edge wall, partition, sampled walker or bubble to read — ${JSON.stringify(printed)}`);
+    legs.frame.push(`CONTROL: the scenes hold no desk, desk part, intern, piece, edge wall, partition, sampled walker or bubble to read — ${JSON.stringify(printed)}`);
 }
 
 process.stdout.write(JSON.stringify({ legs, printed }));
