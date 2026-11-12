@@ -53,7 +53,9 @@ export function cameraActs(controls, { surface, entry, clamp, bounds }) {
         },
 
         zoomStep(notches) {
-            const scale = ZOOM_STEP ** Math.abs(notches);
+            // The controls' factor is the distance's (`dollyIn(s)` multiplies it by `s`, `dollyOut(s)` divides it, as their
+            // wheel passes one factor under 1 to both): a notch in is the distance over `ZOOM_STEP`, a notch out times it.
+            const scale = ZOOM_STEP ** -Math.abs(notches);
 
             if (notches > 0) {
                 controls.dollyIn(scale);

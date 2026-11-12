@@ -61,7 +61,7 @@ const shown = [];
 cameraKeys(stage, buttons, acts, (camera) => shown.push(camera));
 
 const turn = turnOf(PAN_STEP_PX, surface.width);
-const legs = { turn: [], tilt: [], pan: [], dolly: [], fit: [], wire: [] };
+const legs = { turn: [], tilt: [], pan: [], dolly: [], toward: [], fit: [], wire: [] };
 const press = (event, target = stage) => {
     log.length = 0;
     shown.length = 0;
@@ -88,10 +88,24 @@ expect('tilt', '↓', press({ type: 'keydown', key: 'ArrowDown' }), [['rotateLef
 expect('pan', 'Shift+←', press({ type: 'keydown', key: 'ArrowLeft', shiftKey: true }), [['pan', PAN_STEP_PX, 0], ['clamp']]);
 expect('pan', 'Shift+↑', press({ type: 'keydown', key: 'ArrowUp', shiftKey: true }), [['pan', 0, PAN_STEP_PX], ['clamp']]);
 // + and − dolly by the house notch, from the keys and from the buttons.
-expect('dolly', '+', press({ type: 'keydown', key: '+' }), [['dollyIn', ZOOM_STEP], ['clamp']]);
-expect('dolly', '−', press({ type: 'keydown', key: '-' }), [['dollyOut', ZOOM_STEP], ['clamp']]);
-expect('dolly', 'the zoom-in button', press({ type: 'click' }, buttons.zoomIn), [['dollyIn', ZOOM_STEP], ['clamp']]);
-expect('dolly', 'the zoom-out button', press({ type: 'click' }, buttons.zoomOut), [['dollyOut', ZOOM_STEP], ['clamp']]);
+expect('dolly', '+', press({ type: 'keydown', key: '+' }), [['dollyIn', 1 / ZOOM_STEP], ['clamp']]);
+expect('dolly', '−', press({ type: 'keydown', key: '-' }), [['dollyOut', 1 / ZOOM_STEP], ['clamp']]);
+expect('dolly', 'the zoom-in button', press({ type: 'click' }, buttons.zoomIn), [['dollyIn', 1 / ZOOM_STEP], ['clamp']]);
+expect('dolly', 'the zoom-out button', press({ type: 'click' }, buttons.zoomOut), [['dollyOut', 1 / ZOOM_STEP], ['clamp']]);
+
+// + and the zoom-in button bring the eye closer, − and the zoom-out button take it away — read on the controls' own
+// arithmetic, not their names: `dollyIn(s)` multiplies the eye's distance by `s` and `dollyOut(s)` divides it
+// (`OrbitControls`' `_dollyIn()` / `_dollyOut()` on its `_scale`, applied to the radius on the next update; its wheel
+// passes one factor under 1 to both), so a mapping that calls the right method with the wrong factor moves the wrong way.
+for (const [what, event, target, closer] of [['+', { type: 'keydown', key: '+' }, undefined, true], ['−', { type: 'keydown', key: '-' }, undefined, false],
+    ['the zoom-in button', { type: 'click' }, buttons.zoomIn, true], ['the zoom-out button', { type: 'click' }, buttons.zoomOut, false]]) {
+    const { calls } = press(event, target);
+    const distance = JSON.parse(calls).reduce((d, [name, s]) => (name === 'dollyIn' ? d * s : name === 'dollyOut' ? d / s : d), 10);
+
+    if (closer ? !(distance < 10) : !(distance > 10)) {
+        legs.toward.push(`${what} takes the eye from 10 to ${distance} — ${closer ? 'away from' : 'toward'} the target`);
+    }
+}
 
 // *Fit the floor*: the entry pose set, the controls updated, the target clamped.
 log.length = 0;

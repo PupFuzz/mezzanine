@@ -376,12 +376,13 @@ const ROWS = {
   },
 
   camera: {
-    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, a wheel at the dolly limit scrolls the page',
+    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, a wheel at the dolly limit scrolls the page',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['`maxPolarAngle` widened past 90°', { plant: [P('js/floor3d/view-limits.js', 'export const MAX_POLAR = (88 * Math.PI) / 180;', 'export const MAX_POLAR = (120 * Math.PI) / 180;')] }],
       ['the target clamp dropped', { plant: [P(PAINT, '        const t = controls.target;\n        const was = t.clone();', '        return;\n        const t = controls.target;\n        const was = t.clone();')] }],
       ['screen-space panning', { plant: [P(PAINT, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
+      ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
     ],
     async run(chrome, c) {
@@ -399,6 +400,16 @@ const ROWS = {
         await p.ev(`document.getElementById('floor-fit').click()`);
         i = await p.settle(600);
         if (Math.abs(deg(i.polar) - deg(HOME_POLAR)) > 0.5) d.push(`after Fit the polar is ${deg(i.polar).toFixed(2)}°, not ${deg(HOME_POLAR)}°`);
+        // the zoom buttons: in brings the eye closer, out takes it back
+        const fitted = i.distance;
+        await p.ev(`document.getElementById('floor-zoom-in').click()`);
+        i = await p.settle(400);
+        f.zoom = [fitted, i.distance];
+        if (!(i.distance < fitted - 1e-6)) d.push(`the zoom-in button took the eye from ${fitted.toFixed(3)} to ${i.distance.toFixed(3)} — not closer`);
+        await p.ev(`document.getElementById('floor-zoom-out').click()`);
+        i = await p.settle(400);
+        f.zoom.push(i.distance);
+        if (!(i.distance > f.zoom[1] + 1e-6)) d.push(`the zoom-out button took the eye from ${f.zoom[1].toFixed(3)} to ${i.distance.toFixed(3)} — not farther`);
         // a vertical right-drag: along the floor, never up
         const before = i.target;
         await p.drag(0, 120, { button: 'right' });
