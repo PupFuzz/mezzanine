@@ -1,8 +1,9 @@
 // The character tree's public surface (docs/design/FLOOR.md § 10.2, § 10.4). Everything the floor
 // needs is here; nothing else in this directory should be imported directly by app code.
 //
-// Two layers under this one: `seed.js`, the seed machinery (first-party), and `creatures.js`, the
-// creature generator (first-party, card#11046). This file adds the frame contract's entry points —
+// Three layers under this one: `seed.js`, the seed machinery (first-party), `creatures.js`, the
+// creature generator (first-party, card#11046), and `creatures-3d.js`, its 3-D half — a key's creature as parts, read
+// from the same species data (first-party, card#13033). This file adds the frame contract's entry points —
 // the standing frame, the walk, the intern's chibi frame, the sleeper, the marked poses' pulse, and
 // `poseFrames()`, which a desk draws its pose in — and the size the scene reads. No cache: the generator is pure and the PAINTER
 // caches the URIs it makes per asset and drawing, and drops an intern's when it stops drawing it
@@ -15,12 +16,16 @@ import { EXPRESSIONS, INTERN_LOOP, SLEEP_LOOP, crestOfKey, headClearOfKey, expre
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
+// The 3-D half (card#13033 stage 2 slice 3): a key's creature as a part list over one bone hierarchy, and its poses and
+// clips — the same recipe as the frames below, read from the species' one `shape` (`creatures-3d.js`).
+export { BONES, BONE_PARENT, POSES, CLIPS, bodyParts, chibiParts } from './creatures-3d.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
   RIM, RIM_W, FOOT, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, internSpeciesOf, recipe, describe, chibiGeometry, frameDocument,
   EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
   CREST_TOP, STAND_TOP, FACE_TOP, standEntry, crestOfKey, headClearOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
+  faceBox, faceBoxOf, faceDocument, lidDocument, paintDocument, toneOf,
   LAPTOP_SHELLS, STICKER_SHAPES, STICKER_INKS, STICKER_CONTRAST, INTERN_LOOP, INTERN_SWAY_DEG, INTERN_SWAY_DX, laptopOf, LAPTOP_W, LAPTOP_TOP, LAPTOP_BOTTOM, LAPTOP_EYE_MARGIN,
 } from './creatures.js';
 

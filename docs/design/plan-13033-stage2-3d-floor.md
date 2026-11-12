@@ -940,6 +940,46 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    **for the operator's reading of the bodies** — the reading at which the toy look (§ 3.2's accepted cost) is judged,
    before the page exists — and the 3-D distinctness run; test 2's character half. Split in two PRs if the reviewer
    asks (the kit and the animal kind, then the rest), but the totality leg is green before slice 4.
+   **As built (2026-11-11), where it departs from the text above, each the coder's to argue at review:** (a) the shape
+   data is `profiles` (the half-outlines `c.sym()` mirrors), `features` (each named, of a kind — `path`, `stroke`,
+   `ell`, `leaf`, `frond`, `scallop`, `lumps`, `lobes`, `outline`, `star`, `spines`, `rect` — with a `side`), the anchors
+   and `tones`; what stays inline in a `build()` is paint (an inner ear, a stripe, a whisker), never a part's outline;
+   the paws' and feet's colours moved too (`toneOf()`, one reading for both generators), and so did two pieces of face
+   paint — the raccoon's mask and the mole's nose, marked `face` and drawn into `faceDocument()` — because without them
+   the 3-D distinctness bar read cat / raccoon and mole / potato too close; (b) `bodyParts()` answers an object, not a
+   bare list — `parts`, the `joints` the bones stand at (they differ by species), the `face` patch over `faceBoxOf()`'s
+   rectangle, and `size`, `tilt`, `top`, `chin`, `tall` — and a part's shapes are also `tube`, `cone`, `cylinder` and
+   `torus` (the hats, neckwear and extras are small part groups); (c) the hoist's control is byte equality, stronger
+   than pixel equality: `tools/characters/digest.mjs --write` before and `--against` after holds every species'
+   documents (every frame, expression, sleeper and intern document over a corpus of keys) byte-equal, its plant a moved
+   outline point reddening that species alone, and `sheet.browser.mjs`'s capture compared byte-identical — the digest
+   file is the caller's, never committed; (d) `svg-texture.js` hoists the SVG-onto-canvas step alone (`rasterise()`):
+   `pictureSvg()` has no second caller and stays the floor picture's, and a `CanvasTexture` is one line each caller
+   makes; (e) `CLIPS['intern-type']` is the 2-D sway's four loop frames (centre, left, centre, right — `INTERN_LOOP`),
+   not two, and `CLIPS` carries a one-entry clip for each `DESK` pose that draws a body and for `stand`; (f) the blink
+   is two atlases a character — the face open and shut, each holding the laptop lid's back and the white block — the
+   material's map swapped, so § 6's two face textures a character hold; (g) the node legs are `selftest.mjs` § 8c, and
+   AT-D3-38 is split into its world half (row 51) and its characters half (row 52); (h) the triangles a creature draws
+   read above § 6's per-creature estimate for the interns — `node tools/characters/sheet3d.browser.mjs --calls` prints
+   them (read 2026-11-11: seats median 2,352, interns median 2,296, the sloth the most at 7,552 and 8,292, against
+   2,500 and 1,200) — so § 6's triangle total at the cap is re-derived with this reading in slice 4, where it is
+   asserted; (i) **the body's paint — the operator's Q6 answer A (2026-11-12): keep the code-built bodies, and carry the
+   2-D body paint onto them.** The first build carried each species' outline, parts and paw colours but not its body
+   paint, and `distinct.browser.mjs --source 3d` read pair after pair at or over the bar (cat / raccoon, mole / potato,
+   apple / lemon, then owl / panda at IoU 0.836, ΔE 9.0) — one class, the paint, so it was stopped and put to the
+   operator rather than patched pair by pair. As built on the answer: `paintDocument()` (`creatures.js`: the frame's
+   back, body and front layers alone, in the part list's own rectangle, `bodyParts()`'s `paint.box`) is rasterised once
+   a character and projected onto every part of the creature from the front — each vertex sampling it where its rest
+   point stands, `PAINT_INSET` inside the outline so a side does not wear the outline's stroke, an intern's squash
+   undone — through a second sampler injected into the SAME toon material (a seat stays one call, an intern two), fading
+   out only over the surfaces facing back (`paintWeight()`), so a belly or a nose is not printed on a creature's back;
+   its paws, feet, what it wears and its laptop keep their own colours. The paint texture is as tall as the face atlas
+   (its width the rectangle's aspect), so `--calls` prints each creature's texture memory beside its draw calls. In the
+   same change the flat bodies (banana, lemon, watermelon, mango, kiwi, starfruit) are extruded `SLAB` thick of the
+   lesser of their width and height (0.62, from 0.42), their bevel started inside the outline so the front silhouette
+   stays the 2-D outline. **The gate is passed**: every pair of the 48 species is apart, the closest mole / potato (IoU
+   read 0.820 against `IOU_BAR` 0.82, ΔE 5.6 — apart by silhouette, at the bar's edge), and the check gains a fifth
+   control, the paint dropped from every species, which reads owl / panda too close again (ΔE 9.0 bare, 14.8 painted).
 4. **The page** — the routes (B2) and their test, the view, `floor3d/main.js` as the hoisted page's second caller,
    `floor-paint.js`, `furniture.js`, the labels through `CSS2DRenderer` in reading order, `OrbitControls` configured
    from `view-limits.js` with the clamp, the explicit pan mode and the entry pose, the keys through the contract,
