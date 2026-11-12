@@ -11,10 +11,20 @@
  * off the frame and reds; everything else — the strings, the walkers' points, the heights — is compared with the
  * scene's own elements and `route.js`'s `pointAt()`, which the module must reproduce and does not own.
  *
+ * ⛔ A WALKER's POINT IS LEGAL (slice 5, the AT-D3-23/-31/-32/-33/-36 replays): every sampled point a walker stands at
+ * on the floor lifts inside the floor and on OPEN lattice — in no wall cell and in no standing piece's cell the scene
+ * draws (its decorations aside, which are walked over) — read off the scene's own `walls` and `scenery`.
+ *
+ * ⛔ WHAT MOVES OFF A WALKER IS THE SCENE's (slice 5): the elevator's leaf timeline is the walks' door spans, each open
+ * after `ELEVATOR_DOOR.open` frames and shut at its end; each restroom door's leaf and field are the scene's timeline at
+ * the scene's rects stood on the tile's foot; every bird, ring and desk row the world draws is one of the scene's
+ * effects, both ways, each bird flying between its two ends lifted (a desk's top, or the birdhouse's picture row as a
+ * height) and above the chord between them at its flight's middle, gone after its last part.
+ *
  * ⚠ WHAT IT DOES NOT SEE: whether every `wall` cell of a map has a body (the walls are read off the scene, whose
  * `walls` the door view's classification answers; that classification's own coverage is `door-view.selftest.mjs`'s),
- * and whether a walker's sampled point is on OPEN lattice (the scene's walk tests own the route; this probe holds that
- * the world lifts the point the route gives, inside the floor).
+ * and whether a route avoids other desks' slots (the scene's walk tests own the route; this probe holds that the world
+ * lifts the point the route gives onto open floor).
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,13 +36,16 @@ const floor = join(wire, '..', 'floor');
 const W = await import(pathToFileURL(join(floor, 'floor-world.js')).href);
 const { pointAt } = await import(pathToFileURL(join(floor, 'route.js')).href);
 const { deskSlab } = await import(pathToFileURL(join(floor, 'desk-geometry.js')).href);
+const { ELEVATOR_DOOR, leafLevel } = await import(pathToFileURL(join(floor, 'scene.js')).href);
+const { BIRD_LIFT } = await import(pathToFileURL(join(floor, 'bird.js')).href);
+const { keyOf } = await import(pathToFileURL(join(wire, 'seat-key.js')).href);
 
 const { scenes } = JSON.parse(readFileSync(0, 'utf8'));
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
-const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], pieces: [], walls: [], walkers: [], labels: [], status: [] };
-const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {} };
-const WORLD_MEMBERS = ['band', 'desks', 'extent', 'labels', 'pieces', 'planes', 'slab', 'walkers', 'walls'];
+const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], pieces: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [] };
+const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0 };
+const WORLD_MEMBERS = ['band', 'desks', 'doors', 'effects', 'extent', 'labels', 'pieces', 'planes', 'restroom_doors', 'slab', 'walkers', 'walls'];
 const LABEL_ORDER = ['name', 'status', 'chip', 'facts', 'bubble'];
 const FACT_KINDS = ['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age'];
 
@@ -265,6 +278,13 @@ for (const { run, i, scene } of scenes) {
         legs.walkers.push(`${at} the world's walkers are not the scene's effects in flight, both ways`);
     }
 
+    // The cells no walker stands in: the walls, and every standing piece the scene draws but a decoration.
+    const blocked = [...scene.walls.map((c) => ({ x: c.x, y: c.y, w: c.size, h: c.size, what: `the ${c.kind} wall` })),
+        ...scene.scenery.filter((t) => !t.decoration).map((t) => ({ x: t.x, y: t.y, w: t.w, h: t.h, what: `the ${t.kind}` }))];
+    const inside = (p, r) => p.x > r.x + EPS && p.x < r.x + r.w - EPS && p.y > r.y + EPS && p.y < r.y + r.h - EPS;
+
+    printed.runs[run] = (printed.runs[run] ?? 0) + world.walkers.length;
+
     world.walkers.forEach((w) => {
         printed.walkers++;
 
@@ -285,14 +305,159 @@ for (const { run, i, scene } of scenes) {
             } else if (Math.abs(got.x) > Wd / 2 + EPS || Math.abs(got.z) > D / 2 + EPS) {
                 legs.walkers.push(`${at} ${w.key} at ${Math.round(t)} ms stands outside the floor`);
             }
+
+            const cell = blocked.find((r) => inside(p, r));
+
+            if (cell !== undefined) {
+                legs.lattice.push(`${at} ${w.key} (${w.animation_id}) at ${Math.round(t)} ms stands at ${p.x},${p.y}, inside ${cell.what}'s cell at ${cell.x},${cell.y}`);
+            }
         }
     });
+}
+
+for (const { run, i, scene } of scenes) {
+    const at = `[${run} #${i}]`;
+    const world = W.floorWorld(scene);
+    const top = scene.band === null ? scene.extent.y : scene.band.y + scene.band.h;
+    const D = (scene.extent.y + scene.extent.h - top) / W.UNIT;
+    const Wd = scene.extent.w / W.UNIT;
+    const X = (px) => -Wd / 2 + (px - scene.extent.x) / W.UNIT;
+    const Z = (py) => -D / 2 + (py - top) / W.UNIT;
+
+    // ── the elevator's leaves: shut at a span's start, open once it has opened, shut again at its end ──
+    for (const d of scene.doors ?? []) {
+        printed.doorSpans++;
+
+        const level = (f) => leafLevel(world.doors, f);
+
+        if (level(d.from) !== 0 || level(d.from + ELEVATOR_DOOR.open) !== 1 || level(d.to) !== 0) {
+            legs.doors.push(`${at} the door span ${d.from}…${d.to} reads ${level(d.from)} at its start, ${level(d.from + ELEVATOR_DOOR.open)} once open, ${level(d.to)} at its end — not 0, 1, 0`);
+        }
+    }
+
+    if ((scene.doors ?? []).length === 0 && world.doors.length !== 0) {
+        legs.doors.push(`${at} the world holds a leaf timeline with no door span in the scene`);
+    }
+
+    // ── the restroom doors: the scene's timeline, at its rects stood on the tile's foot ──
+    const doors = scene.restroom_doors ?? [];
+
+    if (world.restroom_doors.length !== doors.length) {
+        legs.restroom.push(`${at} the world holds ${world.restroom_doors.length} restroom doors, the scene ${doors.length}`);
+    }
+
+    doors.forEach((d, k) => {
+        const w = world.restroom_doors[k];
+        const foot = d.y + d.h;
+
+        printed.restroomDoors++;
+
+        if (w === undefined) {
+            return;
+        }
+
+        for (const name of ['recess', 'sign']) {
+            const r = d[name];
+            const got = w[name];
+
+            if (!near(got.x, X(r.x)) || !near(got.w, r.w / W.UNIT) || !near(got.y, (foot - (r.y + r.h)) / W.UNIT) || !near(got.h, r.h / W.UNIT)) {
+                legs.restroom.push(`${at} restroom ${d.id}'s ${name} stands at ${JSON.stringify(got)}, not its rect ${JSON.stringify(r)} on the tile's foot`);
+            }
+        }
+
+        if (!near(w.at.z, Z(foot)) || JSON.stringify(w.leaf) !== JSON.stringify(d.leaf) || JSON.stringify(w.occupied) !== JSON.stringify(d.occupied)) {
+            legs.restroom.push(`${at} restroom ${d.id}'s foot, leaf or field is not the scene's`);
+        }
+    });
+
+    // ── the effects off the walkers: the scene's, both ways ──
+    const drawnOff = (fx) => W.BIRD_ROWS.includes(fx.animation_id) || (fx.animation_id === 'A20' && fx.at !== null && fx.at !== undefined)
+        || (W.DESK_ROWS.includes(fx.animation_id) && (fx.seat_id !== null || typeof fx.intern_key === 'string'));
+    const wanted = scene.effects.filter(drawnOff);
+
+    if (world.effects.length !== wanted.length || world.effects.some((e, k) => JSON.stringify(e.effect) !== JSON.stringify(wanted[k]))) {
+        legs.effects.push(`${at} the world's effects are [${world.effects.map((e) => e.effect.animation_id)}], the scene's drawn off its walkers [${wanted.map((fx) => fx.animation_id)}]`);
+    }
+
+    for (const e of world.effects) {
+        const fx = e.effect;
+
+        if (e.kind === 'ring') {
+            printed.rings++;
+
+            if (!near(e.at.x, X(fx.at.x)) || !near(e.at.z, Z(fx.at.y)) || !near(e.radius, fx.radius / W.UNIT)) {
+                legs.effects.push(`${at} the ring stands at ${JSON.stringify(e.at)} ${e.radius} units, not round its origin desk`);
+            }
+
+            continue;
+        }
+
+        if (e.kind === 'desk') {
+            printed.deskRows++;
+
+            if (e.key !== (fx.animation_id === 'A24' ? fx.intern_key : keyOf(fx))) {
+                legs.effects.push(`${at} ${fx.animation_id} is keyed ${e.key}, not its desk's or its intern's key`);
+            }
+
+            continue;
+        }
+
+        // ── a bird: its two ends lifted, and its flight between them, above the chord, gone after its last part ──
+        printed.birds++;
+
+        const end = (p, onWall) => (onWall
+            ? { x: X(p.x), y: (top - p.y + BIRD_LIFT) / W.UNIT }
+            : { x: X(p.x), z: Z(p.y), y: W.DESK_H_U + BIRD_LIFT / W.UNIT });
+        const portal = fx.perch !== null && fx.perch !== undefined;
+        const want = { from: end(fx.from, portal && fx.leg === 'arrival'), to: end(fx.to, portal && fx.leg === 'departure') };
+
+        for (const side of ['from', 'to']) {
+            const got = e[side];
+            const w = want[side];
+
+            if (!near(got.x, w.x) || !near(got.y, w.y) || (w.z !== undefined && !near(got.z, w.z))) {
+                legs.birds.push(`${at} ${fx.animation_id}'s ${side} end stands at ${JSON.stringify(got)}, not ${JSON.stringify(w)}`);
+            }
+        }
+
+        const ms = fx.frame_interval_ms;
+
+        if (fx.frames > 0) {
+            const mid = W.birdAt(e, (fx.wait_frames + fx.flight_start + fx.frames / 2) * ms);
+            const chord = (e.from.y + e.to.y) / 2;
+
+            if (mid === null || mid.phase !== 'flight' || !(mid.y > chord + EPS) || Math.abs(mid.x - (e.from.x + e.to.x) / 2) > 1e-3) {
+                legs.birds.push(`${at} ${fx.animation_id} at its flight's middle is ${JSON.stringify(mid)} — not flying above the chord between its ends (${chord})`);
+            }
+
+            if (W.birdAt(e, (fx.wait_frames + fx.span_frames) * ms + 1) !== null) {
+                legs.birds.push(`${at} ${fx.animation_id} is still drawn after its last part`);
+            }
+        } else if (fx.still_frames > 0) {
+            const still = W.birdAt(e, 0);
+
+            if (still === null || still.phase !== 'still' || !near(still.x, e.to.x) || W.birdAt(e, fx.still_frames * ms + 1) !== null) {
+                legs.birds.push(`${at} ${fx.animation_id}'s still form is ${JSON.stringify(still)} — not the envelope at its end for the moving form's duration`);
+            }
+        }
+    }
 }
 
 // The controls: a population this probe reads nothing of is a pass that measured nothing.
 if (printed.desks === 0 || printed.parts === 0 || printed.interns === 0 || printed.pieces === 0 || printed.walls.edge === 0 || printed.walls.partition === 0
     || printed.sampled === 0 || (printed.labels.bubble ?? 0) === 0) {
     legs.frame.push(`CONTROL: the scenes hold no desk, desk part, intern, piece, edge wall, partition, sampled walker or bubble to read — ${JSON.stringify(printed)}`);
+}
+
+if (printed.doorSpans === 0 || printed.restroomDoors === 0 || printed.birds === 0 || printed.rings === 0 || printed.deskRows === 0) {
+    legs.frame.push(`CONTROL: the scenes hold no door span, restroom door, bird, ring or desk row to read — ${JSON.stringify(printed)}`);
+}
+
+// Every walking run handed walkers in flight: a run whose scenes carried none measured no walk.
+for (const [run, n] of Object.entries(printed.runs)) {
+    if (n === 0 && scenes.some((x) => x.run === run && x.walking)) {
+        legs.walkers.push(`CONTROL: the walking run ${run} handed no walker in flight`);
+    }
 }
 
 process.stdout.write(JSON.stringify({ legs, printed }));

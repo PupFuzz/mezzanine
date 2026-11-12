@@ -25,19 +25,44 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
 {
     use DrivesTheScene;
 
-    /** The runs, each with whether its walkers in flight are read (the last scene is read for every run). */
+    /**
+     * The runs, each with what its scenes are picked for besides its last: `null` the last alone; `walkers` a walker in
+     * flight; `doors` an elevator door span; `restroom` a restroom door with a visit on its timeline; `birds` a bird or a
+     * ring in flight; `desk` a desk's own row in flight (A5, A11, A24). The walking runs are AT-D3-23's (`fx-elevator`), AT-D3-31's (`fx-intern-walk`), AT-D3-32's
+     * (`fx-snack`), AT-D3-33's (`fx-restroom`) and AT-D3-36's (`fx-turn-back`) — replayed so their walks lift to legal
+     * points (card#13033 stage 2 slice 5).
+     */
     private const RUNS = [
-        'scene_default' => false,
-        'scene_overflow' => false,
-        'interns_cap' => false,
-        'frame_planned' => false,
-        'two-interns' => true,
-        'idle-trip' => true,
-        'intern-trip' => true,
-        'turn-mid-floor' => true,
+        'scene_default' => null,
+        'scene_overflow' => null,
+        'interns_cap' => null,
+        'frame_planned' => null,
+        'leave-stale' => 'doors',
+        'return-from-stale' => 'walkers',
+        'two-walkers' => 'walkers',
+        'crossing' => 'walkers',
+        'mass-departure' => 'doors',
+        'arrive' => 'walkers',
+        'leave-working' => 'walkers',
+        'flip' => 'desk',
+        'two-interns' => 'walkers',
+        'idle-trip' => 'walkers',
+        'busy-trip' => 'walkers',
+        'intern-trip' => 'walkers',
+        'two-visitors' => 'walkers',
+        'idle-visit' => 'restroom',
+        'intern-visit' => 'restroom',
+        'two-at-the-door' => 'walkers',
+        'queue-of-three' => 'walkers',
+        'turn-mid-floor' => 'walkers',
+        'turn-twice' => 'walkers',
+        'turn-from-restroom' => 'walkers',
+        'turn-with-interns' => 'walkers',
+        'coord' => 'birds',
+        'coord_portal' => 'birds',
     ];
 
-    /** How many scenes with a walker in flight each walking run hands the probe, spread across the run. */
+    /** How many scenes each picking run hands the probe, spread across the scenes that hold what it is picked for. */
     private const WALKING_SCENES = 3;
 
     /** @var array<string, list<array<string, mixed>>> the scenes, per tree */
@@ -77,6 +102,25 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
                 "chair: part('chair', () => sitterZ),", "chair: part('chair', () => plan.y + plan.h * 2),", 'parts', false],
             'a standing piece placed at its cell\'s top, not its foot' => ['../floor/floor-world.js',
                 'at: at({ x: s.x + s.w / 2, y: s.y + s.h }),', 'at: at({ x: s.x + s.w / 2, y: s.y }),', 'pieces', false],
+            'a standing walker stood a cell back and across from its spot (into its snack table)' => ['../floor/route.js',
+                '        return { x: leg.at.x, y: leg.at.y, where, leg: k };', '        return { x: leg.at.x + 48, y: leg.at.y - 64, where, leg: k };', 'lattice', false],
+            'the elevator\'s leaves closing after their span, not by its end' => ['../floor/floor-world.js',
+                'Object.freeze({ start: d.to - ELEVATOR_DOOR.close, frames: ELEVATOR_DOOR.close, from: 1, to: 0 }),',
+                'Object.freeze({ start: d.to, frames: ELEVATOR_DOOR.close, from: 1, to: 0 }),', 'doors', false],
+            'a restroom door\'s rect stood from the tile\'s top, not its foot' => ['../floor/floor-world.js',
+                'const onTile = (r) => Object.freeze({ x: at(r).x, w: r.w / UNIT, y: (foot - (r.y + r.h)) / UNIT, h: r.h / UNIT });',
+                'const onTile = (r) => Object.freeze({ x: at(r).x, w: r.w / UNIT, y: (r.y - d.y) / UNIT, h: r.h / UNIT });', 'restroom', false],
+            'A20\'s ring not carried into the world' => ['../floor/floor-world.js',
+                "} else if (fx.animation_id === 'A20' && fx.at !== null && fx.at !== undefined) {",
+                "} else if (fx.animation_id === 'A20-not' && fx.at !== null && fx.at !== undefined) {", 'effects', false],
+            'an intern\'s laptop fade keyed by its seat, not its intern' => ['../floor/floor-world.js',
+                "effects.push(Object.freeze({ kind: 'desk', key: fx.animation_id === 'A24' ? fx.intern_key : keyOf(fx), effect: fx }));",
+                "effects.push(Object.freeze({ kind: 'desk', key: keyOf(fx), effect: fx }));", 'effects', false],
+            'a bird flown along the chord, its arc\'s lift dropped' => ['../floor/floor-world.js',
+                'y: lerp(bird.from.y, bird.to.y) + bird.lift * 4 * u * (1 - u),', 'y: lerp(bird.from.y, bird.to.y),', 'birds', false],
+            'the birdhouse\'s picture row read as depth, not height' => ['../floor/floor-world.js',
+                'const onWall = (p) => Object.freeze({ x: at(p).x, y: (top - p.y + BIRD_LIFT) / UNIT, z: slab.box.z + BIRD_DEPTH });',
+                'const onWall = (p) => Object.freeze({ x: at(p).x, y: DESK_H_U + BIRD_LIFT / UNIT, z: at(p).z });', 'birds', false],
         ];
     }
 
@@ -110,7 +154,7 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
 
         $scenes = [];
 
-        foreach (self::RUNS as $run => $walking) {
+        foreach (self::RUNS as $run => $pick) {
             $renders = $this->floorRun($run, $dir)['floor_renders'];
             $drawn = array_values(array_filter(array_keys($renders), fn (int $i): bool => is_array($renders[$i]['frame']['scene'] ?? null)));
 
@@ -118,19 +162,25 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
 
             $picked = [end($drawn)];
 
-            if ($walking) {
-                $flying = array_values(array_filter($drawn, fn (int $i): bool => array_filter(
-                    $renders[$i]['frame']['scene']['effects'], static fn (array $fx): bool => ($fx['legs'] ?? []) !== []) !== []));
+            if ($pick !== null) {
+                $holds = fn (array $scene): bool => match ($pick) {
+                    'walkers' => array_filter($scene['effects'], static fn (array $fx): bool => ($fx['legs'] ?? []) !== []) !== [],
+                    'doors' => ($scene['doors'] ?? []) !== [],
+                    'restroom' => array_filter($scene['restroom_doors'] ?? [], static fn (array $d): bool => $d['leaf'] !== []) !== [],
+                    'birds' => array_filter($scene['effects'], static fn (array $fx): bool => in_array($fx['animation_id'], ['A19', 'A20', 'A22'], true)) !== [],
+                    'desk' => array_filter($scene['effects'], static fn (array $fx): bool => in_array($fx['animation_id'], ['A5', 'A11', 'A24'], true)) !== [],
+                };
+                $holding = array_values(array_filter($drawn, fn (int $i): bool => $holds($renders[$i]['frame']['scene'])));
 
-                $this->assertNotSame([], $flying, "[{$run}] no scene has a walker in flight — the run walks nobody");
+                $this->assertNotSame([], $holding, "[{$run}] no scene holds {$pick} — the run was not read for what it is here for");
 
                 for ($k = 0; $k < self::WALKING_SCENES; $k++) {
-                    $picked[] = $flying[intdiv($k * (count($flying) - 1), max(1, self::WALKING_SCENES - 1))];
+                    $picked[] = $holding[intdiv($k * (count($holding) - 1), max(1, self::WALKING_SCENES - 1))];
                 }
             }
 
             foreach (array_unique($picked) as $i) {
-                $scenes[] = ['run' => $run, 'i' => $i, 'scene' => $renders[$i]['frame']['scene']];
+                $scenes[] = ['run' => $run, 'i' => $i, 'walking' => $pick === 'walkers', 'scene' => $renders[$i]['frame']['scene']];
             }
         }
 
