@@ -261,6 +261,9 @@ const orderDefects = (labels, desks) => {
 // ── the plants: each one textual edit of a served file ───────────────────────────────────────
 const P = (file, from, to) => ({ file, from, to });
 const PAINT = 'js/floor3d/floor-paint.js';
+const ROOM = 'js/floor3d/room-paint.js';
+const BODIES = 'js/floor3d/body-paint.js';
+const LOOP = 'js/floor3d/frame-loop.js';
 
 // ── the rows ──────────────────────────────────────────────────────────────────────────────────
 const ROWS = {
@@ -433,7 +436,7 @@ const ROWS = {
   cutaway: {
     what: 'the cut-away: with the target within a unit of the band, turned to the back, the band is lowered to its foot strip; turned to the front, it stands again; from the floor\'s centre it never lowers',
     base: { run: quiet(), media: REDUCE },
-    plants: [['the cut-away\'s segment test dropped', { plant: [P(PAINT, '        const cut = cutaway(camera.position, controls.target, world);', '        const cut = new Set();')] }]],
+    plants: [['the cut-away\'s segment test dropped', { plant: [P(ROOM, '        const cut = cutaway(eye, target, world);', '        const cut = new Set();')] }]],
     async run(chrome, c) {
       const p = await open(chrome, c);
       if (p.failed) return { defects: [p.failed], facts: {} };
@@ -477,11 +480,11 @@ const ROWS = {
     what: 'the frame loop: it stops once nothing moves, restarts when a late kit file answers, wakes on a drag and draws it to rest at no more than a frame a display tick, and with only held loops running draws at most LOOP_FPS frames a second',
     base: { run: quiet(), media: REDUCE },
     plants: [
-      ['the stop condition dropped', { plant: [P(PAINT, '        if (raf !== null || settling || tweening || next === 0) {', '        if (true) {')] }],
+      ['the stop condition dropped', { plant: [P(LOOP, '        if (raf !== null || next === 0) {', '        if (true) {')] }],
       ['the restart on a late resource dropped', { plant: [P(PAINT, "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    wake();", "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');")] }],
       ['the controls\' change not wired to the loop', { plant: [P(PAINT, "    controls.addEventListener('change', wake);", '')] }],
-      ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(PAINT, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            schedule();')] }],
-      ['a settling frame queuing its successor past the one pending frame (two chains, doubling each tick)', { plant: [P(PAINT, '        if (raf !== null || settling || tweening || next === 0) {\n            schedule();', '        if (raf !== null || settling || tweening || next === 0) {\n            raf = window.requestAnimationFrame(frame);')] }],
+      ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(LOOP, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            schedule();')] }],
+      ['a settling frame queuing its successor past the one pending frame (two chains, doubling each tick)', { plant: [P(LOOP, '        if (raf !== null || next === 0) {\n            schedule();', '        if (raf !== null || next === 0) {\n            raf = window.requestAnimationFrame(frame);')] }],
     ],
     async run(chrome, c) {
       const d = [];
@@ -669,7 +672,7 @@ const ROWS = {
     plants: [
       ['the character merge dropped (an intern\'s laptop parts each a call)', { plant: [P('js/floor3d/creature-paint.js', '        groups.push(mergeGeometries(laptop, false));', '        groups.push(...laptop);'), P('js/floor3d/creature-paint.js', '        materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));')] }],
       ['the furniture instancing dropped (a mesh a placement)', { plant: [P('js/floor3d/furniture.js', '        const mesh = new InstancedMesh(geometry, material, placements.length);\n\n        placements.forEach((m, i) => mesh.setMatrixAt(i, m));', '        for (const m of placements.slice(1)) { const one = new InstancedMesh(geometry, material, 1); one.setMatrixAt(0, m); group.add(one); meshes.push(one); }\n        const mesh = new InstancedMesh(geometry, material, 1);\n\n        placements.slice(0, 1).forEach((m, i) => mesh.setMatrixAt(i, m));')] }],
-      ['the wall instancing dropped (a mesh a wall)', { plant: [P(PAINT, "        for (const kind of ['edge', 'partition']) {\n            const of = world.walls.filter((w) => w.kind === kind);", "        for (const kind of world.walls.map((w) => w.id)) {\n            const of = world.walls.filter((w) => w.id === kind);")] }],
+      ['the wall instancing dropped (a mesh a wall)', { plant: [P(ROOM, "        for (const kind of ['edge', 'partition']) {\n            const of = world.walls.filter((w) => w.kind === kind);", "        for (const kind of world.walls.map((w) => w.id)) {\n            const of = world.walls.filter((w) => w.id === kind);")] }],
       ['every part\'s facets ×4 (a lathe of 96 segments)', { plant: [P('js/floor3d/part-geometry.js', 'seat: Object.freeze({ lathe: 24, sphere: [16, 10], bead: [8, 6], tube: [2, 6], cone: 8, cylinder: 20, torus: [8, 24], curve: 4, bevel: 2 }),', 'seat: Object.freeze({ lathe: 96, sphere: [64, 40], bead: [32, 24], tube: [8, 24], cone: 32, cylinder: 80, torus: [32, 96], curve: 16, bevel: 8 }),'), P('js/floor3d/part-geometry.js', 'chibi: Object.freeze({ lathe: 12, sphere: [10, 7], bead: [6, 4], tube: [1, 4], cone: 6, cylinder: 10, torus: [5, 12], curve: 2, bevel: 1 }),', 'chibi: Object.freeze({ lathe: 48, sphere: [40, 28], bead: [24, 16], tube: [4, 16], cone: 24, cylinder: 40, torus: [20, 48], curve: 8, bevel: 4 }),')] }],
       ['every face at the 512 px bucket', { plant: [P('js/floor3d/creature-paint.js', 'export const FACE_TEXTURE = 256;', 'export const FACE_TEXTURE = 512;')] }],
       ['a 3 MB file added to the kind map', { plant: [P('art:floor/models/kenney-furniture-kit/map.js', "    desk: 'desk.glb',", "    desk: 'bulky.glb',")], files: { '/art/floor/models/kenney-furniture-kit/bulky.glb': Buffer.alloc(3 * 1048576) } }],
@@ -740,7 +743,7 @@ const ROWS = {
   churn: {
     what: 'a body that leaves gives back what it held: once a seat has left by the elevator and returned, the renderer\'s textures and geometries are back at their count',
     base: { run: churn(), media: REDUCE },
-    plants: [['a leaving body\'s dispose skipped', { plant: [P(PAINT, '                b.creature?.dispose();\n', '')] }]],
+    plants: [['a leaving body\'s dispose skipped', { plant: [P(BODIES, '                b.creature?.dispose();\n', '')] }]],
     async run(chrome, c) {
       const p = await open(chrome, c);
       if (p.failed) return { defects: [p.failed], facts: {} };
