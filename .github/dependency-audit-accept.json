@@ -1,0 +1,12 @@
+{
+  "accepted": [
+    {
+      "advisory": "GHSA-37g9-w4hg-h9qr",
+      "versions": ["8.23.0"],
+      "reason": "ws 8.23.0 is the release this advisory's patched_versions names for the 8.x line. The audit cannot read the advisory's range (a leading half-open piece makes its comma ambiguous) and GitHub has not reviewed the advisory, so it reports RANGE-UNPARSEABLE at every version. Remove this entry when the framework's audit reads the range.",
+      "reviewer": "mezzanine-solo seat, approved by the operator",
+      "date": "2026-11-13",
+      "expires": "2027-01-12"
+    }
+  ]
+}
