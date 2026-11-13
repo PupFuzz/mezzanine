@@ -245,7 +245,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             }));
         }
 
-        b.thought.object.position.set(p.x, b.spec.h * THOUGHT_RISE, p.z);
+        b.thought.object.position.set(p.x, p.y + b.spec.h * THOUGHT_RISE, p.z);
         b.thought.object.visible = b.creature?.mesh.visible ?? false;
     };
 
