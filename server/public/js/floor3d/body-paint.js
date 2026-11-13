@@ -105,7 +105,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
         discs = onTerm(new InstancedMesh(discGeometry, discMaterial, Math.max(1, still.length)), 'fixed');
         discs.count = still.length;
         still.forEach((s, i) => {
-            discs.setMatrixAt(i, new Matrix4().makeTranslation(s.at.x, 0.003, s.at.z).multiply(new Matrix4().makeScale(s.h * DISC, 1, s.h * DISC)));
+            discs.setMatrixAt(i, new Matrix4().makeTranslation(s.at.x, s.at.y + 0.003, s.at.z).multiply(new Matrix4().makeScale(s.h * DISC, 1, s.h * DISC)));
         });
         discs.instanceMatrix.needsUpdate = true;
         discs.computeBoundingSphere();
@@ -217,7 +217,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             }));
         }
 
-        b.mark.object.position.set(b.spec.at.x, b.spec.h * MARK_RISE, b.spec.at.z);
+        b.mark.object.position.set(b.spec.at.x, b.spec.at.y + b.spec.h * MARK_RISE, b.spec.at.z);
     };
 
     /** A walker's thought bubble (A25, A26: the scene's `thought` on its effect), over its head wherever it is. */
@@ -245,7 +245,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             }));
         }
 
-        b.thought.object.position.set(p.x, b.spec.h * THOUGHT_RISE, p.z);
+        b.thought.object.position.set(p.x, p.y + b.spec.h * THOUGHT_RISE, p.z);
         b.thought.object.visible = b.creature?.mesh.visible ?? false;
     };
 
@@ -315,9 +315,12 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             c.mesh.visible = p !== null && p.where === 'floor';
 
             if (p !== null) {
-                c.mesh.position.set(p.x, 0, p.z);
+                // An intern on its seat's step stands at the height the world lifts it to and faces the front (`walkerAt()`).
+                c.mesh.position.set(p.x, p.y, p.z);
 
-                if (q !== null && (p.x !== q.x || p.z !== q.z)) {
+                if (p.step) {
+                    c.mesh.rotation.y = 0;
+                } else if (q !== null && (p.x !== q.x || p.z !== q.z)) {
                     c.mesh.rotation.y = Math.atan2(p.x - q.x, p.z - q.z);
                 }
             }
@@ -340,7 +343,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
         const laptop = s.chibi ? laptopAt(s, since) : null;
 
         c.mesh.visible = true;
-        c.mesh.position.set(s.at.x, 0, s.at.z);
+        c.mesh.position.set(s.at.x, s.at.y, s.at.z);
         c.mesh.rotation.y = 0;
         c.pose(state.pose);
         c.blink(state.blink);

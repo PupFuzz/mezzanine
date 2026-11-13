@@ -2294,10 +2294,14 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
         $this->assertNotSame([], $this->boardingDefects($frame, $this->door())[0], 'four boarders stepped in together and the boarding guard saw nothing');
     }
 
-    /** H4: the wait from `Math.random()` — two replays of one event wait differently, and neither is the seeded draw. */
-    public function test_red_the_wait_from_math_random(): void
+    /**
+     * H4: the wait one frame off its seeded draw (the draw plus one, wrapped over the wait's range) — a wait that is not
+     * the seeded draw on every replay. The plant is deterministic: a random one coincides with the draw it replaces on one
+     * replay in `WAIT_MAX_FRAMES + 1` and passes there.
+     */
+    public function test_red_the_wait_off_its_seeded_draw(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, 'draw(seat, `elevator-wait:${cause}`) % (WAIT_MAX_FRAMES + 1)', 'Math.floor(Math.random() * (WAIT_MAX_FRAMES + 1))']);
+        $dir = $this->mutatedModules([self::SCENE, 'draw(seat, `elevator-wait:${cause}`) % (WAIT_MAX_FRAMES + 1)', '(draw(seat, `elevator-wait:${cause}`) + 1) % (WAIT_MAX_FRAMES + 1)']);
         $draws = $this->firstDraws($this->floorRun('leave-stale', $dir));
 
         $this->assertNotSame([], array_merge(...array_map(fn ($fw) => $this->pathDefects($fw[0], $fw[1]), $draws)));
@@ -2334,7 +2338,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H1: the desks dropped from the obstacles — a path goes through a desk. */
     public function test_red_desks_dropped_from_the_obstacles(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, 'desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character) })),', 'desks: [],']);
+        $dir = $this->mutatedModules([self::SCENE, 'desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character), interns: internsOf(d, character) })),', 'desks: [],']);
 
         $this->assertNotSame([], $this->allRouteDefects($dir), 'no path crossed a desk with the desks dropped');
     }
@@ -2358,7 +2362,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H15: the walk leg shifted one cell down — the feet stand in a desk. */
     public function test_red_the_walk_leg_shifted(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, '...cells.map((c) => walking.centre(c)),', '...cells.map((c) => walking.centre([c[0], c[1] + 2])),']);
+        // card#13033: a route's polyline is `route()`'s own `points`, its cells' centres among them.
+        $dir = $this->mutatedModules([self::ROUTE, 'const centres = cells.map((c) => cellCentre(grid, c));', 'const centres = cells.map((c) => cellCentre(grid, [c[0], c[1] + 2]));']);
 
         $this->assertNotSame([], $this->allFeetDefects($dir));
     }
@@ -2392,7 +2397,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     public function test_red_no_route_falls_back_to_the_segment(): void
     {
         // card#12466: a seat's routes are read through `seatRoutes()`, the one reader its walk and its turn-round share.
-        $dir = $this->mutatedModules([self::SCENE, 'const r = walking.route(key, anchor, a, b);', "const r = walking.route(key, anchor, a, b) ?? { cells: [], tier: 'feet' };"]);
+        $dir = $this->mutatedModules([self::SCENE, 'const r = walking.route(key, anchor, a, b);', "const r = walking.route(key, anchor, a, b) ?? { cells: [], points: [a, b], tier: 'feet' };"]);
 
         $this->assertNotSame([], $this->noRouteDefects($this->floorRun('walled-in', $dir), self::PM, true));
     }

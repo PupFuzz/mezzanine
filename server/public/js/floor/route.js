@@ -14,12 +14,20 @@
  * resolves no kind, so its cells are open until it arrives — and the lattice key (`scene.js`'s `latticeKey()`)
  * cancels every walk routed without it then. Other walkers are never obstacles.
  *
- * ⛔ A WALKER's OWN DESK IS OPEN TO IT ON ITS ANCHOR's ROW, and a desk's SEAT may also leave from behind its chair
- * (walk note item 3, card#12513). A desk declares its seat — the chair, its anchor — and the furniture the seat keeps
- * off, the side table and the interns' rows (`desk-layout.js`'s `seatSolid()`). The seat's walk may take the chair's
- * column behind the anchor, where the desk lays out nothing but that chair, and keeps its feet off that furniture; it
- * is routed across it only where no tier connects without (`route()`'s `furniture`), a desk walled in on every side
- * but its side table's. An intern's walk keeps its stool's row.
+ * ⛔ A DESK's SEAT LEAVES ITS CHAIR SIDEWAYS ON ITS ANCHOR's ROW OR FROM BEHIND IT (walk note item 3, card#12513). A
+ * desk declares its seat — the chair, its anchor — and the furniture the seat keeps off, the side table and the interns'
+ * rows (`desk-layout.js`'s `seatSolid()`). The seat's walk may take the chair's column behind the anchor, where the desk
+ * lays out nothing but that chair, and keeps its feet off that furniture; it is routed across it only where no tier
+ * connects without (`route()`'s `furniture`), a desk walled in on every side but its side table's.
+ *
+ * ⛔ AN INTERN GETS ON AND OFF ITS COUCH FROM THE FRONT (walk note item 3, card#13033). A desk declares its interns'
+ * seats — each stool's foot, its anchor, with the footprint of its row's couch — and the furniture an intern keeps its
+ * feet off: every couch's footprint and the art column's pieces (`desk-layout.js`'s `internSolid()`). Its own desk is
+ * open to an intern everywhere else, so it walks the aisle in front of a row of couches; its seat is entered only from
+ * its FRONT CELL, the first lattice cell straight in front of the seat that its couch's footprint does not meet: a route
+ * to or from a point on that step (the stool's foot, or a point between it and the front cell) runs to or from the front
+ * cell, and its `points` step straight between the seat and the front cell (`route()`). No intern's route crosses another
+ * seat, a couch's arm or its own couch anywhere but that step.
  *
  * ⛔ A WALKER KEEPS CLEAR LIKE A PERSON IN A BUILDING (walk note item 3, card#12442). The feet rule alone lets a path
  * hug an obstacle one cell away while the body — the character's drawn rect, centred on the feet — is painted over
@@ -69,17 +77,19 @@ const meets = (a, b) => a.w > 0 && a.h > 0 && b.w > 0 && b.h > 0
 /**
  * THE WALKABLE MODEL of one floor (walk note item 3): a grid of lattice cells over the floor's extent, and for each
  * clearance tier the cells blocked for every walker and each desk's cells — because a walker's OWN desk is open to it
- * on its anchor's row, and to its seat behind its chair (by the feet rule, never inflated: it sits there), and every
- * other desk is blocked whole.
+ * where the header says (by the feet rule, never inflated: it sits there), and every other desk is blocked whole.
  *
  * @param {{extent: {x: number, y: number, width: number, height: number}, cell: number,
  *          obstacles: list<{x: number, y: number, w: number, h: number}>,
  *          desks: list<{key: string, rects: list<{x: number, y: number, w: number, h: number}>,
- *                       seat?: {anchor: {x: number, y: number}, solid: list<{x: number, y: number, w: number, h: number}>}}>,
+ *                       seat?: {anchor: {x: number, y: number}, solid: list<{x: number, y: number, w: number, h: number}>},
+ *                       interns?: {solid: list<{x: number, y: number, w: number, h: number}>,
+ *                                  seats: list<{anchor: {x: number, y: number}, couch: {x: number, y: number, w: number, h: number}}>}}>,
  *          body: {w: number}}} parts —
  *        `cell` the smallest tile edge over the floor's grids; `obstacles` the `wall` tiles' and standing tiles' rects;
- *        `desks` each desk's slot and drawn box, and its seat — the chair's point and the furniture the seat keeps its
- *        feet off; `body` the walker's drawn character rect, whose width is what clears
+ *        `desks` each desk's slot and drawn box, its seat — the chair's point and the furniture the seat keeps its feet
+ *        off — and its interns' seats — each stool's foot and its row's couch footprint — with the furniture an intern
+ *        keeps its feet off; `body` the walker's drawn character rect, whose width is what clears
  * @returns {object} the lattice, read only by `route()` and the tests
  */
 export function lattice({ extent, cell, obstacles, desks, body }) {
@@ -154,6 +164,21 @@ export function lattice({ extent, cell, obstacles, desks, body }) {
 
         return x < 0 || y < 0 || x >= cols || y >= rows ? null : [x, y];
     };
+    // A seat's FRONT CELL: straight in front of its anchor's cell (down the screen), the first its couch's footprint
+    // does not meet — or `null` where the lattice ends first.
+    const frontOf = (anchor, couch) => {
+        if (anchor === null) {
+            return null;
+        }
+
+        for (let y = anchor[1]; y < rows; y++) {
+            if (!couch.has(y * cols + anchor[0])) {
+                return Object.freeze([anchor[0], y]);
+            }
+        }
+
+        return null;
+    };
     const half = body.w / 2;
     // What each tier blocks round a wall or standing tile, and round another desk. A desk is drawn in the floor's
     // depth order with the walker (walk note item 9) and its box is its art's own extent, so it keeps the bare body
@@ -175,15 +200,22 @@ export function lattice({ extent, cell, obstacles, desks, body }) {
         cell: c,
         cols,
         rows,
-        // Each desk's own cells by the feet rule: what its OWN walker may enter on its anchor's row — and, where the
-        // desk declares its SEAT (card#12513), the chair's cell and the cells of the furniture the seat keeps its
-        // feet off (`blockedFor()`).
+        // Each desk's own cells by the feet rule, what its OWN walkers may enter of them (`blockedFor()`): its SEAT's
+        // chair cell and the cells of the furniture the seat keeps its feet off (card#12513), and its INTERNS' seats —
+        // each stool's foot, its cell and its front cell — with the cells of the furniture an intern keeps off.
         desks: Object.freeze(desks.map((d) => Object.freeze({
             key: d.key,
             cells: sorted(d.rects.flatMap(cellsOf)),
             seat: (d.seat ?? null) === null ? null : Object.freeze({
                 cell: Object.freeze(cellOf(d.seat.anchor)),
                 solid: new Set(d.seat.solid.flatMap(cellsOf)),
+            }),
+            interns: (d.interns ?? null) === null ? null : Object.freeze({
+                solid: new Set(d.interns.solid.flatMap(cellsOf)),
+                seats: Object.freeze(d.interns.seats.map((s) => Object.freeze({
+                    anchor: Object.freeze({ x: s.anchor.x, y: s.anchor.y }),
+                    front: frontOf(cellOf(s.anchor), new Set(cellsOf(s.couch))),
+                }))),
             }),
         }))),
         // One tier's model, built the first time a route asks for it — a floor whose every walk routes at `clear`
@@ -231,6 +263,9 @@ export function cellCentre(grid, [x, y]) {
     return { x: grid.origin.x + (x + 0.5) * grid.cell, y: grid.origin.y + (y + 0.5) * grid.cell };
 }
 
+/** Two points as one where they agree to a millionth of a pixel. */
+const samePoint = (a, b) => Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6;
+
 /**
  * The walker's desk when the walker is that desk's SEAT (card#12513) — its anchor's cell is the chair's the desk
  * declares — or `null`: an intern's walk, a walker whose desk declares no seat, or a point nobody's desk holds.
@@ -244,11 +279,25 @@ function seatDesk(grid, walker) {
 }
 
 /**
+ * The walker's seat when the walker is one of its desk's INTERNS (card#13033) — its anchor is a stool's foot the desk
+ * declares — as `{anchor, front}`, the foot and its front cell; or `null` for any other walker.
+ */
+function internSeat(grid, walker) {
+    const desk = grid.desks.find((d) => d.key === walker.key) ?? null;
+
+    return desk?.interns?.seats.find((s) => samePoint(s.anchor, walker.anchor)) ?? null;
+}
+
+/**
  * The cells blocked for ONE walker at one tier: the tier's obstacles, every other desk whole as the tier inflates it,
- * and its own desk (by the feet rule) on every row but its anchor's — so it leaves and reaches its desk sideways, at
- * its seated depth (walk note item 3). Its desk's SEAT (card#12513) may also take the chair's column behind the anchor,
- * where the desk lays out nothing but that chair, and with `furniture` `kept` never sets foot on what its desk declares solid to it
- * (the side table and the interns' rows) — so it walks round the back of its desk rather than across its couch.
+ * and its own desk (by the feet rule) where it is not open to that walker (walk note item 3). Its desk's SEAT
+ * (card#12513) has its anchor's row — so it leaves and reaches its chair sideways, at its seated depth — and the
+ * chair's column behind the anchor, where the desk lays out nothing but that chair, and with `furniture` `kept` never
+ * sets foot on what its desk declares solid to it (the side table and the interns' rows) — so it walks round the back
+ * of its desk rather than across its couch. Its desk's INTERN (card#13033) has the whole desk but the furniture its
+ * desk declares solid to an intern — every couch's footprint, its own seat's included, and the art column's pieces — so
+ * it walks the aisles in front of the couches, and its seat is reached only by `route()`'s step from the front cell.
+ * Any other walker has none of its own desk.
  *
  * @param {object} grid `lattice()`'s
  * @param {{key: string, anchor: {x: number, y: number}}} walker
@@ -269,18 +318,19 @@ export function blockedFor(grid, walker, tier = CLEARANCE_TIERS[0], furniture = 
         }
     }
 
-    // The own desk off its anchor's row, and off the seat's column behind its chair. A cell of either that another
-    // desk also meets stays blocked, because that desk's cells are blocked whoever's desk it is.
+    // The own desk where it is not the walker's. A cell of it that another desk also meets stays blocked, because that
+    // desk's cells are blocked whoever's desk it is.
     const seat = seatDesk(grid, walker)?.seat ?? null;
+    const intern = seat === null && internSeat(grid, walker) !== null;
 
     for (const desk of grid.desks) {
         if (desk.key === walker.key) {
             for (const i of desk.cells) {
                 const x = i % grid.cols;
                 const y = Math.floor(i / grid.cols);
-                const open = anchor !== null && (seat === null
-                    ? y === anchor[1]
-                    : (y === anchor[1] || (x === anchor[0] && y < anchor[1])) && (furniture === 'crossed' || !seat.solid.has(i)));
+                const open = seat !== null
+                    ? (y === anchor[1] || (x === anchor[0] && y < anchor[1])) && (furniture === 'crossed' || !seat.solid.has(i))
+                    : intern && !desk.interns.solid.has(i);
 
                 if (!open) {
                     out[i] = 1;
@@ -485,19 +535,38 @@ function search(grid, start, goal, blocked, extra) {
 /**
  * THE ROUTE between two points for one walker: the first of `CLEARANCE_TIERS` whose blocked set connects them, and
  * that tier's A* path. A desk's SEAT (card#12513) is routed with its desk's solid furniture kept off first, at every
- * tier, and across it only where no tier connects without — a desk walled in on every side but its side table's.
+ * tier, and across it only where no tier connects without — a desk walled in on every side but its side table's. An
+ * INTERN's end on its seat's step — its stool's foot, or a point straight in front of it no further than its front cell's
+ * centre — is routed from or to the FRONT CELL (card#13033), and its `points` step straight between that end and the
+ * front cell's row, so it gets on and off its couch from the front; both ends on the step are one straight step.
  *
  * @param {object} grid `lattice()`'s
  * @param {{x: number, y: number}} from
  * @param {{x: number, y: number}} to
  * @param {{key: string, anchor: {x: number, y: number}}} walker the walker whose desk is its own
- * @returns {{cells: list<[number, number]>, tier: string, furniture: 'kept'|'crossed'|null}|null} the cells from
- *          `from`'s to `to`'s, both included, the tier they were found at, and whether a seat's route keeps off its
- *          desk's furniture (`null` for any other walker); `null` with no open route at any tier
+ * @returns {{cells: list<[number, number]>, points: list<{x: number, y: number}>, tier: string,
+ *           furniture: 'kept'|'crossed'|null}|null} the cells searched, from the start's to the goal's; the polyline the
+ *          walker's feet follow — `from`, the cells' centres and `to`, with an intern's step; the tier they were found at;
+ *          and whether a seat's route keeps off its desk's furniture (`null` for any other walker); `null` with no open
+ *          route at any tier
  */
 export function route(grid, from, to, walker) {
-    const start = cellAt(grid, from);
-    const goal = cellAt(grid, to);
+    const own = internSeat(grid, walker);
+    const front = own === null || own.front === null ? null : cellCentre(grid, own.front);
+    // The seat's step: straight in front of the foot, from the foot to the front cell's centre row.
+    const onStep = (p) => front !== null && Math.abs(p.x - own.anchor.x) < 1e-6 && p.y >= own.anchor.y - 1e-6 && p.y <= front.y + 1e-6;
+    const stepPoint = front === null ? null : Object.freeze({ x: own.anchor.x, y: front.y });
+    const point = (p) => Object.freeze({ x: p.x, y: p.y });
+
+    // Both ends on the step (a turn while stepping on or off): the step itself, at the first tier its front cell is open at.
+    if (onStep(from) && onStep(to)) {
+        const tier = CLEARANCE_TIERS.find((t) => blockedFor(grid, walker, t)[own.front[1] * grid.cols + own.front[0]] === 0) ?? null;
+
+        return tier === null ? null : Object.freeze({ cells: Object.freeze([own.front]), points: Object.freeze([point(from), point(to)]), tier, furniture: null });
+    }
+
+    const start = onStep(from) ? own.front : cellAt(grid, from);
+    const goal = onStep(to) ? own.front : cellAt(grid, to);
 
     if (start === null || goal === null) {
         return null;
@@ -508,7 +577,12 @@ export function route(grid, from, to, walker) {
             const cells = search(grid, start, goal, blockedFor(grid, walker, tier, furniture ?? 'kept'), grid.tier(tier).centring);
 
             if (cells !== null) {
-                return Object.freeze({ cells, tier, furniture });
+                const centres = cells.map((c) => cellCentre(grid, c));
+                // The step's corner, where the front cell's centre is not straight in front of the foot.
+                const corner = (end) => (onStep(end) && !samePoint(stepPoint, end) && !samePoint(stepPoint, front) ? [stepPoint] : []);
+                const line = [from, ...corner(from), ...centres, ...corner(to), to];
+
+                return Object.freeze({ cells, points: Object.freeze(line.map(point)), tier, furniture });
             }
         }
     }

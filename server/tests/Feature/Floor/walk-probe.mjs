@@ -72,7 +72,7 @@ if (input.mode === 'stack') {
     answer(input.cases.map(({ desks, walkers }) => floorStackOrder(desks, walkers).map((o) => ({ kind: o.kind, key: o.key }))));
 }
 
-const { PLANE_KINDS, backWall, mapTiles, slotOrigin, threshold, buildScene, walkerSize } = await mod('floor/scene.js');
+const { PLANE_KINDS, backWall, internsOf, mapTiles, slotOrigin, threshold, buildScene, walkerSize } = await mod('floor/scene.js');
 const { backWallBand, mapDesks, mapGrid } = await mod('floor/floor-layout.js');
 const { readTileset, tilesetUrl } = await mod('floor/tileset.js');
 const { characterCentre, deskAnchor, seatSolid } = await mod('floor/desk-layout.js');
@@ -127,7 +127,7 @@ const floorOf = (path, extraWalls = []) => {
         extent,
         cell: Math.min(grid.tilewidth, grid.tileheight),
         obstacles: obstacles(),
-        desks: desks.map((d) => ({ key: d.key, rects: [d.slot, d.box], seat: { anchor: d.anchor, solid: d.solid } })),
+        desks: desks.map((d) => ({ key: d.key, rects: [d.slot, d.box], seat: { anchor: d.anchor, solid: d.solid }, interns: internsOf(d, CHARACTER) })),
         body,
     });
 
@@ -161,7 +161,7 @@ if (input.mode === 'shipped') {
         body: walkerSize(CHARACTER),
         desks: desks.map((d, i) => {
             const cells = routes[i]?.cells ?? null;
-            const points = cells === null ? null : [d.anchor, ...cells.map((c) => cellCentre(g, c)), door];
+            const points = routes[i]?.points ?? null;
 
             return { ...d, cells, clearance: routes[i]?.tier ?? null, furniture: routes[i]?.furniture ?? null, points, length: points === null ? null : polylineLength(points) };
         }),
@@ -238,9 +238,9 @@ if (input.mode === 'walks') {
     const walk = (who, desk, stool, kind, from, to, anchor) => {
         const g = grids[who];
         const r = from === null || to === null ? null : route(g, from, to, { key: desk.key, anchor });
-        const points = r === null ? null : [from, ...r.cells.map((c) => cellCentre(g, c)), to];
+        const points = r?.points ?? null;
 
-        walks.push({ who, desk: desk.key, stool, kind, from, to, tier: r?.tier ?? null, furniture: r?.furniture ?? null, points });
+        walks.push({ who, desk: desk.key, stool, kind, from, to, foot: who === 'intern' ? anchor : null, tier: r?.tier ?? null, furniture: r?.furniture ?? null, points });
     };
 
     for (const d of f.desks) {
@@ -264,7 +264,10 @@ if (input.mode === 'walks') {
         }
     }
 
-    answer({ cell: grids.seat.cell, extent: f.extent, threshold: f.door, bodies, obstacles: f.obstacles(), desks: f.desks, spots, walks });
+    // card#13033: each desk's couch footprints, one a row (`couchFootprints()`, as the lattice reads them), for the couch-step guard
+    const desks = f.desks.map((d) => ({ ...d, couches: [...new Map(internsOf(d, CHARACTER).seats.map((s) => [JSON.stringify(s.couch), s.couch])).values()] }));
+
+    answer({ cell: grids.seat.cell, extent: f.extent, threshold: f.door, bodies, obstacles: f.obstacles(), desks, spots, walks });
 }
 
 if (input.mode === 'lattice') {

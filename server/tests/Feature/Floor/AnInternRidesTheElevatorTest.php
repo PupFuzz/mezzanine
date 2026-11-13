@@ -53,6 +53,8 @@ class AnInternRidesTheElevatorTest extends TestCase
 
     private const LAYOUT = '../floor/desk-layout.js';
 
+    private const ROUTE = '../floor/route.js';
+
     // ── § 12's rows ──────────────────────────────────────────────────────────────────────────
 
     /** @return array{open: int, step: int, close: int} */
@@ -69,6 +71,28 @@ class AnInternRidesTheElevatorTest extends TestCase
             '§ 12 carries no *Laptop fade* row in the form this test reads');
 
         return (int) $m[1];
+    }
+
+    /** card#13033: how far in front of its row's foot line a couch's front edge stands (`desk-layout.js`'s `COUCH_FOOTPRINT`). */
+    private function couchFront(): int
+    {
+        $this->assertSame(1, preg_match('/^export const COUCH_FOOTPRINT = Object\.freeze\(\{ depth: \d+, front: (\d+), arm: \d+ \}\);$/m',
+            (string) file_get_contents($this->moduleDir().'/'.self::LAYOUT), $m), 'desk-layout.js declares no COUCH_FOOTPRINT in the form this test reads');
+
+        return (int) $m[1];
+    }
+
+    /**
+     * card#13033: where a walk's polyline steps between its stool's foot and the point next to it, unless that point is
+     * straight in front of the foot, past its couch's front edge — the step on or off the couch from the front.
+     *
+     * @param  array{x: float|int, y: float|int}  $foot
+     * @param  array{x: float|int, y: float|int}  $next
+     */
+    private function assertFrontStep(array $foot, array $next, string $how): void
+    {
+        $this->assertTrue(abs($next['x'] - $foot['x']) < 1e-6 && $next['y'] >= $foot['y'] + $this->couchFront(),
+            "the intern {$how} its seat by ".json_encode($next).' — not straight off the front of its couch from its foot '.json_encode($foot));
     }
 
     private function walkSpeed(): int
@@ -377,6 +401,15 @@ class AnInternRidesTheElevatorTest extends TestCase
         $foot = $frame['scene']['slot_feet'][self::IMPL_1][$walk['slot']];
         $this->assertEquals($this->threshold($frame), $points[0], 'the walk does not start at the threshold');
         $this->assertEquals($foot, end($points), 'the walk does not end at its slot\'s foot read off the scene');
+        $this->assertFrontStep($foot, $points[count($points) - 2], 'reaches');
+        // card#13033: a back-row seat (`capped-gain`'s eighth intern, at the last slot) is reached the same way, from the
+        // aisle in front of its couch.
+        [$capFrame, $back] = $this->firstWalk($this->floorRun('capped-gain'), 'arrive');
+        $backPoints = $back['legs'][2]['points'];
+        $feet = $capFrame['scene']['slot_feet'][self::IMPL_1];
+        $this->assertLessThan($feet[0]['y'], $feet[$back['slot']]['y'], 'capped-gain\'s arrival is not to a back-row slot');
+        $this->assertEquals($feet[$back['slot']], end($backPoints), 'the back-row walk does not end at its slot\'s foot');
+        $this->assertFrontStep(end($backPoints), $backPoints[count($backPoints) - 2], 'reaches');
         $length = 0.0;
         for ($i = 1; $i < count($points); $i++) {
             $length += hypot($points[$i]['x'] - $points[$i - 1]['x'], $points[$i]['y'] - $points[$i - 1]['y']);
@@ -422,6 +455,7 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertContiguous($walk, 'leave-working');
         $this->assertSame([$this->laptopFade(), 1, 0], [$walk['legs'][0]['frames'], $walk['legs'][0]['laptop_from'], $walk['legs'][0]['laptop_to']]);
         $this->assertEquals($frame['scene']['slot_feet'][self::IMPL_1][$walk['slot']], $walk['legs'][1]['points'][0], 'the departure does not start at its slot');
+        $this->assertFrontStep($walk['legs'][1]['points'][0], $walk['legs'][1]['points'][1], 'leaves');
         $this->assertSame(['press', 'low'], [$walk['legs'][2]['why'], $walk['legs'][2]['plate']], 'the departure does not press the low call plate after its walk from the slot');
         $this->assertEquals($walk['legs'][4]['at'], end($walk['legs'][3]['points']), 'the walk from the plate does not end at the spot it waits at');
         $this->assertNotEquals($this->threshold($frame), $walk['legs'][4]['at'], 'the departure waits on the threshold');
@@ -1056,6 +1090,27 @@ class AnInternRidesTheElevatorTest extends TestCase
         }
 
         return $dir;
+    }
+
+    /**
+     * card#13033: the router before the couch step — an intern's own desk open on its stool's row alone, its seat reached
+     * along that row — brings the arriving intern onto its seat from the side and takes the departing one off it so.
+     */
+    public function test_red_the_seat_reached_along_its_row(): void
+    {
+        $dir = $this->planted(
+            [self::ROUTE, '                    : intern && !desk.interns.solid.has(i);', '                    : intern && y === cellAt(grid, walker.anchor)[1];'],
+            [self::ROUTE, '    const onStep = (p) => front !== null &&', '    const onStep = (p) => false &&'],
+        );
+        $front = $this->couchFront();
+        $straight = static fn (array $foot, array $next): bool => abs($next['x'] - $foot['x']) < 1e-6 && $next['y'] >= $foot['y'] + $front;
+        [, $in] = $this->firstWalk($this->floorRun('arrive', $dir), 'arrive');
+        [, $out] = $this->firstWalk($this->floorRun('leave-working', $dir), 'leave');
+        $p = $in['legs'][2]['points'];
+        $q = $out['legs'][1]['points'];
+
+        $this->assertFalse($straight(end($p), $p[count($p) - 2]), 'the planted arrival still steps onto its seat from the front');
+        $this->assertFalse($straight($q[0], $q[1]), 'the planted departure still steps off its seat to the front');
     }
 
     public function test_red_the_stool_fills_at_once(): void
