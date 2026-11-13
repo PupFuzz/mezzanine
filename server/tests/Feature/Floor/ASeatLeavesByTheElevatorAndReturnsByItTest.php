@@ -2338,7 +2338,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H1: the desks dropped from the obstacles — a path goes through a desk. */
     public function test_red_desks_dropped_from_the_obstacles(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, 'desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character) })),', 'desks: [],']);
+        $dir = $this->mutatedModules([self::SCENE, 'desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character), interns: internsOf(d, character) })),', 'desks: [],']);
 
         $this->assertNotSame([], $this->allRouteDefects($dir), 'no path crossed a desk with the desks dropped');
     }
@@ -2362,7 +2362,8 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     /** H15: the walk leg shifted one cell down — the feet stand in a desk. */
     public function test_red_the_walk_leg_shifted(): void
     {
-        $dir = $this->mutatedModules([self::SCENE, '...cells.map((c) => walking.centre(c)),', '...cells.map((c) => walking.centre([c[0], c[1] + 2])),']);
+        // card#13033: a route's polyline is `route()`'s own `points`, its cells' centres among them.
+        $dir = $this->mutatedModules([self::ROUTE, 'const centres = cells.map((c) => cellCentre(grid, c));', 'const centres = cells.map((c) => cellCentre(grid, [c[0], c[1] + 2]));']);
 
         $this->assertNotSame([], $this->allFeetDefects($dir));
     }
@@ -2396,7 +2397,7 @@ class ASeatLeavesByTheElevatorAndReturnsByItTest extends TestCase
     public function test_red_no_route_falls_back_to_the_segment(): void
     {
         // card#12466: a seat's routes are read through `seatRoutes()`, the one reader its walk and its turn-round share.
-        $dir = $this->mutatedModules([self::SCENE, 'const r = walking.route(key, anchor, a, b);', "const r = walking.route(key, anchor, a, b) ?? { cells: [], tier: 'feet' };"]);
+        $dir = $this->mutatedModules([self::SCENE, 'const r = walking.route(key, anchor, a, b);', "const r = walking.route(key, anchor, a, b) ?? { cells: [], points: [a, b], tier: 'feet' };"]);
 
         $this->assertNotSame([], $this->noRouteDefects($this->floorRun('walled-in', $dir), self::PM, true));
     }

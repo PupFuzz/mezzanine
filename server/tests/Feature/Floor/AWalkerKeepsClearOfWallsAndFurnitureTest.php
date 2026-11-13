@@ -51,7 +51,7 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
      */
     private const COUCH_RUNS = ['return-from-stale', 'leave-stale', 'idle-trip', 'idle-visit'];
 
-    /** The routed seat walks the couch guard reads (§ 6.2's A1, A2, A25 and A26 — an intern's walk keeps its stool's row). */
+    /** The routed seat walks the couch guard reads (§ 6.2's A1, A2, A25 and A26; an intern's walks step onto and off its seat from the front, `TheLoungeFloorRoutesEveryWalkTest`'s couch-step guard). */
     private const SEAT_WALKS = ['A1', 'A2', 'A25', 'A26'];
 
     // ── § 12's rows, read out of the document ────────────────────────────────────────────────
@@ -332,7 +332,8 @@ class AWalkerKeepsClearOfWallsAndFurnitureTest extends TestCase
      */
     public function test_red_the_seat_on_its_anchors_row_alone(): void
     {
-        $dir = $this->mutatedModules([self::ROUTE, "    const seat = seatDesk(grid, walker)?.seat ?? null;\n", "    const seat = null;\n"]);
+        // card#13033: the seat's own-desk rule cut back to its anchor's row, as it was before card#12513.
+        $dir = $this->mutatedModules([self::ROUTE, "? (y === anchor[1] || (x === anchor[0] && y < anchor[1])) && (furniture === 'crossed' || !seat.solid.has(i))", '? y === anchor[1]']);
 
         $this->assertNotSame([], $this->floorCouchDefects($this->floor($this->defaultMapPath(), $dir)), 'CONTROL (the seat on its anchor\'s row alone) walked no desk of the shipped default across its couch');
         $this->assertNotSame([], array_filter($this->runCouchDefects($dir), static fn ($d) => str_starts_with($d, '[idle-trip] A25')), 'the couch guard did not see the walled-in desk\'s idle-trip walk across its couch');

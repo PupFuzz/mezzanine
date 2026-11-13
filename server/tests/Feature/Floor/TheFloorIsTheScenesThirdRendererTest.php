@@ -12,7 +12,8 @@ use Tests\TestCase;
  * harness's own — the floor screen run over the shipped default with `fx-snapshot-4`'s seats, its overflowing run,
  * the interns' cap, a planned floor with a hallway, and the intern-walk, snack and turn-back runs whose walkers are in
  * flight — and `floor-world-probe.mjs` reads the world off each, the interns' seats on their couches included (the
- * couch measured off the kit's file, at one intern and at the cap).
+ * couch measured off the kit's file, at one intern and at the cap), and each intern walker's rise onto its seat as it
+ * steps back and fall off it as it steps off (card#13033).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SCENES ARE BUILT ONCE PER TREE. The world is a pure function of a scene, so a plant in `floor-world.js` is read
@@ -47,6 +48,7 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
         'leave-working' => 'walkers',
         'flip' => 'desk',
         'two-interns' => 'walkers',
+        'capped-gain' => 'walkers',
         'idle-trip' => 'walkers',
         'busy-trip' => 'walkers',
         'intern-trip' => 'walkers',
@@ -125,6 +127,14 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
         const right = at({ x: e.x + e.w, y: foot }).x - COUCH_SCALE * (COUCH.w - COUCH.seat.right);', 'seating', false],
             'the couch\'s seat height guessed, not the file\'s' => ['../floor/floor-world.js',
                 'seat: Object.freeze({ y: 0.23,', 'seat: Object.freeze({ y: 0.2,', 'seating', false],
+            'a couch as deep as the file at the couch\'s height scale, over its aisle' => ['../floor/floor-world.js',
+                '            d: plan.h / UNIT,', '            d: COUCH_SCALE * COUCH.d,', 'seating', false],
+            'an intern lifted onto its seat only at its foot, not as it steps back (the pop)' => ['../floor/floor-world.js',
+                'const lift = step ? seat.lift * Math.min(1, Math.max(0, (seat.front - p.y) / (seat.front - seat.foot.y))) : 0;',
+                'const lift = step && Math.abs(p.y - seat.foot.y) < 1e-6 ? seat.lift : 0;', 'steps', false],
+            'an intern never lifted off the floor as it steps onto its seat' => ['../floor/floor-world.js',
+                'const lift = step ? seat.lift * Math.min(1, Math.max(0, (seat.front - p.y) / (seat.front - seat.foot.y))) : 0;',
+                'const lift = 0;', 'steps', false],
             'a bird flown along the chord, its arc\'s lift dropped' => ['../floor/floor-world.js',
                 'y: lerp(bird.from.y, bird.to.y) + bird.lift * 4 * u * (1 - u),', 'y: lerp(bird.from.y, bird.to.y),', 'birds', false],
             'the birdhouse\'s picture row read as depth, not height' => ['../floor/floor-world.js',

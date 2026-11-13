@@ -26,7 +26,9 @@ use Tests\TestCase;
  * each of each desk's intern stools to and from the elevator (A10), the low table (A25) and the door (A26). Every one
  * routes at the `clear` tier and every seat's keeps off its own couch (`furniture: kept`, card#12513) — what the shipped
  * default routes, which the same probe measures here first. Along every drawn polyline the body keeps clear of every wall,
- * standing tile and other desk, the margins kept (`ChecksAWalkersBody`, card#12442), and no seat's feet stand on its couch.
+ * standing tile and other desk, the margins kept (`ChecksAWalkersBody`, card#12442), no seat's feet stand on its couch,
+ * and every intern's — to and from every stool, the front row's and the back row's — stand on no couch footprint but by
+ * its own seat's straight step from the front, which every walk from or to its stool starts or ends with (card#13033).
  *
  * ⛔ THE PLACEMENT RULES (§ 6.6 item 3, § 6.7 item 3, § 10.3, § 10.6 item 6), re-derived from the file: one tall and one
  * low snack table and one restroom door; every wall cell and every standing piece's cell rect inside the grid and outside
@@ -37,7 +39,8 @@ use Tests\TestCase;
  * run over the shipped default, and its snack spot 0s against § 12's *Snack spot*, before this test relies on either.
  *
  * ⛔ EACH RED IS A PLANT seen to break the GREEN it guards: the PM office's doorway walled shut (the PM's walks stop
- * routing), and the restroom door moved under a desk (the placement rule refuses it).
+ * routing), the restroom door moved under a desk (the placement rule refuses it), and the router before card#13033 — an
+ * intern's own desk open on its stool's row alone, and no step — which walks every intern along its row across the couch.
  */
 class TheLoungeFloorRoutesEveryWalkTest extends TestCase
 {
@@ -78,6 +81,7 @@ class TheLoungeFloorRoutesEveryWalkTest extends TestCase
         $c = $this->clearance();
         $defects = [];
         $solid = array_column($floor['desks'], 'solid', 'key');
+        $couches = array_merge(...array_column($floor['desks'], 'couches'));
 
         foreach ($floor['walks'] as $w) {
             $what = "{$w['who']} {$w['kind']} of {$w['desk']}".($w['stool'] === null ? '' : " stool {$w['stool']}");
@@ -101,6 +105,8 @@ class TheLoungeFloorRoutesEveryWalkTest extends TestCase
 
             if ($w['who'] === 'seat') {
                 array_push($defects, ...$this->couchCrossing($what, $w['points'], $solid[$w['desk']]));
+            } else {
+                array_push($defects, ...$this->couchStepDefects($what, $w['points'], $w['foot'], $couches));
             }
         }
 
@@ -355,6 +361,25 @@ class TheLoungeFloorRoutesEveryWalkTest extends TestCase
     }
 
     /** The restroom door moved onto a desk: the placement guard refuses it. */
+    /**
+     * card#13033: the router before the couch step — an intern's own desk open on its stool's lattice row alone, its seat
+     * reached along that row — walks the interns across their couches and onto their seats from the side.
+     */
+    public function test_red_the_interns_walk_along_their_row(): void
+    {
+        $dir = $this->mutatedModules(['../floor/route.js', '                    : intern && !desk.interns.solid.has(i);', '                    : intern && y === cellAt(grid, walker.anchor)[1];']);
+        $route = $dir.'/../floor/route.js';
+        $source = (string) file_get_contents($route);
+        $this->assertSame(1, substr_count($source, '    const onStep = (p) => front !== null &&'), 'the plant\'s second anchor is not in route.js exactly once');
+        file_put_contents($route, str_replace('    const onStep = (p) => front !== null &&', '    const onStep = (p) => false &&', $source));
+        $floor = $this->probe(['mode' => 'walks', 'map' => null, 'walls' => []], $dir, __DIR__.'/walk-probe.mjs');
+        $defects = array_values(array_filter($this->walkDefects($floor), static fn (string $d): bool => str_contains($d, 'couch footprint') || str_contains($d, 'its seat by')));
+
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'stool 0:') && str_contains($d, 'couch footprint')), 'a front-row walk along its row crosses no couch');
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'stool 4:') && str_contains($d, 'couch footprint')), 'a back-row walk along its row crosses no couch');
+        $this->assertNotSame([], array_filter($defects, static fn (string $d): bool => str_contains($d, 'its seat by')), 'no walk reaches or leaves its seat other than by the front step');
+    }
+
     public function test_red_the_door_moved_under_a_desk(): void
     {
         $doc = json_decode((string) file_get_contents(self::LOUNGE), true);

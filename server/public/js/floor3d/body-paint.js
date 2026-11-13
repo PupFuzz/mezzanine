@@ -315,9 +315,12 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             c.mesh.visible = p !== null && p.where === 'floor';
 
             if (p !== null) {
-                c.mesh.position.set(p.x, 0, p.z);
+                // An intern on its seat's step stands at the height the world lifts it to and faces the front (`walkerAt()`).
+                c.mesh.position.set(p.x, p.y, p.z);
 
-                if (q !== null && (p.x !== q.x || p.z !== q.z)) {
+                if (p.step) {
+                    c.mesh.rotation.y = 0;
+                } else if (q !== null && (p.x !== q.x || p.z !== q.z)) {
                     c.mesh.rotation.y = Math.atan2(p.x - q.x, p.z - q.z);
                 }
             }

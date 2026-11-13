@@ -20,7 +20,8 @@
  * across and the drawn height up (its depth follows its width, so it keeps its plan), its foot on the floor and its
  * front toward `+z` — the side the 2-D floor draws; a desk is fitted to its slab, its drawers toward its sitter; a monitor
  * faces its sitter (plan § 3.4, the operator's Q4 answer); a couch is fitted to the box the world lays it in, at one
- * scale every way, lengthened between its arms (`lengthened()`), so its seat is where the world seats its interns.
+ * scale up and across, as deep as that box (its row's footprint), lengthened between its arms (`lengthened()`), so its
+ * seat is where the world seats its interns.
  *
  * ⛔ IT DECIDES NOTHING ABOUT WHAT STANDS WHERE: `rebuild(world)` places what the world carries, and a file that has not
  * answered yet draws nothing until it does — `ready()` is called then, so the page draws the floor again (plan § 3.5's

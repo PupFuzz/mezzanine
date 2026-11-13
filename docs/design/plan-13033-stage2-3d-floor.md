@@ -1101,8 +1101,16 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    cap; its plants are the floor height, the couch as wide as the side table's rect, and a guessed seat height. § 6's
    furniture term counts the couch as one instanced mesh per primitive per couch length a floor stands — a row's places
    set the length, so at most a row's worth of lengths — and the cap floor, every couch a full row, stands one length.
-   **Not changed:** an intern's walk still ends at its stool's foot on the floor, and its `seat` leg (the laptop's fade)
-   is drawn there, before the seated body stands on the cushion.
+   **Amended again (2026-11-13, the operator's report that interns walked through the couch to their seats, and the
+   operator's choice of option A — `FLOOR.md` § 13 row 120):** the couch is no longer the file at one scale every way.
+   Each row's couch stands on the layout's footprint (`desk-layout.js`'s `COUCH_FOOTPRINT`, `couchFootprint()`): `couchesOf()`
+   keeps `COUCH_SCALE` up and across — the seat's height, the arms' thickness, the length between the arms — and makes the
+   couch as deep as the footprint, its front edge the footprint's, so an aisle is left in front of every row where the
+   file's own depth left the back row's couch almost against the front row's. The router reads the same footprint: an
+   intern reaches its seat only by a straight step from the cell in front of it (`route.js`'s `route()`), and the world
+   lifts the walker onto the seat through that step (`walkerAt()`), so it no longer stands on the floor at its foot and
+   pops onto the cushion. The `seating` leg holds each couch to its row's footprint in depth and inside it across; the
+   `steps` leg holds the rise; its plants are the couch at the file's own depth, the lift only at the foot, and no lift.
 6. **The ride from the 3-D floor** — the doorway as the control, the cab modal, `ride-page.js`'s route kind, the
    arrival on the destination's 3-D route; `TheFloorsRideIsNavigationTest`'s shape on the new page.
 7. **The default** (gated on the operator's reading — Q3's answer A was *beside first*): `/floor/{floor}` serves the
