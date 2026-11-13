@@ -96,7 +96,7 @@ const DESK_LAYOUT = readFileSync(join(shipped.js, 'floor', 'desk-layout.js'), 'u
 const CAP = Number(DESK_LAYOUT.match(/export const STOOL_CAP = (\d+);/)?.[1] ?? NaN);
 const SEATS_LEAST = Number(DESK_LAYOUT.match(/export const SIDE_TABLE_SEATS = (\d+);/)?.[1] ?? NaN);
 
-/** Every `(install_id, seat_id)` a fixture's snapshot or delta names. */
+/** Every seat a fixture's snapshot or delta names, by its room and `seat_id`. */
 function deskKeys(file) {
     const keys = new Set();
     const walk = (o) => {
@@ -149,9 +149,10 @@ async function open(t) {
     const floorLayout = await load(join(t.js, 'floor', 'floor-layout.js'));
     const tileset = await load(join(t.js, 'floor', 'tileset.js'));
     const deskLayout = await load(join(t.js, 'floor', 'desk-layout.js'));
+    const mapTiles = await load(join(t.js, 'floor', 'map-tiles.js'));
     const characters = await load(join(t.root, 'resources', 'characters', 'index.js'));
 
-    return { t, registry, themes, missing, scene, floorLayout, tileset, deskLayout, characters };
+    return { t, registry, themes, missing, scene, floorLayout, tileset, deskLayout, mapTiles, characters };
 }
 
 /**
@@ -191,17 +192,16 @@ function documents(o) {
     out.push(['the shipped default room, no landing, no band', 'plane', { ...room, band_foot: false, threshold: null }]);
     out.push(['a hallway grid', 'plane', { w: 1576, h: 96, seed: 'aimla', desks: [], walls: [], accents: [], cell: { w: 8, h: 8 }, band_foot: false, threshold: null }]);
 
+    // Every standing piece's input through the one builder the scene and the cab's door view hand the theme
+    // (`map-tiles.js`'s `sceneryInput()` — the restroom door's plates included, card#12786).
     for (const c of cells.filter((c) => c.kind !== null && !o.scene.PLANE_KINDS.includes(c.kind))) {
-        // card#12786: the restroom door is handed its plates' rects, as the scene hands them (`RESTROOM_PLATES`).
-        const plates = c.kind === o.scene.RESTROOM_DOOR.kind ? o.scene.RESTROOM_PLATES : {};
-
-        out.push([`default room scenery ${c.kind} at ${c.x},${c.y}`, 'scenery', { kind: c.kind, w: c.w, h: c.h, seed: 'default', index: c.index, ...plates }]);
+        out.push([`default room scenery ${c.kind} at ${c.x},${c.y}`, 'scenery', o.mapTiles.sceneryInput(c, 'default')]);
     }
 
     for (const tile of tiles) {
         if (tile.kind !== null && !o.scene.PLANE_KINDS.includes(tile.kind)) {
             for (const seed of ['aimla', 'beta', 'gamma']) {
-                out.push([`${tile.kind} at ${tile.w} × ${tile.h}`, 'scenery', { kind: tile.kind, w: tile.w, h: tile.h, seed, index: tile.id }]);
+                out.push([`${tile.kind} at ${tile.w} × ${tile.h}`, 'scenery', o.mapTiles.sceneryInput({ kind: tile.kind, w: tile.w, h: tile.h, index: tile.id }, seed)]);
             }
         }
     }
@@ -458,6 +458,17 @@ function drift(o) {
             if (!seen.has(key)) {
                 defects.push(`${who}the module's PALETTE piece ${key} has no row in the table`);
             }
+        }
+
+        // card#12987: the cab's painter reads `PALETTE.view` by the house theme's keys, so every theme carries exactly them —
+        // a key one theme lacks is a surface drawn in the sheet's fallback on that theme's floors alone.
+        const houseView = Object.keys(o.themes[o.registry.HOUSE_THEME]?.PALETTE?.view ?? {}).sort();
+        const view = Object.keys(theme.PALETTE.view ?? {}).sort();
+
+        if (houseView.length === 0) {
+            defects.push(`the house theme's PALETTE has no view row — the cab's door view would read nothing`);
+        } else if (view.join(',') !== houseView.join(',')) {
+            defects.push(`${who}PALETTE.view holds the keys ${view.join(', ') || 'none'}, the house theme's are ${houseView.join(', ')}`);
         }
 
         const allowed = new Set([...hexes(theme.PALETTE), ...hexes(theme.RULES)]);
@@ -787,8 +798,8 @@ const PLANTS = [
     ['text in a theme: the seat\'s id in the chair', 'wellFormedness', 'chair — a <text>',
         (t) => edit(THEME(t), "return doc(pen, CHAIR.w, CHAIR.h, rimmed(", 'return doc(pen, CHAIR.w, CHAIR.h, `<text>${seatId}</text>` + rimmed(')],
     ['state reaching a theme: the chair reads render_state', 'closure', 'chair draws',
-        (t) => edit(THEME(t), "export function chair({ install_id: installId, seat_id: seatId }) {\n    const pen = new Pen();\n    const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);",
-            "export function chair({ install_id: installId, seat_id: seatId }, seat) {\n    const pen = new Pen();\n    const c = seat?.render_state === 'offline' ? PALETTE.chair.colours[0] : pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);")],
+        (t) => edit(THEME(t), "export function chair({ seat_id: seatId }) {\n    const pen = new Pen();\n    const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);",
+            "export function chair({ seat_id: seatId }, seat) {\n    const pen = new Pen();\n    const c = seat?.render_state === 'offline' ? PALETTE.chair.colours[0] : pick(seatId, 'theme:chair', PALETTE.chair.colours);")],
     ['the reviewed set shrunk: offline dropped from REVIEWED', 'surfaces', "is not the tool's REVIEWED stale, disabled",
         (t) => edit(t.tool, "REVIEWED = ['stale', 'offline', 'disabled']", "REVIEWED = ['stale', 'disabled']")],
     ['a surface that is not a floor: the landing\'s colour', 'surfaces', "the landing's — an exclusion",
@@ -808,8 +819,11 @@ const PLANTS = [
     // card#12845's second theme and the shared module: the legs that read every theme must read each of them.
     ['the second theme\'s palette drifts: its floor changed in the module, its table left', 'drift', "cottage: floor: the table states #cbd3b3, the module's PALETTE holds #c9cdb6",
         (t) => edit(SECOND(t), "floor: Object.freeze({ boards: '#cbd3b3' }),", "floor: Object.freeze({ boards: '#c9cdb6' }),")],
+    // card#12987: the cab's door view reads every theme's PALETTE.view by the house theme's keys.
+    ['the second theme\'s view row loses a key the house theme has', 'drift', 'cottage: PALETTE.view holds the keys desk, desk_edge, monitor, partition, the house theme\'s are',
+        (t) => edit(SECOND(t), ", partition: '#f2efe6', partition_cap: '#5f7f9f' }),", ", partition: '#f2efe6' }),")],
     ['the second theme writes a colour its palette does not hold', 'drift', 'cottage: the module writes #123456',
-        (t) => edit(SECOND(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", "const c = '#123456';")],
+        (t) => edit(SECOND(t), "const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);", "const c = '#123456';")],
     ['a shared module holds a colour', 'drift', 'themes/paint.js writes #3d2b3c',
         (t) => edit(PAINT(t), 'fill="${pen.soft(rules.shade, op)}"', 'fill="${pen.soft(\'#3d2b3c\', op)}"')],
     ['a shared module reads a random source', 'wellFormedness', 'themes/paint.js: the module requests, reads a clock, a random source or storage',
@@ -821,7 +835,7 @@ const PLANTS = [
     ['the second theme\'s window surround is not its rect', 'band', "cottage's windowSurround's document is",
         (t) => edit(SECOND(t), '    const W = gw + 64;', '    const W = gw + 60;')],
     ['a draw that is not the key\'s: Math.random() for one seeded choice', 'totality', 'is not one document per input',
-        (t) => edit(THEME(t), "const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
+        (t) => edit(THEME(t), "const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);", 'const c = PALETTE.chair.colours[Math.floor(Math.random() * PALETTE.chair.colours.length)];')],
 ];
 
 for (const [red, leg, says, plant] of PLANTS) {

@@ -150,7 +150,7 @@ class ProtocolAgentRoleRelayTest extends FeedTestCase
         $this->fold();
         $newest = DB::table('events')->where('seat_ref', $this->seatRef)->max('received_at');
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT, '--since' => $newest])
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT, '--since' => $newest])
             ->assertSuccessful();
 
         $this->assertNull($this->state()->protocol_agent_name, 'the control: the rebuild did not reset the name pair');

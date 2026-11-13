@@ -639,8 +639,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -649,8 +652,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -673,7 +690,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -1742,8 +1759,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -1752,8 +1772,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -1776,7 +1810,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -2532,8 +2566,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -2542,8 +2579,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -2566,7 +2617,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -3223,8 +3274,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -3233,8 +3287,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -3257,7 +3325,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -3914,8 +3982,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -3924,8 +3995,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -3948,7 +4033,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -4763,8 +4848,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -4773,8 +4861,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -4797,7 +4899,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -4817,7 +4919,7 @@
    "lobby": true
   },
   "lobby_markers": {
-   "note": "fx-lobby's **markers** run: `kanban` (the bridge) holds fourteen seats across its two rooms, served out of seat_id order, `a-01` in both rooms, and `kanban-bridge/br-03` carrying the unrecognised render_state `napping` on a stale link. The row draws the first twelve in room-key-then-seat_id order and +2 more.",
+   "note": "fx-lobby's **markers** run: `kanban` (the bridge) holds fourteen seats across its two rooms, served out of seat_id order, and `br-03` carrying the unrecognised render_state `napping` on a stale link. The row draws the first twelve in room-key-then-seat_id order and +2 more.",
    "http": {
     "/api/fleet/snapshot": [
      {
@@ -6264,7 +6366,7 @@
           },
           {
            "install_id": "kanban-bridge",
-           "seat_id": "a-01",
+           "seat_id": "b-01",
            "character": {
              "species": "radish"
            },
@@ -6325,7 +6427,7 @@
            "enabled": true,
            "roundtable_agent_name": null,
            "roundtable_agent_name_check": null,
-           "protocol_agent_name": "a-01",
+           "protocol_agent_name": "b-01",
            "protocol_agent_name_check": "checked",
            "protocol_agent_role": "impl",
            "reporter": {
@@ -6512,8 +6614,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -6522,8 +6627,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -6546,7 +6665,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -7208,7 +7327,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -7228,8 +7347,13 @@
    "lobby": true
   },
   "lobby_ride": {
-   "note": "FLOOR.md § 11 fx-lobby's **lobby-ride** run (AT-D3-28, card#12113): `lobby_plaque`'s snapshot, heartbeat and three floors, the lobby's own lobby link handed over, and the lobby's elevator ridden three times: to `aimla` (*Floor 2*) — a second press while the first ride is opening, refused; the layout re-fetched by a `building.layout` (3 500 ms) while the viewer is `inside`, relabelling `kanban` *the deck*, so the cab's stops are re-derived; the doors open on `aimla` and the ride leaves for `/floor/aimla#ride`, abandoned at the bound (the harness does not navigate) — then Escape `inside`, a stay; then *Lobby* pressed in the cab, a stay. The ride writes no animation-log row.",
+   "note": "FLOOR.md § 11 fx-lobby's **lobby-ride** run (AT-D3-28, card#12113): `lobby_plaque`'s snapshot, heartbeat and three floors, the lobby's own lobby link handed over, and the lobby's elevator ridden three times: to `aimla` (*Floor 2*) — a second press while the first ride is opening, refused; the layout re-fetched by a `building.layout` (3 500 ms) while the viewer is `inside`, relabelling `kanban` *the deck*, so the cab's stops are re-derived; the doors open on `aimla` and the ride leaves for `/floor/aimla#ride`, abandoned at the bound (the harness does not navigate) — then Escape `inside`, a stay; then *Lobby* pressed in the cab, a stay. The first press asks for every stop's room map and their tileset, for the floor behind the cab's doors (card#12987) — each answered once, held by version, so the later presses ask for none. The ride writes no animation-log row.",
    "http": {
+    "/api/building/rooms/aimla/map": [{"status": 200, "body": {"install_id": "aimla", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/api/building/rooms/kanban/map": [{"status": 200, "body": {"install_id": "kanban", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/api/building/rooms/sola/map": [{"status": 200, "body": {"install_id": "sola", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/api/building/rooms/kanban-bridge/map": [{"status": 200, "body": {"install_id": "kanban-bridge", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+    "/art/floor/tiles/floor-plane.tsx": [{"status": 200, "text": "@text:resources/floor/tiles/floor-plane.tsx"}],
     "/api/fleet/snapshot": [
      {
       "status": 200,
@@ -7865,8 +7989,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -7875,8 +8002,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -7900,8 +8041,11 @@
         "layout_version": 8,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -7910,8 +8054,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the deck",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-deck",
+          "name": "the deck",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -7934,7 +8092,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {
@@ -7952,7 +8110,7 @@
     {
      "at_ms": 3500,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "building.layout",
       "server_time": "2026-08-23T14:23:17.000Z",
       "layout_version": 8,
@@ -7983,7 +8141,7 @@
      {
       "at_ms": 3600,
       "act": "choose",
-      "key": "aimla"
+      "key": "floor-2"
      },
      {
       "at_ms": 4850,
@@ -8685,8 +8843,11 @@
         "layout_version": 7,
         "floors": [
          {
-          "floor": "aimla",
-          "label": "Floor 2",
+          "floor": "floor-2",
+          "name": "Floor 2",
+          "aliases": [
+           "aimla"
+          ],
           "rooms": [
            {
             "install": "aimla",
@@ -8695,8 +8856,22 @@
           ]
          },
          {
-          "floor": "kanban",
-          "label": "the bridge",
+          "floor": "sola",
+          "name": "sola",
+          "aliases": [],
+          "rooms": [
+           {
+            "install": "sola",
+            "form": "open"
+           }
+          ]
+         },
+         {
+          "floor": "the-bridge",
+          "name": "the bridge",
+          "aliases": [
+           "kanban"
+          ],
           "rooms": [
            {
             "install": "kanban",
@@ -8719,7 +8894,7 @@
     {
      "at_ms": 1000,
      "envelope": {
-      "feed_version": 2,
+      "feed_version": 3,
       "t": "feed.heartbeat",
       "server_time": "2026-08-23T14:23:15.400Z",
       "fleet": {

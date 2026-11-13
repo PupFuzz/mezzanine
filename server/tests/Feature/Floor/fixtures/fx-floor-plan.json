@@ -1243,8 +1243,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -2135,7 +2138,7 @@
       "messages": [],
       "until_ms": 200,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -2769,8 +2772,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -3950,7 +3956,7 @@
       "messages": [],
       "until_ms": 200,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -4584,8 +4590,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -5488,7 +5497,7 @@
       "messages": [],
       "until_ms": 200,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -6122,8 +6131,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -6419,7 +6431,7 @@
       "messages": [],
       "until_ms": 200,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -7924,7 +7936,7 @@
       "messages": [],
       "until_ms": 200,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -8558,8 +8570,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -10076,7 +10091,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -10087,7 +10102,7 @@
       ],
       "until_ms": 1000,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -10721,8 +10736,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -10750,8 +10768,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -11932,7 +11953,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "building.layout",
             "server_time": "2026-08-23T14:23:16.400Z",
             "layout_version": 8,
@@ -11942,7 +11963,7 @@
       ],
       "until_ms": 1000,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -11968,8 +11989,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -12860,7 +12884,7 @@
       "messages": [],
       "until_ms": 200,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }
@@ -13494,8 +13518,11 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "aimla",
-                    "label": "the big room",
+                    "floor": "the-big-room",
+                    "name": "the big room",
+                    "aliases": [
+                      "aimla"
+                    ],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -14397,7 +14424,7 @@
       "messages": [],
       "until_ms": 200,
       "floor": {
-        "key": "aimla",
+        "key": "the-big-room",
         "local_hours": 19,
         "local_minutes": 30
       }

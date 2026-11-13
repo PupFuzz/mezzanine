@@ -53,7 +53,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
     /** @param list<array<string, mixed>> $floors */
     private function compose(array $floors): int
     {
-        return Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), self::OPERATOR);
+        return Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), self::OPERATOR, Layouts::version());
     }
 
     private function save(string $installId, string $document): int
@@ -180,14 +180,14 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
     public function test_a_layout_save_is_a_revision_and_a_byte_identical_one_is_refused(): void
     {
-        $document = (string) json_encode(['floors' => [['rooms' => ['sola' => ['form' => 'office']]]]], JSON_PRETTY_PRINT);
+        $document = (string) json_encode(['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]], JSON_PRETTY_PRINT);
 
-        $this->assertSame(1, Layouts::save($document, self::OPERATOR));
+        $this->assertSame(1, Layouts::save($document, self::OPERATOR, Layouts::version()));
         $this->assertSame(1, Layouts::version());
         $this->assertSame($document, Layouts::documentText());
 
         try {
-            Layouts::save($document, self::OPERATOR);
+            Layouts::save($document, self::OPERATOR, Layouts::version());
             $this->fail('a byte-identical layout save was recorded as a revision');
         } catch (InvalidBuildingLayout $e) {
             $this->assertStringContainsString('byte for byte the one that is already current', $e->getMessage());
@@ -201,7 +201,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // § 6.4's DDL comment carries the argument: D1 § 3.1's slug is at least two characters
         // long, so no `install_id` can be `''`. Asserted rather than trusted, because the two
         // kinds share one table and one unique key.
-        $this->compose([['rooms' => ['sola' => ['form' => 'office']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
         $this->save('sola', FloorMapFixture::valid(4));
 
         $subjects = DB::table('authored_revisions')->orderBy('id')->pluck('subject', 'kind');
@@ -212,8 +212,8 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
     public function test_a_layout_restore_is_a_forward_revision_too(): void
     {
-        $this->compose([['rooms' => ['sola' => ['form' => 'office']]]]);
-        $this->compose([['rooms' => ['sola' => ['form' => 'open']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'open']]]]);
 
         $this->assertSame(3, Layouts::restore(1, self::OPERATOR));
         $this->assertSame(1, (int) Revisions::get(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT, 3)->restored_from);
@@ -222,7 +222,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
     public function test_restoring_a_layout_revision_that_is_already_current_is_refused_as_a_no_op(): void
     {
-        $this->compose([['rooms' => ['sola' => ['form' => 'office']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
 
         $this->expectException(InvalidBuildingLayout::class);
         $this->expectExceptionMessage('restoring it would change nothing');
@@ -241,7 +241,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         $this->save('sola', FloorMapFixture::sized(15, FloorMapFixture::boxRows()));
         $this->save('zeta', FloorMapFixture::sized(15, FloorMapFixture::boxRows()));
 
-        $this->compose([['rooms' => [
+        $this->compose([['name' => 'sola', 'rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 0]],
         ]]]);
@@ -258,7 +258,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         $this->expectException(InvalidBuildingLayout::class);
         $this->expectExceptionMessage('Rooms `sola` and `zeta` would share pixels');
 
-        $this->compose([['rooms' => [
+        $this->compose([['name' => 'sola', 'rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 479, 'y' => 0]],
         ]]]);
@@ -295,7 +295,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // revision 1 would now put it back on top of `zeta` — a document that was valid when it
         // was written and is not valid now, which is exactly what a restore has to re-check.
         $this->save('sola', FloorMapFixture::sized(14, FloorMapFixture::boxRows()));
-        $this->compose([['rooms' => [
+        $this->compose([['name' => 'sola', 'rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 448, 'y' => 0]],
         ]]]);
@@ -348,7 +348,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // no extent to resolve. Without this arm the refusal above would pass against a store that
         // refused every removal.
         $this->save('sola', FloorMapFixture::sized(15, FloorMapFixture::boxRows()));
-        $this->compose([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
 
         $this->assertTrue(Floors::remove('sola', self::OPERATOR));
         $this->assertNull(Floors::forInstall('sola'));
@@ -373,7 +373,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // `zeta` starts where `sola` ends, so the two authored rooms share an edge and only the
         // unauthored room's own span can produce an overlap — read off the fixture, not typed.
         $zetaAt = FloorMap::parse(FloorMapFixture::sized(15, FloorMapFixture::boxRows()))->pixelWidth();
-        $rooms = fn (int $novaAt): array => [['rooms' => [
+        $rooms = fn (int $novaAt): array => [['name' => 'nova', 'rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => $zetaAt, 'y' => 0]],
             'nova' => ['form' => 'office', 'origin' => ['x' => $novaAt, 'y' => 0]],
@@ -402,7 +402,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
         // asserted by RUNNING a pass rather than by reading it: a later card adding one of these
         // tables to that plan is the edit this arm exists to red, and it would not touch this file.
         $this->save('aimla', FloorMapFixture::valid(12));
-        $this->compose([['rooms' => ['aimla' => ['form' => 'open']]]]);
+        $this->compose([['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]]]);
         Floors::remove('aimla', self::OPERATOR);
 
         // Age every authored row far past the retention boundary — the state in which a purge
@@ -469,7 +469,7 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
 
     public function test_a_layout_save_announces_its_new_version(): void
     {
-        $this->compose([['rooms' => ['sola' => ['form' => 'office']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
 
         $announced = $this->wire->all();
 
@@ -501,14 +501,14 @@ class TheAuthoredStoreKeepsEveryRevisionTest extends TestCase
     {
         $this->save('aimla', FloorMapFixture::valid(12));
         $this->save('aimla', FloorMapFixture::valid(8));
-        $this->compose([['rooms' => ['sola' => ['form' => 'office']]]]);
-        $this->compose([['rooms' => ['sola' => ['form' => 'open']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
+        $this->compose([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'open']]]]);
 
         $writes = [
             'a room map save' => fn () => $this->save('aimla', FloorMapFixture::valid(4)),
             'a room map restore' => fn () => Floors::restore('aimla', 1, self::OPERATOR),
             'a room map removal' => fn () => Floors::remove('aimla', self::OPERATOR),
-            'a layout save' => fn () => $this->compose([['rooms' => ['zeta' => ['form' => 'office']]]]),
+            'a layout save' => fn () => $this->compose([['name' => 'zeta', 'rooms' => ['zeta' => ['form' => 'office']]]]),
             'a layout restore' => fn () => Layouts::restore(1, self::OPERATOR),
         ];
 

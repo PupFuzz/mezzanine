@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Tests\Support\Rooms;
 use Tests\TestCase;
 
 /**
@@ -107,19 +108,21 @@ abstract class CommittedSeatTestCase extends TestCase
 
         $this->on(self::FIXTURE, function () {
             $this->assertSame(0, Artisan::call('mezzanine:ingest-token:issue', [
-                'install_id' => $this->install(), 'seat_id' => $this->seat(), '--by' => 'suite',
+                'seat_id' => $this->seat(), '--by' => 'suite',
             ]));
+            // Issued in no room since card#13117; the fixture's seat is in the subclass's room, which
+            // is what scopes this class's cleanup below.
+            Rooms::place($this->seat(), $this->install());
         });
 
         $token = DB::connection(self::FIXTURE)->table('ingest_tokens')
             ->join('seats', 'seats.id', '=', 'ingest_tokens.seat_ref')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('installs.install_id', $this->install())->where('seats.seat_id', $this->seat())
+            ->whereNull('seats.retired_at')->where('seats.seat_id', $this->seat())
             ->select(['ingest_tokens.id', 'ingest_tokens.prefix', 'ingest_tokens.seat_ref'])
             ->first();
 
         $this->seatRef = (int) $token->seat_ref;
-        $this->binding = new TokenBinding((int) $token->id, $token->prefix, $this->seatRef, $this->install(), $this->seat());
+        $this->binding = new TokenBinding((int) $token->id, $token->prefix, $this->seatRef, $this->seat());
     }
 
     protected function tearDown(): void

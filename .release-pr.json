@@ -7,7 +7,7 @@
     "board_id": 14,
     "released_stage_id": 108,
     "shipped_stage_ids": "107",
-    "writeback_user_id": 15,
+    "writeback_user_id": 26,
     "api_base": "https://kanban.example.com/api/v3"
   }
 }

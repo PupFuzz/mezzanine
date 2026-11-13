@@ -42,7 +42,7 @@ use Tests\TestCase;
  * pinch — the screen's `pinch()`, zooming by its factor about the fingers' midpoint.
  *
  * ⚠ AND WHAT NO TEST HERE CAN: that a wheel event, a pinch or a drag in a browser reaches these acts. The
- * page half (`floor/main.js`) is wired to them and decides nothing; `TheCameraWireIsOneForBothPagesTest`
+ * page half (`floor/main.js`) is wired to them and decides nothing; `TheCameraWireIsOneForEveryPageTest`
  * holds the gesture wire under `node`, `FloorPageWiringTest` the page's elements, and card#11045 PR-B
  * drove the page in headless Chromium by hand — never a real trackpad, touch screen or Safari.
  */
@@ -988,7 +988,7 @@ class TheCameraMovesTheViewerAndNeverTheFleetTest extends TestCase
         $requests = $result['final']['requests'];
         $count = static fn (string $prefix): int => count(array_filter($requests, static fn (string $r): bool => str_starts_with($r, $prefix)));
 
-        foreach (['/api/fleet/snapshot' => 2, '/api/fleet/seats/aimla/aimla-pm' => 1, '/api/building/rooms/aimla/map' => 2] as $path => $n) {
+        foreach (['/api/fleet/snapshot' => 2, '/api/fleet/seats/aimla-pm' => 1, '/api/building/rooms/aimla/map' => 2] as $path => $n) {
             if ($count($path) < $n) {
                 $defects[] = "the run asked for {$path} fewer than {$n} times — that re-render never happened";
             }

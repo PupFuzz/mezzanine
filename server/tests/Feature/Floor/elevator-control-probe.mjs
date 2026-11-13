@@ -7,13 +7,14 @@
  * each make, each band leaf's `style`, and `paintCab()`'s cab — and (card#12039) what `cabTheme()` carries onto the
  * dialog from the shipped house theme's elevator palette, and the cab drawing's fit and paint — and (card#12051) the
  * cab's room in depth: its back wall, side walls, ceiling and floor as drawn, the layer behind its leaves, and the room
- * `drawCabInterior()` draws into a box of its own — and (card#12052) what is seen through the open doors: the office
- * in the cab's layer behind its leaves (`drawOfficeView()`), the cab's room behind the band's leaves, what is drawn after
+ * `drawCabInterior()` draws into a box of its own — and (card#12052) what is seen through the open doors: the bare room
+ * in the cab's layer behind its leaves (`drawOfficeView()`, a floor's stop with no model), the cab's room behind the band's leaves, what is drawn after
  * the leaves in each doorway, and `STYLE`'s `color-mix()` fallback — and (card#12071) the call plate beside the cab's
  * doors, read as scenery and as a control would be, and the share of the cab's view its doorway takes — and (card#12113)
  * the view behind the cab's doors chosen by `scene.ride`'s `beyond`: the lobby (`drawLobbyView()`) for `lobby`, the
- * office for `office`, each in the cab and on its own; and the module's `paintCab()` / `cabTheme()`, which a page with
- * no painter calls, against the painter's own.
+ * floor (`drawFloorView()`) for `office`, each in the cab and on its own; and the module's `paintCab()` / `cabTheme()`, which a page with
+ * no painter calls, against the painter's own — and (card#12987) the floor seen through the cab's doors, painted and
+ * wired (`door-view-leg.mjs`), with the bare room it falls back to.
  *
  * argv: `--js <tree>` (default: the shipped tree). stdout: JSON, one member per leg (see the bottom).
  */
@@ -21,6 +22,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Node } from './fake-svg-node.mjs';
+import { doorViewLeg } from './door-view-leg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -224,21 +226,27 @@ const clipOf = (root) => {
     return { id, rect: rectOf(path?.children[0]), drawn: nodes(clipped).filter((n) => n.name === 'polygon' || n.name === 'rect').length };
 };
 
-// The office, in the themed cab's layer behind its leaves: its doorway (the two leaves' span) and what is drawn in it.
+// The floor's view in the cab's layer behind its leaves is the door-view leg's (card#12987, `door-view-leg.mjs`): here, the
+// doorway (the two leaves' span), how many views the themed cab's layer holds with no model (one: the bare room), and the
+// bare room — `drawOfficeView()` — drawn on its own into a box of its own.
 const [leafL, leafR] = withClass(themedHost, 'elevator-leaf').map(rectOf);
-const officeIn = beyond === null ? null : firstOf(beyond, 'office-view');
 const officeAlone = new Node('g');
 const officeBox = { x: 5, y: 7, w: 55, h: 100 };
 const officeAnswer = drawOfficeView(officeAlone, officeBox, 'probe-office');
 const officeLeg = {
     office: OFFICE,
     door: leafL === undefined ? null : { x: leafL.x, y: leafL.y, w: leafR.x + leafR.w - leafL.x, h: leafL.h },
-    found: officeIn !== null,
-    clip: officeIn === null ? null : clipOf(officeIn),
-    census: officeIn === null ? [] : census(officeIn),
-    beyond: beyond === null ? [] : census(beyond).filter((c) => c.cls.includes('office-view')).length,
-    alone: { box: officeBox, answered: officeAnswer.clip, clip: clipOf(officeAlone), ids: census(officeAlone).map((c) => c.id).filter((v) => v !== null) },
+    beyond: beyond === null ? [] : census(beyond).filter((c) => c.cls.includes('floor-view')).length,
+    alone: {
+        box: officeBox,
+        answered: officeAnswer.clip,
+        clip: clipOf(officeAlone),
+        ids: census(officeAlone).map((c) => c.id).filter((v) => v !== null),
+        census: census(officeAlone),
+        parts: Object.fromEntries(['dv-floor', 'dv-ceiling', 'dv-wall', 'dv-back', 'dv-light', 'dv-partition', 'dv-desk', 'dv-accent'].map((cls) => [cls, withClass(officeAlone, cls).length])),
+    },
 };
+const doorView = await doorViewLeg(JS, census, clipOf);
 
 // The band's cab: a painter with the house theme and one without, each painting the band at rest and over a walk.
 const bandOf = (p, doors) => {
@@ -310,7 +318,7 @@ const seamLeg = { cab: cabOrder.slice(cabOrder.findIndex((c) => c.endsWith('.cab
 // painter's with the same palette.
 const viewsIn = (h) => {
     const b = firstOf(h, 'cab-beyond');
-    return { lobby: b === null ? 0 : withClass(b, 'lobby-view').length, office: b === null ? 0 : withClass(b, 'office-view').length };
+    return { lobby: b === null ? 0 : withClass(b, 'lobby-view').length, office: b === null ? 0 : withClass(b, 'floor-view').length };
 };
 const lobbyHost = new Node('div');
 lobbyHost.style = recording();
@@ -348,4 +356,4 @@ const lobbyLeg = {
     theme: { module: { props: moduleDialog.style.props, attrs: moduleDialog.attrs }, painter: { props: painterDialog.style.props, attrs: painterDialog.attrs }, unthemed: { props: moduleUnthemed.style.props, attrs: moduleUnthemed.attrs } },
 };
 
-console.log(JSON.stringify({ lobby: lobbyLeg, control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, office: officeLeg, band: bandLeg, plate: plateLeg, closer: closerLeg, seam: seamLeg, style: STYLE, elapsed: E }));
+console.log(JSON.stringify({ door_view: doorView, lobby: lobbyLeg, control: controlLeg, leaves: leavesLeg, walks: walksLeg, cab: cabLeg, palette: paletteLeg, depth: depthLeg, office: officeLeg, band: bandLeg, plate: plateLeg, closer: closerLeg, seam: seamLeg, style: STYLE, elapsed: E }));

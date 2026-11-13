@@ -34,12 +34,12 @@ git clone --depth 1 https://github.com/PupFuzz/mezzanine ~/.local/src/mezzanine 
 
 ## 2. Ask the user the one question
 
-Send this, with the two names filled in. **Propose the names**: the install id is this account's name as a
-slug (`id -un`, lower-cased, `.` and `_` turned into `-`), and the seat id is this machine's host name
-lower-cased (`hostname`); the user may type others.
+Send this, with the seat id filled in. **Propose the name**: the seat id is this machine's host name
+lower-cased (`hostname`); the user may type another. The admin console places the seat in a room; the
+installer never asks for one.
 
 > One thing I need from you: on your Mezzanine site, open **Admin → Seat tokens**, issue a token for this
-> seat — install id `<install id>`, seat id `<seat id>`, unless you want other names — click **Save token
+> seat — seat id `<seat id>`, unless you want another name — click **Save token
 > file**, and tell me where you saved or copied the file on this machine (usually
 > `~/Downloads/mezzanine-reporter-token`). Please don't paste the token itself: the installer reads the
 > file and removes it once the token is in the config.
@@ -77,7 +77,7 @@ install.js: INSTALLED: the server holds this build current and every site has ac
 install.js exit 0
 ```
 
-Tell the user the desk is on the floor as `<install id>/<seat id>`, and that a Claude Code session started
+Tell the user the desk is on the floor as `<seat id>` (in the room the admin console places it in), and that a Claude Code session started
 before the install, this one included, reports its tool calls once it is restarted. **On Windows** add that
 nothing keeps the background process running when no Claude Code session is open, so the desk reads
 offline then (the operator's ruling, Option A). An `exit 2` installed the reporter and could not measure a
@@ -110,7 +110,7 @@ tokens page.
 | `no gui launchd domain for this user` | macOS over SSH | the macOS install supports a GUI login with Claude Code in a Terminal there |
 | `a roaming profile copies %APPDATA% …` | a Windows roaming profile | not supported: the token would leave the machine at logoff |
 | selftest `token_accepted` `fail`, or health `HTTP 401` | the site does not accept the token | the user issues a new token and saves its file; run step 3's command with the new path, which replaces it; then they revoke the old prefix |
-| arrival `REFUSED during this run`, with `code=identity_mismatch` | the token was issued for other names | as the row above, issuing it for exactly the install id and seat id the file carries |
+| arrival `REFUSED during this run`, with `code=identity_mismatch` | the token was issued for other names | as the row above, issuing it for exactly the seat id the file carries |
 | arrival `no batch accepted during this run … NOT ARRIVED`, the line ending `refusal line(s) from before this run, not judged` | a refusal before this run stopped the site's sending, and no batch has gone through since | the user reads the latest line of `REJECTED.<site>.txt` (its `status=` and `code=`): a `401` or an `identity_mismatch` is one of the two rows above; otherwise run again once the site answers |
 | arrival `NOT ARRIVED` with no such ending | no flusher ran during the wait, or the site did not answer | run again in a minute; `node install.js holder` says whether a live flusher holds the lock |
 | health `NOT CURRENT` | the checkout and the site run different builds | an older checkout: pull and re-run; newer: the site's operator deploys it |

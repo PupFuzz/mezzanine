@@ -158,7 +158,7 @@ class IdleSinceAndHorizonTest extends FeedTestCase
         $this->assertNotNull($folded, 'the control: the seat did not go idle');
 
         $this->advanceServerClock(300);
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT])->assertSuccessful();
 
         $this->assertSame('idle', $this->state()->activity_state);
         $this->assertSame($folded, $this->state()->idle_since, 'the rebuild re-dated the idle period');

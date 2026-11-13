@@ -26,7 +26,7 @@ class TheInternListIsUncappedWhereTheSideTableIsCappedTest extends TestCase
 
     private const RUN = 'panel_interns';
 
-    private const KEY = 'aimla/aimla-interns';
+    private const KEY = 'aimla-interns';
 
     /** AT-D3-4's first RED — the invented title, on the desk and in the panel. */
     private const INVENTED_TITLE = [
@@ -145,7 +145,7 @@ class TheInternListIsUncappedWhereTheSideTableIsCappedTest extends TestCase
         $panel = $this->openPanel($result, 'aimla-interns');
         $interns = $panel['interns'];
         $served = array_values(array_filter(
-            $fixture['http']['/api/fleet/seats/aimla/aimla-interns'][0]['body']['detail']['open_calls'],
+            $fixture['http']['/api/fleet/seats/aimla-interns'][0]['body']['detail']['open_calls'],
             static fn (array $c): bool => $c['is_dispatch'] === 1,
         ));
 

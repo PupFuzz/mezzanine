@@ -237,7 +237,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -316,7 +316,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.400Z",
             "install_id": "aimla",
@@ -336,7 +336,7 @@
       ],
       "until_ms": 4000,
       "final": {
-        "aimla/aimla-interns": {
+        "aimla-interns": {
           "install_id": "aimla",
           "seat_id": "aimla-interns",
           "character": {

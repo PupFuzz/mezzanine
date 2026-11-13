@@ -110,7 +110,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
      */
     public function test_green_two_eligible_seats_seat_neither_and_the_incumbent_walks_out(): void
     {
-        foreach (['fx-office-two' => 'aimla/aimla-pm-2', 'fx-office-two-relayed' => $this->roleDeltaVersion('fx-office-two-relayed', 'aimla-review')] as $run => $cause) {
+        foreach (['fx-office-two' => 'aimla-pm-2', 'fx-office-two-relayed' => $this->roleDeltaVersion('fx-office-two-relayed', 'aimla-review')] as $run => $cause) {
             $result = $this->floorRun($run);
             $frame = $this->lastFloor($result);
             [$index] = $this->reservation($run);
@@ -145,7 +145,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
         foreach (['fx-office-first-appearance' => true, 'fx-office-first-appearance-insert' => false] as $run => $arrives) {
             $result = $this->floorRun($run);
             [$index] = $this->reservation($run);
-            $key = self::ROOM.'/aimla-pm';
+            $key = 'aimla-pm';
             $first = $this->slotsOf($this->firstFloorWithSeat($result, $key), self::ROOM);
 
             $this->assertSame($this->fnv1a32($key) % 6, $first[$key], "[{$run}] the seat did not first appear at its hash slot");
@@ -173,7 +173,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
         $result = $this->floorRun('fx-office-handover');
         $rows = array_map(static fn (array $r): array => [$r['seat_id'], $r['cause']], $this->rowsFor($result, 'A16'));
 
-        $this->assertSame([['aimla-pm', 'aimla/aimla-pm-2'], ['aimla-pm-2', 'aimla/aimla-pm']], $rows);
+        $this->assertSame([['aimla-pm', 'aimla-pm-2'], ['aimla-pm-2', 'aimla-pm']], $rows);
         $this->assertSame(['aimla-pm'], array_column($this->rowsFor($result, 'A13'), 'seat_id'));
     }
 
@@ -201,7 +201,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
     /**
      * GREEN — a role relay in the SAME render as an arrival (`fx-office-relay-with-arrival`): one
      * discovery release applies `aimla-pm`'s delta relaying `pm`, `aimla-impl-2`'s relaying
-     * `impl-lead`, and the arriving `aimla-mac-1`'s. Each mover keeps its own cause — `aimla-pm`, whose
+     * `impl-lead`, and the arriving `aimla-win-6`'s. Each mover keeps its own cause — `aimla-pm`, whose
      * eligibility the relay changed, names its delta; `aimla-impl-2`, whose relay changed no
      * eligibility, names the arrival that took its slot.
      */
@@ -213,7 +213,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
 
         $this->assertSame($this->relayWithArrivalCauses(), $this->moversAndCauses($result));
         $this->assertCount(1, array_unique(array_column($this->rowsFor($result, 'A16'), 'at')), 'the two moves were not written in one render');
-        $this->assertSame($index, $this->slotsOf($this->lastFloor($result), self::ROOM)[self::ROOM.'/aimla-pm'] ?? null);
+        $this->assertSame($index, $this->slotsOf($this->lastFloor($result), self::ROOM)['aimla-pm'] ?? null);
     }
 
     /**
@@ -234,7 +234,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
 
     /**
      * ⛔ RED — a relay's own cause never used: the mover whose eligibility changed takes the
-     * arrival's cause whenever the render also carries an arrival, so `aimla-pm` names `aimla-mac-1`.
+     * arrival's cause whenever the render also carries an arrival, so `aimla-pm` names `aimla-win-6`.
      * A relay alone in its render still names its delta under this plant (the fallback), which is why
      * only the same-render run can see it.
      */
@@ -252,7 +252,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
     /** ⛔ RED — a client that ignores the reservation seats `aimla-pm` at its hash slot. */
     public function test_red_a_client_that_ignores_the_reservation_reds_the_seated_runs(): void
     {
-        $ignoring = $this->mutatedModules([self::FLOOR_SCREEN,
+        $ignoring = $this->mutatedModules(['../floor/floor-compose.js',
             'assignSlots(seats, slots.length, mapReservation(slots))',
             'assignSlots(seats, slots.length)',
         ]);
@@ -296,8 +296,8 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
      */
     public function test_red_a_cause_no_message_carries_is_refused(): void
     {
-        $this->assertTrue($this->causeIsDelivered('fx-office-two', 'aimla/aimla-pm-2'));
-        $this->assertFalse($this->causeIsDelivered('fx-office-two', 'aimla/aimla-review'));
+        $this->assertTrue($this->causeIsDelivered('fx-office-two', 'aimla-pm-2'));
+        $this->assertFalse($this->causeIsDelivered('fx-office-two', 'aimla-review'));
         $this->assertTrue($this->causeIsDelivered('fx-office-first-appearance', $this->roleDeltaVersion('fx-office-first-appearance', 'aimla-pm')));
         $this->assertFalse($this->causeIsDelivered('fx-office-first-appearance', $this->roleDeltaVersion('fx-office-first-appearance', 'aimla-pm') - 1),
             'the delta that took the seat out of `offline` carries no `protocol_agent_role`, so it is no cause for A16');
@@ -314,7 +314,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
     public function test_green_a_role_that_is_not_a_string_is_seated_by_no_reserved_desk(): void
     {
         [$index] = $this->reservation('fx-office');
-        $key = self::ROOM.'/aimla-pm';
+        $key = 'aimla-pm';
         $out = $this->assignWithPmRole(self::NON_STRING_ROLES);
 
         foreach (self::NON_STRING_ROLES as $i => $role) {
@@ -346,7 +346,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
 
         [$out] = $this->assignWithPmRole([['pm']], $loose);
 
-        $this->assertSame(self::ROOM.'/aimla-pm', $out['holder'],
+        $this->assertSame('aimla-pm', $out['holder'],
             'the RED did not bite: with a loose comparison, `[\'pm\']` was still not seated');
     }
 
@@ -369,8 +369,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
             $seats = [];
 
             foreach ($this->lastRoles('fx-office') as $key => $relayed) {
-                [$install, $seat] = explode('/', $key, 2);
-                $seats[] = ['install_id' => $install, 'seat_id' => $seat, 'protocol_agent_role' => $seat === 'aimla-pm' ? $role : $relayed];
+                $seats[] = ['install_id' => self::ROOM, 'seat_id' => $key, 'protocol_agent_role' => $key === 'aimla-pm' ? $role : $relayed];
             }
 
             $cases[] = ['seats' => $seats, 'slotCount' => 6, 'reservation' => ['index' => $reservation[0], 'id' => $reservation[1], 'role' => $reservation[2]]];
@@ -420,7 +419,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
         $slots = $holder === null ? [] : [$holder => $k];
         $order = array_values(array_filter(array_keys($roles), static fn (string $key): bool => $key !== $holder));
 
-        usort($order, fn (string $a, string $b): int => [$this->fnv1a32($a), explode('/', $a)[1]] <=> [$this->fnv1a32($b), explode('/', $b)[1]]);
+        usort($order, fn (string $a, string $b): int => [$this->fnv1a32($a), $a] <=> [$this->fnv1a32($b), $b]);
 
         foreach ($order as $key) {
             for ($i = 0; $i < $S; $i++) {
@@ -453,7 +452,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
 
         foreach ($fixture['http']['/api/fleet/snapshot'][0]['body']['installs'] as $install) {
             foreach ($install['seats'] as $seat) {
-                $roles["{$seat['install_id']}/{$seat['seat_id']}"] = $seat['protocol_agent_role'];
+                $roles[$seat['seat_id']] = $seat['protocol_agent_role'];
             }
         }
 
@@ -465,7 +464,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
                 continue;
             }
 
-            $key = "{$envelope['install_id']}/{$envelope['seat_id']}";
+            $key = $envelope['seat_id'];
 
             if ($envelope['t'] === 'seat.retired') {
                 unset($roles[$key]);
@@ -509,7 +508,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
     private function relayWithArrivalCauses(): array
     {
         return [
-            ['aimla-impl-2', self::ROOM.'/aimla-mac-1'],
+            ['aimla-impl-2', 'aimla-win-6'],
             ['aimla-pm', $this->roleDeltaVersion('fx-office-relay-with-arrival', 'aimla-pm')],
         ];
     }
@@ -523,7 +522,8 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
      */
     private function insertedRole(array $fixture, string $install, string $seat): ?string
     {
-        foreach ($fixture['http']["/api/fleet/seats/{$install}/{$seat}"] ?? [] as $response) {
+        // The client reads a seat by its id alone since card#13117.
+        foreach ($fixture['http']["/api/fleet/seats/{$seat}"] ?? [] as $response) {
             if ($response['status'] === 200) {
                 return $response['body']['protocol_agent_role'];
             }
@@ -604,7 +604,7 @@ class TheReservedDeskSeatsItsRoleAndNobodyElseTest extends TestCase
                 continue;
             }
 
-            $key = "{$envelope['install_id']}/{$envelope['seat_id']}";
+            $key = $envelope['seat_id'];
 
             if (is_string($cause) && $key === $cause && in_array($envelope['t'], ['seat.delta', 'seat.retired'], true)) {
                 return true;

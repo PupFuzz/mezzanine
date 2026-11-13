@@ -15,13 +15,13 @@
 // One sequence, each step a row that passes or fails on what the browser shows:
 //   sign-in    the login form, then the two-factor challenge with a code computed from the secret
 //   confirm    /admin/tokens asks for the password again first (`password.confirm`), then opens
-//   pattern    the slug inputs' `pattern` attributes compile in the browser (a pattern that does not compile is
+//   pattern    the seat id input's `pattern` attribute compiles in the browser (a pattern that does not compile is
 //              ignored silently): a non-slug is a `patternMismatch`, a slug is not
 //   issue      the issue response shows exactly one `mzn_` token and its prefix, and is `Cache-Control: no-store`
 //   save       card#12571, D6 § 4.2 (R-srv-1): the *Save token file* button is there, and a click builds a blob of
-//              type `application/octet-stream` downloaded as `mezzanine-reporter-token`, holding exactly the v2
-//              file — the four keys once each, LF only, no CR, no trailing space, the token the page shows, the
-//              button's `https:` ingest URL ending `/api/ingest/events`, and the issued install and seat ids — with
+//              type `application/octet-stream` downloaded as `mezzanine-reporter-token`, holding exactly the v3
+//              file (card#13117) — the three keys once each, LF only, no CR, no trailing space, the token the page
+//              shows, the button's `https:` ingest URL ending `/api/ingest/events`, and the issued seat id — with
 //              no request sent by the click and the token in no URL the page was at. On an `http:` site
 //              (`--http-site`) the row instead requires the button to be ABSENT
 //   restore    the page's `pageshow` handler, fired with `persisted` true by the walk itself, blanks the token and
@@ -134,20 +134,20 @@ try {
   if (asked) await submit('form:has(input[name=password])', { password: PASSWORD });
   row('confirm', asked && (await title()) === 'Seat tokens', `password asked first: ${asked}; then "${await title()}"`);
 
-  const pattern = await evaluate(`(() => { const i = document.getElementById('install_id'), was = i.value;
+  const pattern = await evaluate(`(() => { const i = document.getElementById('seat_id'), was = i.value;
     i.value = 'Not A Slug'; const bad = i.validity.patternMismatch; i.value = 'good-slug'; const good = i.validity.patternMismatch;
     i.value = was; return { bad, good, pattern: i.getAttribute('pattern') }; })()`);
   row('pattern', pattern.bad === true && pattern.good === false, `pattern ${pattern.pattern}: "Not A Slug" mismatch=${pattern.bad}, "good-slug" mismatch=${pattern.good}`);
 
   const seat = `uat-${randomBytes(3).toString('hex')}`;
   documents.length = 0;
-  await submit('form[action$="/admin/tokens"]', { install_id: 'uat', seat_id: seat });
+  await submit('form[action$="/admin/tokens"]', { seat_id: seat });
   const issuedDoc = documents.find((d) => d.url.endsWith('/admin/tokens'));
   const shown = await evaluate(`(() => { const el = document.getElementById('seat-token-plaintext'); const t = el ? el.textContent.trim() : '';
     return { length: t.length, shape: /^mzn_[A-Za-z0-9_-]{43}$/.test(t), prefix: t.slice(0, 12) }; })()`);
   const prefix = shown.prefix;
   row('issue', shown.shape && (await bodyTokens()) === 1 && /no-store/.test(issuedDoc?.cacheControl ?? ''),
-    `uat / ${seat}: token of ${shown.length} chars shown once, prefix ${prefix}; response ${issuedDoc?.status} Cache-Control "${issuedDoc?.cacheControl}"`);
+    `${seat}: token of ${shown.length} chars shown once, prefix ${prefix}; response ${issuedDoc?.status} Cache-Control "${issuedDoc?.cacheControl}"`);
 
   // The save, judged inside the page: only booleans, the keys, the ingest URL and the ids come back out.
   const buttons = await evaluate('document.querySelectorAll("[data-seat-token-save]").length');
@@ -171,20 +171,20 @@ try {
         noCr: !text.includes('\\r'), endsLf: text.endsWith('\\n') && lines.at(-1) === '',
         noTrailingSpace: lines.every((line) => !/[ \\t]$/.test(line)), oneSpace: body.every(([k, v]) => k && v && !/\\s/.test(v)),
         tokenIsShown: value.token === token && /^mzn_[A-Za-z0-9_-]{43}$/.test(token),
-        ingestUrl: value.ingest_url, buttonUrl: b.dataset.ingestUrl, installId: value.install_id, seatId: value.seat_id,
+        ingestUrl: value.ingest_url, buttonUrl: b.dataset.ingestUrl, seatId: value.seat_id,
         tokenInUrl: location.href.includes(token.slice(4)),
       };
     })()`);
-    const keysOnce = JSON.stringify(saved.keys) === JSON.stringify(['token', 'ingest_url', 'install_id', 'seat_id']);
+    const keysOnce = JSON.stringify(saved.keys) === JSON.stringify(['token', 'ingest_url', 'seat_id']);
     const urlOk = saved.ingestUrl === saved.buttonUrl && /^https:\/\/[^\s/]+(\/\S*)?\/api\/ingest\/events$/.test(saved.ingestUrl ?? '');
     const sent = requests.filter((u) => !u.startsWith('blob:') && !u.startsWith('data:'));
     const tokenInDocUrl = await evaluate(`[${documents.map((d) => JSON.stringify(d.url)).join(',')}].some((u) => u.includes(document.getElementById('seat-token-plaintext').textContent.trim().slice(4)))`);
     row('save', saved.built && saved.linked && saved.type === 'application/octet-stream' && saved.download === 'mezzanine-reporter-token'
       && saved.sameHref && keysOnce && saved.noCr && saved.endsLf && saved.noTrailingSpace && saved.oneSpace && saved.tokenIsShown
-      && urlOk && saved.installId === 'uat' && saved.seatId === seat && sent.length === 0 && !saved.tokenInUrl && !tokenInDocUrl,
+      && urlOk && saved.seatId === seat && sent.length === 0 && !saved.tokenInUrl && !tokenInDocUrl,
       `blob built ${saved.built}, linked ${saved.linked}; type "${saved.type}", download "${saved.download}"; keys ${JSON.stringify(saved.keys)}; `
       + `LF-only ${saved.noCr}, ends LF ${saved.endsLf}, no trailing space ${saved.noTrailingSpace}, one space per line ${saved.oneSpace}; `
-      + `token = the shown one ${saved.tokenIsShown}; ingest_url ${saved.ingestUrl} (button ${saved.buttonUrl}); ids ${saved.installId} / ${saved.seatId}; `
+      + `token = the shown one ${saved.tokenIsShown}; ingest_url ${saved.ingestUrl} (button ${saved.buttonUrl}); seat id ${saved.seatId}; `
       + `requests sent by the click ${sent.length}; token in a URL ${saved.tokenInUrl || tokenInDocUrl}`);
   }
 

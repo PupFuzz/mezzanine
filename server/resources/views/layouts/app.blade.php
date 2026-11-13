@@ -113,7 +113,8 @@
 <body class="@yield('page-class')">
     {{--
         THE MODULES' IMPORT MAP — card#12158: every module under `public/` by its URL, mapped to that URL
-        versioned by the file's mtime (`App\Support\PublicAsset::moduleMap()`), so after a deploy a page's
+        versioned by the file's mtime (`App\Support\PublicAsset::moduleMap()`), and the one bare name the vendored
+        Three.js addons import, `three`, mapped to its entry's versioned URL (`PublicAsset::BARE_MODULES`), so after a deploy a page's
         imports, static and dynamic, fetch the new copies rather than run the previous release's from the
         browser's cache. ⛔ IT PRECEDES EVERY MODULE SCRIPT ON THE PAGE, which is what makes a browser apply
         it, and it sits here rather than in the `<head>`, whose one script is the ride's reader

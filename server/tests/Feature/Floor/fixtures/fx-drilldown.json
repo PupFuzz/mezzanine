@@ -401,7 +401,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1012,7 +1012,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -1166,7 +1166,7 @@
             "clocked": true
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -1195,7 +1195,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -1213,7 +1213,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -1231,7 +1231,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -1249,7 +1249,7 @@
         {
           "at_ms": 45000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:59.400Z",
             "fleet": {
@@ -1267,7 +1267,7 @@
         {
           "at_ms": 60000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:14.400Z",
             "fleet": {
@@ -1685,7 +1685,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2296,7 +2296,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -2450,7 +2450,7 @@
             "clocked": true
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -2479,7 +2479,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2497,7 +2497,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -2515,7 +2515,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -2533,7 +2533,7 @@
         {
           "at_ms": 45000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:59.400Z",
             "fleet": {
@@ -2551,7 +2551,7 @@
         {
           "at_ms": 60000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:14.400Z",
             "fleet": {
@@ -2569,7 +2569,7 @@
         {
           "at_ms": 75000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:29.400Z",
             "fleet": {
@@ -2587,7 +2587,7 @@
         {
           "at_ms": 90000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:44.400Z",
             "fleet": {
@@ -2605,7 +2605,7 @@
         {
           "at_ms": 105000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:59.400Z",
             "fleet": {
@@ -2623,7 +2623,7 @@
         {
           "at_ms": 120000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:25:14.400Z",
             "fleet": {
@@ -3038,7 +3038,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3649,7 +3649,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -3802,7 +3802,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -4235,7 +4235,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4846,7 +4846,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -4999,7 +4999,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -5247,7 +5247,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -5858,7 +5858,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/nulls-a": [
+        "/api/fleet/seats/nulls-a": [
           {
             "status": 200,
             "body": {
@@ -5935,7 +5935,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/nulls-a/timeline": [
+        "/api/fleet/seats/nulls-a/timeline": [
           {
             "status": 200,
             "body": {
@@ -5950,7 +5950,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/nulls-b": [
+        "/api/fleet/seats/nulls-b": [
           {
             "status": 200,
             "body": {
@@ -6093,7 +6093,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/nulls-b/timeline": [
+        "/api/fleet/seats/nulls-b/timeline": [
           {
             "status": 200,
             "body": {
@@ -6238,7 +6238,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6849,7 +6849,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/real-zero": [
+        "/api/fleet/seats/real-zero": [
           {
             "status": 200,
             "body": {
@@ -6945,7 +6945,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/real-zero/timeline": [
+        "/api/fleet/seats/real-zero/timeline": [
           {
             "status": 200,
             "body": {
@@ -7101,7 +7101,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -7712,7 +7712,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-interns": [
+        "/api/fleet/seats/aimla-interns": [
           {
             "status": 200,
             "body": {
@@ -8008,7 +8008,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-interns/timeline": [
+        "/api/fleet/seats/aimla-interns/timeline": [
           {
             "status": 200,
             "body": {
@@ -8028,7 +8028,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -8107,7 +8107,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.400Z",
             "install_id": "aimla",
@@ -8823,7 +8823,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -9434,7 +9434,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review": [
+        "/api/fleet/seats/aimla-review": [
           {
             "status": 200,
             "body": {
@@ -9530,7 +9530,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review/timeline": [
+        "/api/fleet/seats/aimla-review/timeline": [
           {
             "status": 200,
             "body": {
@@ -9550,7 +9550,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -9568,7 +9568,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.retired",
             "server_time": "2026-08-23T14:23:16.400Z",
             "install_id": "aimla",
@@ -9581,7 +9581,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.900Z",
             "install_id": "aimla",
@@ -10305,7 +10305,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -10916,7 +10916,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review": [
+        "/api/fleet/seats/aimla-review": [
           {
             "status": 200,
             "body": {
@@ -11012,7 +11012,7 @@
             "delay_ms": 50
           }
         ],
-        "/api/fleet/seats/aimla/aimla-review/timeline": [
+        "/api/fleet/seats/aimla-review/timeline": [
           {
             "status": 200,
             "body": {
@@ -11032,7 +11032,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -11050,7 +11050,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.400Z",
             "install_id": "aimla",
@@ -11074,7 +11074,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.retired",
             "server_time": "2026-08-23T14:23:16.900Z",
             "install_id": "aimla",
@@ -11092,7 +11092,7 @@
       "until_ms": 4000
     },
     "retire_collision": {
-      "note": "AT-D3-16's collision chain: § 3.3's worked collision (`fx-collision`'s `collision` run — on the shipped default's reservation, `aimla-mac-1` arrives, takes slot 4, and `aimla-impl-2` probes to slot 5), then `aimla-mac-1` is retired by the message alone. `aimla-impl-2` moves back into the freed slot, and no other desk moves — the PM's reserved desk included.",
+      "note": "AT-D3-16's collision chain: § 3.3's worked collision (`fx-collision`'s `collision` run — on the shipped default's reservation, `aimla-win-6` arrives, takes slot 3, and `aimla-impl-2` probes to slot 4), then `aimla-win-6` is retired by the message alone. `aimla-impl-2` moves back into the freed slot, and no other desk moves — the PM's reserved desk included.",
       "floor": {
         "key": "aimla",
         "local_hours": 9,
@@ -11482,7 +11482,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -12100,14 +12100,14 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-win-6": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-mac-1",
+              "seat_id": "aimla-win-6",
               "character": {
                 "species": "carrot"
               },
@@ -12193,11 +12193,11 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
-            "seat_id": "aimla-mac-1",
+            "seat_id": "aimla-win-6",
             "state_version": 48301,
             "at": "2026-08-23T14:23:20.400Z",
             "changed": [
@@ -12218,11 +12218,11 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.retired",
             "server_time": "2026-08-23T14:23:22.000Z",
             "install_id": "aimla",
-            "seat_id": "aimla-mac-1",
+            "seat_id": "aimla-win-6",
             "reason": "provisioned in error",
             "at": "2026-08-23T14:23:21.900Z",
             "state_version": 48302
@@ -12916,7 +12916,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -13527,7 +13527,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -13642,7 +13642,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -13660,7 +13660,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.400Z",
             "install_id": "aimla",
@@ -13691,7 +13691,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.900Z",
             "install_id": "aimla",
@@ -13716,7 +13716,7 @@
         {
           "at_ms": 3000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:17.400Z",
             "install_id": "aimla",

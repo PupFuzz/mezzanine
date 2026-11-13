@@ -32,7 +32,7 @@ abstract class CoordTestCase extends TestCase
         parent::setUp();
 
         DB::table('installs')->insert(['install_id' => 'one', 'created_at' => now()->format('Y-m-d H:i:s.v')]);
-        [$h, $s] = HookBinding::issue($this->spec()->repository('install'), 'install', 'one', true, 'suite');
+        [$h, $s] = HookBinding::issue($this->spec()->repository('install'), 'room', 'one', true, 'suite');
         $this->install = ['hook' => $h, 'secret' => $s];
         [$h, $s] = HookBinding::issue($this->spec()->repository('fleet'), 'fleet', null, true, 'suite');
         $this->fleet = ['hook' => $h, 'secret' => $s];

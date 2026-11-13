@@ -39,7 +39,7 @@ trait ChecksTheElevatorQueue
 
     private function walkerKey(array $walk): string
     {
-        return $walk['intern_key'] ?? "{$walk['install_id']}/{$walk['seat_id']}";
+        return $walk['intern_key'] ?? $walk['seat_id'];
     }
 
     /** A leg's span in ms from the frame's instant. @return array{0: float, 1: float} */

@@ -27,7 +27,7 @@
   "owner": "synthetic-org",
   "host": "example.invalid",
   "repositories": {
-    "install": {"full_name": "synthetic-org/coordination-fixture", "scope": "install", "install_id": "one"},
+    "install": {"full_name": "synthetic-org/coordination-fixture", "scope": "room", "install_id": "one"},
     "fleet": {"full_name": "synthetic-org/roundtable-fixture", "scope": "fleet", "install_id": null}
   },
   "ids": {
@@ -99,10 +99,10 @@
     {"key": "fleet-broadcast", "repo": "fleet", "event": "issues", "action": "opened", "thread": 11, "carrier": "announce", "title": 1, "from": "pm-solo", "to": ["all"], "lines": [["from-line"], ["to-line"], ["plain", 1]], "labels": {"from": ["pm-solo"], "to": ["all"]}}
   ],
   "rounds": [
-    {"key": "R1", "scope": "install", "install_id": "one", "thread": 20, "from": "pm", "to": ["all"]},
-    {"key": "R2", "scope": "install", "install_id": "one", "thread": 20, "comment": 30, "from": "helper", "to": ["pm"]},
-    {"key": "R3", "scope": "install", "install_id": "one", "thread": 20, "comment": 31, "from": "coder", "to": ["pm", "helper"]},
-    {"key": "R4", "scope": "install", "install_id": "one", "thread": 20, "comment": 32, "from": "pm", "to": ["pm"], "declares_close": true},
+    {"key": "R1", "scope": "room", "install_id": "one", "thread": 20, "from": "pm", "to": ["all"]},
+    {"key": "R2", "scope": "room", "install_id": "one", "thread": 20, "comment": 30, "from": "helper", "to": ["pm"]},
+    {"key": "R3", "scope": "room", "install_id": "one", "thread": 20, "comment": 31, "from": "coder", "to": ["pm", "helper"]},
+    {"key": "R4", "scope": "room", "install_id": "one", "thread": 20, "comment": 32, "from": "pm", "to": ["pm"], "declares_close": true},
     {"key": "F1", "scope": "fleet", "install_id": null, "thread": 21, "comment": 40, "from": "pm-solo", "to": ["coder-solo"]},
     {"key": "F2", "scope": "fleet", "install_id": null, "thread": 21, "comment": 41, "from": "coder-solo", "to": ["pm-solo"]},
     {"key": "F3", "scope": "fleet", "install_id": null, "thread": 22, "from": "pm-solo", "to": ["all"]},

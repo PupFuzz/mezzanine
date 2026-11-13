@@ -228,7 +228,7 @@ class AtC8TheReceiptRendersTheTableTest extends TestCase
 
         // The request a press sends: the one path, the label shown, no redirect followed, the CSRF token.
         $request = $out['posted']['request'];
-        $this->assertSame('/desk/aimla/aimla-pm/compose', $request['path']);
+        $this->assertSame('/desk/aimla-pm/compose', $request['path']);
         $this->assertSame(['text' => 'the message', 'expected_ref' => 'card#9234'], $request['body']);
         $this->assertSame('manual', $request['redirect']);
         $this->assertSame('csrf-probe-token', $request['headers']['X-CSRF-TOKEN']);

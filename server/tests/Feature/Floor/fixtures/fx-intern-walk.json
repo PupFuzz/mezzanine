@@ -378,7 +378,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -406,7 +406,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -835,7 +835,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -863,7 +863,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -1300,7 +1300,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1328,7 +1328,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -1757,7 +1757,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1785,7 +1785,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2214,7 +2214,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2242,7 +2242,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2270,7 +2270,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2699,7 +2699,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2727,7 +2727,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2755,7 +2755,7 @@
         {
           "at_ms": 1250,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3176,7 +3176,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3204,7 +3204,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3232,7 +3232,7 @@
         {
           "at_ms": 2100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3653,7 +3653,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3681,7 +3681,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3709,7 +3709,7 @@
         {
           "at_ms": 7625,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4130,7 +4130,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4158,7 +4158,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4186,7 +4186,7 @@
         {
           "at_ms": 7625,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4615,7 +4615,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4643,7 +4643,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4678,7 +4678,7 @@
         {
           "at_ms": 16500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5099,7 +5099,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -5127,7 +5127,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5162,7 +5162,7 @@
         {
           "at_ms": 1875,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5591,7 +5591,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -5619,7 +5619,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5647,7 +5647,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -6083,7 +6083,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6111,7 +6111,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -6153,7 +6153,7 @@
         {
           "at_ms": 16500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -6188,7 +6188,7 @@
         {
           "at_ms": 136500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -6646,7 +6646,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -7074,7 +7074,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -7097,7 +7097,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-1": [
+        "/api/fleet/seats/aimla-impl-1": [
           {
             "status": 503,
             "body": {
@@ -7113,7 +7113,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7133,7 +7133,7 @@
         {
           "at_ms": 1100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7570,7 +7570,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -7593,7 +7593,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-1": [
+        "/api/fleet/seats/aimla-impl-1": [
           {
             "status": 503,
             "body": {
@@ -7609,7 +7609,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7637,7 +7637,7 @@
         {
           "at_ms": 1100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -8116,7 +8116,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -8144,7 +8144,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -8221,7 +8221,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -8756,7 +8756,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -8784,7 +8784,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -9277,7 +9277,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -9305,7 +9305,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -9726,7 +9726,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -9749,14 +9749,14 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-win-6": [
           {
             "status": 200,
             "body": {
               "api_version": 1,
               "server_time": "2026-08-23T14:23:20.500Z",
               "install_id": "aimla",
-              "seat_id": "aimla-mac-1",
+              "seat_id": "aimla-win-6",
               "character": {
                 "species": "carrot"
               },
@@ -9842,7 +9842,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -9870,11 +9870,11 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.900Z",
             "install_id": "aimla",
-            "seat_id": "aimla-mac-1",
+            "seat_id": "aimla-win-6",
             "state_version": 48301,
             "at": "2026-08-23T14:23:15.900Z",
             "changed": [
@@ -9917,7 +9917,7 @@
           }
         }
       },
-      "note": "An intern arriving at `aimla-impl-2` when fx-collision's `aimla-mac-1` arrives and re-slots `aimla-impl-2` from slot 4 to 5: the desk moved, so the arrival is cancelled and the intern is drawn seated at the desk's new place."
+      "note": "An intern arriving at `aimla-impl-2` when fx-collision's `aimla-win-6` arrives and re-slots `aimla-impl-2` from slot 3 to 4: the desk moved, so the arrival is cancelled and the intern is drawn seated at the desk's new place."
     },
     "old-reporter": {
       "http": {
@@ -10313,7 +10313,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -10763,7 +10763,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -11034,7 +11034,7 @@
                       "character": {
                         "species": "frog"
                       },
-                      "state_version": 20544,
+                      "state_version": 22274,
                       "render_state": "idle",
                       "link_state": "live",
                       "activity_state": "idle",
@@ -11199,7 +11199,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -11227,12 +11227,12 @@
         {
           "at_ms": 1937,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-impl-2",
-            "state_version": 20545,
+            "state_version": 22275,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "subagents",
@@ -11255,7 +11255,7 @@
         {
           "at_ms": 3174,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11283,12 +11283,12 @@
         {
           "at_ms": 8717,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-impl-2",
-            "state_version": 20546,
+            "state_version": 22276,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "subagents",
@@ -11301,14 +11301,14 @@
           }
         },
         {
-          "at_ms": 16203,
+          "at_ms": 16703,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-impl-2",
-            "state_version": 20547,
+            "state_version": 22277,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "subagents",
@@ -11329,14 +11329,14 @@
           }
         },
         {
-          "at_ms": 16790,
+          "at_ms": 17290,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-impl-2",
-            "state_version": 20548,
+            "state_version": 22278,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "subagents",
@@ -11364,14 +11364,14 @@
           }
         },
         {
-          "at_ms": 19337,
+          "at_ms": 21337,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-impl-2",
-            "state_version": 20549,
+            "state_version": 22279,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "subagents",
@@ -11430,7 +11430,7 @@
           }
         }
       },
-      "note": "card#12705, review round 1: `aimla-impl-2` loses intern 01 (its walk out waits on the threshold), then gains 10 and 11 and, at 19337 ms, trades 11 for 13 and 14 in one delta. By then intern 01 has left its spot for the cab and its spot is free for a later departure; a re-time from scratch put 01 back at that spot while intern 11's walk out stood on it \u2014 one point, two walkers. The walker that has left its spot keeps its timing, so no spot is stood on by two. card#12747 moved the three deltas after the loss 4500 ms later (11703, 12290 and 14837 ms before it): intern 01 now presses the low call plate on its way and reaches its spot at 16467 ms, so 10's and 11's arrivals open the leaves at 16203 and 16790 ms with 01 waiting there, and it leaves its spot at 18217 ms, before the trade."
+      "note": "card#12705, review round 1: `aimla-impl-2` loses intern 01 (its walk out waits on the threshold), then gains 10 and 11 and, at 21337 ms, trades 11 for 13 and 14 in one delta. By then intern 01 has left its spot for the cab and its spot is free for a later departure; a re-time from scratch put 01 back at that spot while intern 11's walk out stood on it \u2014 one point, two walkers. The walker that has left its spot keeps its timing, so no spot is stood on by two. card#12747 moved the three deltas after the loss 4500 ms later (11703, 12290 and 14837 ms before it), and card#13117 moved them again, by 500, 500 and 2000 ms, when the desk key became the `seat_id` (`aimla-impl-2`'s desk moved, its intern's route grew two loop frames, and the seeded waits are kept by `aimla-impl-2`'s state versions): intern 01 presses the low call plate on its way and reaches its spot at 16967 ms, 10's and 11's arrivals open the leaves at 16703 and 17290 ms, and it leaves its spot at 20217 ms, before the trade."
     },
     "leave-outside-the-lane": {
       "http": {
@@ -11553,7 +11553,7 @@
                       "character": {
                         "species": "broccoli"
                       },
-                      "state_version": 31107,
+                      "state_version": 31124,
                       "render_state": "working",
                       "link_state": "live",
                       "activity_state": "working",
@@ -11731,7 +11731,7 @@
                       "character": {
                         "species": "deer"
                       },
-                      "state_version": 15032,
+                      "state_version": 15116,
                       "render_state": "blocked",
                       "link_state": "live",
                       "activity_state": "blocked",
@@ -11817,7 +11817,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -11845,12 +11845,12 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-review",
-            "state_version": 15033,
+            "state_version": 15117,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "render_state",
@@ -11865,12 +11865,12 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
             "seat_id": "aimla-impl-1",
-            "state_version": 31108,
+            "state_version": 31125,
             "at": "2026-08-23T14:23:15.400Z",
             "changed": [
               "subagents",
@@ -11885,7 +11885,7 @@
         {
           "at_ms": 20000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11929,7 +11929,7 @@
           }
         }
       },
-      "note": "card#12793: leave-working with `aimla-review` departing first (`blocked \u2192 offline` at 1000 ms, state version 15033, its wait 113 frames as in fx-elevator's lane-arrival-meets-queue), so `aimla-impl-1`'s intern, lost at 1500 ms, fades its laptop out, presses the low call plate in turn and waits at spot 1, outside the seat's lane; `aimla-impl-2`, held `stale`, returns at 20000 ms while both wait \u2014 before either own wait runs out (the intern's, `draw('aimla/aimla-impl-1~01K3TD1A2B3C4D5E6F7G8H9J01', 'elevator-wait:31108')`, is 45 frames from its press): the rider steps out and clears the lane, the seat boards, then the intern. `aimla-pm`, with none, is the control."
+      "note": "card#12793: leave-working with `aimla-review` departing first (`blocked \u2192 offline` at 1000 ms, state version 15117, its wait 113 frames as in fx-elevator's lane-arrival-meets-queue), so `aimla-impl-1`'s intern, lost at 1500 ms, fades its laptop out, presses the low call plate in turn and waits at spot 1, outside the seat's lane; `aimla-impl-2`, held `stale`, returns at 20000 ms while both wait \u2014 before either own wait runs out (the intern's, `draw('aimla-impl-1~01K3TD1A2B3C4D5E6F7G8H9J01', 'elevator-wait:31125')`, is 45 frames from its press): the rider steps out and clears the lane, the seat boards, then the intern. `aimla-pm`, with none, is the control."
     }
   }
 }

@@ -33,15 +33,16 @@ use Tests\TestCase;
  */
 class ACharacterVisitsTheSnackCornerTest extends TestCase
 {
+    use ReadsTheDrawnScenes;
     use DrivesTheFloorScreen;
 
-    private const IMPL_1 = 'aimla/aimla-impl-1';
+    private const IMPL_1 = 'aimla-impl-1';
 
-    private const IMPL_2 = 'aimla/aimla-impl-2';
+    private const IMPL_2 = 'aimla-impl-2';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
-    private const REVIEW = 'aimla/aimla-review';
+    private const REVIEW = 'aimla-review';
 
     private const SCENE = '../floor/scene.js';
 
@@ -71,10 +72,6 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     }
 
     /** @return list<array<string, mixed>> the renders and refreshes that drew a scene */
-    private function drawn(array $result): array
-    {
-        return array_values(array_filter($result['floor_renders'], static fn (array $r): bool => ($r['frame']['scene'] ?? null) !== null));
-    }
 
     /** @return list<array<string, mixed>> the snack trips a frame draws (A25 effects with frames), of one walker where named */
     private function trips(array $frame, ?string $walker = null): array
@@ -87,14 +84,14 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     private function edges(array $result, string $key, array $ids): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'edge'
-            && in_array($r['animation_id'], $ids, true) && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && in_array($r['animation_id'], $ids, true) && $r['seat_id'] === $key));
     }
 
     /** @return list<array<string, mixed>> the held rows of one id one seat wrote */
     private function held(array $result, string $key, string $id): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'held'
-            && $r['animation_id'] === $id && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && $r['animation_id'] === $id && $r['seat_id'] === $key));
     }
 
     private function desk(array $frame, string $key): array
@@ -1150,9 +1147,10 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
         $lines = $this->corner()['lines'];
         $applied = 35000;
 
-        // busy-trip: aimla-impl-1, `working`, goes with its break's line over its head, its desk drawing every fact at the
-        // desk — `working`, the monitor lit, the chip, the task bubble with no trail — and the chair empty; the working →
-        // working delta at 35 s does not cut the trip; the refresh at its end seats it thinking (A4).
+        // busy-trip: aimla-impl-1, `working`, goes with its break's line over its head, its desk drawing its facts at the
+        // desk — `working`, the monitor lit, the chip — with the chair empty and no task bubble (card#12994: a bubble shows
+        // only while its agent is at the desk); the working → working delta at 35 s does not cut the trip; the refresh at
+        // its end seats it thinking (A4), its task bubble back with its trail.
         $busy = $this->snackRun('busy-trip', $dir);
         $trip = $this->anyTrip($busy, self::IMPL_1);
 
@@ -1194,8 +1192,8 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
                 $defects[] = "at {$r['at']} ms busy-trip's desk does not draw its working facts and its empty chair";
             }
 
-            if (($desk['bubble']['text'] ?? null) === null || ($desk['bubble']['trail'] ?? null) !== []) {
-                $defects[] = "at {$r['at']} ms busy-trip's desk does not keep its task bubble, with no trail, while its walker is away";
+            if ($desk['bubble'] !== null) {
+                $defects[] = "at {$r['at']} ms busy-trip's desk draws its task bubble while its walker is away";
             }
         }
 
@@ -1206,6 +1204,11 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
 
         if ($ends === null || $ends['trigger'] !== 'walk end' || ($this->desk($ends['frame'], self::IMPL_1)['held']['animation_id'] ?? null) !== 'A4') {
             $defects[] = 'no paint-only refresh at busy-trip\'s end seats its walker thinking';
+        }
+
+        if ($ends === null || ($this->desk($ends['frame'], self::IMPL_1)['bubble']['text'] ?? null) === null
+            || ($this->desk($ends['frame'], self::IMPL_1)['bubble']['trail'] ?? []) === []) {
+            $defects[] = 'busy-trip\'s task bubble, with its trail, is not back when its walker sits down again';
         }
 
         // wakes-mid-trip: idle at the start — no thought — then `working` at 35 s: the trip goes on, and the walker thinks of
@@ -1359,13 +1362,14 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
             'an idle walker thinking of food and the trip guard saw nothing');
     }
 
-    /** Thirteenth RED — the desk's facts leave with its walker: the away desk drawn as an inbound one, its bubble gone. */
-    public function test_red_the_desks_facts_leave_with_its_walker(): void
+    /** Thirteenth RED — the bubble over the empty chair (card#12994): the away desk drawn keeping its task bubble. */
+    public function test_red_the_bubble_over_the_empty_chair(): void
     {
-        $dir = $this->planted([self::SCREEN, '                    desks[key] = awayDesk(desks[key]);', '                    desks[key] = inboundDesk(desks[key]);']);
+        $dir = $this->planted([self::IN_FLIGHT, "    return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });",
+            "    return Object.freeze({ ...model, character: false, pose: 'empty-chair', held: null });"]);
 
-        $this->assertNotSame([], array_filter($this->busyDefects($dir), static fn ($d) => str_contains($d, 'keep its task bubble')),
-            'a desk that lost its task bubble to its walker and the busy guard saw nothing');
+        $this->assertNotSame([], array_filter($this->busyDefects($dir), static fn ($d) => str_contains($d, 'draws its task bubble while its walker is away')),
+            'a desk drawing its task bubble over its empty chair and the busy guard saw nothing');
     }
 
     /** Fourteenth RED — working → working cuts the trip: only the typing pose holds it. */

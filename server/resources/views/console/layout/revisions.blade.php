@@ -11,8 +11,8 @@
 
     @if ($revisions === [])
         <p>
-            No layout has ever been saved, so there is nothing to restore. Every install renders on
-            a floor of its own until one is —
+            No layout has ever been saved, so there is nothing to restore. Every room renders on the
+            Unassigned floor until one is —
             <a href="{{ route('admin.layout.edit') }}">compose the first one</a>.
         </p>
     @else

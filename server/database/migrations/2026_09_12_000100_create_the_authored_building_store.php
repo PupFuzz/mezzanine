@@ -207,7 +207,7 @@ return new class extends Migration
                 'The building layout in config/building.php cannot be seeded into the authored '
                 .'building store, because this reader refuses it: '.$e->getMessage()
                 .' Fix that document (or empty its `floors` list, which is the default building — '
-                .'one floor per install) and run the migration again.',
+                .'every room on the Unassigned floor) and run the migration again.',
                 previous: $e,
             );
         }

@@ -41,12 +41,12 @@ class TheClientProtocolConvergesOnAGapTest extends TestCase
         // The last version APPLIED, not the newest version SEEN: 48222 arrived and was buffered,
         // 48220 was applied, so the resync must ask from 48220 or the server re-sends what the
         // client already has.
-        $this->assertSame(['/api/fleet/seats/aimla/aimla-pm?resync_from=48220'], $this->seatRequests($result),
+        $this->assertSame(['/api/fleet/seats/aimla-pm?resync_from=48220'], $this->seatRequests($result),
             'the resync did not name the last version the client applied');
 
         $newest = $result['final']['event_log'][0] ?? '';
 
-        $this->assertStringContainsString('aimla/aimla-pm', $newest, 'the record’s newest line does not name the seat');
+        $this->assertStringContainsString('aimla-pm', $newest, 'the record’s newest line does not name the seat');
         $this->assertStringContainsString('resync', $newest, 'the record’s newest line does not name the resync');
     }
 
@@ -82,7 +82,7 @@ class TheClientProtocolConvergesOnAGapTest extends TestCase
         $fixture = $this->fixture('fx-gap.connect_window');
         $result = $this->replay('fx-gap.connect_window');
 
-        $this->assertSame(['/api/fleet/seats/aimla/aimla-pm?resync_from=48220'], $this->seatRequests($result),
+        $this->assertSame(['/api/fleet/seats/aimla-pm?resync_from=48220'], $this->seatRequests($result),
             'the drain applied a buffered gap without noticing it was one');
         $this->assertSame($fixture['final'], $this->finalSeats($result));
     }
@@ -100,7 +100,7 @@ class TheClientProtocolConvergesOnAGapTest extends TestCase
         // applied over the held object, so the dropped delta's member keeps the snapshot's value.
         $uncond = $this->replay('fx-gap', $this->plantedClient(FleetClientPlants::UNCOND[0]));
 
-        $this->assertSame(73.2, $uncond['final']['seats']['aimla/aimla-pm']['context']['used_pct'],
+        $this->assertSame(73.2, $uncond['final']['seats']['aimla-pm']['context']['used_pct'],
             'P4 did not bite: a client applying every delta unconditionally still ended on the '
             .'dropped delta’s value, so the convergence assertion is not measuring the resync');
         $this->assertSame([], $this->seatRequests($uncond));
@@ -109,7 +109,7 @@ class TheClientProtocolConvergesOnAGapTest extends TestCase
         // why the request list is the observable.
         $noparam = $this->replay('fx-gap', $this->plantedClient(FleetClientPlants::NOPARAM[0]));
 
-        $this->assertSame(['/api/fleet/seats/aimla/aimla-pm'], $this->seatRequests($noparam),
+        $this->assertSame(['/api/fleet/seats/aimla-pm'], $this->seatRequests($noparam),
             'P5 did not bite: the parameter was removed and the request still carried it');
         $this->assertSame($fixture['final'], $this->finalSeats($noparam),
             'P5’s own premise is that the map still converges — if it no longer does, the request '
@@ -124,7 +124,7 @@ class TheClientProtocolConvergesOnAGapTest extends TestCase
         $this->assertCount(2, $this->seatRequests($nopending),
             'P14 did not bite: buffering during an in-flight fetch was removed and the client still '
             .'issued one request');
-        $this->assertSame(48222, $nopending['final']['seats']['aimla/aimla-pm']['state_version']);
+        $this->assertSame(48222, $nopending['final']['seats']['aimla-pm']['state_version']);
 
         // P15 — B2(d): the drain merges without the version comparison, so the gap is never seen.
         $nowm = $this->replay('fx-gap.connect_window', $this->plantedClient(FleetClientPlants::NOWM[0]));
@@ -132,6 +132,6 @@ class TheClientProtocolConvergesOnAGapTest extends TestCase
         $this->assertSame([], $this->seatRequests($nowm),
             'P15 did not bite: the drain’s version comparison was removed and the client still '
             .'resynced');
-        $this->assertSame(73.2, $nowm['final']['seats']['aimla/aimla-pm']['context']['used_pct']);
+        $this->assertSame(73.2, $nowm['final']['seats']['aimla-pm']['context']['used_pct']);
     }
 }

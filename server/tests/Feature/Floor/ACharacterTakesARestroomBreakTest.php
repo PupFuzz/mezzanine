@@ -25,15 +25,16 @@ use Tests\TestCase;
  */
 class ACharacterTakesARestroomBreakTest extends TestCase
 {
+    use ReadsTheDrawnScenes;
     use DrivesTheFloorScreen;
 
-    private const IMPL_1 = 'aimla/aimla-impl-1';
+    private const IMPL_1 = 'aimla-impl-1';
 
-    private const IMPL_2 = 'aimla/aimla-impl-2';
+    private const IMPL_2 = 'aimla-impl-2';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
-    private const REVIEW = 'aimla/aimla-review';
+    private const REVIEW = 'aimla-review';
 
     private const SCENE = '../floor/scene.js';
 
@@ -66,12 +67,6 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         return self::$runs[$run] ??= $this->floorRun($run);
     }
 
-    /** @return list<array<string, mixed>> the renders and refreshes that drew a scene */
-    private function drawn(array $result): array
-    {
-        return array_values(array_filter($result['floor_renders'], static fn (array $r): bool => ($r['frame']['scene'] ?? null) !== null));
-    }
-
     /** @return list<array<string, mixed>> the restroom visits a frame draws (A26 effects with frames), of one walker where named */
     private function visits(array $frame, ?string $walker = null): array
     {
@@ -95,14 +90,14 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     private function held(array $result, string $key, string $id): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'held'
-            && $r['animation_id'] === $id && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && $r['animation_id'] === $id && $r['seat_id'] === $key));
     }
 
     /** @return list<array<string, mixed>> the edge rows of the given ids one seat wrote */
     private function edges(array $result, string $key, array $ids): array
     {
         return array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['class'] === 'edge'
-            && in_array($r['animation_id'], $ids, true) && "{$r['install_id']}/{$r['seat_id']}" === $key));
+            && in_array($r['animation_id'], $ids, true) && $r['seat_id'] === $key));
     }
 
     private function desk(array $frame, string $key): array
@@ -496,7 +491,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
         foreach (['recall-inside' => self::IMPL_2, 'recall-waiting' => self::IMPL_1] as $run => $key) {
             $r = $this->restroomRun($run, $dir);
-            $version = $this->snapshotSeat($run, explode('/', $key)[1])['state_version'] + 1;
+            $version = $this->snapshotSeat($run, $key)['state_version'] + 1;
 
             if (array_column($left($this->held($r, $key, 'A26')), 'cause') !== [$version]
                 || array_column($entered($this->held($r, $key, 'A7')), 'cause') !== [$version]) {
@@ -682,9 +677,16 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         }
 
         $kinds = [];
+        $seen = false;
+        $back = null;
 
         foreach ($this->drawn($busy) as $r) {
+            if ($this->visits($r['frame'], self::IMPL_1) === []) {
+                $back ??= $seen ? $r : null;
+            }
+
             foreach ($this->visits($r['frame'], self::IMPL_1) as $v) {
+                $seen = true;
                 $kinds[] = $v['leg_kind'];
 
                 if (($v['thought']['text'] ?? null) !== $line) {
@@ -694,11 +696,20 @@ class ACharacterTakesARestroomBreakTest extends TestCase
                 $desk = $this->desk($r['frame'], self::IMPL_1);
                 $model = $r['frame']['desks']['desks'][self::IMPL_1];
 
-                if ($model['render_state']['value'] !== 'working' || $model['monitor']['lit'] === 'off' || $this->drawsCharacter($r['frame'], self::IMPL_1)
-                    || ($desk['bubble']['text'] ?? null) === null || ($desk['bubble']['trail'] ?? null) !== []) {
-                    $defects[] = "at {$r['at']} ms busy-visit's desk does not draw its working facts and its task bubble with no trail, its chair empty";
+                if ($model['render_state']['value'] !== 'working' || $model['monitor']['lit'] === 'off' || $this->drawsCharacter($r['frame'], self::IMPL_1)) {
+                    $defects[] = "at {$r['at']} ms busy-visit's desk does not draw its working facts, its chair empty";
+                }
+
+                // card#12994: a bubble shows only while its agent is at the desk.
+                if ($desk['bubble'] !== null) {
+                    $defects[] = "at {$r['at']} ms busy-visit's desk draws its task bubble while its walker is away";
                 }
             }
+        }
+
+        if ($back === null || ($this->desk($back['frame'], self::IMPL_1)['bubble']['text'] ?? null) === null
+            || ($this->desk($back['frame'], self::IMPL_1)['bubble']['trail'] ?? []) === []) {
+            $defects[] = 'busy-visit\'s task bubble, with its trail, is not back when its walker sits down again';
         }
 
         if (array_values(array_unique($kinds)) !== ['restroom']) {
@@ -777,6 +788,41 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     public function test_green_who(): void
     {
         $this->assertSame([], $this->whoDefects());
+    }
+
+    /**
+     * card#12993 (§ 6.6 item 4's *When*): a walker on an elevator walk at its break's second takes no trip for that break —
+     * seat-arrives-in-its-break's A1 is in flight when its break begins, so no visit is drawn, and the seat is at its desk
+     * once its walk has ended. (The intern's half, a break that began before the intern arrived, is AT-D3-31's.)
+     *
+     * @return list<string>
+     */
+    private function arrivalDefects(?string $dir = null): array
+    {
+        $defects = [];
+        $walked = false;
+        $last = null;
+
+        foreach ($this->drawn($this->restroomRun('seat-arrives-in-its-break', $dir)) as $r) {
+            $walked = $walked || $this->effectsOf($r['frame'], 'A1') !== [];
+            $last = $r['frame'];
+
+            if ($this->visits($r['frame'], self::IMPL_2) !== []) {
+                $defects[] = "[seat-arrives-in-its-break] a visit at {$r['at']} ms for a break that began while aimla-impl-2 walked in";
+
+                break;
+            }
+        }
+
+        $walked || $defects[] = '[seat-arrives-in-its-break] no A1 was drawn — the run is not the scenario it says';
+        $last === null || $this->drawsCharacter($last, self::IMPL_2) || $defects[] = '[seat-arrives-in-its-break] aimla-impl-2 is not at its desk at the end';
+
+        return $defects;
+    }
+
+    public function test_green_a_walker_arriving_at_its_break_takes_no_trip(): void
+    {
+        $this->assertSame([], $this->arrivalDefects());
     }
 
     // ── GREEN — one occupant, and the order ────────────────────────────────────────────────
@@ -1551,7 +1597,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** The walker an effect draws: a visit's walker key, an elevator walk's seat or intern. */
     private function walkerOf(array $e): string
     {
-        return $e['walker_key'] ?? $e['intern_key'] ?? "{$e['install_id']}/{$e['seat_id']}";
+        return $e['walker_key'] ?? $e['intern_key'] ?? $e['seat_id'];
     }
 
     /** The lane defects over every frame of `$runs` (the shipped tree, or a planted copy), and the instants sampled. */
@@ -1698,6 +1744,24 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         }
 
         return $dir;
+    }
+
+    /** RED — a trip over the arrival: a break that begins while the walker's elevator walk is in flight drawn as a visit anyway. */
+    public function test_red_a_trip_over_the_arrival(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, 'if (page(s.start_s) < (this.#elevatorUntil.get(w.key) ?? -Infinity)) {', 'if (false) {']);
+
+        $this->assertNotSame([], $this->arrivalDefects($dir), 'with the elevator walk ignored, no visit was drawn over the arrival');
+    }
+
+    /** RED — the bubble over the empty chair (card#12994): the away desk drawn keeping its task bubble. */
+    public function test_red_the_bubble_over_the_empty_chair(): void
+    {
+        $dir = $this->planted([self::IN_FLIGHT, "    return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });",
+            "    return Object.freeze({ ...model, character: false, pose: 'empty-chair', held: null });"]);
+
+        $this->assertNotSame([], array_filter($this->busyDefects($dir), static fn ($d) => str_contains($d, 'draws its task bubble while its walker is away')),
+            'a desk drawing its task bubble over its empty chair and the busy guard saw nothing');
     }
 
     /** RED — the timer walk: the visit drawn whenever the break comes, whatever the held state. */

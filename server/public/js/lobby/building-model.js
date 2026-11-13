@@ -24,10 +24,10 @@ import { floors } from './lobby-model.js';
  * § 4.1's floor list: the SAME rows `floors()` composes, in the SAME ascending floor-key order, each carrying `level`,
  * its index in that order and nothing more. `null` when `floors()` composes no building, which is its answer when no
  * layout is held (§ 9 F17). `nowMs` is the corrected clock `floors()` reads the plaque's ages at, handed through so a
- * row stays the lobby's row for its floor.
+ * row stays the lobby's row for its floor; `authored` the rooms with an authored map, for the Unassigned floor.
  */
-export function plates(snapshot, layout, nowMs = null) {
-    const rows = floors(snapshot, layout, nowMs);
+export function plates(snapshot, layout, nowMs = null, authored = []) {
+    const rows = floors(snapshot, layout, nowMs, authored);
 
     return rows === null ? null : rows.map((floor, level) => ({ ...floor, level }));
 }

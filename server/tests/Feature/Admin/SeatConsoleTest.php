@@ -95,7 +95,7 @@ class SeatConsoleTest extends SweepTestCase
         $operator = $this->operator();
 
         $this->actingAs($operator)
-            ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+            ->post(route('admin.agents.retire', self::SEAT), [
                 'reason' => 'the box was decommissioned',
             ])
             ->assertRedirect(route('admin.agents.index'));
@@ -115,11 +115,11 @@ class SeatConsoleTest extends SweepTestCase
         // live list at all. The retire FORM is the live list's own control, so its absence for
         // this seat is that seat's absence from that list — asserted through the route the form
         // posts to, which is unique per seat.
-        $page->assertDontSee(route('admin.agents.retire', [self::INSTALL, self::SEAT]), escape: false);
+        $page->assertDontSee(route('admin.agents.retire', self::SEAT), escape: false);
 
         // DISCRIMINATING CONTROL — the seat that was NOT retired still has its form. Without it, a
         // page that rendered no forms at all would pass assertion 2.
-        $page->assertSee(route('admin.agents.retire', [self::INSTALL, 'aimla-impl']), escape: false);
+        $page->assertSee(route('admin.agents.retire', 'aimla-impl'), escape: false);
         $this->assertNull(DB::table('seats')->where('id', $liveRef)->value('retired_at'));
     }
 
@@ -141,7 +141,7 @@ class SeatConsoleTest extends SweepTestCase
 
         try {
             $this->actingAs($this->operator())
-                ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+                ->post(route('admin.agents.retire', self::SEAT), [
                     'reason' => 'the box was decommissioned',
                 ])
                 ->assertRedirect(route('admin.agents.index'))
@@ -167,7 +167,7 @@ class SeatConsoleTest extends SweepTestCase
 
         try {
             $this->actingAs($this->operator())
-                ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+                ->post(route('admin.agents.retire', self::SEAT), [
                     'reason' => 'the box was decommissioned',
                 ])
                 ->assertStatus(500);
@@ -191,7 +191,7 @@ class SeatConsoleTest extends SweepTestCase
         $operator = $this->operator();
 
         $this->actingAs($operator)
-            ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), [
+            ->post(route('admin.agents.retire', self::SEAT), [
                 'reason' => 'the box was decommissioned',
             ])
             ->assertRedirect(route('admin.agents.index'))
@@ -230,7 +230,7 @@ class SeatConsoleTest extends SweepTestCase
         $this->fold();
 
         $this->actingAs($this->operator())
-            ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), ['reason' => ''])
+            ->post(route('admin.agents.retire', self::SEAT), ['reason' => ''])
             ->assertSessionHasErrors('reason');
 
         $this->assertNull($this->seatRow()->retired_at);
@@ -246,7 +246,7 @@ class SeatConsoleTest extends SweepTestCase
         $first = $this->seatRow();
 
         $this->actingAs($this->operator())
-            ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), ['reason' => 'a second reason'])
+            ->post(route('admin.agents.retire', self::SEAT), ['reason' => 'a second reason'])
             ->assertSessionHasNoErrors();
 
         $again = $this->seatRow();
@@ -262,7 +262,7 @@ class SeatConsoleTest extends SweepTestCase
         $this->fold();
 
         $this->actingAs($this->operator())
-            ->post(route('admin.agents.retire', [self::INSTALL, 'a-seat-that-never-reported']), [
+            ->post(route('admin.agents.retire', 'a-seat-that-never-reported'), [
                 'reason' => 'typo in the seat id',
             ])
             ->assertSessionHasErrors('retire');
@@ -285,7 +285,7 @@ class SeatConsoleTest extends SweepTestCase
         $this->assertGreaterThan(64, mb_strlen($long));
 
         $this->actingAs($this->operator($long))
-            ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), ['reason' => 'decommissioned'])
+            ->post(route('admin.agents.retire', self::SEAT), ['reason' => 'decommissioned'])
             ->assertSessionHasErrors('retire');
 
         $this->assertNull($this->seatRow()->retired_at);
@@ -293,7 +293,7 @@ class SeatConsoleTest extends SweepTestCase
         // THE CONTROL: the same request from an operator whose address fits retires the seat, so
         // the refusal above is the length rule and not a route that refuses every retirement.
         $this->actingAs($this->operator('short@example.com'))
-            ->post(route('admin.agents.retire', [self::INSTALL, self::SEAT]), ['reason' => 'decommissioned'])
+            ->post(route('admin.agents.retire', self::SEAT), ['reason' => 'decommissioned'])
             ->assertSessionHasNoErrors();
 
         $this->assertNotNull($this->seatRow()->retired_at);
@@ -316,7 +316,7 @@ class SeatConsoleTest extends SweepTestCase
 
         foreach ([['', 'decommissioned'], ['ops@aimla', ''], ['  ', 'decommissioned'], ['ops@aimla', " \t "]] as [$by, $reason]) {
             try {
-                $act->retire(self::INSTALL, self::SEAT, $by, $reason);
+                $act->retire(self::SEAT, $by, $reason);
                 $this->fail(sprintf('an empty author or reason was accepted: by=%s reason=%s', json_encode($by), json_encode($reason)));
             } catch (\InvalidArgumentException $e) {
                 $this->assertStringContainsString('author and a reason', $e->getMessage());
@@ -328,7 +328,7 @@ class SeatConsoleTest extends SweepTestCase
         // THE CONTROL — the same call with both, on the same path.
         $this->assertSame(
             SeatRetirementOutcome::RETIRED,
-            $act->retire(self::INSTALL, self::SEAT, 'ops@aimla', 'decommissioned')->outcome,
+            $act->retire(self::SEAT, 'ops@aimla', 'decommissioned')->outcome,
         );
     }
 
@@ -377,7 +377,7 @@ class SeatConsoleTest extends SweepTestCase
         });
 
         $outcome = app(SeatRetirement::class)
-            ->retire(self::INSTALL, self::SEAT, 'second@example.com', 'the second act');
+            ->retire(self::SEAT, 'second@example.com', 'the second act');
 
         // The test's own precondition. Without it every assertion below would also pass on a run
         // where the other act was never injected at all.

@@ -21,7 +21,7 @@ final readonly class SeatTokenRevocation
     public const REVOKED = 'revoked';
 
     /**
-     * @param  list<array{installId: string, seatId: string, remaining: int}>  $revoked
+     * @param  list<array{seatId: string, remaining: int}>  $revoked
      */
     private function __construct(
         public string $outcome,
@@ -40,7 +40,7 @@ final readonly class SeatTokenRevocation
     }
 
     /**
-     * @param  list<array{installId: string, seatId: string, remaining: int}>  $revoked
+     * @param  list<array{seatId: string, remaining: int}>  $revoked
      */
     public static function revoked(string $prefix, array $revoked): self
     {
@@ -48,11 +48,10 @@ final readonly class SeatTokenRevocation
     }
 
     /** The dark-seat warning, verbatim from the CLI it moved out of. */
-    public static function darkSeatWarning(string $installId, string $seatId): string
+    public static function darkSeatWarning(string $seatId): string
     {
         return sprintf(
-            '%s / %s now has NO active token and cannot post. If this was a rotation, issue the new token first.',
-            $installId,
+            '%s now has NO active token and cannot post. If this was a rotation, issue the new token first.',
             $seatId,
         );
     }

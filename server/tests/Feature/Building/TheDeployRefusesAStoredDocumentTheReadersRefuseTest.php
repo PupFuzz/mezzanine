@@ -82,7 +82,7 @@ class TheDeployRefusesAStoredDocumentTheReadersRefuseTest extends TestCase
 
     public function test_a_store_the_readers_accept_passes(): void
     {
-        $this->storeLayout('{"floors": [{"rooms": {"aimla": {"form": "open"}}}]}', 1);
+        $this->storeLayout('{"floors": [{"name": "aimla","rooms": {"aimla": {"form": "open"}}}]}', 1);
         $this->storeRoomMap('aimla', FloorMapFixture::valid(), 1);
 
         $this->assertPasses();

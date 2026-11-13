@@ -17,7 +17,10 @@
  * with a FIXTURE token (never a minted one), the button's ingest URL derived by the controller's own
  * `tokenFileIngestUrl()` from `app.url` — the second argument, `https://mezzanine.example` when absent.
  *
- *   php tools/design/render-floor-view.php [floor|dashboard|login|console|tokens-issued [<app.url>]]
+ * `building-view.browser.mjs` (card#13033) needs the building view (`building`), the same way — through the layout, as the
+ * route serves it; and `floor3d.browser.mjs` (card#13033 stage 2) the 3-D floor (`floor3d`), `/floor/{floor}/3d`'s view.
+ *
+ *   php tools/design/render-floor-view.php [floor|floor3d|dashboard|login|console|building|tokens-issued [<app.url>]]
  */
 
 use App\Admin\ConsoleModules;
@@ -40,7 +43,7 @@ view()->share('errors', new ViewErrorBag);
 
 $which = $argv[1] ?? 'floor';
 
-if ($which !== 'floor') {
+if (! in_array($which, ['floor', 'floor3d'], true)) {
     $user = new User(['email' => 'viewer@example.test']);
     $user->role = User::OPERATOR;
     auth()->setUser($user);
@@ -52,7 +55,9 @@ if ($which !== 'floor') {
 
 echo match ($which) {
     'floor' => view('floor', ['floor' => 'aimla', 'seat' => null])->render(),
+    'floor3d' => view('floor3d', ['floor' => 'aimla', 'seat' => null])->render(),
     'dashboard' => view('dashboard')->render(),
+    'building' => view('building')->render(),
     'login' => view('auth.login')->render(),
     'console' => view('console.index', ['modules' => ConsoleModules::all(), 'active' => null])->render(),
     'tokens-issued' => (function () use ($argv): string {
@@ -62,7 +67,8 @@ echo match ($which) {
 
         return view('console.tokens.index', [
             'active' => 'tokens',
-            'issued' => new SeatTokenIssued($fixture, substr($fixture, 0, 12), 'aimla', 'aimla-pm', 1, '2026-10-29T00:00:00Z', []),
+            // A new seat, so in no room (card#13117): its token file's `install_id` line is `unassigned`.
+            'issued' => new SeatTokenIssued($fixture, substr($fixture, 0, 12), 'unassigned', 'aimla-pm', 1, '2026-10-29T00:00:00Z', [], false, null),
             'tokenFileIngestUrl' => SeatTokenController::tokenFileIngestUrl(),
             'issueKey' => 'fixture-issue-key',
             'tokens' => collect(),

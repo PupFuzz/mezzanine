@@ -19,12 +19,20 @@ use App\Read\Snapshot;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Tests\Support\Rooms;
 use Tests\TestCase;
 
 /**
  * AT-D2-31's store-backed legs — the rules, the floor, the unreadable layout and the wire (card#12443,
  * `docs/design/FLEET-STATE.md § 6.13`). Every seat is created through `SeatTokens::issue()`, the one application
  * writer of `seats`, so the species each one holds is the allocation's and nothing a fixture wrote.
+ *
+ * ⭐ SINCE card#13117 A NEW SEAT IS ON NO FLOOR: issue creates it in no room, and § 6.13 rule 2 is *the seat's floor,
+ * or nothing while it has none* (operator ruling 2026-11-10, Q6 (a)), so issue never reads the layout. A fixture
+ * seat is then put in its room (`Tests\Support\Rooms`) so the population the next allocation reads has rooms. The
+ * floor rules — rule 2 over a floor, rule 3's floor key, the unreadable layout — are still the allocation's, and the
+ * species migration's backfill still reaches them, so those legs drive `CharacterAllocation::choose()` over
+ * `floorOf()` directly, as that backfill does.
  *
  * ⚠ ON `RefreshDatabase`, and that is the reason this half is its own class: these legs write a second and third
  * install's seats, a refused global `building_layout` row, `authored_revisions` and `global_counters`, and the
@@ -56,10 +64,24 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
 
     private function issue(string $installId, string $seatId): string
     {
-        $issued = SeatTokens::issue($installId, $seatId, 'suite');
-        $this->assertInstanceOf(SeatTokenIssued::class, $issued, "{$installId}/{$seatId} was refused a token");
+        $issued = SeatTokens::issue($seatId, 'suite');
+        $this->assertInstanceOf(SeatTokenIssued::class, $issued, "{$seatId} was refused a token");
+        Rooms::place($seatId, $installId);
 
         return $this->speciesOf($installId, $seatId);
+    }
+
+    /**
+     * What the allocation answers for a seat of `$installId` on `$installId`'s floor — `choose()` over `floorOf()`,
+     * the species migration's call, which is where the floor rules are still reached (see the class docblock).
+     */
+    private function allocateOnFloor(string $installId, string $seatId): string
+    {
+        $live = CharacterAllocation::livePopulation();
+
+        return CharacterAllocation::choose($seatId, $live,
+            CharacterAllocation::floorOf($installId, array_map(static fn (object $s): string => (string) $s->install_id, $live)),
+            $this->list());
     }
 
     private function speciesOf(string $installId, string $seatId): string
@@ -85,7 +107,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
      * which install each seat goes to by its index.
      *
      * @param  callable(int): string  $where
-     * @return list<array{0: string, 1: string}>  the seats, in creation order
+     * @return list<array{0: string, 1: string}> the seats, in creation order
      */
     private function fill(callable $where): array
     {
@@ -138,7 +160,8 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         foreach ($list->keys as $i => $_) {
             $install = ['alpha', 'beta'][$i % 2];
             $seat = "seat-{$i}";
-            $own = $list->drawOf("{$install}/{$seat}");
+            // A new seat's preference key is its room's — `unassigned` at issue (card#13117 S1).
+            $own = $list->drawOf($seat);
             $free = ! isset($this->held()[$own]);
 
             $got = $this->issue($install, $seat);
@@ -158,6 +181,59 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
     // ── rules 2 and 3 ─────────────────────────────────────────────────────────────────────────────
 
     /**
+     * GREEN — a NEW seat is on no floor (card#13117, § 6.13 rule 2 *or nothing while it has none*): rule 2 is skipped,
+     * and the over-full seat takes the fleet's least used, then its preference order — not the first of its order,
+     * which is what an empty floor read as a floor nobody is on would give (every species passes rule 2 there). The
+     * seat id is chosen so the two answers differ, and that is asserted, so the leg tells them apart.
+     */
+    public function test_a_new_seat_is_on_no_floor_so_rule_two_is_skipped(): void
+    {
+        $this->fill(static fn (int $i): string => $i === 0 ? 'alpha' : 'beta');
+        $twice = $this->issue('alpha', 'over-0');
+        $this->assertSame(2, $this->held()[$twice]);
+
+        $seat = null;
+
+        for ($k = 1; $seat === null; $k++) {
+            $seat = $this->preferenceOf("over-{$k}")[0] === $twice ? "over-{$k}" : null;
+        }
+
+        $got = SeatTokens::issue($seat, 'suite');
+        $this->assertInstanceOf(SeatTokenIssued::class, $got);
+        $species = (string) DB::table('seats')->where('id', $got->seatRef)->value('species');
+        Rooms::place($seat, 'alpha');
+
+        $this->assertNotSame($twice, $species, "the roomless seat took {$species}, its first preference, which two live seats hold");
+        // Every other species was held once before it, so the least used one is now held twice — by it and one other.
+        $this->assertSame(2, $this->held()[$species], "the roomless seat took {$species}, which is not among the fleet's least used");
+    }
+
+    /**
+     * T9's server half (card#13117, plan § 3.4): the seat's first preference is the body the BROWSER draws for it —
+     * `creatures.js`'s `speciesOf()` over `seed.js`'s `seatKey()` of its `seat_id`, run under `node` — so a seat
+     * whose own draw is free wears, from the first allocation, the body the generator would have drawn. A server that
+     * keyed the preference by any other string (the pre-S2 `unassigned/<seat_id>`) gives another body; the seat id is
+     * chosen so the two keys draw differently, and that is asserted, so this leg tells them apart.
+     */
+    public function test_an_uncontended_seat_is_allocated_the_body_the_browser_draws_for_its_seat_id(): void
+    {
+        $list = $this->list();
+        $seat = null;
+
+        for ($k = 0; $seat === null; $k++) {
+            $seat = $list->drawOf("agree-{$k}") !== $list->drawOf("unassigned/agree-{$k}") ? "agree-{$k}" : null;
+        }
+
+        $tree = realpath(__DIR__.'/../../../../resources/characters') ?: $this->fail('resources/characters is not in the tree');
+        $script = sprintf('const seed = await import(%s); const C = await import(%s); console.log(JSON.stringify(C.speciesOf(seed.seatKey(%s))));',
+            json_encode('file://'.$tree.'/seed.js'), json_encode('file://'.$tree.'/creatures.js'), json_encode($seat));
+        $browser = json_decode((string) shell_exec('node --input-type=module -e '.escapeshellarg($script).' 2>&1'), true);
+        $this->assertIsString($browser, 'node did not print the species the generator draws');
+
+        $this->assertSame($browser, $this->issue('alpha', $seat), "an empty fleet allocated {$seat} a body other than the one the browser draws for it");
+    }
+
+    /**
      * GREEN — rule 2 with no layout: the over-full seat is its install's own floor, and takes a species no live seat
      * of its install holds.
      */
@@ -165,9 +241,9 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
     {
         $this->fill(static fn (int $i): string => $i === 0 ? 'alpha' : 'beta');
 
-        $got = $this->issue('alpha', 'over');
+        $got = $this->allocateOnFloor('alpha', 'over');
 
-        $this->assertSame(1, $this->held(['alpha'])[$got], "the over-full seat took {$got}, which another seat of its install holds");
+        $this->assertArrayNotHasKey($got, $this->held(['alpha']), "the over-full seat took {$got}, which another seat of its install holds");
     }
 
     /**
@@ -182,7 +258,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $this->fill(static fn (int $i): string => $i === 0 ? 'alpha' : ($i === $n - 1 ? 'gamma' : 'beta'));
         $gamma = array_keys($this->held(['gamma']));
 
-        Layouts::save('{"floors": [{"rooms": {"alpha": {"form": "open"}, "beta": {"form": "open"}}}]}', 'suite');
+        Layouts::save('{"floors": [{"name": "alpha","rooms": {"alpha": {"form": "open"}, "beta": {"form": "open"}}}]}', 'suite', Layouts::version());
         $this->assertSame(Layouts::layout()->floorOf('alpha'), Layouts::layout()->floorOf('beta'));
         $this->assertNotSame(Layouts::layout()->floorOf('alpha'), Layouts::layout()->floorOf('gamma'));
 
@@ -194,7 +270,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
             $seat = in_array($alone, $gamma, true) ? null : "over-{$k}";
         }
 
-        $got = $this->issue('alpha', $seat);
+        $got = $this->allocateOnFloor('alpha', $seat);
 
         $this->assertContains($got, $gamma, "the over-full seat took {$got}, which a seat on its own floor holds");
     }
@@ -207,7 +283,7 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
     public function test_rule_three_the_least_used_on_the_floor_then_the_fleet_then_the_order(): void
     {
         $this->fill(static fn (int $i): string => $i % 3 === 2 ? 'gamma' : 'alpha');
-        Layouts::save('{"floors": [{"rooms": {"alpha": {"form": "open"}}}]}', 'suite');
+        Layouts::save('{"floors": [{"name": "alpha","rooms": {"alpha": {"form": "open"}}}]}', 'suite', Layouts::version());
 
         // Fill the floor: every species `gamma` holds gets an `alpha` seat too, so the floor holds every species.
         $k = 0;
@@ -227,15 +303,15 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $this->assertGreaterThan(1, count(array_unique(array_map(static fn (string $s): int => $fleet[$s], $tied))),
             'the floor\'s least-used tie carries no fleet-wide difference — the second key of rule 3 is not exercised');
 
-        $this->assertSame($ranked[0], $this->issue('alpha', 'next'));
+        $this->assertSame($ranked[0], $this->allocateOnFloor('alpha', 'next'));
     }
 
     // ── the unreadable layout ─────────────────────────────────────────────────────────────────────
 
     /**
      * GREEN — with the refused row stored, the under-full issue allocates under rule 1 with no count; the over-full
-     * issue allocates treating each install as its own floor, `character_floor_unread` reads one higher on
-     * `GET /api/fleet/health`, one log line names the refusal, and no issue is refused.
+     * allocation on a floor treats each install as its own floor, `character_floor_unread` reads one higher on
+     * `GET /api/fleet/health`, one log line names the refusal, and nothing is refused.
      */
     public function test_an_unreadable_layout_never_refuses_an_issue_and_is_counted_once_when_it_was_needed(): void
     {
@@ -245,9 +321,9 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $this->fill(static fn (int $i): string => $i === 0 ? 'alpha' : 'beta');
         $this->assertSame(0, $this->health()['counters'][CharacterAllocation::FLOOR_UNREAD], 'an under-full issue counted the layout');
 
-        $got = $this->issue('alpha', 'over');
+        $got = $this->allocateOnFloor('alpha', 'over');
 
-        $this->assertSame(1, $this->held(['alpha'])[$got], "with the layout unreadable, the over-full seat took {$got}, which its own install holds");
+        $this->assertArrayNotHasKey($got, $this->held(['alpha']), "with the layout unreadable, the over-full seat took {$got}, which its own install holds");
         $this->assertSame(1, $this->health()['counters'][CharacterAllocation::FLOOR_UNREAD]);
         Log::shouldHaveReceived('warning')->withArgs(static fn (string $line): bool => str_starts_with($line, 'mezzanine.character:')
             && str_contains($line, 'treats every install as its own floor') && str_contains($line, 'floors'))->once();
@@ -271,10 +347,10 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $this->assertSame($before, DB::table('seats')->orderBy('id')->pluck('species', 'id')->all(), 'a re-issue moved a stored species');
         $this->assertSame($versionBefore, (int) DB::table('seat_state')->max('state_version'), 'a re-issue bumped a state_version');
 
-        app(SeatRetirement::class)->retire($holder[0], $holder[1], 'ops@example.com', 'freeing its character');
+        app(SeatRetirement::class)->retire($holder[1], 'ops@example.com', 'freeing its character');
 
-        $this->assertSame($first, $this->speciesOf(...$holder), "the retired row lost the species it wore — retirement wrote it");
-        $this->assertSame($first, $this->issue('gamma', 'after-retirement'), "the species a retired seat held was not free for the next new seat");
+        $this->assertSame($first, $this->speciesOf(...$holder), 'the retired row lost the species it wore — retirement wrote it');
+        $this->assertSame($first, $this->issue('gamma', 'after-retirement'), 'the species a retired seat held was not free for the next new seat');
     }
 
     // ── the wire and the console ──────────────────────────────────────────────────────────────────
@@ -297,10 +373,10 @@ class ASeatsCharacterIsAllocatedOnceTest extends TestCase
         $ref = (int) DB::table('seats')->orderBy('id')->value('id');
         $this->assertSame((string) DB::table('seats')->where('id', $ref)->value('species'), SeatObject::forSeatRef($ref, now()->getTimestampMs())['character']['species']);
         $this->assertSame('character', SeatDelta::WIRE_MEMBER['species']);
-        $this->assertSame(2, FleetReload::FEED_VERSION, 'the release that ships character.species bumps feed_version (§ 6.13)');
+        $this->assertGreaterThanOrEqual(2, FleetReload::FEED_VERSION, 'the release that ships character.species bumped feed_version to 2 (§ 6.13), and no later release lowers it');
 
         // A seat retired before the migration, as the migration marks it.
-        app(SeatRetirement::class)->retire($seats[0][0], $seats[0][1], 'ops@example.com', 'gone before the migration');
+        app(SeatRetirement::class)->retire($seats[0][1], 'ops@example.com', 'gone before the migration');
         DB::table('seats')->where('id', $ref)->update(['species_drawn_at' => now()->format('Y-m-d H:i:s.v')]);
 
         $page = $this->actingAs(User::factory()->twoFactorConfirmed()->create(['email' => 'ops@example.com']))

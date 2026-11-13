@@ -39,7 +39,7 @@ namespace Tests\Feature\Feed;
  */
 final class ClientHarness
 {
-    /** @var array<string, array<string, mixed>> seat objects, keyed `install/seat` */
+    /** @var array<string, array<string, mixed>> seat objects, keyed by `seat_id` */
     public array $seats = [];
 
     /** @var list<array<string, mixed>> step 2's buffer */
@@ -97,7 +97,7 @@ final class ClientHarness
     {
         foreach ($body['installs'] as $install) {
             foreach ($install['seats'] as $seat) {
-                $this->seats[$this->key($seat['install_id'], $seat['seat_id'])] = $seat;
+                $this->seats[$seat['seat_id']] = $seat;
             }
         }
     }
@@ -120,7 +120,7 @@ final class ClientHarness
                 continue;
             }
 
-            $key = $this->key($delta['install_id'], $delta['seat_id']);
+            $key = $delta['seat_id'];
             $held = $this->seats[$key]['state_version'] ?? -1;
 
             if ($delta['state_version'] <= $held) {
@@ -144,7 +144,7 @@ final class ClientHarness
      */
     public function apply(array $delta, ?\Closure $resync = null): void
     {
-        $key = $this->key($delta['install_id'], $delta['seat_id']);
+        $key = $delta['seat_id'];
         $held = $this->seats[$key]['state_version'] ?? null;
 
         if ($this->checkVersion && $held !== null) {
@@ -177,7 +177,7 @@ final class ClientHarness
      */
     private function merge(array $delta): void
     {
-        $key = $this->key($delta['install_id'], $delta['seat_id']);
+        $key = $delta['seat_id'];
 
         $this->seats[$key] = array_merge(
             $this->seats[$key] ?? [],
@@ -186,14 +186,13 @@ final class ClientHarness
         );
     }
 
-    /** @return array<string, mixed>|null */
-    public function seat(string $installId, string $seatId): ?array
+    /**
+     * The held seat, keyed by its `seat_id` as the browser's client keys it (`public/js/wire/seat-key.js`).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function seat(string $seatId): ?array
     {
-        return $this->seats[$this->key($installId, $seatId)] ?? null;
-    }
-
-    private function key(string $installId, string $seatId): string
-    {
-        return $installId.'/'.$seatId;
+        return $this->seats[$seatId] ?? null;
     }
 }

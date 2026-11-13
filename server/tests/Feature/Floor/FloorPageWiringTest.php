@@ -15,7 +15,9 @@ use Tests\TestCase;
  * card#7341 step 8.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ IT READS THE FLOOR PAGE ALONE — the served view and `public/js/floor/main.js` — and names no
+ * ⛔ IT READS THE FLOOR PAGE ALONE — the served view and its wiring, `public/js/floor/main.js` with the hoisted page it
+ * calls (`floor/floor-page.js`) and the 2-D renderer it hands that page (`floor/painter-renderer.js`), read as one entry
+ * (card#13033 stage 2 slice 2, plan § 4's M3: re-pointed, not re-written) — and names no
  * fixture and not the harness, as the row says. Every fact the page draws is asserted headlessly
  * elsewhere; what this holds is the contract between the page's two halves, which no browser on the
  * build host can witness.
@@ -36,7 +38,7 @@ use Tests\TestCase;
  * and the keyboard and the zoom buttons through `wire/camera-keys.js` (the lobby's too since card#7343
  * r2-2) — the rules of both — `deltaMode` and `ctrlKey`, the primary button only, the end on a
  * `pointercancel` or a buttonless move, which key zooms and which way an arrow pans — are held and
- * planted by `TheCameraWireIsOneForBothPagesTest`, and here only that the entry hands those modules its
+ * planted by `TheCameraWireIsOneForEveryPageTest`, and here only that the entry hands those modules its
  * drawing, its zoom buttons and the screen's acts, with no copy of its own — and the fit-floor control
  * and a resize (which
  * re-shows the camera at once, stopping a glide) to the screen's camera acts — a camera no event
@@ -79,19 +81,19 @@ class FloorPageWiringTest extends TestCase
 
     public function test_every_element_the_entry_addresses_exists_on_the_page_and_the_reverse(): void
     {
-        $this->assertSame([], $this->wiringDefects($this->floorPage(), $this->mainJs()));
+        $this->assertSame([], $this->wiringDefects($this->floorPage(), $this->pageJs()));
     }
 
     /** Appendix B row 14: the entry constructs the painter from `floor/painter.js`, whose ids are checked above. */
     public function test_the_entry_paints_the_room_with_the_painter_module(): void
     {
-        $this->assertSame([], $this->painterDefects($this->mainJs()));
+        $this->assertSame([], $this->painterDefects($this->pageJs()));
     }
 
     /** Appendix B row 15: the surface's size reaches the screen and every viewer act reaches the camera. */
     public function test_the_entry_wires_the_surface_and_the_viewers_acts_to_the_screens_camera(): void
     {
-        $this->assertSame([], $this->cameraDefects($this->mainJs()));
+        $this->assertSame([], $this->cameraDefects($this->pageJs()));
     }
 
     /** Appendix B row 15: the drawing takes the keyboard's focus and exposes the desks inside it. */
@@ -117,13 +119,13 @@ class FloorPageWiringTest extends TestCase
      */
     public function test_the_header_counts_are_the_lobbys_totals_never_recounted(): void
     {
-        $this->assertSame([], $this->countDefects($this->mainJs()));
+        $this->assertSame([], $this->countDefects($this->pageJs()));
     }
 
     /** § 4.5 (card#11795): the entry performs the ride the screen decides, and the arrival the layout records. */
     public function test_the_entry_performs_the_ride_and_its_arrival(): void
     {
-        $this->assertSame([], $this->rideDefects($this->mainJs(), $this->floorPage()));
+        $this->assertSame([], $this->rideDefects($this->pageJs(), $this->floorPage()));
     }
 
     /**
@@ -163,14 +165,40 @@ class FloorPageWiringTest extends TestCase
 
     public function test_the_entry_constructs_the_protocol_with_its_recovery_and_the_log_with_section_12s_bound(): void
     {
-        $this->assertSame([], $this->bindingDefects($this->mainJs()));
+        $this->assertSame([], $this->bindingDefects($this->pageJs()));
+    }
+
+    /**
+     * § 4.4 (card#13117): the address bar reads the DRAWN floor's key — so `/floor/The-Nook`, which the screen resolves
+     * by lowering it, is replaced by `/floor/the-nook` — and every link the page builds carries that key too.
+     */
+    public function test_the_address_bar_and_the_desk_links_carry_the_drawn_floors_key(): void
+    {
+        $this->assertSame([], $this->routeDefects($this->pageJs()));
+
+        // The control: the segment as served, which leaves a typed spelling in the bar.
+        $served = str_replace('return lastFrame?.floor?.key ?? root.dataset.floor;', 'return root.dataset.floor;', $this->pageJs());
+        $this->assertNotSame($served, $this->pageJs());
+        $this->assertNotSame([], $this->routeDefects($served), 'CONTROL (the bar keeping the typed segment) did not bite');
+    }
+
+    /** @return list<string> */
+    private function routeDefects(string $js): array
+    {
+        $needles = [
+            'return lastFrame?.floor?.key ?? root.dataset.floor;',
+            '    const route = routeOf(floorSegment(), frame.seat);',
+            "        link.href = routeOf(floorSegment(), desk.seat_id);",
+        ];
+
+        return array_values(array_filter($needles, fn (string $needle) => ! str_contains($js, $needle)));
     }
 
     /** ⛔ THE CONTROLS — each re-mints one defect this file exists to catch. */
     public function test_each_check_goes_red_against_the_defect_it_exists_to_catch(): void
     {
         $html = $this->floorPage();
-        $js = $this->mainJs();
+        $js = $this->pageJs();
 
         $renamed = str_replace('id="floor-feed"', 'id="floor-feeed"', $html);
         $this->assertNotSame($renamed, $html);
@@ -229,7 +257,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('undeclared', $this->wiringDefects($undrawn, $js),
             'CONTROL (the view without the painter\'s drawing element) did not bite');
 
-        $unpainted = str_replace("import { createPainter, loadArt, measurer, themeInputs } from './painter.js';", '', $js);
+        $unpainted = str_replace("import { createPainter } from './painter.js';", '', $js);
         $this->assertNotSame($unpainted, $js);
         $this->assertArrayHasKey('painter', $this->painterDefects($unpainted),
             'CONTROL (an entry that never constructs the painter) did not bite');
@@ -249,8 +277,8 @@ class FloorPageWiringTest extends TestCase
 
         // card#7343 r3b: the gestures ask the screen's camera whether it frames the floor; one that never
         // does leaves every wheel over the drawn floor to the page's scroll.
-        $unframed = str_replace('cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);',
-            'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
+        $unframed = str_replace('cameraGestures(stage, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);',
+            'cameraGestures(stage, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: () => ({ bounds: null }) }, show);', $js);
         $this->assertNotSame($unframed, $js);
         $this->assertArrayHasKey('wheel', $this->cameraDefects($unframed),
             'CONTROL (a wheel handed a camera that frames nothing) did not bite');
@@ -262,27 +290,27 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('keyboard', $this->cameraDefects($keysUnframed),
             'CONTROL (keys handed a camera that frames nothing) did not bite');
 
-        $unoffered = str_replace("    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);\n", '', $js);
+        $unoffered = str_replace("    offerKeys(el('floor-drawing'), zoomButtons, frame.camera, view.keys.shortcuts);\n", '', $js);
         $this->assertNotSame($unoffered, $js);
         $this->assertArrayHasKey('buttons', $this->cameraDefects($unoffered),
             'CONTROL (keys and zoom buttons never offered) did not bite');
 
-        // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForBothPagesTest
+        // The gestures are wire/camera-gestures.js's, whose own defects TheCameraWireIsOneForEveryPageTest
         // plants and watches red; what can drift here is a page growing its own copy back beside it.
-        $copied = str_replace('cameraKeys(drawing, ', "drawing.addEventListener('pointermove', () => {});\ncameraKeys(drawing, ", $js);
+        $copied = str_replace('cameraKeys(stage, ', "stage.addEventListener('pointermove', () => {});\ncameraKeys(stage, ", $js);
         $this->assertNotSame($copied, $js);
         $this->assertArrayHasKey('gestures', $this->cameraDefects($copied),
             'CONTROL (the page wiring a pointer gesture of its own beside the shared module) did not bite');
 
-        $stale = str_replace("    screen.resize(surface());\n    show(screen.camera());\n", "    screen.resize(surface());\n", $js);
+        $stale = str_replace("screen.resize(surface);\n                    show(screen.camera());\n", "screen.resize(surface);\n", $js);
         $this->assertNotSame($stale, $js);
         $this->assertArrayHasKey('resize', $this->cameraDefects($stale),
             'CONTROL (a resize that leaves a glide running over the old surface) did not bite');
 
         // The keys and the zoom buttons are wire/camera-keys.js's since card#7343 r2-2, whose own defects —
-        // the ones this file planted in the inline copy — TheCameraWireIsOneForBothPagesTest plants and
+        // the ones this file planted in the inline copy — TheCameraWireIsOneForEveryPageTest plants and
         // watches red; what can drift here is the entry's hand-off, and a copy growing back beside it.
-        $keyless = str_replace('cameraKeys(drawing, ', "cameraKeys(el('floor-desks'), ", $js);
+        $keyless = str_replace('cameraKeys(stage, ', "cameraKeys(el('floor-desks'), ", $js);
         $this->assertNotSame($keyless, $js);
         $this->assertArrayHasKey('keyboard', $this->cameraDefects($keyless),
             'CONTROL (a keyboard handed an element that is not the drawing) did not bite');
@@ -293,10 +321,10 @@ class FloorPageWiringTest extends TestCase
             'CONTROL (a zoom button that never reaches the camera) did not bite');
 
         foreach ([
-            'a keydown of its own' => "drawing.addEventListener('keydown', () => {});\n",
+            'a keydown of its own' => "stage.addEventListener('keydown', () => {});\n",
             'a zoom button of its own' => "el('floor-zoom-in').addEventListener('click', () => {\n    show(screen.zoomStep(1));\n});\n",
         ] as $what => $copy) {
-            $keyCopy = str_replace('cameraKeys(drawing, ', $copy.'cameraKeys(drawing, ', $js);
+            $keyCopy = str_replace('cameraKeys(stage, ', $copy.'cameraKeys(stage, ', $js);
             $this->assertNotSame($keyCopy, $js);
             $this->assertArrayHasKey('keys', $this->cameraDefects($keyCopy),
                 "CONTROL (the page wiring {$what} beside wire/camera-keys.js) did not bite");
@@ -330,7 +358,7 @@ class FloorPageWiringTest extends TestCase
 
         // card#7343 comment 7692 item 1: the drawing's tab stop is `offerKeys()`'s, offered only while the camera
         // frames the floor, so the markup offers none — a drawing the keyboard cannot reach is now planted in
-        // `offerKeys()` itself, `TheCameraWireIsOneForBothPagesTest`'s offer defects.
+        // `offerKeys()` itself, `TheCameraWireIsOneForEveryPageTest`'s offer defects.
         $tabbed = str_replace(' aria-label="the room drawing" data-dimmed', ' aria-label="the room drawing" tabindex="0" data-dimmed', $html);
         $this->assertNotSame($tabbed, $html);
         $this->assertArrayHasKey('focus', $this->exposureDefects($tabbed, $painter),
@@ -369,7 +397,7 @@ class FloorPageWiringTest extends TestCase
         $this->assertArrayHasKey('surface', $this->cameraDefects($windowed),
             'CONTROL (a surface whose height is the window\'s, not the drawing\'s) did not bite');
 
-        $unobserved = str_replace('}).observe(drawing);', '});', $js);
+        $unobserved = str_replace('}).observe(stage);', '});', $js);
         $this->assertNotSame($unobserved, $js);
         $this->assertArrayHasKey('surface', $this->cameraDefects($unobserved),
             'CONTROL (a drawing whose size changes reach no camera) did not bite');
@@ -405,15 +433,15 @@ class FloorPageWiringTest extends TestCase
         // The entry's plants first; then the shared performer's, planted in its own source (card#12113).
         foreach ([
             'press' => ['        ride: () => cab.act(screen.ride()),', '        ride: () => {},'],
-            'performer' => ["const cab = ridePage({\n    prefix: 'floor',", "const cab = ridePage({\n    prefix: 'lobby',"],
+            'performer' => ["const cab = ridePage({\n        prefix: 'floor',", "const cab = ridePage({\n        prefix: 'lobby',"],
             'arrival' => ['    screen.arriveByRide(rideArrival);
 ', ''],
-            'reveal' => ['    if (frame.scene !== null) {
-        revealed(html);
-    }
-', '    if (frame.statement !== null || frame.scene !== null) {
-        revealed(html);
-    }
+            'reveal' => ['        if (frame.scene !== null) {
+            revealed(html);
+        }
+', '        if (frame.statement !== null || frame.scene !== null) {
+            revealed(html);
+        }
 '],
             'reveal-site' => ['    paintDesks(frame, frame.desks.desks);
 ', '    revealed(html);
@@ -421,6 +449,8 @@ class FloorPageWiringTest extends TestCase
 '],
             'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", "const lobbyHref = '/dashboard';"],
             'performed' => ['    cab.perform({', '    ({'],
+            // card#12987: the press's fetches for the floor behind the cab's doors wake the page as they land.
+            'wake' => ['    wake: requestRender,', '    wake: () => {},'],
         ] as $key => [$from, $to]) {
             $planted = str_replace($from, $to, $js);
             $this->assertNotSame($planted, $js, "the ride's {$key} control's anchor is gone — it mutated nothing");
@@ -447,7 +477,7 @@ class FloorPageWiringTest extends TestCase
         // card#12113: the cab is the shared partial — the view restating a cab of its own, including it under another
         // prefix, or serving a dialog that is not the partial's.
         $view = $this->floorView();
-        $ownCab = str_replace("        @include('partials.ride-cab', ['prefix' => 'floor'])\n", "        <dialog id=\"floor-cab\" class=\"floor-cab\"></dialog>\n", $view);
+        $ownCab = str_replace("    @include('partials.ride-cab', ['prefix' => 'floor'])\n", "    <dialog id=\"floor-cab\" class=\"floor-cab\"></dialog>\n", $view);
         $this->assertNotSame($ownCab, $view, 'the own-cab control\'s anchor is gone — it mutated nothing');
         $this->assertArrayHasKey('partial', $this->partialDefects($ownCab, $page), 'CONTROL (a cab dialog of the view\'s own) did not bite');
         $otherPrefix = str_replace("['prefix' => 'floor']", "['prefix' => 'flor']", $view);
@@ -499,14 +529,14 @@ class FloorPageWiringTest extends TestCase
         sort($addressed);
 
         $this->assertGreaterThan(10, count($declared), 'the page declares almost no floor elements — the parse has stopped reading it');
-        $this->assertGreaterThan(10, count($addressed), 'the entry addresses almost no elements — the parse has stopped reading main.js');
+        $this->assertGreaterThan(10, count($addressed), 'the entry addresses almost no elements — the parse has stopped reading the page\'s wiring');
 
         $defects = [];
         $undeclared = array_values(array_diff($addressed, $declared));
         $unwritten = array_values(array_diff($declared, $this->accountedFor($html, $addressed)));
 
         if ($undeclared !== []) {
-            $defects['undeclared'] = 'main.js writes into elements the page does not declare: '.implode(', ', $undeclared);
+            $defects['undeclared'] = 'the page\'s wiring writes into elements the page does not declare: '.implode(', ', $undeclared);
         }
 
         if ($unwritten !== []) {
@@ -544,7 +574,7 @@ class FloorPageWiringTest extends TestCase
         $wired = [
             'press' => ['ride: () => cab.act(screen.ride()),'],
             // The entry wires the shared performer under its own prefix, with the last painted frame's ride.
-            'performer' => ["import { ridePage } from '../wire/ride-page.js';", "const cab = ridePage({\n    prefix: 'floor',", '    lastRide: () => lastFrame?.ride ?? null,'],
+            'performer' => ["import { ridePage } from '../wire/ride-page.js';", "const cab = ridePage({\n        prefix: 'floor',", '    lastRide: () => lastFrame?.ride ?? null,'],
             'performed' => ['    cab.perform({'],
             'cancel' => ["cab.addEventListener('cancel', (event) => {", 'act(screen().escape(event.cancelable));'],
             'cancel-reask' => ['outbound = skipUnlessCabLeaving(outbound, lastRide());'],
@@ -554,6 +584,7 @@ class FloorPageWiringTest extends TestCase
             'arrival' => ['const rideArrival = arrival(html, performance.now());', 'screen.arriveByRide(rideArrival);'],
             'lobby' => ["const lobbyHref = document.querySelector('a.floor-home').href;", '    lobby_href: lobbyHref,'],
             'navigation' => ['window.location.assign(ride.route);'],
+            'wake' => ['    wake: requestRender,'],
         ];
 
         foreach ($wired as $key => $needles) {
@@ -588,7 +619,7 @@ class FloorPageWiringTest extends TestCase
             $defects['reveal-site'] = 'revealed() is called at '.substr_count($code, 'revealed(').' sites — one, in paint';
         }
 
-        if (! str_contains($code, "    if (frame.scene !== null) {\n        revealed(html);\n    }\n")) {
+        if (! str_contains($code, "        if (frame.scene !== null) {\n            revealed(html);\n        }\n")) {
             $defects['reveal'] = 'revealed() is not called under `frame.scene !== null` alone';
         }
 
@@ -661,20 +692,21 @@ class FloorPageWiringTest extends TestCase
         $defects = [];
         $wired = [
             // … read off the drawing's own box and re-read on every change of it (card#11045 PR-A, MAJOR-A).
-            'surface' => ['surface: surface(),', 'screen.resize(surface())', "const box = el('floor-drawing');",
-                'return { width: box.clientWidth, height: box.clientHeight };', 'new ResizeObserver(() => {', '}).observe(drawing);'],
+            'surface' => ['surface: surface(),', 'view.resize(surface())', 'screen.resize(surface);', "const box = el('floor-drawing');",
+                'return { width: box.clientWidth, height: box.clientHeight };', 'new ResizeObserver(() => {', '}).observe(stage);'],
             // … and the camera as it stands, so the wheel is the page's scroll while it frames nothing (card#7343 r3b).
             // card#11045: the wheel's two acts (a plain wheel's pan, a Ctrl+wheel's zoom) and the touch pinch.
-            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
-            'pinch' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
-            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(drawing, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
-            'resize' => ["    screen.resize(surface());\n    show(screen.camera());\n"],
+            'wheel' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(stage, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'pinch' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(stage, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'drag' => ["import { cameraGestures } from '../wire/camera-gestures.js';", 'cameraGestures(stage, { pan: screen.pan, zoom: screen.zoom, pinch: screen.pinch, drag: screen.drag, camera: screen.camera }, show);'],
+            'resize' => ["screen.resize(surface);\n                    show(screen.camera());\n"],
             // … and the camera as it stands, so every key is the browser's while it frames nothing (card#7343 r4b).
-            'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(drawing, zoomButtons, { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera }, show);'],
+            'keyboard' => ["import { cameraKeys, offerKeys } from '../wire/camera-keys.js';", 'cameraKeys(stage, zoomButtons, view.keys.acts, view.show);',
+                'keys: { acts: { zoomStep: screen.zoomStep, drag: screen.drag, camera: screen.camera } },'],
             // … and the zoom buttons, *Fit the floor*, the gesture hint (card#11045) and the drawing's keys and
             // tab stop offered from each frame's camera (card#7343 r4b, comment 7692).
             'buttons' => ["const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit'), hint: el('floor-hint') };",
-                "    offerKeys(el('floor-drawing'), zoomButtons, frame.camera);"],
+                "    offerKeys(el('floor-drawing'), zoomButtons, frame.camera, view.keys.shortcuts);"],
             'fit' => ["el('floor-fit').addEventListener('click'", 'screen.fitFloor()'],
         ];
 
@@ -870,10 +902,13 @@ class FloorPageWiringTest extends TestCase
         return (string) file_get_contents($this->jsRoot().'/wire/ride-page.js');
     }
 
-    /** The floor view's own source, before Blade renders it. */
+    /**
+     * The floor view's own source, before Blade renders it: the page's body, which both floor routes' views include
+     * (`partials/floor-page.blade.php`, card#13033 stage 2 slice 4) — the cab is included there, once.
+     */
     private function floorView(): string
     {
-        return (string) file_get_contents(resource_path('views/floor.blade.php'));
+        return (string) file_get_contents(resource_path('views/partials/floor-page.blade.php'));
     }
 
     /**
@@ -927,9 +962,14 @@ class FloorPageWiringTest extends TestCase
         return $defects;
     }
 
-    private function mainJs(): string
+    /**
+     * The floor page's wiring as one entry: `main.js`, the hoisted page it calls and the 2-D renderer it hands that page
+     * (card#13033 stage 2 slice 2) — every needle in this file is in one of the three.
+     */
+    private function pageJs(): string
     {
-        return (string) file_get_contents($this->moduleDir().'/main.js');
+        return implode("\n", array_map(fn (string $file): string => (string) file_get_contents($this->moduleDir().'/'.$file),
+            ['main.js', 'floor-page.js', 'painter-renderer.js']));
     }
 
     private function painterJs(): string
@@ -954,7 +994,8 @@ class FloorPageWiringTest extends TestCase
     /** @return array<string, string> */
     private function painterDefects(string $js): array
     {
-        return str_contains($js, "import { createPainter, loadArt, measurer, themeInputs } from './painter.js';")
+        return str_contains($js, "import { createPainter } from './painter.js';")
+            && str_contains($js, "import { loadArt, measurer } from './painter.js';")
             && preg_match('/=\s*createPainter\(/', $js) === 1
             ? []
             : ['painter' => 'the entry does not construct the room drawing\'s painter from floor/painter.js'];
@@ -972,7 +1013,7 @@ class FloorPageWiringTest extends TestCase
     }
 
     /**
-     * Every `floor-*` id main.js addresses: the literals its three helpers name, plus the family it
+     * Every `floor-*` id the page's wiring addresses: the literals its three helpers name, plus the family it
      * builds from the lobby model's indicator keys — derived from the model, never listed.
      *
      * @return list<string>
@@ -983,7 +1024,7 @@ class FloorPageWiringTest extends TestCase
         $ids = $m[1];
 
         $this->assertSame(1, preg_match_all('/`floor-\$\{[A-Za-z0-9_.]+\}`/', $js),
-            'main.js builds element ids from a template in a number of places this parser does not know');
+            'the page\'s wiring builds element ids from a template in a number of places this parser does not know');
 
         foreach ($this->indicatorKeys($jsRoot) as $key) {
             $ids[] = 'floor-'.$key;

@@ -49,6 +49,12 @@
 import { TRUNCATION_MARK } from '../desk/task-bubble.js';
 import { BADGES } from '../wire/member-sets.js';
 import { UNRECOGNISED } from '../desk/desk-render.js';
+import { ART_W, deskSlab, monitorFrame } from './desk-geometry.js';
+import { keyOf } from '../wire/seat-key.js';
+
+// The art column's width is `desk-geometry.js`'s, beside the desk's slab that the cab's door view reads too; it stays
+// readable from here.
+export { ART_W } from './desk-geometry.js';
 
 /** The pitch every text row is laid on, in scene pixels — the page's font is chosen to fit it. */
 export const LINE = 12;
@@ -138,9 +144,6 @@ export const BUBBLE_BAND = BUBBLE_LINES * LINE + 2 * BUBBLE_PAD;
 
 /** The gap a bubble keeps above the mark a pose draws over the head — the sleeper's z's, the `?` or the `!` (`bubbleSeat()`). */
 export const BUBBLE_GAP = 1;
-
-/** The art column's width — the character, the desk, the monitor, the chip and the plate (§ 2.2: Chosen). */
-export const ART_W = 216;
 
 /**
  * THE BUBBLE's WIDEST (card#12446, the operator's ruling (B) of 2026-10-28): the art column's width, so a bubble set on
@@ -274,7 +277,7 @@ const CHIP_MAX_W = 160;
 const CHIP_PAD = 6;
 
 /** The nameplate's text width inside its 160 px plate. */
-const PLATE_TEXT_W = 148;
+export const PLATE_TEXT_W = 148;
 
 /** The badges a § 7 treatment reads — § 7.3's `config_invalid` and § 7.4's `fold_lag`. */
 export const TREATMENT_BADGES = Object.freeze(['config_invalid', 'fold_lag']);
@@ -439,21 +442,21 @@ export function deskRects(box, character) {
     const W = box.width;
     const H = box.height;
     const top = BUBBLE_BAND;
-    const slab = H - 100;
+    const desk = deskSlab({ x: 0, y: H });
+    const slab = desk.y;
     const colB = ART_W + GUTTER;
     // The facts are cut inside the plate's right padding, so the plate never reaches past the box.
     const widthB = W - colB - FACTS_PLATE_PAD;
     const mid = ART_W / 2;
     const cw = character.w * CHARACTER_SCALE;
     const ch = character.h * CHARACTER_SCALE;
-    // § 10.6: the desk is 180 wide under the art column's centre, and the creature's centre stands at a
-    // third of its width (the operator's ruling of 2026-10-06, card#11046); the chair follows it.
-    const desk = { x: mid - 90, y: slab, w: 180, h: 60 };
+    // § 10.6: the creature's centre stands at a third of the desk's width (the operator's ruling of 2026-10-06,
+    // card#11046); the chair follows it.
     const sitter = desk.x + desk.w / 3 - cw / 2;
-    // The monitor's frame: 96 × 46, its right edge the desk's, standing on the desk's top; the screen
+    // The monitor's frame (`monitorFrame()`: 96 × 46, its right edge the desk's, standing on the desk's top); the screen
     // inset 4 px inside it and 31 px tall; the text `SCREEN_INSET` inside the screen on every side, so its
     // rect's height is what decides how many lines the screen holds (§ 12's monitor row, card#12446).
-    const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };
+    const frame = monitorFrame(desk);
     const screen = { x: frame.x + 4, y: frame.y + 4, w: 88, h: 31 };
     // § 10.6 (card#11468): the side table stands on the desk's own foot line, its interns in front of it and the
     // *+N more* tag under it; the facts stack upward from just above it, inside the plate's padding. These row
@@ -845,14 +848,14 @@ export const NOT_DRAWN_MEMBERS = Object.freeze({
     oldest_badge_since: 'the drill-down\'s and the desk list\'s (Q1 B); the desk draws the badge row and the flag',
     // § 6.2 A25 (card#12749): the snack trip is drawn on the FLOOR, as a walker, never on the desk.
     snack_held: "the seat's snack trip (§ 6.2 A25) — drawn by the scene as the trip's walker on the floor (`floor/scene.js`'s "
-        + "`snackCorner()`'s `plan()`), never as a desk element; the desk it leaves draws its empty chair, every fact kept "
-        + "(`in-flight.js`'s `awayDesk()`)",
+        + "`snackCorner()`'s `plan()`), never as a desk element; the desk it leaves draws its empty chair and no task bubble, "
+        + "every other fact kept (`in-flight.js`'s `awayDesk()`)",
     snack_interns_held: "the interns' snack trips (§ 6.2 A25) — drawn by the scene as each intern's walker on the floor, never "
         + 'as a desk element; the stool it leaves draws empty',
     // § 6.2 A26 (card#12786): the restroom break is drawn on the FLOOR, as a walker and the door, never on the desk.
     restroom_held: "the seat's restroom break (§ 6.2 A26) — drawn by the scene as the break's walker on the floor and the "
         + "restroom door's leaf and sign (`floor/scene.js`'s `restroomDoor()`), never as a desk element; the desk it leaves draws "
-        + 'its empty chair, every fact kept',
+        + "its empty chair and no task bubble, every other fact kept (`in-flight.js`'s `awayDesk()`)",
     restroom_interns_held: "the interns' restroom breaks (§ 6.2 A26) — drawn by the scene as each intern's walker on the floor, "
         + 'never as a desk element; the stool it leaves draws empty',
 });
@@ -940,7 +943,8 @@ export function deskLayout(desk, ctx) {
     } else {
         // § 10.6 item 8: the desk's FURNITURE SET — one theme document per art element, each at its rect, all
         // drawn or none (the painter generates the set before it emits any), reported under one asset id.
-        const key = { install_id: desk.install_id, seat_id: desk.seat_id };
+        // A theme seeds a desk's furniture from its seat alone (§ 10.6), as the character tree does.
+        const key = { seat_id: desk.seat_id };
         const set = furnitureAsset(ctx.theme, desk);
         const doc = (fn, input = key) => ({ set, theme: ctx.theme, fn, input });
 
@@ -1195,21 +1199,21 @@ export function clusterOrder(desk) {
 
 /**
  * The asset id a desk's FURNITURE SET is reported under when the painter cannot draw it (§ 9 F14, FLOOR.md
- * § 10.6 item 8): `theme:<name>/desk:<install_id>/<seat_id>` — the five documents are one unit.
+ * § 10.6 item 8): `theme:<name>/desk:<key>` — the five documents are one unit.
  */
 export function furnitureAsset(theme, desk) {
-    return `theme:${theme}/desk:${desk.install_id}/${desk.seat_id}`;
+    return `theme:${theme}/desk:${keyOf(desk)}`;
 }
 
 /** The asset id a desk's character is reported under when the painter cannot draw it (§ 9 F14). */
 export function characterAsset(desk) {
-    return `character:${desk.install_id}/${desk.seat_id}`;
+    return `character:${keyOf(desk)}`;
 }
 
 /**
  * THE INTERN KEY — `seat~<call_id>` (§ 10.4; the operator's ruling of 2026-10-02 on card#11058 Q3: "intern
  * sprites keyed by call_id"). The character tree is handed it in the seat's place, so an intern's look is
- * a pure function of `(install_id, seat_id, call_id)`: it keeps its sprite when `subagents[]` reorders or
+ * a pure function of `(seat_id, call_id)`: it keeps its sprite when `subagents[]` reorders or
  * a sibling leaves, and two siblings never share one. `~` is outside the `seat_id` alphabet
  * (`App\Support\Slug::SEAT_ID`), so no intern key is ever a seat's.
  */
@@ -1219,7 +1223,7 @@ export function internKey(seatId, callId) {
 
 /** The asset id an intern's sprite is reported under when the painter cannot draw it (§ 9 F14). */
 export function internAsset(desk, callId) {
-    return `intern:${desk.install_id}/${internKey(desk.seat_id, callId)}`;
+    return `intern:${internKey(desk.seat_id, callId)}`;
 }
 
 /** Whether a string fact is there to draw: the model's null, an absent member and an empty string draw nothing. */

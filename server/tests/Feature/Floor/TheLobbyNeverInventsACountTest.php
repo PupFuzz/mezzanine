@@ -281,7 +281,7 @@ class TheLobbyNeverInventsACountTest extends TestCase
             $defects['resolved'] = 'the discovery did not resolve the disagreement: '.json_encode($this->frameAt($result, 16000)['discrepancy']);
         }
 
-        $removals = array_filter($result['final']['event_log'], static fn (string $l): bool => str_contains($l, 'aimla/aimla-review'));
+        $removals = array_filter($result['final']['event_log'], static fn (string $l): bool => str_contains($l, 'aimla-review'));
 
         if (count($removals) !== 1) {
             $defects['resolved'] ??= count($removals).' record lines name the removed desk — the backstop writes exactly one';
@@ -361,7 +361,7 @@ class TheLobbyNeverInventsACountTest extends TestCase
     {
         $defects = [];
         $log = $this->lastFrame($result)['event_log'];
-        $wanted = ['room added to the building: aimla-win', 'seat added to the floor: aimla-win/win-1', 'seat added to the floor: aimla-win/win-2'];
+        $wanted = ['room added to the building: aimla-win', 'seat added to the floor: win-1', 'seat added to the floor: win-2'];
 
         foreach ($wanted as $line) {
             if (array_filter($log, static fn (string $l): bool => str_ends_with($l, ' '.$line)) === []) {

@@ -386,7 +386,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -428,8 +428,8 @@
                 "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
                 "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
                 "max_fold_lag_ms": 117,
-                "seats_total": 4,
-                "seats_live": 4
+                "seats_total": 5,
+                "seats_live": 5
               },
               "installs": [
                 {
@@ -784,6 +784,85 @@
                         "fold_lag_ms": 117,
                         "cursor_event_id": 9912837
                       }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-5",
+                      "character": {
+                        "species": "otter"
+                      },
+                      "state_version": 20601,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "idle_since": null,
+                      "action": null,
+                      "longest_open_call": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "ingest endpoint",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "3d6b9e10-7a24-4c5e-9b81-2f4a6c8d0e13",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
+                      "protocol_agent_name": "impl-5",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
                     }
                   ]
                 }
@@ -798,7 +877,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -823,7 +902,7 @@
         "local_hours": 9,
         "local_minutes": 45
       },
-      "note": "Q3 A: nobody is eligible \u2014 `aimla-pm` relays `protocol_agent_role: null`, as a seat on a reporter older than card#11144 does, and a null matches no desk. The reserved desk stays empty and reserved, `aimla-pm` hashes to its own slot 0, `aimla-impl-2` still probes past the desk to 4, and \u00a7 5.5's line reads that no seat holds the role."
+      "note": "Q3 A: nobody is eligible \u2014 `aimla-pm` relays `protocol_agent_role: null`, as a seat on a reporter older than card#11144 does, and a null matches no desk. The run carries a fifth seat, `aimla-impl-5`, whose hash slot (h mod 6 = 2) is the reserved desk. The reserved desk stays empty and reserved, `aimla-pm` hashes to its own slot 5, `aimla-impl-5` probes past the desk to 4, and \u00a7 5.5's line reads that no seat holds the role."
     },
     "fx-office-first-appearance": {
       "http": {
@@ -1190,7 +1269,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1212,7 +1291,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -1236,7 +1315,7 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.800Z",
             "install_id": "aimla",
@@ -1544,7 +1623,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1561,7 +1640,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -1653,7 +1732,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -1678,7 +1757,7 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.800Z",
             "install_id": "aimla",
@@ -2087,7 +2166,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2104,7 +2183,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm-2": [
+        "/api/fleet/seats/aimla-pm-2": [
           {
             "status": 200,
             "body": {
@@ -2196,7 +2275,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -2612,7 +2691,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2634,7 +2713,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -3043,7 +3122,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3060,7 +3139,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm-2": [
+        "/api/fleet/seats/aimla-pm-2": [
           {
             "status": 200,
             "body": {
@@ -3152,7 +3231,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -3177,7 +3256,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.retired",
             "server_time": "2026-08-23T14:23:22.000Z",
             "install_id": "aimla",
@@ -3581,7 +3660,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4111,7 +4190,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4994,7 +5073,7 @@
                     },
                     {
                       "install_id": "aimla",
-                      "seat_id": "aimla-mac-1",
+                      "seat_id": "aimla-win-6",
                       "character": {
                         "species": "carrot"
                       },
@@ -5084,7 +5163,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -5101,7 +5180,7 @@
             }
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 503,
             "body": {
@@ -5112,7 +5191,7 @@
             "delay_ms": 100
           }
         ],
-        "/api/fleet/seats/aimla/aimla-impl-2": [
+        "/api/fleet/seats/aimla-impl-2": [
           {
             "status": 503,
             "body": {
@@ -5123,7 +5202,7 @@
             "delay_ms": 100
           }
         ],
-        "/api/fleet/seats/aimla/aimla-mac-1": [
+        "/api/fleet/seats/aimla-win-6": [
           {
             "status": 503,
             "body": {
@@ -5139,7 +5218,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:20.400Z",
             "fleet": {
@@ -5157,7 +5236,7 @@
         {
           "at_ms": 500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.500Z",
             "install_id": "aimla",
@@ -5175,7 +5254,7 @@
         {
           "at_ms": 550,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.550Z",
             "install_id": "aimla",
@@ -5193,11 +5272,11 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.600Z",
             "install_id": "aimla",
-            "seat_id": "aimla-mac-1",
+            "seat_id": "aimla-win-6",
             "state_version": 48301,
             "at": "2026-08-23T14:23:20.600Z",
             "changed": [
@@ -5222,7 +5301,7 @@
         "local_hours": 9,
         "local_minutes": 45
       },
-      "note": "A role relay in the same render as an arrival: `fx-office-none`, then a heartbeat counting a fifth seat starts the discovery snapshot (1000 ms). While it is in flight `aimla-pm`'s delta relays `pm` and `aimla-impl-2`'s relays `impl-lead`, each one version past the held object (a gap, so each seat's resync fetch is started and fails), and `aimla-mac-1`, which the client does not hold, delivers a delta whose insert fetch fails too. The discovery snapshot carries both held seats one version up and `aimla-mac-1`, and its release applies all three deltas in one render: `aimla-pm`, now the one seat relaying `pm`, walks from its hash slot 0 to the reserved desk (A16, cause its own delta's `state_version`), and `aimla-mac-1` takes slot 4, so `aimla-impl-2` moves to 5 (A16, cause the arriving `aimla/aimla-mac-1`) \u2014 its own relayed role changed no eligibility, so its delta is not its cause."
+      "note": "A role relay in the same render as an arrival: `fx-office-none`, then a heartbeat counting a fifth seat starts the discovery snapshot (1000 ms). While it is in flight `aimla-pm`'s delta relays `pm` and `aimla-impl-2`'s relays `impl-lead`, each one version past the held object (a gap, so each seat's resync fetch is started and fails), and `aimla-win-6`, which the client does not hold, delivers a delta whose insert fetch fails too. The discovery snapshot carries both held seats one version up and `aimla-win-6`, and its release applies all three deltas in one render: `aimla-pm`, now the one seat relaying `pm`, walks from its hash slot 0 to the reserved desk (A16, cause its own delta's `state_version`), and `aimla-win-6` takes slot 4, so `aimla-impl-2` moves to 5 (A16, cause the arriving `aimla/aimla-win-6`) \u2014 its own relayed role changed no eligibility, so its delta is not its cause."
     }
   }
 }

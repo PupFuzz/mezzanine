@@ -231,11 +231,7 @@ final class SeatObject
      */
     public static function forSeatRef(int $seatRef, int $nowMs): ?array
     {
-        $seat = DB::table('seats')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('seats.id', $seatRef)
-            ->first(['installs.install_id', 'seats.seat_id', 'seats.species', 'seats.retired_at',
-                'seats.retired_by', 'seats.retired_reason']);
+        $seat = SeatIdentity::byRef($seatRef);
 
         $state = DB::table('seat_state')->where('seat_ref', $seatRef)->first();
 

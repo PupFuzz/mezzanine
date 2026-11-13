@@ -28,7 +28,7 @@ class TheClearTraceShowsNoIdleAnywhereTest extends TestCase
 
     private const TRACE = 'fx-clear-trace';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
     /**
      * ⛔ THE FIXTURE IS THE DOCUMENT'S OWN TRACE. Part 1, part 2, part 3 and part 4 of § 14 item 21,
@@ -239,7 +239,7 @@ class TheClearTraceShowsNoIdleAnywhereTest extends TestCase
     public function test_control_a_clean_turn_end_does_render_idle_and_logs_its_row(): void
     {
         $result = $this->deskRun('clean_finish');
-        $rows = $this->heldRows($result, 'aimla/aimla-impl-1');
+        $rows = $this->heldRows($result, 'aimla-impl-1');
         $delta = $this->fixture('clean_finish')['messages'][0]['envelope'];
 
         $this->assertCount(3, $rows, 'the control did not write an entry, its exit and the new entry');
@@ -262,7 +262,7 @@ class TheClearTraceShowsNoIdleAnywhereTest extends TestCase
         // And the desk itself renders `idle`, which is the render the trace must never produce.
         $last = $this->lastFrame($result);
 
-        $this->assertSame('idle', $last['desks']['aimla/aimla-impl-1']['render_state']['value']);
+        $this->assertSame('idle', $last['desks']['aimla-impl-1']['render_state']['value']);
     }
 
     /**
@@ -343,11 +343,9 @@ class TheClearTraceShowsNoIdleAnywhereTest extends TestCase
      */
     private function rowsFor(array $result, string $key): array
     {
-        [$install, $seat] = explode('/', $key, 2);
-
         return array_values(array_filter(
             $result['animation_log'],
-            static fn (array $row): bool => $row['install_id'] === $install && $row['seat_id'] === $seat,
+            static fn (array $row): bool => $row['seat_id'] === $key,
         ));
     }
 

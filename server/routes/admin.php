@@ -1,11 +1,14 @@
 <?php
 
+use App\Http\Controllers\Admin\BuildingFloorsController;
 use App\Http\Controllers\Admin\ConsoleController;
 use App\Http\Controllers\Admin\FloorController;
 use App\Http\Controllers\Admin\LayoutController;
+use App\Http\Controllers\Admin\RoomController;
 use App\Http\Controllers\Admin\SeatController;
 use App\Http\Controllers\Admin\SeatTokenController;
 use App\Http\Controllers\Admin\UserController;
+use App\Support\Slug;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -40,7 +43,7 @@ use Illuminate\Support\Facades\Route;
 | password-only session before it observes it allowing anything.
 |
 | ⛔ A SEAT IS PROVISIONED BY ONE ACT, AND THIS CONSOLE NOW HAS IT — card#12331. Issuing a seat's
-| token creates the install, the seat and its provisioned-but-silent state in one transaction
+| token creates the seat — in no room since card#13117 — and its provisioned-but-silent state in one transaction
 | (`App\Fleet\SeatTokens`), and a seat exists on the floor from that moment
 | (`docs/design/FLOOR.md § 3.4`). The *Seat tokens* module below performs that act — the CLI's own,
 | through the same primitive — and the "no add an agent" posture this paragraph used to state
@@ -74,11 +77,42 @@ Route::patch('/users/{user}', [UserController::class, 'update'])->name('users.up
 Route::post('/users/{user}/retire', [UserController::class, 'retire'])->name('users.retire');
 
 Route::get('/agents', [SeatController::class, 'index'])->name('agents.index');
-Route::post('/agents/{install_id}/{seat_id}/retire', [SeatController::class, 'retire'])
+// By the seat's id alone (card#13117): at most one live seat carries an id.
+Route::post('/agents/{seat_id}/retire', [SeatController::class, 'retire'])
+    ->where('seat_id', Slug::SEAT_ID)
     ->name('agents.retire');
+// The room move (card#13117): the second operator act on a seat beside retirement, `App\Fleet\SeatMove`.
+Route::patch('/agents/{seat_id}/room', [SeatController::class, 'room'])
+    ->where('seat_id', Slug::SEAT_ID)
+    ->name('agents.room');
 
 /*
- * THE FLOORS MODULE — card#9085, the (a) half of the operator's 2026-09-08 ruling. A floor's map
+ * THE ROOMS MODULE — card#13117 (plan-13117-seat-identity.md § 4.2). A room is an `installs` row; the console
+ * creates it with a key typed once and a name, may place it on a floor of the current layout in the same act,
+ * renames it, and retires it. `App\Building\Rooms` owns every act; the layout is written through
+ * `Layouts::amend()`. No route here deletes a room: retirement is a POST to a named act, as a seat's is.
+ */
+Route::get('/rooms', [RoomController::class, 'index'])->name('rooms.index');
+Route::post('/rooms', [RoomController::class, 'store'])->name('rooms.store');
+Route::patch('/rooms/{room}', [RoomController::class, 'update'])
+    ->where('room', Slug::INSTALL_ID)->name('rooms.update');
+Route::post('/rooms/{room}/retire', [RoomController::class, 'retire'])
+    ->where('room', Slug::INSTALL_ID)->name('rooms.retire');
+
+/*
+ * THE FLOORS MODULE — card#13117 (plan-13117-seat-identity.md § 5.5). A floor is named, and its address is the slug of
+ * its name; the console renames it (its old address kept, or taken over from another floor), themes it, forgets a
+ * former address, creates a floor holding a room, and places a room on a floor. Every act is one
+ * `App\Building\FloorEdits` closure written through `Layouts::amend()`. A floor is found by its address. No route
+ * removes a floor: the reader refuses a floor of no rooms, and a floor goes with its last room.
+ */
+Route::get('/building', [BuildingFloorsController::class, 'index'])->name('building.index');
+Route::post('/building/floors', [BuildingFloorsController::class, 'store'])->name('building.floors.store');
+Route::patch('/building/floors/{floor}', [BuildingFloorsController::class, 'update'])->name('building.floors.update');
+Route::post('/building/floors/{floor}/rooms', [BuildingFloorsController::class, 'place'])->name('building.floors.place');
+
+/*
+ * THE ROOM MAPS MODULE — card#9085, the (a) half of the operator's 2026-09-08 ruling. A room's map
  * is the authored artifact: how many desks the room has, where they sit, what it looks like.
  *
  * ⛔ NO ROUTE HERE NAMES A SEAT, AND THAT IS THE (b) LINE. `docs/design/FLOOR.md § 3.2` puts a
@@ -87,12 +121,12 @@ Route::post('/agents/{install_id}/{seat_id}/retire', [SeatController::class, 're
  * in `Tests\Feature\Admin\FloorConsoleTest`, at the route table and at the schema, because the
  * edit that would cross this line is one column and one form field.
  *
- * ⛔ AND NO FLOORS ROUTE CREATES AN INSTALL. A floor IS an install (§ 3.1), and an install row is
- * written by one act — issuing a seat's token (`App\Fleet\SeatTokens::issue()`, from the *Seat
- * tokens* module below or `mezzanine:ingest-token:issue`), where issuing the credential and creating
- * the row are the same step, which is what makes "no token, no seat" true by construction. "Add a
- * floor" here means give an existing floor its map, and the write refuses an install the snapshot
- * does not render.
+ * ⛔ AND NO ROOM MAPS ROUTE CREATES AN INSTALL. A room IS an install (§ 3.1). ⭐ Since card#13117
+ * issuing a seat's token creates no install: the seat starts in no room, and a room is created in the
+ * console's Rooms module above (`App\Building\Rooms`), beside the rows that existed before it and those its
+ * migration minted for the rooms the layout places. Adding a map here means
+ * giving an existing room its map, and the write refuses a room no seat renders in — the virtual
+ * install `unassigned` included.
  *
  * REMOVAL IS A `POST` TO A NAMED ACT, matching the shape D2 chose for retirement — but for a
  * different reason, stated at `App\Http\Controllers\Admin\FloorController::remove()` rather than
@@ -157,8 +191,8 @@ Route::post('/layout/revisions/{revision}/restore', [LayoutController::class, 'r
     ->whereNumber('revision')->name('layout.restore');
 
 /*
- * THE SEAT TOKENS MODULE — card#12331. Issue a seat's reporter token (creating the install and the
- * seat if they are new), shown once on the issue response, and revoke one by its prefix.
+ * THE SEAT TOKENS MODULE — card#12331. Issue a seat's reporter token (creating the seat, in no room,
+ * if its id is new — card#13117), shown once on the issue response, and revoke one by its prefix.
  * `App\Http\Controllers\Admin\SeatTokenController` owns the show-once argument.
  *
  * ⛔ `password.confirm` ON THE WHOLE MODULE, GET INCLUDED, on top of the console's three gates: the

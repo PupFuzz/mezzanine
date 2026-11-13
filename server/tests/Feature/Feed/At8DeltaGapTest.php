@@ -124,21 +124,21 @@ class At8DeltaGapTest extends FeedTestCase
         $this->assertSame('reload', $stream->last()['reason']);
 
         // 1 — THE CLIENT SAW A JUMP AND RESYNCED THAT ONE SEAT.
-        $this->assertSame([self::INSTALL.'/'.self::SEAT], $client->resynced);
+        $this->assertSame([self::SEAT], $client->resynced);
 
         // 2 — AND CONVERGED.
         $this->assertSame(
             (int) $this->state()->state_version,
-            $client->seat(self::INSTALL, self::SEAT)['state_version'],
+            $client->seat(self::SEAT)['state_version'],
         );
-        $this->assertSame('blocked', $client->seat(self::INSTALL, self::SEAT)['render_state']);
+        $this->assertSame('blocked', $client->seat(self::SEAT)['render_state']);
 
         // 3 — THE SERVER COUNTED IT. One write path, and it is the query parameter.
         $this->assertSame(1, $this->globalCounter('feed_gap_detected'));
 
         // 4 — "The rest of the fleet is untouched — assert other seats' versions DID NOT MOVE."
         $this->assertSame($otherVersionBefore, (int) $this->state($otherRef)->state_version);
-        $this->assertNotContains(self::INSTALL.'/aimla-impl', $client->resynced);
+        $this->assertNotContains('aimla-impl', $client->resynced);
     }
 
     /**
@@ -177,9 +177,9 @@ class At8DeltaGapTest extends FeedTestCase
         // a test of a client that simply does nothing.
         $this->assertSame(
             (int) $this->state()->state_version,
-            $client->seat(self::INSTALL, self::SEAT)['state_version'],
+            $client->seat(self::SEAT)['state_version'],
         );
-        $this->assertSame('blocked', $client->seat(self::INSTALL, self::SEAT)['render_state']);
+        $this->assertSame('blocked', $client->seat(self::SEAT)['render_state']);
     }
 
     /**
@@ -270,7 +270,7 @@ class At8DeltaGapTest extends FeedTestCase
         // was thrown" would pass here, so the assertion is a comparison against the server's own
         // object over the version-bearing members.
         $server = SeatObject::forSeatRef($this->seatRef, $this->nowMs());
-        $held = $client->seat(self::INSTALL, self::SEAT);
+        $held = $client->seat(self::SEAT);
 
         $diverged = [];
 
@@ -293,7 +293,7 @@ class At8DeltaGapTest extends FeedTestCase
 
         // 3 — AND IT STAYS WRONG. "renders the pre-drop state INDEFINITELY": ten more quiet
         // minutes and the client's object has not moved.
-        $frozen = $client->seat(self::INSTALL, self::SEAT);
+        $frozen = $client->seat(self::SEAT);
 
         $quietFrom = $this->wire->mark();
 
@@ -308,9 +308,9 @@ class At8DeltaGapTest extends FeedTestCase
 
         $member = array_values(array_intersect($dropped['changed'], $diverged))[0];
 
-        $this->assertEquals($frozen[$member], $client->seat(self::INSTALL, self::SEAT)[$member],
+        $this->assertEquals($frozen[$member], $client->seat(self::SEAT)[$member],
             'the divergence healed by itself, so this is not the indefinite case § 11 names');
-        $this->assertNotEquals($server[$member], $client->seat(self::INSTALL, self::SEAT)[$member],
+        $this->assertNotEquals($server[$member], $client->seat(self::SEAT)[$member],
             'the client caught up to the server without ever detecting the loss');
     }
 

@@ -24,8 +24,8 @@ with [Upgrading an existing seat](#upgrading-an-existing-seat). What each versio
 
 | Invocation | What it does, in order |
 |---|---|
-| `node install.js --token-file <path> [--site <url> --seat-id <id> [--install-id <id>]] [--agent-name <n>] [--ca-file <path>] [--no-board]` | the first install: `prereqs`, `values` (from the file, or the flags for a v1 file), `backup`, `resolver`, `identity`, `board-identity`, `token-take`, `token-config`, `config-check`, then the install below. **With a config present it is the [rotation](#rotating-a-sites-token)** |
-| `node install.js [--site <url>] [--seat-id <id>] [--install-id <id>] [--no-board]` | re-check and upgrade: `prereqs`, `backup`, `artifact`, `resolver`, `board-identity`, `hooks`, `todo-tools`, `supervisor`, `holder` and `restart` when owed, `config-check`, `selftest`, `health`, `arrival`, `ancestry` when the run changed anything. With no config it refuses, naming `--token-file`; a flag naming another seat or site than the config's refuses before anything runs |
+| `node install.js --token-file <path> [--site <url> --seat-id <id>] [--agent-name <n>] [--ca-file <path>] [--no-board]` | the first install: `prereqs`, `values` (from the file, or the flags for a v1 file), `backup`, `resolver`, `identity`, `board-identity`, `token-take`, `token-config`, `config-check`, then the install below. **With a config present it is the [rotation](#rotating-a-sites-token)** |
+| `node install.js [--site <url>] [--seat-id <id>] [--no-board]` | re-check and upgrade: `prereqs`, `backup`, `artifact`, `resolver`, `board-identity`, `hooks`, `todo-tools`, `supervisor`, `holder` and `restart` when owed, `config-check`, `selftest`, `health`, `arrival`, `ancestry` when the run changed anything. With no config it refuses, naming `--token-file`; a flag naming another seat or site than the config's refuses before anything runs |
 | `node install.js add-site --token-file <path> [--site <url>] [--ca-file <path>] [--site-name <n>]` · `remove-site <name>` | [Adding a site](#adding-a-site) and [removing one](#removing-one-site) |
 | `node install.js statusline [--wrap <command>]` · `set-descriptors full\|paths\|none` | [the statusLine wrap](#the-statusline-wrap) and [the `descriptors` key](#descriptors) |
 | `node install.js issue-file --out <path> [--prompt]` | [a token file for a seat with no browser download](#a-token-file-without-a-browser-issue-file) |
@@ -84,25 +84,30 @@ given a PowerShell 7 module path can fail to load its own modules.
 
 ## The token file
 
-### The two forms
+### The three forms
 
-The site's *Seat tokens* page saves the token as a file, `mezzanine-reporter-token`; that is **v2**:
+The site's *Seat tokens* page saves the token as a file, `mezzanine-reporter-token`; that is **v3**
+(card#13117):
 
 ```
 token mzn_<43 chars>
 ingest_url https://<host>/api/ingest/events
-install_id <slug>
 seat_id <slug>
 ```
 
-Exactly those four keys, once each, in any order, one space between key and value, LF line endings and no
+Exactly those three keys, once each, in any order, one space between key and value, LF line endings and no
 trailing whitespace; `ingest_url` an `https://` URL of at most 256 B with no userinfo, ending
-`/api/ingest/events`; the slugs by D1 § 3.1. **v1** is the bare token on one line, with an optional line feed
-(what `issue-file` writes, and what the runbook's hand delivery carried). One parser, `parseTokenFile`, reads
-both — the pre-read of `--token-file`, the config write, the rotation and `add-site` all use it — and refuses
-anything else **by name**: a line number or a key, never the content. A v2 file gives the installer the seat's
-identity and site, and a flag that disagrees with it is refused; a v1 file needs `--site` and `--seat-id`, and
-`--install-id` defaults to this account's name as a slug.
+`/api/ingest/events`; the slug by D1 § 3.1. **v2** is what the page saved before card#13117: the same three
+keys and an `install_id <slug>` line, four keys in all. The installer reads a v2 file's `install_id`, holds it
+to its pattern and discards it — the seat's identity is its `seat_id` alone, so a v2 file saved before the
+site's upgrade still installs, and its `install_id` is never written to the config. **v1** is the bare token on
+one line, with an optional line feed (what `issue-file` writes, and what the runbook's hand delivery carried).
+One parser, `parseTokenFile`, reads all three — every step that reads the file uses it: the pre-read of
+`--token-file`, `token-take`, `token-config`, the rotation and `add-site` — and refuses anything else **by
+name**: a line number or a key, never the content. A v3 or v2 file gives the installer the seat's identity and
+site, and a flag that disagrees with it is refused; a v1 file needs `--site` and `--seat-id`. An installer
+from before reporter `0.7.0` refuses a v3 file because it *carries no install_id line*; the file is not
+exposed by that refusal — update the checkout and run the current installer.
 
 ### The take rule
 
@@ -149,7 +154,8 @@ For a seat with no browser download, `issue-file --out <path>` writes a **v1** f
 one line, and prints the prefix alone:
 
 - **From the issue command**, on the Mezzanine host:
-  `php artisan mezzanine:ingest-token:issue <install_id> <seat_id> --by=<who> | node install.js issue-file --out <path>`.
+  `php artisan mezzanine:ingest-token:issue <seat_id> --by=<who> | node install.js issue-file --out <path>`
+  (the seat id alone since card#13117).
   The input must hold **exactly one** line matching `^\s*token\s+(mzn_[A-Za-z0-9_-]{43})\s*$`; every other
   line is echoed with every token-shaped substring `<redacted>`, so the prefix line stays on screen. Zero
   token lines refuse, and **two refuse too, which is new with `install.js`**: the runbook's writer took the
@@ -236,7 +242,8 @@ rewrite owes the [restart](#holder-and-restart).
 
 `token-take` is [the take rule](#the-take-rule). `token-config` reads the named file through the parser and
 writes the config with **the config writer**, `writeConfig` — the runbook's `write-config.js` as a function.
-A fresh config is D1 § 3.1's multi-site form with one site named `default`: `install_id`, `seat_id`,
+A fresh config is D1 § 3.1's multi-site form with one site named `default`: `seat_id` (and no `install_id`,
+since card#13117),
 `spool_dir`, `wrapped_statusline` (the seat's current `statusLine.command`, recorded for [the
 wrap](#the-statusline-wrap)), `protocol_agent_name`, `descriptors` `"full"`, `enabled`, the board pair, and
 `sites: [{ name, ingest_url, token, ca_file, proxy_url }]`, `ca_file` from `--ca-file` (an absolute path, or
@@ -599,23 +606,24 @@ With a config present, `--token-file` rotates, in D1 § 3.3's order with the ref
 **issues** the new token on the site and saves its file; `node install.js --token-file <path>` **writes** it; the
 run **restarts** the flusher, because a running one keeps presenting the token it started with; and only then the
 user **revokes** the old prefix — issuing revokes nothing, so both resolve until then, and a revoked token is a
-`401` that stops the site's sending. A v2 file names its site: its `ingest_url` and each configured site's are
-reduced by `siteKey` — scheme and host lower-cased, a trailing `/` dropped, the ingest path appended to a bare
-origin, a default port dropped — and must match exactly one, with the file's `install_id` and `seat_id` equal to
-the config's; `--site-name`, if given, must name that site. **A mismatch is refused with a listing** of the file's
-identity and every configured site, and the pointer to `add-site`, because writing site B's token into site A's
+`401` that stops the site's sending. A v3 or v2 file names its site: its `ingest_url` and each configured
+site's are reduced by `siteKey` — scheme and host lower-cased, a trailing `/` dropped, the ingest path appended
+to a bare origin, a default port dropped — and must match exactly one, with the file's `seat_id` equal to the
+config's; `--site-name`, if given, must name that site. Nothing else of the identity is compared: a v2 file's
+`install_id` is discarded, so a seat the site's console has moved to another room rotates like any other.
+**A mismatch is refused with a listing** of the file's identity and every configured site, and the pointer to `add-site`, because writing site B's token into site A's
 entry has A refuse every batch and quarantine them (D1 § 11.5). A v1 file rotates `--site-name`, `default` when
 unset. The same route recovers a stopped site: a `401` (the token does not resolve there) or a `403
-identity_mismatch` (issued for another pair) in `REJECTED.<site>.txt`; the site keeps every event and resends the
+identity_mismatch` (issued for another seat) in `REJECTED.<site>.txt`; the site keeps every event and resends the
 request it was refused first.
 
 ## Adding a site
 
 A second Mezzanine site (D1 § 3.1, *Sites*), in the order in which a refusal fails safe: the user issues a token on
-the new site **for the seat's existing pair** and saves its file — a pair mistyped there is a `403
+the new site **for the seat's existing seat id** and saves its file — a seat id mistyped there is a `403
 identity_mismatch` on the first batch, which `selftest` cannot see; then `node install.js add-site --token-file
-<path>` takes the file as the main invocation does, requires a v2 file's identity to equal the config's and its
-`ingest_url` to match no configured site, requires `--site` for a v1 file, sets `--ca-file` on the new site, names
+<path>` takes the file as the main invocation does, requires a v3 or v2 file's `seat_id` to equal the config's
+and its `ingest_url` to match no configured site, requires `--site` for a v1 file, sets `--ca-file` on the new site, names
 it `--site-name` (else from its host name), writes it with the writer's `add-site` mode (which refuses a name or a
 site key the config already has), checks the config, removes the file and restarts the flusher. Then run
 `node install.js` to see the new site accept a batch.
@@ -642,7 +650,7 @@ site's token after the restart.
    prefix `<mzn_xxxxxxxx>` on `<host>`'s Seat tokens page* — before anything is removed, so a run that fails at a
    later step has still shown them; and the crontab is read (Linux), so a crontab it cannot read refuses before
    anything is removed. The prefix is not secret. Revoking is the operator's act; to take the desk off the floor
-   too, the site's operator runs `php artisan mezzanine:retire --seat=<install_id>/<seat_id> --by=<operator>
+   too, the site's operator runs `php artisan mezzanine:retire --seat=<seat_id> --by=<operator>
    --reason=<why>` (FLEET-STATE § 4.10).
 2. **The hooks, removed structurally**: every entry whose command parses as the reporter's for this artifact, the
    `statusLine` deleted when it is the reporter's and the config's `wrapped_statusline` is `null`, or set back to

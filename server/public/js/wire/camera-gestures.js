@@ -9,7 +9,7 @@
  * becomes a pan* would drift into two answers. Both pages call `cameraGestures()` on their drawing.
  *
  * ⛔ THIS FILE DECIDES NOTHING ABOUT THE CAMERA. How far a wheel pans, where a Ctrl+wheel or a pinch
- * zooms to and how far a drag pans are the screen's acts (`pan(delta)`, `zoom(point, delta)`,
+ * zooms to and how far a drag pans are the screen's acts (`pan(delta, point)`, `zoom(point, delta)`,
  * `pinch(from, to, factor)`, `drag(dx, dy)`, each over `camera.js`); the camera that comes back is
  * handed to `show` — `camera-view.js`'s — which renders nothing. What IS decided here is the gesture:
  *  · ⛔ NOTHING FRAMED, NOTHING TAKEN (card#7343 r4b, the seat's ruling, widening its r3b ruling on the
@@ -29,13 +29,17 @@
  *    with nothing measurable on it (no map held and no desk — `floor-screen.js`), and there the events,
  *    which moved nothing, are the browser's too;
  *  · THE WHEEL CHOOSES BY `ctrlKey`: a plain wheel — a mouse's notch, a trackpad's two-finger scroll —
- *    is the screen's `pan()`, carrying the event's `deltaX`, `deltaY` and `deltaMode`; a Ctrl+wheel — a
+ *    is the screen's `pan()`, carrying the event's `deltaX`, `deltaY` and `deltaMode`, and the cursor on the drawing
+ *    as a second argument a 2-D screen's pan does not read (the building view's acts aim a snap with it, card#13033); a Ctrl+wheel — a
  *    mouse's Ctrl+notch, or a trackpad's pinch, which a browser delivers as one — is its `zoom()` about
  *    the cursor, carrying `deltaY` and `deltaMode`. Either takes the event from the page: its scroll, or
  *    the browser's own page zoom — while the act answers that it `consumed` the event. A pan the camera
  *    can make no further the wheel's way is not consumed, and that wheel is the page's scroll, untouched
  *    and showing nothing (the edge, card#11045 Q3, the operator's ruling of 2026-10-01); a zoom over a
  *    framed drawing is always consumed — each the screen's answer, never this file's;
+ *  · EVERY WHEEL, CTRL+WHEEL AND PINCH ACT IS HANDED ITS EVENT's `timeStamp` AS ITS LAST ARGUMENT — the input's own time,
+ *    which a 2-D screen's acts do not read; the building view's acts read their gesture gap from it, never from when the
+ *    handler runs, which a long task on the page delays (card#13033, the seat's ruling of 2026-11-10);
  *  · ⛔ AN ELEMENT INSIDE THE DRAWING THAT DECLARES IT SCROLLS (`data-camera-scrolls` — the lobby's directory, FLOOR.md
  *    § 4.1, card#12113) HAS THE PAN GESTURE WHILE IT CAN STILL MOVE THE GESTURE's WAY, and the camera has it otherwise —
  *    the edge rule above, one level in. A plain wheel over it is asked of it first: while it can still scroll the
@@ -106,7 +110,7 @@
  * and its `gesturestart` on iOS is read from how a touch begins, never seen; and a pinch that rotates as it
  * scales may still open Safari's tab overview whatever is prevented (WebKit bug 233141, per danburzo).
  *
- * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForBothPagesTest`.
+ * Driven under `node` with a stand-in element by `Tests\Feature\Floor\TheCameraWireIsOneForEveryPageTest`.
  */
 
 import { LINE_PX, framesNothing } from './camera.js';
@@ -118,7 +122,7 @@ export const DRAG_SLOP_PX = 4;
  * @param {EventTarget & {getBoundingClientRect: function(): {left: number, top: number},
  *         setPointerCapture: function(number): void, releasePointerCapture: function(number): void,
  *         style: object}} element the drawing the viewer points at
- * @param {{pan: function(object): {camera: object, consumed: boolean},
+ * @param {{pan: function(object, object): {camera: object, consumed: boolean},
  *         zoom: function(object, object): {camera: object, consumed: boolean},
  *         pinch: function(object, object, number): object, drag: function(number, number): object,
  *         camera: function(): {bounds: object|null}}} acts the screen's camera acts — the wheel's two
@@ -209,8 +213,8 @@ export function cameraGestures(element, acts, show) {
         }
 
         const { camera, consumed } = event.ctrlKey
-            ? acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY, deltaMode: event.deltaMode })
-            : acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode });
+            ? acts.zoom(local(event.clientX, event.clientY), { deltaY: event.deltaY, deltaMode: event.deltaMode }, event.timeStamp)
+            : acts.pan({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode }, local(event.clientX, event.clientY), event.timeStamp);
 
         // The edge (card#11045 Q3): a wheel the act did not consume — the camera can pan no further its way —
         // is the page's scroll, and moves nothing here.
@@ -252,7 +256,7 @@ export function cameraGestures(element, acts, show) {
             return;
         }
 
-        show(acts.pinch(was.at, at, event.scale / was.scale));
+        show(acts.pinch(was.at, at, event.scale / was.scale, event.timeStamp));
     }
 
     for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
@@ -326,7 +330,7 @@ export function cameraGestures(element, acts, show) {
             finger.x = event.clientX;
             finger.y = event.clientY;
             Object.assign(pinch, span());
-            show(acts.pinch(was.mid, pinch.mid, was.spread > 0 ? pinch.spread / was.spread : 1));
+            show(acts.pinch(was.mid, pinch.mid, was.spread > 0 ? pinch.spread / was.spread : 1, event.timeStamp));
 
             return;
         }

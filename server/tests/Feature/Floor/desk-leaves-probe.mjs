@@ -22,7 +22,7 @@
  *       committed baseline byte for byte (run and compared with `cmp` on 2026-10-02). Each baseline desk
  *       is replayed from its own recorded seat and variant through the CURRENT `deskModel()`; the panel is
  *       read AS RENDERED — the real `renderDrillDown()` into a fake root holding exactly the
- *       `data-panel-*` slots `floor.blade.php` declares, `hidden` honoured on every slot and every row
+ *       `data-panel-*` slots the floor page declares (`partials/floor-page.blade.php`, both floor routes' body), `hidden` honoured on every slot and every row
  *       (criterion 3), WITHOUT `detail` (§ 9 F11, criterion 11); the list is `deskListLines()`, TYPED by
  *       role (criterion 1). A leaf matches only a home of its own type, as a multiset per desk, one rendered
  *       part consumed per occurrence, never by substring; and the parts a rendered text gives are a
@@ -440,11 +440,11 @@ function ruleTwo(where, m, v, desk) {
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 // RULE (i) — the panel as rendered, the list as typed lines, a partition of their parts.
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
-const BLADE = opt('--blade') ?? join(SERVER, 'resources', 'views', 'floor.blade.php');
+const BLADE = opt('--blade') ?? join(SERVER, 'resources', 'views', 'partials', 'floor-page.blade.php');
 const SLOTS = new Set(readFileSync(BLADE, 'utf8').match(/data-panel-[a-z-]+/g) ?? []);
 
 /**
- * The fake page: exactly the slots `floor.blade.php` declares (`null` for any other, as a real
+ * The fake page: exactly the slots the floor page's body declares (`null` for any other, as a real
  * `querySelector` answers), each with a `parentElement` for `putLabelled()`.
  */
 function fakeRoot() {
@@ -651,7 +651,7 @@ export const LIST_HOMES = [...new Set([...Object.values(HOMES_BY_MEMBER), ...Obj
 
 for (const slot of PANEL_HOMES) {
     if (!SLOTS.has(`data-panel-${slot}`)) {
-        finding({ rule: 'slots', what: `the guard types leaves to [data-panel-${slot}], which floor.blade.php does not declare` });
+        finding({ rule: 'slots', what: `the guard types leaves to [data-panel-${slot}], which the floor page does not declare` });
     }
 }
 

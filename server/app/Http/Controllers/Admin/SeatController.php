@@ -2,9 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Building\Rooms;
+use App\Fleet\SeatMove;
+use App\Fleet\SeatMoveRefused;
 use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
 use App\Http\Controllers\Controller;
+use App\Read\SeatIdentity;
 use App\Read\Snapshot;
 use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Contracts\View\View;
@@ -13,7 +17,7 @@ use Illuminate\Http\Request;
 
 /**
  * The console's AGENT module — card#9070's third scope item, and deliberately the narrowest of
- * the three: **manage and remove only.**
+ * the three: **manage, move and remove only.**
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THIS MODULE CREATES NO SEAT; THE SEAT TOKENS MODULE DOES. A seat is provisioned by issuing its
@@ -23,7 +27,8 @@ use Illuminate\Http\Request;
  * "add a seat" — card#9070's posture, which § 3.4 never stated and which card#12331 superseded on
  * the operator's 2026-10-25 request. What stays out of this module is `card#9071`'s ruling: nothing
  * here pins a seat to a desk or authors a fact the floor derives. It reads state and performs the
- * one act it owns, retirement.
+ * two acts it owns: retirement, and since card#13117 the room move (`App\Fleet\SeatMove`) — which places
+ * a seat in a ROOM, never at a desk; the desk inside the room stays § 3.2's derivation.
  *
  * ⛔ THE RETIREMENT IT PERFORMS IS `mezzanine:retire`'s, NOT A COPY OF IT. Both call
  * `App\Fleet\SeatRetirement`, which is the single writer § 4.10 requires; a console that set the
@@ -61,13 +66,46 @@ class SeatController extends Controller
             'active' => 'agents',
             'seats' => Snapshot::seats(),
             'retired' => Snapshot::retiredSeats(),
+            // The *Room* control's choices (card#13117): every live room, by key, with its name.
+            'rooms' => Rooms::live(),
+            'unassigned' => SeatIdentity::UNASSIGNED,
         ]);
+    }
+
+    /**
+     * The *Room* control — card#13117's room move (`App\Fleet\SeatMove`, `docs/design/FLEET-STATE.md § 4.10`).
+     * The two warnings it can carry are shown, never a refusal: the move is the operator's to make.
+     */
+    public function room(Request $request, SeatMove $move, string $seatId): RedirectResponse
+    {
+        $validated = $request->validate(['room' => ['required', 'string']]);
+
+        try {
+            $outcome = $move->move($seatId, $validated['room'], (string) $request->user()->email);
+        } catch (SeatMoveRefused $e) {
+            return redirect()->route('admin.agents.index')->withErrors(['room' => $e->getMessage()]);
+        } catch (\Throwable $e) {
+            // The move's bounded wait and retries are retirement's (card#9466), and so is this answer.
+            if (! app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
+                throw $e;
+            }
+
+            return redirect()->route('admin.agents.index')->withErrors([
+                'room' => 'Busy: '.$seatId.' was held by another writer for longer than a move waits. Nothing was changed — try again.',
+            ]);
+        }
+
+        $status = $outcome->moved
+            ? sprintf('%s moved from %s to %s — state_version %d. Its desk is redrawn in the new room on every connected floor.',
+                $seatId, $outcome->from, $outcome->to, $outcome->version)
+            : sprintf('%s is already in %s; nothing changed.', $seatId, $outcome->to);
+
+        return redirect()->route('admin.agents.index')->with('status', $status)->with('warnings', $outcome->warnings);
     }
 
     public function retire(
         Request $request,
         SeatRetirement $retirement,
-        string $installId,
         string $seatId,
     ): RedirectResponse {
         $validated = $request->validate([
@@ -81,17 +119,17 @@ class SeatController extends Controller
                 'retire' => sprintf(
                     'Refused: this seat store records the retiring operator in %d characters '
                     .'(docs/design/FLEET-STATE.md § 6.4) and your address is %d. Retire from the '
-                    .'shell with `php artisan mezzanine:retire --seat=%s/%s --by=<short name> '
+                    .'shell with `php artisan mezzanine:retire --seat=%s --by=<short name> '
                     .'--reason=…` so the record names you correctly.',
-                    self::AUTHOR_MAX, mb_strlen($by), $installId, $seatId,
+                    self::AUTHOR_MAX, mb_strlen($by), $seatId,
                 ),
             ]);
         }
 
-        $seat = $installId.'/'.$seatId;
+        $seat = $seatId;
 
         try {
-            $outcome = $retirement->retire($installId, $seatId, $by, $validated['reason']);
+            $outcome = $retirement->retire($seatId, $by, $validated['reason']);
         } catch (\Throwable $e) {
             // card#9466: a seat another writer kept busy past the act's bounded wait and retries
             // (`SeatRetirement::LOCK_WAIT_TIMEOUT_S`, `LOCK_ATTEMPTS`) rolled back whole, so the

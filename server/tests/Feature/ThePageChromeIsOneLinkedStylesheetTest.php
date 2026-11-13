@@ -178,7 +178,10 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         $declared = $this->rootTokens($sheet);
         $defects = [];
 
-        preg_match_all('/var\(--([a-z0-9_-]+)\)/', $style, $m);
+        // The tokens read BARE — `var(--name)`, with no fallback of its own — through the building view's picture's own
+        // extraction (`building/floor-picture.js`'s `tokenNames()`, card#13033), so the picture and this test read one
+        // set; a fallback-form token (`var(--name, …)`, the cab's `--dv-*` carriers) keeps its fallback and is exempt.
+        $m = [1 => array_column(array_filter($this->tokenNames($style), static fn (array $t): bool => $t['hasFallback'] === false), 'name')];
 
         $this->assertNotSame([], $m[1], 'the painter\'s style reads no token — the parse has stopped reading it');
 
@@ -225,6 +228,22 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
         return array_combine($m[1], array_map('trim', $m[2]));
     }
 
+    /**
+     * `building/floor-picture.js`'s `tokenNames()` over a stylesheet text, by `node`.
+     *
+     * @return list<array{name: string, hasFallback: bool}>
+     */
+    private function tokenNames(string $css): array
+    {
+        $url = 'file://'.public_path('js/building/floor-picture.js');
+        $out = [];
+        exec('node --input-type=module -e '.escapeshellarg('const { tokenNames } = await import('.json_encode($url).'); process.stdout.write(JSON.stringify(tokenNames('.json_encode($css).')));').' 2>&1', $out, $rc);
+
+        $this->assertSame(0, $rc, "node could not run tokenNames():\n".implode("\n", $out));
+
+        return json_decode(implode("\n", $out), true);
+    }
+
     /** The painter's style as the painter builds it — its exported `STYLE`, evaluated by `node`. */
     private function painterStyle(): string
     {
@@ -249,6 +268,7 @@ class ThePageChromeIsOneLinkedStylesheetTest extends TestCase
             'sign in' => $login,
             'the lobby' => $this->actingAs($user)->get('/dashboard')->assertOk()->getContent() ?: '',
             'the floor' => $this->actingAs($user)->get('/floor/aimla')->assertOk()->getContent() ?: '',
+            'the building view' => $this->actingAs($user)->get(route('building.view'))->assertOk()->getContent() ?: '',
             'the console' => $this->actingAs($user)->get(route('admin.index'))->assertOk()->getContent() ?: '',
         ];
     }

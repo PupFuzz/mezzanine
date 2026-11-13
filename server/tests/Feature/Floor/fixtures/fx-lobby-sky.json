@@ -390,7 +390,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1006,7 +1006,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -1024,7 +1024,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -1042,7 +1042,7 @@
         {
           "at_ms": 20000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:34.400Z",
             "install_id": "aimla",
@@ -1067,7 +1067,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -1085,7 +1085,7 @@
         {
           "at_ms": 45000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:59.400Z",
             "fleet": {
@@ -1103,7 +1103,7 @@
         {
           "at_ms": 60000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:14.400Z",
             "fleet": {
@@ -1516,7 +1516,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2132,7 +2132,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2150,7 +2150,7 @@
         {
           "at_ms": 15000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -2168,7 +2168,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -2186,7 +2186,7 @@
         {
           "at_ms": 45000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:59.400Z",
             "fleet": {
@@ -2204,7 +2204,7 @@
         {
           "at_ms": 60000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:14.400Z",
             "fleet": {
@@ -2222,7 +2222,7 @@
         {
           "at_ms": 75000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:29.400Z",
             "fleet": {
@@ -2240,7 +2240,7 @@
         {
           "at_ms": 85000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:39.400Z",
             "install_id": "aimla",
@@ -2265,7 +2265,7 @@
         {
           "at_ms": 90000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:44.400Z",
             "fleet": {
@@ -2283,7 +2283,7 @@
         {
           "at_ms": 105000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:24:59.400Z",
             "fleet": {
@@ -2301,7 +2301,7 @@
         {
           "at_ms": 120000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:25:14.400Z",
             "fleet": {

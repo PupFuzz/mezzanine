@@ -97,7 +97,6 @@ class IngestOrderTest extends IngestTestCase
             ->assertStatus(403)
             ->assertJson([
                 'error' => 'identity_mismatch',
-                'expected_install_id' => self::INSTALL,
                 'expected_seat_id' => self::SEAT,
             ]);
     }

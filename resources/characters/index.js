@@ -1,8 +1,9 @@
 // The character tree's public surface (docs/design/FLOOR.md § 10.2, § 10.4). Everything the floor
 // needs is here; nothing else in this directory should be imported directly by app code.
 //
-// Two layers under this one: `seed.js`, the seed machinery (first-party), and `creatures.js`, the
-// creature generator (first-party, card#11046). This file adds the frame contract's entry points —
+// Three layers under this one: `seed.js`, the seed machinery (first-party), `creatures.js`, the
+// creature generator (first-party, card#11046), and `creatures-3d.js`, its 3-D half — a key's creature as parts, read
+// from the same species data (first-party, card#13033). This file adds the frame contract's entry points —
 // the standing frame, the walk, the intern's chibi frame, the sleeper, the marked poses' pulse, and
 // `poseFrames()`, which a desk draws its pose in — and the size the scene reads. No cache: the generator is pure and the PAINTER
 // caches the URIs it makes per asset and drawing, and drops an intern's when it stops drawing it
@@ -15,12 +16,16 @@ import { EXPRESSIONS, INTERN_LOOP, SLEEP_LOOP, crestOfKey, headClearOfKey, expre
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
+// The 3-D half (card#13033 stage 2 slice 3): a key's creature as a part list over one bone hierarchy, and its poses and
+// clips — the same recipe as the frames below, read from the species' one `shape` (`creatures-3d.js`).
+export { BONES, BONE_PARENT, POSES, CLIPS, bodyParts, chibiParts } from './creatures-3d.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
   RIM, RIM_W, FOOT, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, internSpeciesOf, recipe, describe, chibiGeometry, frameDocument,
   EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
   CREST_TOP, STAND_TOP, FACE_TOP, standEntry, crestOfKey, headClearOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
+  faceBox, faceBoxOf, faceDocument, lidDocument, paintDocument, toneOf,
   LAPTOP_SHELLS, STICKER_SHAPES, STICKER_INKS, STICKER_CONTRAST, INTERN_LOOP, INTERN_SWAY_DEG, INTERN_SWAY_DX, laptopOf, LAPTOP_W, LAPTOP_TOP, LAPTOP_BOTTOM, LAPTOP_EYE_MARGIN,
 } from './creatures.js';
 
@@ -40,19 +45,19 @@ export const SCENE_H = 32;
  * frame contract), and phase 0 of the walk. `species` is the body: on a floor the seat object's delivered
  * `character.species` (card#12443, D2 § 6.13), which the painter always passes; omitted, the key's own draw —
  * the harness's sheet, which has nothing delivered.
- * @param {string} installId @param {string} seatId @param {string} [species] @returns {string} an SVG document
+ * @param {string} seatId @param {string} [species] @returns {string} an SVG document
  */
-export function standingFrame(installId, seatId, species) {
-  return frameDocument(seatKey(installId, seatId), { phase: 0, species });
+export function standingFrame(seatId, species) {
+  return frameDocument(seatKey(seatId), { phase: 0, species });
 }
 
 /**
  * THE WALK — stand, step-left, step-right, front-facing: the walker's frames, and what a held loop
  * steps through, as the painter does today. `species` as `standingFrame()`'s.
- * @param {string} installId @param {string} seatId @param {string} [species] @returns {string[]} three SVG documents
+ * @param {string} seatId @param {string} [species] @returns {string[]} three SVG documents
  */
-export function walkFrames(installId, seatId, species) {
-  const key = seatKey(installId, seatId);
+export function walkFrames(seatId, species) {
+  const key = seatKey(seatId);
   return [0, 1, 2].map((phase) => frameDocument(key, { phase, species }));
 }
 
@@ -61,10 +66,10 @@ export function walkFrames(installId, seatId, species) {
  * (`floor/desk-layout.js`'s `internKey()`): the same recipe re-proportioned and upright, its head at least
  * half the drawn height, for the stool's rect. `seatSpecies` is the body the intern must not wear — its seat's
  * DELIVERED species (card#12443), never the seat key's own draw; omitted, the seat key's draw (the sheet).
- * @param {string} installId @param {string} internKey @param {string} [seatSpecies] @returns {string} an SVG document
+ * @param {string} internKey @param {string} [seatSpecies] @returns {string} an SVG document
  */
-export function chibiFrame(installId, internKey, seatSpecies) {
-  const key = seatKey(installId, internKey);
+export function chibiFrame(internKey, seatSpecies) {
+  const key = seatKey(internKey);
   const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);
   return frameDocument(key, { chibi: true, species });
 }
@@ -75,11 +80,11 @@ export function chibiFrame(installId, internKey, seatSpecies) {
  * its form whenever the row draws no motion: the laptop on the lap, no sway) and `frames[1 ..]` the typing sway,
  * `INTERN_LOOP` frames at the loop rate, which a moving render steps from the intern's own `loopOffset()`.
  * `seatSpecies` is `chibiFrame()`'s: the seat's delivered species, which the intern never wears (card#12443).
- * @param {string} installId @param {string} internKey @param {string} [seatSpecies]
+ * @param {string} internKey @param {string} [seatSpecies]
  * @returns {{frames: string[], loopFrom: number}}
  */
-export function internFrames(installId, internKey, seatSpecies) {
-  const key = seatKey(installId, internKey);
+export function internFrames(internKey, seatSpecies) {
+  const key = seatKey(internKey);
   const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);
   const frames = [frameDocument(key, { chibi: true, laptop: true, species })];
   for (let i = 0; i < INTERN_LOOP; i++) frames.push(frameDocument(key, { chibi: true, laptop: true, sway: i, species }));
@@ -94,12 +99,12 @@ export function internFrames(installId, internKey, seatSpecies) {
  * render steps from the seat's own offset (`loopOffset()`). `deskTop` is where the desk's top edge crosses the
  * character's rect, as a share of the rect's height, and `clear` the floor's furniture in frame units — both the
  * floor's to say (`floor/desk-layout.js`), because the frame draws no desk. `species` as `standingFrame()`'s.
- * @param {string} installId @param {string} seatId @param {number} deskTop @param {object[]} clear
+ * @param {string} seatId @param {number} deskTop @param {object[]} clear
  * @param {string} [species]
  * @returns {{frames: string[], loopFrom: number}}
  */
-export function sleepFrames(installId, seatId, deskTop, clear, species) {
-  const key = seatKey(installId, seatId);
+export function sleepFrames(seatId, deskTop, clear, species) {
+  const key = seatKey(seatId);
   return { frames: Array.from({ length: SLEEP_LOOP + 1 }, (_, frame) => sleepDocument(key, { frame, deskTop, clear, species })), loopFrom: 1 };
 }
 
@@ -114,14 +119,14 @@ export function sleepFrames(installId, seatId, deskTop, clear, species) {
  * walk, frame 0 the static form); the walker's own frames (`walkFrames()`) stay neutral. `clear` is the floor's clear
  * rects, which the z's and the marker keep out of. `species` is the seat's delivered body (`standingFrame()`'s). The
  * one place a pose becomes a drawing: the painter asks, and decides nothing.
- * @param {string} installId @param {string} seatId
+ * @param {string} seatId
  * @param {{pose: string, glyph?: string|null, deskTop: number, clear: object[], species?: string}} at the desk's pose and
  *        § 7.1 glyph
  * @returns {{frames: string[], loopFrom: number}}
  */
-export function poseFrames(installId, seatId, { pose, glyph = null, deskTop, clear, species }) {
-  if (pose === 'asleep') return sleepFrames(installId, seatId, deskTop, clear, species);
-  const key = seatKey(installId, seatId), expression = expressionOf(pose, glyph);
+export function poseFrames(seatId, { pose, glyph = null, deskTop, clear, species }) {
+  if (pose === 'asleep') return sleepFrames(seatId, deskTop, clear, species);
+  const key = seatKey(seatId), expression = expressionOf(pose, glyph);
   if (EXPRESSIONS[expression].marker) {
     const doc = (level) => frameDocument(key, { expression, level, clear, species });
     return { frames: [doc(3), ...Array.from({ length: SLEEP_LOOP }, (_, n) => doc(markerLevel(n)))], loopFrom: 1 };
@@ -133,10 +138,10 @@ export function poseFrames(installId, seatId, { pose, glyph = null, deskTop, cle
  * WHERE A SEAT's DRAWN HEAD IS (card#12444) — the tree → floor interface for § 5.1's thought trail: the topmost ink of the
  * seat's character in the pose it is drawn in, in frame units from the character rect's top (`creatures.js`'s
  * `crestOfKey()`), for its delivered `species`. The page hands it to the scene, which ends the trail there.
- * @param {string} installId @param {string} seatId @param {{pose?: string, species?: string}} [at] @returns {number}
+ * @param {string} seatId @param {{pose?: string, species?: string}} [at] @returns {number}
  */
-export function crestTop(installId, seatId, at = {}) {
-  return crestOfKey(seatKey(installId, seatId), at);
+export function crestTop(seatId, at = {}) {
+  return crestOfKey(seatKey(seatId), at);
 }
 
 /**
@@ -144,12 +149,12 @@ export function crestTop(installId, seatId, at = {}) {
  * `crestTop()`: its face's top and the top of the mark its pose draws over the head, in frame units from the character
  * rect's top (`creatures.js`'s `headClearOfKey()`), for its delivered `species`. The page hands it to the scene, which
  * sets the bubble above both (`floor/desk-layout.js`'s `bubbleSeat()`).
- * @param {string} installId @param {string} seatId
+ * @param {string} seatId
  * @param {{pose?: string, glyph?: string|null, species?: string, clear?: object[]}} [at]
  * @returns {{face: number|null, mark: number|null}}
  */
-export function headClear(installId, seatId, at = {}) {
-  return headClearOfKey(seatKey(installId, seatId), at);
+export function headClear(seatId, at = {}) {
+  return headClearOfKey(seatKey(seatId), at);
 }
 
 /**
@@ -158,8 +163,8 @@ export function headClear(installId, seatId, at = {}) {
  * function of the key, so it is the same on every reload and draws nothing random. `length` is the LOOP's, never the
  * frame list's — `frames.length − loopFrom` (`poseFrames()`). The painter steps every character whose held render
  * moves from it (`floor/painter.js`); frame 0 stays the canonical, reduced-motion form, which no offset reads.
- * @param {string} installId @param {string} seatId @param {number} length @returns {number} in 0..length-1
+ * @param {string} seatId @param {number} length @returns {number} in 0..length-1
  */
-export function loopOffset(installId, seatId, length) {
-  return draw(seatKey(installId, seatId), 'loop-phase') % length;
+export function loopOffset(seatId, length) {
+  return draw(seatKey(seatId), 'loop-phase') % length;
 }

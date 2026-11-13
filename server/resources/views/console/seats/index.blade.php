@@ -15,17 +15,44 @@
         (<code>docs/design/FLEET-STATE.md § 6.13</code>). It is not editable here.
     </p>
 
+    <p>
+        <strong>Room</strong> is the room a seat is drawn in. A new seat is in none — <em>Unassigned</em> — until you
+        place it; moving a seat redraws its desk in the new room on every connected floor, keeping its character
+        (<code>docs/design/FLEET-STATE.md § 4.10</code>). Rooms are created on the
+        <a href="{{ route('admin.rooms.index') }}">Rooms</a> page. A move is never refused for coordination, but it is
+        warned about: into a room where another seat declares the same agent name, and out of a room a coordination
+        binding is bound to.
+    </p>
+
+    @foreach (session('warnings', []) as $warning)
+        <p role="alert">Warning: {{ $warning }}</p>
+    @endforeach
+
     <table>
         <thead>
             <tr>
-                <th>Install</th><th>Seat</th><th>Character</th><th>Render state</th><th>Link</th>
+                <th>Room</th><th>Seat</th><th>Character</th><th>Render state</th><th>Link</th>
                 <th>Last activity</th><th></th>
             </tr>
         </thead>
         <tbody>
             @forelse ($seats as $seat)
                 <tr>
-                    <td>{{ $seat->install_id }}</td>
+                    <td>
+                        {{-- The room move (card#13117, `App\Fleet\SeatMove`): a live room, or none. --}}
+                        <form method="POST" action="{{ route('admin.agents.room', $seat->seat_id) }}">
+                            @csrf
+                            @method('PATCH')
+                            <label for="room-{{ $seat->seat_id }}">Room</label>
+                            <select id="room-{{ $seat->seat_id }}" name="room">
+                                <option value="{{ $unassigned }}" @selected($seat->install_id === $unassigned)>Unassigned</option>
+                                @foreach ($rooms as $key => $name)
+                                    <option value="{{ $key }}" @selected($seat->install_id === $key)>{{ $name ?? $key }} ({{ $key }})</option>
+                                @endforeach
+                            </select>
+                            <button type="submit">Move</button>
+                        </form>
+                    </td>
                     <td>{{ $seat->seat_id }}</td>
                     <td>@include('console.seats.species', ['seat' => $seat])</td>
                     <td>{{ $seat->render_state }}</td>
@@ -39,10 +66,10 @@
                     </td>
                     <td>
                         <form method="POST"
-                              action="{{ route('admin.agents.retire', [$seat->install_id, $seat->seat_id]) }}">
+                              action="{{ route('admin.agents.retire', $seat->seat_id) }}">
                             @csrf
-                            <label for="reason-{{ $seat->install_id }}-{{ $seat->seat_id }}">Reason</label>
-                            <input id="reason-{{ $seat->install_id }}-{{ $seat->seat_id }}"
+                            <label for="reason-{{ $seat->seat_id }}">Reason</label>
+                            <input id="reason-{{ $seat->seat_id }}"
                                    name="reason" type="text" required maxlength="255">
                             <button type="submit">Retire</button>
                         </form>
@@ -55,7 +82,7 @@
     </table>
 
     <p>
-        Retiring a seat is the one operator act on this page and it is not a deletion. The floor is
+        Retiring a seat is not a deletion. The floor is
         told in the same transaction and <strong>the desk goes immediately</strong> — a removal is
         a deliberate act, and it is not the silence of a seat that stopped reporting, which keeps
         its desk and renders as degraded (<code>docs/design/FLOOR.md § 3.5</code>).
@@ -72,7 +99,7 @@
     <table>
         <thead>
             <tr>
-                <th>Install</th><th>Seat</th><th>Character</th><th>Retired</th><th>By</th><th>Reason</th>
+                <th>Room</th><th>Seat</th><th>Character</th><th>Retired</th><th>By</th><th>Reason</th>
             </tr>
         </thead>
         <tbody>

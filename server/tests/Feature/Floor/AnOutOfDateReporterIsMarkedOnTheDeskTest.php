@@ -30,9 +30,9 @@ class AnOutOfDateReporterIsMarkedOnTheDeskTest extends TestCase
 
     private const BADGE = 'update_required';
 
-    private const IMPL = 'aimla/aimla-impl-1';
+    private const IMPL = 'aimla-impl-1';
 
-    private const PM = 'aimla/aimla-pm';
+    private const PM = 'aimla-pm';
 
     /**
      * The renderer this test reads is the desk floor, so the run's `floor` — the floor SCREEN, which
@@ -183,7 +183,7 @@ class AnOutOfDateReporterIsMarkedOnTheDeskTest extends TestCase
         // ── after aimla-pm's delta: the chip arrives with A11, the reporter block unchanged ──
         [$pm3] = $this->laidOut([$frames[3]['desks'][self::PM]], $root);
         $a11 = array_values(array_filter($result['animation_log'], static fn (array $r): bool => $r['animation_id'] === 'A11'
-            && "{$r['install_id']}/{$r['seat_id']}" === self::PM));
+            && $r['seat_id'] === self::PM));
         $pmPanel = $this->panels([$this->finalSeats($result)[self::PM]], $root)[0];
 
         if ($this->chips($pm3['elements']) !== [self::BADGE]

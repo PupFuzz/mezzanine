@@ -4,7 +4,9 @@ namespace App\Floor;
 
 use App\Building\Building;
 use App\Building\Layouts;
+use App\Read\SeatIdentity;
 use App\Read\Snapshot;
+use Illuminate\Support\Collection;
 
 /**
  * What the floors module SHOWS: every floor this deploy has, the map it was given, the two
@@ -49,7 +51,7 @@ final class FloorInventory
      */
     public static function rows(): array
     {
-        $seats = Snapshot::seats()->groupBy('install_id');
+        $seats = self::roomSeats()->groupBy('install_id');
         $floors = Floors::all();
         $validatedAgainst = Floors::validatedAgainst();
 
@@ -60,16 +62,23 @@ final class FloorInventory
         $box = app(FurnitureBox::class);
 
         // ⛔ ONE DERIVATION OF WHERE A ROOM SITS, AND IT IS THE COMPOSER'S. Reading the layout
-        // directly here — "its floor if it is placed, else its own id" — would be a second copy of
-        // `App\Building\Building::compose()`'s rule, and the two would disagree the first time one
-        // of them learned about a new case. So the building is composed once and flattened.
+        // directly here — "its floor if it is placed, else the Unassigned floor" — would be a second copy
+        // of `App\Building\Building::compose()`'s rule, and the two would disagree the first time one
+        // of them learned about a new case. So the building is composed once and flattened, over the
+        // population the browser composes from too: the rendered rooms and the live rooms with a map.
         $placement = [];
 
         // ⭐ THE LAYOUT IS READ FROM THE CONSOLE'S OWN STORE since card#9208's reversal
         // (`App\Building\Layouts`, `docs/design/FLEET-STATE.md § 6.11`), where it was
         // `config/building.php` before. The composer did not change with it: § 4.6's promise was
         // that whatever reads the document "takes the DECODED document, never a path".
-        foreach (Building::compose(Layouts::layout(), $seats->keys()->map(strval(...))->all()) as $floor) {
+        $composed = Building::compose(
+            Layouts::layout(),
+            $seats->keys()->map(strval(...))->all(),
+            Floors::versions()->pluck('install_id')->map(strval(...))->all(),
+        );
+
+        foreach ($composed as $floor) {
             foreach ($floor['rooms'] as $room) {
                 $placement[$room['install']] = ['floor' => $floor['floor'], 'form' => $room['form']];
             }
@@ -117,9 +126,9 @@ final class FloorInventory
 
             $rows[] = [
                 'install_id' => (string) $installId,
-                // null for a room that is on no floor at all: the fleet reports nothing for it
-                // and the layout places it nowhere, so nothing draws it. That is a true and
-                // actionable answer, and it is why this is not defaulted to the install's own id.
+                // The composer puts every rendered, placed or live authored room on a floor — the Unassigned floor
+                // when the layout places it nowhere (card#13117). null is a RETIRED room's map: kept as a record,
+                // and drawn nowhere.
                 'floor' => $placement[(string) $installId]['floor'] ?? null,
                 'form' => $placement[(string) $installId]['form'] ?? null,
                 'seats' => $count,
@@ -159,13 +168,24 @@ final class FloorInventory
      */
     public static function renderedInstalls(): array
     {
-        return Snapshot::seats()
+        return self::roomSeats()
             ->pluck('install_id')
             ->unique()
             ->sort()
             ->values()
             ->map(fn ($id) => (string) $id)
             ->all();
+    }
+
+    /**
+     * The rendered seats that are in a ROOM. ⛔ The snapshot groups the seats in no room under the virtual
+     * install `unassigned` (card#13117, plan-13117-seat-identity.md § 4.4), which is not a room: no map
+     * may be authored for it and no console row offers it as one, so its seats are left out here — the
+     * one population both the rows and the write-side guard above read.
+     */
+    private static function roomSeats(): Collection
+    {
+        return Snapshot::seats()->where('install_id', '!==', SeatIdentity::UNASSIGNED)->values();
     }
 
     /** @return list<string> the rendered installs with no map yet — what "add a floor" offers */

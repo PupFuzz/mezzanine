@@ -3,6 +3,7 @@
 namespace App\Fleet;
 
 use App\Characters\SpeciesList;
+use App\Read\SeatIdentity;
 use App\Support\Anchored;
 use App\Support\Slug;
 use Illuminate\Support\Collection;
@@ -21,8 +22,8 @@ use Illuminate\Support\Facades\DB;
  * ⛔ ISSUING CREATES THE SEAT. `docs/design/FLEET-STATE.md § 6.4`: "A seat row is created at
  * seat-token issue time (CLI or console; D1 § 3.3), which is why the row can exist before any event arrives: a
  * provisioned-but-silent seat renders `offline`/`no_data_yet` rather than being invisible." So one
- * transaction writes the install (if new), the seat (if new), the seat's `seat_state` row in
- * exactly that state, and the token — a seat with a token and no state row, or a state row with no
+ * transaction writes the seat (if new — in no room since card#13117; it wrote the install too
+ * before then), the seat's `seat_state` row in exactly that state, and the token — a seat with a token and no state row, or a state row with no
  * token, is a half-provisioned desk.
  *
  * ⛔ CREATING A SEAT ALLOCATES ITS CHARACTER, ONCE (card#12443, `docs/design/FLEET-STATE.md § 6.13`). This is the
@@ -52,24 +53,43 @@ use Illuminate\Support\Facades\DB;
  */
 final class SeatTokens
 {
+    /** The seat ids no seat is issued: the segments `routes/web.php`'s floor routes spell after `/floor/{floor}/`. */
+    public const RESERVED_IDS = ['3d'];
+
     /**
      * Test seam: runs inside `issue()`'s transaction right after the species mutex is locked, before any other
      * statement — the position AT-D2-31's concurrency legs probe (`SeatRetirement::$beforeRetire`'s shape).
      *
-     * @var (callable(string, string): void)|null
+     * @var (callable(string): void)|null
      */
     public static $afterMutex = null;
 
     /**
-     * Mint a token for `<installId>/<seatId>`, creating the install and the seat if they are new.
+     * Mint a token for the seat `$seatId`, creating the seat if it is new.
+     *
+     * ⛔ A SEAT IS KNOWN BY ITS `seat_id` ALONE (card#13117, `docs/design/plan-13117-seat-identity.md § 3.1`).
+     * Issue is the one creator of a seat, so this is where the site-wide invariant is held: at most one LIVE
+     * seat carries an id, and an id any seat has ever carried is never issued again. Decided after the
+     * mutex, so every creation is serialised:
+     *
+     *   no row of the id         → a NEW seat, in no room (`install_ref` NULL — the console places it);
+     *   a live row               → a re-issue for that seat (rotation, D1 § 3.3);
+     *   retired rows only        → refused, `seatRetired` — there is no un-retire;
+     *   a live AND a retired row → the live row wins: a re-issue. A store migrated from per-install ids can
+     *                              hold `x` live under one install and `x` retired under another.
+     *
+     * `uq_live_seat` is the store's backstop for the live half; the never-reused half is this function's.
      */
-    public static function issue(string $installId, string $seatId, string $by): SeatTokenIssued|SeatTokenRefusal
+    public static function issue(string $seatId, string $by): SeatTokenIssued|SeatTokenRefusal
     {
-        // D1 § 3.1's slugs, from `App\Support\Slug` — the building surface's route checks the same one.
-        foreach (['install_id' => [$installId, Slug::INSTALL_ID], 'seat_id' => [$seatId, Slug::SEAT_ID]] as $field => [$given, $body]) {
-            if (preg_match(Anchored::pattern($body), $given) !== 1) {
-                return SeatTokenRefusal::notASlug($field, $given, Anchored::pattern($body));
-            }
+        // D1 § 3.1's slug, from `App\Support\Slug` — the seat routes check the same one.
+        if (preg_match(Anchored::pattern(Slug::SEAT_ID), $seatId) !== 1) {
+            return SeatTokenRefusal::notASlug('seat_id', $seatId, Anchored::pattern(Slug::SEAT_ID));
+        }
+
+        // The floor's own route segments are no seat's (card#13033 stage 2): `/floor/{floor}/3d` is the 3-D floor.
+        if (in_array($seatId, self::RESERVED_IDS, true)) {
+            return SeatTokenRefusal::reservedId($seatId);
         }
 
         // D1 § 3.3: 32 random bytes from a CSPRNG → 43 base64url characters. "256 bits is the
@@ -82,7 +102,7 @@ final class SeatTokens
 
         $now = now()->format('Y-m-d H:i:s.v');
 
-        $written = DB::transaction(function () use ($installId, $seatId, $by, $prefix, $hash, $now) {
+        $written = DB::transaction(function () use ($seatId, $by, $prefix, $hash, $now) {
             // ⛔ THE SPECIES MUTEX IS THE TRANSACTION'S FIRST STATEMENT, ON EVERY PATH (card#12443,
             // docs/design/FLEET-STATE.md § 6.13). Two creations serialise on this one row, which nothing else
             // locks. FIRST is literal: under REPEATABLE READ the read view every plain read answers from is opened
@@ -92,45 +112,32 @@ final class SeatTokens
             DB::table('species_allocation_lock')->where('id', 1)->lockForUpdate()->value('id');
 
             if (self::$afterMutex !== null) {
-                (self::$afterMutex)($installId, $seatId);
+                (self::$afterMutex)($seatId);
             }
-
-            $installRef = DB::table('installs')->where('install_id', $installId)->value('id');
 
             // A plain read finds the seat: every creation holds the mutex this transaction now holds, so a
             // seat committed before the grant is visible here and no other can appear until this commits.
-            $existing = $installRef === null ? null : DB::table('seats')
-                ->where('install_ref', $installRef)
-                ->where('seat_id', $seatId)
-                ->value('id');
+            // The live row first; else the most recently retired one, which only refuses.
+            $found = SeatIdentity::latest($seatId);
 
             // ⛔ A RE-ISSUE LOCKS THE SEAT IN `SeatLock`'s ORDER — `seat_state`, then `seats` (card#12461).
             // Taking `seats` first and `seat_state` at the insert below held the pair the other way round
             // from retirement, and the two deadlocked.
-            $seat = $existing === null ? null : SeatLock::forUpdate((int) $existing, ['id', 'retired_at', 'retired_by', 'retired_reason']);
+            $seat = $found === null ? null : SeatLock::forUpdate((int) $found->seat_ref, ['id', 'retired_at', 'retired_by', 'retired_reason']);
 
             // Decided on a LOCKING read inside the transaction, before the first insert, so a
             // refusal writes nothing and a retirement racing this issue either commits first (and
             // is seen here) or waits for this transaction.
             if ($seat !== null && $seat->retired_at !== null) {
-                return SeatTokenRefusal::seatRetired(
-                    $installId, $seatId, (string) $seat->retired_at, $seat->retired_by, $seat->retired_reason,
-                );
-            }
-
-            if ($installRef === null) {
-                $installRef = DB::table('installs')->insertGetId([
-                    'install_id' => $installId,
-                    'created_at' => $now,
-                ]);
+                return SeatTokenRefusal::seatRetired($seatId, (string) $seat->retired_at, $seat->retired_by, $seat->retired_reason);
             }
 
             // § 6.13: a NEW seat is allocated its species here, once, and keeps it for life — a re-issue for an
-            // existing seat takes no branch that writes it.
+            // existing seat takes no branch that writes it. It is created in no room.
             $seatRef = $seat?->id ?? DB::table('seats')->insertGetId([
-                'install_ref' => $installRef,
+                'install_ref' => null,
                 'seat_id' => $seatId,
-                'species' => self::allocate($installId, $seatId),
+                'species' => self::allocate($seatId),
                 'created_at' => $now,
             ]);
 
@@ -165,7 +172,13 @@ final class SeatTokens
                 'created_by' => $by,
             ]);
 
-            return ['seatRef' => (int) $seatRef, 'priorActive' => $priorActive];
+            return [
+                'seatRef' => (int) $seatRef,
+                'installId' => $found === null ? SeatIdentity::UNASSIGNED : (string) $found->install_id,
+                'reissue' => $found !== null,
+                'lastReceiptAt' => DB::table('seat_state')->where('seat_ref', $seatRef)->value('last_receipt_at'),
+                'priorActive' => $priorActive,
+            ];
         });
 
         if ($written instanceof SeatTokenRefusal) {
@@ -175,26 +188,31 @@ final class SeatTokens
         return new SeatTokenIssued(
             plaintext: $token,
             prefix: $prefix,
-            installId: $installId,
+            installId: $written['installId'],
             seatId: $seatId,
             seatRef: $written['seatRef'],
             createdAt: $now,
             priorActive: $written['priorActive'],
+            reissue: $written['reissue'],
+            lastReceiptAt: $written['lastReceiptAt'],
         );
     }
 
     /**
      * The new seat's species, by § 6.13's rules over the live population — read here, under the mutex the
-     * transaction opened with. The building layout is read only if rule 1 has no answer.
+     * transaction opened with. A new seat is in no room, so it is on no floor: rule 2 has nothing to read
+     * (operator ruling 2026-11-10, card#13117 § 13 Q6 (a) — *the seat's floor, or nothing while it has none*).
+     *
+     * The preference key is the `seat_id` alone, the key the client's draw seeds the character from
+     * (`resources/characters/seed.js`'s `seatKey()`, FLOOR.md § 10.2): a seat's first preference is the body
+     * the browser would draw for it.
      */
-    private static function allocate(string $installId, string $seatId): string
+    private static function allocate(string $seatId): string
     {
-        $live = CharacterAllocation::livePopulation();
-
         return CharacterAllocation::choose(
-            $installId.'/'.$seatId,
-            $live,
-            CharacterAllocation::floorOf($installId, array_map(static fn (object $s): string => (string) $s->install_id, $live)),
+            $seatId,
+            CharacterAllocation::livePopulation(),
+            static fn (): array => [],
             SpeciesList::current(),
         );
     }
@@ -212,15 +230,13 @@ final class SeatTokens
      */
     public static function revoke(string $prefix, string $by): SeatTokenRevocation
     {
-        $rows = DB::table('ingest_tokens')
-            ->join('seats', 'seats.id', '=', 'ingest_tokens.seat_ref')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
+        $rows = SeatIdentity::query()
+            ->join('ingest_tokens', 'ingest_tokens.seat_ref', '=', 'seats.id')
             ->where('ingest_tokens.prefix', $prefix)
             ->select([
                 'ingest_tokens.id',
                 'ingest_tokens.seat_ref',
                 'ingest_tokens.revoked_at',
-                'installs.install_id',
                 'seats.seat_id',
             ])
             ->get();
@@ -254,7 +270,6 @@ final class SeatTokens
 
         foreach ($active as $row) {
             $revoked[] = [
-                'installId' => (string) $row->install_id,
                 'seatId' => (string) $row->seat_id,
                 'remaining' => DB::table('ingest_tokens')
                     ->where('seat_ref', $row->seat_ref)
@@ -267,23 +282,24 @@ final class SeatTokens
     }
 
     /**
-     * The console page's list: every token row joined to its seat and install, by install and seat,
-     * newest first within a seat. Revoked rows stay, for the reason retired users stay on theirs:
+     * The console page's list: every token row joined to its seat and the seat's room (`unassigned` for
+     * none), by seat, newest first within a seat. Two retired seats of one id (a store migrated from
+     * per-install ids, § 3.1) list as two seat rows, told apart by their rooms. Revoked rows stay, for the reason retired users stay on theirs:
      * the row IS the record of who issued and revoked a token, and when — there is no audit
      * table (the `revoked_by` migration's docblock). `token_hash` and `last_used_ip` are not
      * selected.
      */
     public static function listing(): Collection
     {
-        return DB::table('ingest_tokens')
-            ->join('seats', 'seats.id', '=', 'ingest_tokens.seat_ref')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->orderBy('installs.install_id')
+        return SeatIdentity::query()
+            ->join('ingest_tokens', 'ingest_tokens.seat_ref', '=', 'seats.id')
             ->orderBy('seats.seat_id')
+            ->orderBy('seats.id')
             ->orderByDesc('ingest_tokens.created_at')
             ->orderByDesc('ingest_tokens.id')
             ->get([
-                'installs.install_id',
+                SeatIdentity::installId(),
+                'seats.id as seat_ref',
                 'seats.seat_id',
                 'seats.retired_at as seat_retired_at',
                 'ingest_tokens.prefix',

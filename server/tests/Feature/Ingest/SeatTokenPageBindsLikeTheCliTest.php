@@ -12,7 +12,7 @@ use Tests\Feature\Support\DrivesTheSeatTokensPage;
 
 /**
  * A token issued on the console's *Seat tokens* page (card#12331) is the same credential the CLI
- * issues: bound to the same seat row, resolved to the same `(install_id, seat_id)`, accepted by the
+ * issues: bound to the same seat row, resolved to the same `seat_id`, accepted by the
  * ingest — and, once revoked on the page, refused by it.
  */
 final class SeatTokenPageBindsLikeTheCliTest extends IngestTestCase
@@ -34,20 +34,20 @@ final class SeatTokenPageBindsLikeTheCliTest extends IngestTestCase
     public function test_the_page_and_the_cli_bind_one_seat_and_the_page_token_ingests(): void
     {
         $this->assertSame(0, Artisan::call('mezzanine:ingest-token:issue', [
-            'install_id' => self::INSTALL, 'seat_id' => self::SEAT, '--by' => 'suite',
+            'seat_id' => self::SEAT, '--by' => 'suite',
         ]));
         $this->assertSame(1, preg_match('/mzn_[A-Za-z0-9_-]{43}/', Artisan::output(), $m));
         $cli = $m[0];
 
         $this->confirmedOperator();
-        $web = $this->plaintextIn($this->issueOnPage(self::INSTALL, self::SEAT)->assertOk());
+        $web = $this->plaintextIn($this->issueOnPage(self::SEAT)->assertOk());
         $this->assertNotNull($web);
 
         $this->assertSame(1, DB::table('ingest_tokens')->distinct()->count('seat_ref'), 'the two paths bound different seats');
 
         foreach ([$cli, $web] as $token) {
             $binding = $this->resolve($token);
-            $this->assertSame([self::INSTALL, self::SEAT, $this->seatRef], [$binding->installId, $binding->seatId, $binding->seatRef]);
+            $this->assertSame([self::SEAT, $this->seatRef], [$binding->seatId, $binding->seatRef]);
         }
 
         $this->postBatch($this->validBatch(), token: $web)->assertStatus(202);
@@ -57,7 +57,7 @@ final class SeatTokenPageBindsLikeTheCliTest extends IngestTestCase
     public function test_a_token_revoked_on_the_page_is_refused_by_the_ingest(): void
     {
         $this->confirmedOperator();
-        $web = $this->plaintextIn($this->issueOnPage(self::INSTALL, self::SEAT)->assertOk());
+        $web = $this->plaintextIn($this->issueOnPage(self::SEAT)->assertOk());
 
         // The control: before the revocation it is accepted.
         $this->postBatch($this->validBatch(), token: $web)->assertStatus(202);

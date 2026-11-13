@@ -1,5 +1,5 @@
 {
-  "note": "docs/design/FLOOR.md Appendix B row 15's camera runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's reference viewport: the test holds every run entered at F to the figure § 12 states, and every any-size run to a window smaller than F in at least one dimension (§ 4.5: the room is drawn at every size, card#7341's 2026-10-01 ruling). ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a Ctrl+wheel, a plain wheel, a touch pinch, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view. `camera_page` is `camera_floor`'s replay entered with the camera's surface at the floor page's own drawing box at F — § 12's stated page surface — and no camera act, so § 12's viewport row is measured on the surface a viewer's page gives the camera (card#11045 PR-E).",
+  "note": "docs/design/FLOOR.md Appendix B row 15's camera runs (card#7341) — AT-D3-21's floor half. Every run replays § 11's fixtures byte for byte — `fx-snapshot-4` through `fx-scene.json`'s `scene_default` and `scene_overflow` (the shipped default map, `@json:`), `fx-gap`'s resync pair, `fx-layout-acts`' `room.map`, `fx-drilldown`'s `fleet.health`, `fx-degraded`'s snapshot and `fx-floor-plan`'s failing room map — at a viewport each run states (`floor.viewport`, CSS px) and with the viewer's camera acts on the scenario clock (`floor.camera`, `fleet-client-probe.mjs`'s header). F is § 12's reference viewport: the test holds every run entered at F to the figure § 12 states, and every any-size run to a window smaller than F in at least one dimension (§ 4.5: the room is drawn at every size, card#7341's 2026-10-01 ruling). ⭐ And Appendix B row 16's building half (card#7343): `building_rides` and `building_rides_reduced` are `fx-snapshot-4` under a layout of two floors — `aimla`, unlabelled, and `zeta`, labelled *the annex*, a room the fleet reports no seat for — entered at the lobby with the building's drawing surface stated (`lobby.surface`), then the viewer riding to the labelled floor, riding to the other, and asking for the whole building (`lobby.camera`) — the page back from the back-forward cache (`return`) after each ride, since a ride leaves the lobby — with a heartbeat drawn between the second ride and the whole-building control; the second run is the first under `prefers-reduced-motion`. `building_ride_in_flight` is the same entry with a ride in flight interrupted by a second ride, a Ctrl+wheel, a plain wheel, a touch pinch, a key's zoom, a drag, a focused plate and the whole-building control, then arriving and the lobby's controls working again; `building_focus` is the same entry with the keyboard's focus on plates in and out of view. `camera_page` is `camera_floor`'s replay entered with the camera's surface at the floor page's own drawing box at F — § 12's stated page surface — and no camera act, so § 12's viewport row is measured on the surface a viewer's page gives the camera (card#11045 PR-E). ⭐ And Appendix B row 47 (card#13033): `building_stack` is AT-D3-37's run, the building view entered at `/building` — its own note states it.",
   "runs": {
     "camera_floor": {
       "note": "AT-D3-21's floor half, the camera leg (Appendix B row 15): `fx-snapshot-4`'s four seats on the SHIPPED default map (`@json:`, the file itself) at a viewport of § 12's reference viewport, F. The viewer zooms with a Ctrl+wheel at a stated cursor point, drags by a stated offset, fits the floor, zooms in again three notches with the cursor at the window's vertical middle (where the fit centres the room, so the clamp never has to move the point under the cursor as the room grows past the window's height), drags, drags far past the floor's edge (the clamp), and drags once more; then (card#11045: the plain wheel pans, Ctrl+wheel and the pinch zoom) zooms in four notches (under the camera's ceiling for the pinch after it on the six-desk default, card#11045), pans with the plain wheel in pixel, line and page mode, pinches out and in about a stated midpoint, wheels far past the bottom edge (consumed, clamped) and again at it (released to the page — Q3), far past the right edge and again at it (released), and wheels diagonally at the right edge (consumed: the vertical axis still follows) — then the fleet sends a `seat.delta` (1000 ms), a `seat.delta` past a gap that resyncs the seat by fetch (2000 ms, `fx-gap`'s pair and its seat response), a `room.map` that re-fetches the room at version 4 (2500 ms, `fx-layout-acts`' message), and ends the stream (3000 ms), so the recovery reconnects and applies a second full snapshot. Every frame after the last camera act must carry the camera that act left. With the camera acts removed (an override of the page conditions) it is the discriminating control: the scene at fit and the log carrying exactly the messages' rows.",
@@ -762,7 +762,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -794,7 +794,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -909,7 +909,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -927,7 +927,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -953,7 +953,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.300Z",
             "install_id": "aimla",
@@ -991,7 +991,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -1920,7 +1920,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1952,7 +1952,7 @@
             "text": "@text:resources/floor/tiles/floor-plane.tsx"
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -2067,7 +2067,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2085,7 +2085,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -2111,7 +2111,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.300Z",
             "install_id": "aimla",
@@ -2149,7 +2149,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2570,7 +2570,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3065,7 +3065,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3537,7 +3537,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4018,7 +4018,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4636,7 +4636,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4683,7 +4683,7 @@
       }
     },
     "camera_degraded_low": {
-      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot on the floor route, entered in a wide, low window (1,280 × 240) — the room drawn with a desk for every seat, and the list view one row per seat, as `camera_degraded_narrow`.",
+      "note": "AT-D3-21's floor half: `fx-degraded`'s snapshot on the floor route, entered in a wide, low window (1,280 × 240) — the room drawn with a desk for every seat, and the list view one row per seat, as `camera_degraded_narrow`. On the Unassigned floor (card#13117), which is composed only once the seats it gathers are held, so the entry's fit frames the room with its overflow row: on a floor the layout places, the fit is taken before the snapshot's seats arrive and an overflow row they bring is outside it.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -5232,7 +5232,7 @@
       "messages": [],
       "until_ms": 100,
       "floor": {
-        "key": "aimla",
+        "key": "unassigned",
         "local_hours": 9,
         "local_minutes": 45,
         "scene": {
@@ -5637,7 +5637,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6083,7 +6083,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6804,8 +6804,22 @@
                 "layout_version": 7,
                 "floors": [
                   {
-                    "floor": "zeta",
-                    "label": "the empty room",
+                    "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
+                    "rooms": [
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
+                    ]
+                  },
+                  {
+                    "floor": "the-empty-room",
+                    "name": "the empty room",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
                       {
                         "install": "zeta",
@@ -6839,7 +6853,7 @@
       "messages": [],
       "until_ms": 100,
       "floor": {
-        "key": "zeta",
+        "key": "the-empty-room",
         "local_hours": 9,
         "local_minutes": 45,
         "scene": {
@@ -7290,6 +7304,8 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -7298,8 +7314,11 @@
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
                       {
                         "install": "zeta",
@@ -7318,7 +7337,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -7336,7 +7355,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": {
@@ -7354,7 +7373,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": {
@@ -7851,6 +7870,8 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
                       {
                         "install": "aimla",
@@ -7859,8 +7880,11 @@
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
                       {
                         "install": "zeta",
@@ -7879,7 +7903,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -7897,7 +7921,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": {
@@ -7915,7 +7939,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": {
@@ -8025,7 +8049,7 @@
       "reduce": true
     },
     "floor_rides": {
-      "note": "card#11795's AT-D3-26, the departure (FLOOR.md § 4.5): `building_rides`' snapshot and heartbeats on the floor `aimla` (the shipped default map, `@json:`) under a layout of three floors — `aimla` and `kappa` unlabelled, `zeta` labelled *the annex* — with the page's own lobby link handed over (`floor.lobby_href`) and `aimla-pm`'s drill-down open (50 ms, `fx-drilldown`'s `panel_feed_lives` responses). `kappa`'s and `zeta`'s rooms answer the shipped default map too, which a page arriving on either floor asks for (`tools/design/floor-ride.browser.mjs`); this floor's screen never does. Four rides, each the press, the leaves' timer (`entered`), the doors' (`shut`), a stop, the doors open (`opened`) and its end: to `zeta`, to `kappa` (each `abandoned` at the bound — the harness does not navigate), a stay on `aimla` (`arrived`), and the lobby — with a heartbeat drawn during the stay (9 300 ms). The ride writes no animation-log row and leaves the drill-down open.",
+      "note": "card#11795's AT-D3-26, the departure (FLOOR.md § 4.5): `building_rides`' snapshot and heartbeats on the floor `aimla` (the shipped default map, `@json:`) under a layout of three floors — `aimla` and `kappa` unlabelled, `zeta` labelled *the annex* — with the page's own lobby link handed over (`floor.lobby_href`) and `aimla-pm`'s drill-down open (50 ms, `fx-drilldown`'s `panel_feed_lives` responses). `kappa`'s and `zeta`'s rooms answer the shipped default map too, which a page arriving on either floor asks for (`tools/design/floor-ride.browser.mjs`), and which this floor's screen asks for at the first press, for the floor behind the cab's doors (card#12987): held by version, so no later press asks again. Four rides, each the press, the leaves' timer (`entered`), the doors' (`shut`), a stop, the doors open (`opened`) and its end: to `zeta`, to `kappa` (each `abandoned` at the bound — the harness does not navigate), a stay on `aimla` (`arrived`), and the lobby — with a heartbeat drawn during the stay (9 300 ms). The ride writes no animation-log row and leaves the drill-down open.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -8230,21 +8254,37 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
                     "floor": "kappa",
+                    "name": "kappa",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "kappa", "form": "office" }
+                      {
+                        "install": "kappa",
+                        "form": "office"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -8262,7 +8302,7 @@
         "/art/floor/tiles/floor-plane.tsx": [
           { "status": 200, "text": "@text:resources/floor/tiles/floor-plane.tsx" }
         ],
-        "/api/fleet/seats/aimla/aimla-pm": [
+        "/api/fleet/seats/aimla-pm": [
           {
             "status": 200,
             "body": {
@@ -8330,7 +8370,7 @@
             "clocked": true
           }
         ],
-        "/api/fleet/seats/aimla/aimla-pm/timeline": [
+        "/api/fleet/seats/aimla-pm/timeline": [
           {
             "status": 200,
             "body": {
@@ -8365,7 +8405,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8374,7 +8414,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8383,7 +8423,7 @@
         {
           "at_ms": 9300,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:23.300Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8408,7 +8448,7 @@
           { "at_ms": 100, "act": "ride" },
           { "at_ms": 600, "act": "entered" },
           { "at_ms": 1100, "act": "shut" },
-          { "at_ms": 1600, "act": "choose", "key": "zeta" },
+          { "at_ms": 1600, "act": "choose", "key": "the-annex" },
           { "at_ms": 2100, "act": "opened" },
           { "at_ms": 2600, "act": "abandoned" },
           { "at_ms": 3600, "act": "ride" },
@@ -8438,6 +8478,8 @@
     "floor_ride_in_flight": {
       "note": "card#11795's AT-D3-26, the guards (FLOOR.md § 4.5): `floor_rides`' floor, and every ride method asked in every phase the departing page reaches — no ride, `opening`, `entering`, `inside`, `chosen`, `leaving` and `staying`. Each method is one act marked `probe` with its phase, after the acts marked `setup` that drive a fresh ride there, and followed by a `returned` marked `reset` that ends whatever is left. Last, a ride whose cab is closed in `chosen` and whose doors then open (`carried`): the closed cab is carried into `leaving`. `arriving` is the arrival's (`floor_ride_arrival`).",
       "http": {
+        "/api/building/rooms/kappa/map": [{"status": 200, "body": {"install_id": "kappa", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+        "/api/building/rooms/zeta/map": [{"status": 200, "body": {"install_id": "zeta", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
         "/api/fleet/snapshot": [
           {
             "status": 200,
@@ -8641,21 +8683,37 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
                     "floor": "kappa",
+                    "name": "kappa",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "kappa", "form": "office" }
+                      {
+                        "install": "kappa",
+                        "form": "office"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -8696,7 +8754,7 @@
           { "at_ms": 130, "act": "returned", "reset": "none" },
           { "at_ms": 140, "act": "shut", "probe": "none" },
           { "at_ms": 150, "act": "returned", "reset": "none" },
-          { "at_ms": 160, "act": "choose", "key": "zeta", "probe": "none" },
+          { "at_ms": 160, "act": "choose", "key": "the-annex", "probe": "none" },
           { "at_ms": 170, "act": "returned", "reset": "none" },
           { "at_ms": 180, "act": "opened", "probe": "none" },
           { "at_ms": 190, "act": "returned", "reset": "none" },
@@ -8724,7 +8782,7 @@
           { "at_ms": 410, "act": "shut", "probe": "opening" },
           { "at_ms": 420, "act": "returned", "reset": "opening" },
           { "at_ms": 430, "act": "ride", "setup": "opening" },
-          { "at_ms": 440, "act": "choose", "key": "zeta", "probe": "opening" },
+          { "at_ms": 440, "act": "choose", "key": "the-annex", "probe": "opening" },
           { "at_ms": 450, "act": "returned", "reset": "opening" },
           { "at_ms": 460, "act": "ride", "setup": "opening" },
           { "at_ms": 470, "act": "opened", "probe": "opening" },
@@ -8764,7 +8822,7 @@
           { "at_ms": 810, "act": "returned", "reset": "entering" },
           { "at_ms": 820, "act": "ride", "setup": "entering" },
           { "at_ms": 830, "act": "entered", "setup": "entering" },
-          { "at_ms": 840, "act": "choose", "key": "zeta", "probe": "entering" },
+          { "at_ms": 840, "act": "choose", "key": "the-annex", "probe": "entering" },
           { "at_ms": 850, "act": "returned", "reset": "entering" },
           { "at_ms": 860, "act": "ride", "setup": "entering" },
           { "at_ms": 870, "act": "entered", "setup": "entering" },
@@ -8816,7 +8874,7 @@
           { "at_ms": 1330, "act": "ride", "setup": "inside" },
           { "at_ms": 1340, "act": "entered", "setup": "inside" },
           { "at_ms": 1350, "act": "shut", "setup": "inside" },
-          { "at_ms": 1360, "act": "choose", "key": "zeta", "probe": "inside" },
+          { "at_ms": 1360, "act": "choose", "key": "the-annex", "probe": "inside" },
           { "at_ms": 1370, "act": "returned", "reset": "inside" },
           { "at_ms": 1380, "act": "ride", "setup": "inside" },
           { "at_ms": 1390, "act": "entered", "setup": "inside" },
@@ -8861,156 +8919,156 @@
           { "at_ms": 1780, "act": "ride", "setup": "chosen" },
           { "at_ms": 1790, "act": "entered", "setup": "chosen" },
           { "at_ms": 1800, "act": "shut", "setup": "chosen" },
-          { "at_ms": 1810, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 1810, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 1820, "act": "ride", "probe": "chosen" },
           { "at_ms": 1830, "act": "returned", "reset": "chosen" },
           { "at_ms": 1840, "act": "ride", "setup": "chosen" },
           { "at_ms": 1850, "act": "entered", "setup": "chosen" },
           { "at_ms": 1860, "act": "shut", "setup": "chosen" },
-          { "at_ms": 1870, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 1870, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 1880, "act": "entered", "probe": "chosen" },
           { "at_ms": 1890, "act": "returned", "reset": "chosen" },
           { "at_ms": 1900, "act": "ride", "setup": "chosen" },
           { "at_ms": 1910, "act": "entered", "setup": "chosen" },
           { "at_ms": 1920, "act": "shut", "setup": "chosen" },
-          { "at_ms": 1930, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 1930, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 1940, "act": "shut", "probe": "chosen" },
           { "at_ms": 1950, "act": "returned", "reset": "chosen" },
           { "at_ms": 1960, "act": "ride", "setup": "chosen" },
           { "at_ms": 1970, "act": "entered", "setup": "chosen" },
           { "at_ms": 1980, "act": "shut", "setup": "chosen" },
-          { "at_ms": 1990, "act": "choose", "key": "zeta", "setup": "chosen" },
-          { "at_ms": 2000, "act": "choose", "key": "zeta", "probe": "chosen" },
+          { "at_ms": 1990, "act": "choose", "key": "the-annex", "setup": "chosen" },
+          { "at_ms": 2000, "act": "choose", "key": "the-annex", "probe": "chosen" },
           { "at_ms": 2010, "act": "returned", "reset": "chosen" },
           { "at_ms": 2020, "act": "ride", "setup": "chosen" },
           { "at_ms": 2030, "act": "entered", "setup": "chosen" },
           { "at_ms": 2040, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2050, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2050, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2060, "act": "opened", "probe": "chosen" },
           { "at_ms": 2070, "act": "returned", "reset": "chosen" },
           { "at_ms": 2080, "act": "ride", "setup": "chosen" },
           { "at_ms": 2090, "act": "entered", "setup": "chosen" },
           { "at_ms": 2100, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2110, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2110, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2120, "act": "abandoned", "probe": "chosen" },
           { "at_ms": 2130, "act": "returned", "reset": "chosen" },
           { "at_ms": 2140, "act": "ride", "setup": "chosen" },
           { "at_ms": 2150, "act": "entered", "setup": "chosen" },
           { "at_ms": 2160, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2170, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2170, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2180, "act": "arrived", "probe": "chosen" },
           { "at_ms": 2190, "act": "returned", "reset": "chosen" },
           { "at_ms": 2200, "act": "ride", "setup": "chosen" },
           { "at_ms": 2210, "act": "entered", "setup": "chosen" },
           { "at_ms": 2220, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2230, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2230, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2240, "act": "returned", "probe": "chosen" },
           { "at_ms": 2250, "act": "returned", "reset": "chosen" },
           { "at_ms": 2260, "act": "ride", "setup": "chosen" },
           { "at_ms": 2270, "act": "entered", "setup": "chosen" },
           { "at_ms": 2280, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2290, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2290, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2300, "act": "cab_closed", "probe": "chosen" },
           { "at_ms": 2310, "act": "returned", "reset": "chosen" },
           { "at_ms": 2320, "act": "ride", "setup": "chosen" },
           { "at_ms": 2330, "act": "entered", "setup": "chosen" },
           { "at_ms": 2340, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2350, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2350, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2360, "act": "escape", "cancelable": true, "probe": "chosen" },
           { "at_ms": 2370, "act": "returned", "reset": "chosen" },
           { "at_ms": 2380, "act": "ride", "setup": "chosen" },
           { "at_ms": 2390, "act": "entered", "setup": "chosen" },
           { "at_ms": 2400, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2410, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2410, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2420, "act": "escape", "cancelable": false, "probe": "chosen" },
           { "at_ms": 2430, "act": "returned", "reset": "chosen" },
           { "at_ms": 2440, "act": "ride", "setup": "chosen" },
           { "at_ms": 2450, "act": "entered", "setup": "chosen" },
           { "at_ms": 2460, "act": "shut", "setup": "chosen" },
-          { "at_ms": 2470, "act": "choose", "key": "zeta", "setup": "chosen" },
+          { "at_ms": 2470, "act": "choose", "key": "the-annex", "setup": "chosen" },
           { "at_ms": 2480, "act": "arrive_by_ride", "expires_in_ms": 2000, "probe": "chosen" },
           { "at_ms": 2490, "act": "returned", "reset": "chosen" },
           { "at_ms": 2500, "act": "ride", "setup": "leaving" },
           { "at_ms": 2510, "act": "entered", "setup": "leaving" },
           { "at_ms": 2520, "act": "shut", "setup": "leaving" },
-          { "at_ms": 2530, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 2530, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 2540, "act": "opened", "setup": "leaving" },
           { "at_ms": 2550, "act": "ride", "probe": "leaving" },
           { "at_ms": 2560, "act": "returned", "reset": "leaving" },
           { "at_ms": 2570, "act": "ride", "setup": "leaving" },
           { "at_ms": 2580, "act": "entered", "setup": "leaving" },
           { "at_ms": 2590, "act": "shut", "setup": "leaving" },
-          { "at_ms": 2600, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 2600, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 2610, "act": "opened", "setup": "leaving" },
           { "at_ms": 2620, "act": "entered", "probe": "leaving" },
           { "at_ms": 2630, "act": "returned", "reset": "leaving" },
           { "at_ms": 2640, "act": "ride", "setup": "leaving" },
           { "at_ms": 2650, "act": "entered", "setup": "leaving" },
           { "at_ms": 2660, "act": "shut", "setup": "leaving" },
-          { "at_ms": 2670, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 2670, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 2680, "act": "opened", "setup": "leaving" },
           { "at_ms": 2690, "act": "shut", "probe": "leaving" },
           { "at_ms": 2700, "act": "returned", "reset": "leaving" },
           { "at_ms": 2710, "act": "ride", "setup": "leaving" },
           { "at_ms": 2720, "act": "entered", "setup": "leaving" },
           { "at_ms": 2730, "act": "shut", "setup": "leaving" },
-          { "at_ms": 2740, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 2740, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 2750, "act": "opened", "setup": "leaving" },
-          { "at_ms": 2760, "act": "choose", "key": "zeta", "probe": "leaving" },
+          { "at_ms": 2760, "act": "choose", "key": "the-annex", "probe": "leaving" },
           { "at_ms": 2770, "act": "returned", "reset": "leaving" },
           { "at_ms": 2780, "act": "ride", "setup": "leaving" },
           { "at_ms": 2790, "act": "entered", "setup": "leaving" },
           { "at_ms": 2800, "act": "shut", "setup": "leaving" },
-          { "at_ms": 2810, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 2810, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 2820, "act": "opened", "setup": "leaving" },
           { "at_ms": 2830, "act": "opened", "probe": "leaving" },
           { "at_ms": 2840, "act": "returned", "reset": "leaving" },
           { "at_ms": 2850, "act": "ride", "setup": "leaving" },
           { "at_ms": 2860, "act": "entered", "setup": "leaving" },
           { "at_ms": 2870, "act": "shut", "setup": "leaving" },
-          { "at_ms": 2880, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 2880, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 2890, "act": "opened", "setup": "leaving" },
           { "at_ms": 2900, "act": "abandoned", "probe": "leaving" },
           { "at_ms": 2910, "act": "returned", "reset": "leaving" },
           { "at_ms": 2920, "act": "ride", "setup": "leaving" },
           { "at_ms": 2930, "act": "entered", "setup": "leaving" },
           { "at_ms": 2940, "act": "shut", "setup": "leaving" },
-          { "at_ms": 2950, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 2950, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 2960, "act": "opened", "setup": "leaving" },
           { "at_ms": 2970, "act": "arrived", "probe": "leaving" },
           { "at_ms": 2980, "act": "returned", "reset": "leaving" },
           { "at_ms": 2990, "act": "ride", "setup": "leaving" },
           { "at_ms": 3000, "act": "entered", "setup": "leaving" },
           { "at_ms": 3010, "act": "shut", "setup": "leaving" },
-          { "at_ms": 3020, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 3020, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 3030, "act": "opened", "setup": "leaving" },
           { "at_ms": 3040, "act": "returned", "probe": "leaving" },
           { "at_ms": 3050, "act": "returned", "reset": "leaving" },
           { "at_ms": 3060, "act": "ride", "setup": "leaving" },
           { "at_ms": 3070, "act": "entered", "setup": "leaving" },
           { "at_ms": 3080, "act": "shut", "setup": "leaving" },
-          { "at_ms": 3090, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 3090, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 3100, "act": "opened", "setup": "leaving" },
           { "at_ms": 3110, "act": "cab_closed", "probe": "leaving" },
           { "at_ms": 3120, "act": "returned", "reset": "leaving" },
           { "at_ms": 3130, "act": "ride", "setup": "leaving" },
           { "at_ms": 3140, "act": "entered", "setup": "leaving" },
           { "at_ms": 3150, "act": "shut", "setup": "leaving" },
-          { "at_ms": 3160, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 3160, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 3170, "act": "opened", "setup": "leaving" },
           { "at_ms": 3180, "act": "escape", "cancelable": true, "probe": "leaving" },
           { "at_ms": 3190, "act": "returned", "reset": "leaving" },
           { "at_ms": 3200, "act": "ride", "setup": "leaving" },
           { "at_ms": 3210, "act": "entered", "setup": "leaving" },
           { "at_ms": 3220, "act": "shut", "setup": "leaving" },
-          { "at_ms": 3230, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 3230, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 3240, "act": "opened", "setup": "leaving" },
           { "at_ms": 3250, "act": "escape", "cancelable": false, "probe": "leaving" },
           { "at_ms": 3260, "act": "returned", "reset": "leaving" },
           { "at_ms": 3270, "act": "ride", "setup": "leaving" },
           { "at_ms": 3280, "act": "entered", "setup": "leaving" },
           { "at_ms": 3290, "act": "shut", "setup": "leaving" },
-          { "at_ms": 3300, "act": "choose", "key": "zeta", "setup": "leaving" },
+          { "at_ms": 3300, "act": "choose", "key": "the-annex", "setup": "leaving" },
           { "at_ms": 3310, "act": "opened", "setup": "leaving" },
           { "at_ms": 3320, "act": "arrive_by_ride", "expires_in_ms": 2000, "probe": "leaving" },
           { "at_ms": 3330, "act": "returned", "reset": "leaving" },
@@ -9040,7 +9098,7 @@
           { "at_ms": 3570, "act": "shut", "setup": "staying" },
           { "at_ms": 3580, "act": "choose", "key": "aimla", "setup": "staying" },
           { "at_ms": 3590, "act": "opened", "setup": "staying" },
-          { "at_ms": 3600, "act": "choose", "key": "zeta", "probe": "staying" },
+          { "at_ms": 3600, "act": "choose", "key": "the-annex", "probe": "staying" },
           { "at_ms": 3610, "act": "returned", "reset": "staying" },
           { "at_ms": 3620, "act": "ride", "setup": "staying" },
           { "at_ms": 3630, "act": "entered", "setup": "staying" },
@@ -9101,7 +9159,7 @@
           { "at_ms": 4180, "act": "ride", "carried": true },
           { "at_ms": 4190, "act": "entered", "carried": true },
           { "at_ms": 4200, "act": "shut", "carried": true },
-          { "at_ms": 4210, "act": "choose", "key": "zeta", "carried": true },
+          { "at_ms": 4210, "act": "choose", "key": "the-annex", "carried": true },
           { "at_ms": 4220, "act": "cab_closed", "carried": true },
           { "at_ms": 4230, "act": "opened", "carried": true },
           { "at_ms": 4240, "act": "returned", "reset": "carried" }
@@ -9111,6 +9169,8 @@
     "floor_ride_floor_removed": {
       "note": "card#11795's AT-D3-26, a building that moves under a ride (FLOOR.md § 4.5, § 7): `floor_rides`' floor with a ride `inside` when a `building.layout` (1500 ms) re-fetches a layout without `kappa` — the cab's stops are re-derived and `kappa` leaves them — and, inside a second ride, another (4500 ms) that puts `aimla`'s room on a floor keyed `beta`, so the route's segment redirects and the ride ends.",
       "http": {
+        "/api/building/rooms/kappa/map": [{"status": 200, "body": {"install_id": "kappa", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
+        "/api/building/rooms/zeta/map": [{"status": 200, "body": {"install_id": "zeta", "source": "default", "map_version": null, "map": "@json:resources/floor/default.tmj"}}],
         "/api/fleet/snapshot": [
           {
             "status": 200,
@@ -9314,21 +9374,37 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
                     "floor": "kappa",
+                    "name": "kappa",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "kappa", "form": "office" }
+                      {
+                        "install": "kappa",
+                        "form": "office"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -9344,15 +9420,26 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -9368,15 +9455,26 @@
                 "floors": [
                   {
                     "floor": "beta",
+                    "name": "beta",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -9399,11 +9497,11 @@
       "messages": [
         {
           "at_ms": 1500,
-          "envelope": { "feed_version": 2, "t": "building.layout", "server_time": "2026-08-23T14:23:16.000Z", "layout_version": 4, "revision_id": 901 }
+          "envelope": { "feed_version": 3, "t": "building.layout", "server_time": "2026-08-23T14:23:16.000Z", "layout_version": 4, "revision_id": 901 }
         },
         {
           "at_ms": 4500,
-          "envelope": { "feed_version": 2, "t": "building.layout", "server_time": "2026-08-23T14:23:19.000Z", "layout_version": 5, "revision_id": 902 }
+          "envelope": { "feed_version": 3, "t": "building.layout", "server_time": "2026-08-23T14:23:19.000Z", "layout_version": 5, "revision_id": 902 }
         }
       ],
       "until_ms": 6000,
@@ -9640,21 +9738,37 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
                     "floor": "kappa",
+                    "name": "kappa",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "kappa", "form": "office" }
+                      {
+                        "install": "kappa",
+                        "form": "office"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -9917,21 +10031,37 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
                     "floor": "kappa",
+                    "name": "kappa",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "kappa", "form": "office" }
+                      {
+                        "install": "kappa",
+                        "form": "office"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -9954,7 +10084,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -9963,7 +10093,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -9972,7 +10102,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -10000,7 +10130,7 @@
           { "at_ms": 1300, "act": "ride", "probe": "arriving" },
           { "at_ms": 1310, "act": "entered", "probe": "arriving" },
           { "at_ms": 1320, "act": "shut", "probe": "arriving" },
-          { "at_ms": 1330, "act": "choose", "key": "zeta", "probe": "arriving" },
+          { "at_ms": 1330, "act": "choose", "key": "the-annex", "probe": "arriving" },
           { "at_ms": 1340, "act": "opened", "probe": "arriving" },
           { "at_ms": 1350, "act": "abandoned", "probe": "arriving" },
           { "at_ms": 1360, "act": "cab_closed", "probe": "arriving" },
@@ -10213,7 +10343,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -10233,7 +10363,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -10250,7 +10380,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 },
             "server_time": "2026-08-23T14:23:15.900Z"
@@ -10296,21 +10426,37 @@
                 "floors": [
                   {
                     "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "aimla", "form": "open" }
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
                     ]
                   },
                   {
                     "floor": "kappa",
+                    "name": "kappa",
+                    "aliases": [],
                     "rooms": [
-                      { "install": "kappa", "form": "office" }
+                      {
+                        "install": "kappa",
+                        "form": "office"
+                      }
                     ]
                   },
                   {
-                    "floor": "zeta",
-                    "label": "the annex",
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
                     "rooms": [
-                      { "install": "zeta", "form": "office" }
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
                     ]
                   }
                 ]
@@ -10347,6 +10493,578 @@
         "viewport": { "width": 1280, "height": 800 },
         "lobby_href": "http://localhost/dashboard",
         "ride": []
+      }
+    },
+    "building_stack": {
+      "note": "AT-D3-37 (Appendix B row 47, card#13033 slice 3; docs/design/plan-13033-3d-view.md § 8 item 2): the building view entered at /building through the harness's `building` entry. `building_room`'s layout — `aimla` open, `zeta` *the annex* — at layout version 3, plus a third floor `theta`, with `zeta` named in the `cottage` theme, whose import the entry rejects (`building.scene.themes.reject`) as the floor entry injects one; `fx-snapshot-4`'s seats (all four `aimla`'s, so `zeta` and `theta` are rooms the fleet reports no seat for); `aimla`'s map answering twice as `camera_floor`'s does — the shipped default, then an authored document at map version 4, here `maps/solo-cubicles.json`, whose extent is not the default's — `zeta`'s an authored document once (`maps/lounge-floor.json`), `theta`'s request failing `503` as `camera_nothing_measurable`'s does, and the shipped tileset. After entry: a heartbeat, `camera_floor`'s first `seat.delta`, then `camera_floor`'s `room.map` for `aimla` at map version 4 (revision 881), then the stream's end.",
+      "http": {
+        "/api/fleet/snapshot": [
+          {
+            "status": 200,
+            "body": {
+              "api_version": 1,
+              "server_time": "2026-08-23T14:23:14.400Z",
+              "fleet": {
+                "db": "ok",
+                "fold": "ok",
+                "sweep": "ok",
+                "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+                "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+                "max_fold_lag_ms": 117,
+                "seats_total": 4,
+                "seats_live": 4
+              },
+              "installs": [
+                {
+                  "install_id": "aimla",
+                  "seats": [
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-pm",
+                      "character": {
+                        "species": "snail"
+                      },
+                      "state_version": 48219,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "idle_since": null,
+                      "action": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "descriptor": "Bash: composer test",
+                        "started_at": "2026-08-23T14:23:09.882Z",
+                        "started_received_at": "2026-08-23T14:23:14.201Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "01K3TA4E5F6G7H8J9K0M1N2P3Q",
+                        "tool_name": "Bash",
+                        "started_received_at": "2026-08-23T14:23:14.201Z"
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [
+                        {
+                          "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T",
+                          "title": "draft the D1 event schema",
+                          "subagent_type": "coder",
+                          "activity_state": "working",
+                          "started_at": "2026-08-23T14:23:31.004Z"
+                        }
+                      ],
+                      "subagents_open": 1,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "a7f2c918-4d0b-4e11-9a3c-7b5e2f81d604",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:23:09.882Z",
+                        "last_received_at": "2026-08-23T14:23:14.201Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [
+                        "lossy"
+                      ],
+                      "badges_since": "2026-08-23T09:14:02.118Z",
+                      "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
+                      "protocol_agent_name": "pm",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "pm",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-1",
+                      "character": {
+                        "species": "broccoli"
+                      },
+                      "state_version": 31107,
+                      "render_state": "working",
+                      "link_state": "live",
+                      "activity_state": "working",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "idle_since": null,
+                      "action": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "descriptor": "Edit: server/app/Feed/SeatDelta.php",
+                        "started_at": "2026-08-23T14:22:58.120Z",
+                        "started_received_at": "2026-08-23T14:23:02.530Z",
+                        "agent_scope": "main",
+                        "parent_call_id": null
+                      },
+                      "longest_open_call": {
+                        "call_id": "01K3TB1A2B3C4D5E6F7G8H9J0K",
+                        "tool_name": "Edit",
+                        "started_received_at": "2026-08-23T14:23:02.530Z"
+                      },
+                      "open_calls": 1,
+                      "open_turn": true,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "0b6c2d4e-1f3a-4b5c-8d7e-9f0a1b2c3d4e",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:22:58.120Z",
+                        "last_received_at": "2026-08-23T14:23:02.530Z",
+                        "last_kind": "tool.start"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
+                      "protocol_agent_name": "impl-1",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-impl-2",
+                      "character": {
+                        "species": "frog"
+                      },
+                      "state_version": 20544,
+                      "render_state": "idle",
+                      "link_state": "live",
+                      "activity_state": "idle",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": null,
+                      "idle_since": null,
+                      "action": null,
+                      "longest_open_call": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "5e8f1a2b-3c4d-4e5f-9a6b-7c8d9e0f1a2b",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:21:47.300Z",
+                        "last_received_at": "2026-08-23T14:21:51.010Z",
+                        "last_kind": "turn.end"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
+                      "protocol_agent_name": "impl-2",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "impl",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    },
+                    {
+                      "install_id": "aimla",
+                      "seat_id": "aimla-review",
+                      "character": {
+                        "species": "deer"
+                      },
+                      "state_version": 15032,
+                      "render_state": "blocked",
+                      "link_state": "live",
+                      "activity_state": "blocked",
+                      "unknown_reason": null,
+                      "api_error_type": null,
+                      "blocked_since": "2026-08-23T14:19:40.006Z",
+                      "idle_since": null,
+                      "action": null,
+                      "longest_open_call": null,
+                      "open_calls": 0,
+                      "open_turn": false,
+                      "subagents": [],
+                      "subagents_open": 0,
+                      "task": {
+                        "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi",
+                        "source": "board_card",
+                        "ref": "card#7338",
+                        "as_of": "2026-08-23T14:05:00.000Z",
+                        "degraded": false
+                      },
+                      "context": {
+                        "used_pct": 73.2,
+                        "used_tokens": 146401,
+                        "total_tokens": 200000,
+                        "source": "harness",
+                        "sampled_at": "2026-08-23T14:41:00.310Z",
+                        "sampled_received_at": "2026-08-23T14:41:04.880Z"
+                      },
+                      "model_label": "claude-opus-5",
+                      "session": {
+                        "session_id": "9c1d2e3f-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+                        "started_at": "2026-08-23T14:22:40.201Z",
+                        "source": "clear",
+                        "project_label": "mezzanine",
+                        "harness_label": "claude-code/2.1.240"
+                      },
+                      "activity": {
+                        "last_event_time": "2026-08-23T14:19:40.006Z",
+                        "last_received_at": "2026-08-23T14:19:44.120Z",
+                        "last_kind": "attention.request"
+                      },
+                      "delivery": {
+                        "last_receipt_at": "2026-08-23T14:23:14.201Z",
+                        "last_heartbeat_at": "2026-08-23T14:23:00.412Z",
+                        "no_data_since": null,
+                        "clock_skew_ms": 412,
+                        "spool_lag_events": 0,
+                        "oldest_unsent_age_s": null,
+                        "seq_epoch": "01K3T0000A5N7M2X9V4B6D0FGH",
+                        "last_seq": 48211
+                      },
+                      "badges": [],
+                      "badges_since": null,
+                      "enabled": true,
+                      "roundtable_agent_name": null,
+                      "roundtable_agent_name_check": null,
+                      "protocol_agent_name": "review",
+                      "protocol_agent_name_check": "checked",
+                      "protocol_agent_role": "review",
+                      "reporter": {
+                        "version": "0.1.0",
+                        "platform": "linux",
+                        "uptime_s": 401150,
+                        "selftest_failed": []
+                      },
+                      "retired": null,
+                      "derivation": {
+                        "computed_at": "2026-08-23T14:23:14.318Z",
+                        "fold_lag_ms": 117,
+                        "cursor_event_id": 9912837
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "delay_ms": 0
+          }
+        ],
+        "/api/building": [
+          {
+            "status": 200,
+            "body": {
+              "layout": {
+                "layout_version": 3,
+                "floors": [
+                  {
+                    "floor": "aimla",
+                    "name": "aimla",
+                    "aliases": [],
+                    "rooms": [
+                      {
+                        "install": "aimla",
+                        "form": "open"
+                      }
+                    ]
+                  },
+                  {
+                    "floor": "the-annex",
+                    "name": "the annex",
+                    "aliases": [
+                      "zeta"
+                    ],
+                    "rooms": [
+                      {
+                        "install": "zeta",
+                        "form": "office"
+                      }
+                    ],
+                    "theme": "cottage"
+                  },
+                  {
+                    "floor": "theta",
+                    "name": "theta",
+                    "aliases": [],
+                    "rooms": [
+                      {
+                        "install": "theta",
+                        "form": "office"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "rooms": []
+            }
+          }
+        ],
+        "/api/building/rooms/aimla/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "default",
+              "map_version": null,
+              "map": "@json:resources/floor/default.tmj"
+            }
+          },
+          {
+            "status": 200,
+            "body": {
+              "install_id": "aimla",
+              "source": "authored",
+              "map_version": 4,
+              "map": "@json:server/tests/Feature/Floor/fixtures/maps/solo-cubicles.json"
+            }
+          }
+        ],
+        "/api/building/rooms/zeta/map": [
+          {
+            "status": 200,
+            "body": {
+              "install_id": "zeta",
+              "source": "authored",
+              "map_version": 2,
+              "map": "@json:server/tests/Feature/Floor/fixtures/maps/lounge-floor.json"
+            }
+          }
+        ],
+        "/api/building/rooms/theta/map": [
+          {
+            "status": 503,
+            "body": {
+              "error": "fleet_unavailable",
+              "message": "the fleet store could not be read; no fleet state is being reported",
+              "server_time": "2026-08-23T14:23:14.900Z"
+            }
+          }
+        ],
+        "/art/floor/tiles/floor-plane.tsx": [
+          {
+            "status": 200,
+            "text": "@text:resources/floor/tiles/floor-plane.tsx"
+          }
+        ]
+      },
+      "messages": [
+        {
+          "at_ms": 1000,
+          "envelope": {
+            "feed_version": 3,
+            "t": "feed.heartbeat",
+            "server_time": "2026-08-23T14:23:15.000Z",
+            "fleet": {
+              "db": "ok",
+              "fold": "ok",
+              "sweep": "ok",
+              "sweep_last_run_at": "2026-08-23T14:23:08.002Z",
+              "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z",
+              "max_fold_lag_ms": 117,
+              "seats_total": 4,
+              "seats_live": 4
+            }
+          }
+        },
+        {
+          "at_ms": 2000,
+          "envelope": {
+            "feed_version": 3,
+            "t": "seat.delta",
+            "server_time": "2026-08-23T14:23:14.650Z",
+            "install_id": "aimla",
+            "seat_id": "aimla-pm",
+            "state_version": 48220,
+            "at": "2026-08-23T14:23:14.650Z",
+            "changed": [
+              "render_state",
+              "activity_state",
+              "action",
+              "longest_open_call",
+              "open_calls"
+            ],
+            "patch": {
+              "render_state": "idle",
+              "activity_state": "idle",
+              "action": null,
+              "longest_open_call": null,
+              "open_calls": 0
+            }
+          }
+        },
+        {
+          "at_ms": 2500,
+          "envelope": {
+            "feed_version": 3,
+            "t": "room.map",
+            "server_time": "2026-08-23T14:23:15.400Z",
+            "install_id": "aimla",
+            "map_version": 4,
+            "revision_id": 881
+          }
+        },
+        {
+          "at_ms": 3000,
+          "end": true
+        }
+      ],
+      "until_ms": 4000,
+      "building": {
+        "surface": {
+          "width": 1280,
+          "height": 800
+        },
+        "lobby_href": "/",
+        "local_hours": 9,
+        "local_minutes": 45,
+        "scene": {
+          "measurer": {
+            "glyph_w": {
+              "fact": 6,
+              "name": 8,
+              "screen": 5
+            },
+            "line_h": {
+              "fact": 12,
+              "name": 16,
+              "screen": 8
+            }
+          },
+          "character": {
+            "w": 18,
+            "h": 32
+          },
+          "themes": {
+            "reject": [
+              "cottage"
+            ]
+          }
+        }
       }
     }
   }

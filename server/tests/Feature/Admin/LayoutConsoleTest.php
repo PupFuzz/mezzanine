@@ -48,9 +48,12 @@ class LayoutConsoleTest extends TestCase
         return (string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
     }
 
+    /** A save from the form as the editor renders it now — its base the current revision (card#13117). */
     private function save(string $document): TestResponse
     {
-        return $this->actingAs($this->operator())->patch(route('admin.layout.update'), ['layout' => $document]);
+        return $this->actingAs($this->operator())->patch(route('admin.layout.update'), [
+            'layout' => $document, 'base_layout_version' => Layouts::version(),
+        ]);
     }
 
     public function test_the_layout_module_is_an_entry_in_the_console_module_list(): void
@@ -82,7 +85,7 @@ class LayoutConsoleTest extends TestCase
 
     public function test_a_saved_layout_is_revision_one_and_the_page_says_which_revision_is_current(): void
     {
-        $this->save($this->document([['label' => 'the solos', 'rooms' => [
+        $this->save($this->document([['name' => 'the solos', 'rooms' => [
             'sola' => ['form' => 'office'],
             'zeta' => ['form' => 'office'],
         ]]]))
@@ -90,7 +93,7 @@ class LayoutConsoleTest extends TestCase
             ->assertSessionHas('status');
 
         $this->assertSame(1, Layouts::version());
-        $this->assertSame('sola', Layouts::layout()->floors[0]['floor']);
+        $this->assertSame('the-solos', Layouts::layout()->floors[0]['floor']);
 
         $page = $this->actingAs($this->operator())
             ->get(route('admin.layout.edit'))
@@ -106,7 +109,7 @@ class LayoutConsoleTest extends TestCase
     {
         // The author is holding the document; the refusal names the floor, the room and the rule
         // (§ 4.6), and a console that lost it would make every one of those messages pointless.
-        $this->save($this->document([['rooms' => ['sola' => ['form' => 'cubicle']]]]))
+        $this->save($this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'cubicle']]]]))
             ->assertRedirect()
             ->assertSessionHasErrors('layout');
 
@@ -130,7 +133,7 @@ class LayoutConsoleTest extends TestCase
 
     public function test_a_byte_identical_save_is_refused_as_a_no_op_and_says_which_revision_it_already_is(): void
     {
-        $document = $this->document([['rooms' => ['sola' => ['form' => 'office']]]]);
+        $document = $this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
 
         $this->save($document)->assertSessionHasNoErrors();
         $this->save($document)->assertSessionHasErrors('layout');
@@ -144,7 +147,7 @@ class LayoutConsoleTest extends TestCase
         // a textarea is submitted with CRLF; the document an operator pasted in has LF. Without
         // `App\Building\AuthoredDocument` the two are different bytes, § 6.11's no-op rule never
         // fires, and the diff between the two revisions is every line.
-        $document = $this->document([['rooms' => ['sola' => ['form' => 'office']]]]);
+        $document = $this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
 
         $this->save($document)->assertSessionHasNoErrors();
         $this->save(str_replace("\n", "\r\n", $document))->assertSessionHasErrors('layout');
@@ -155,8 +158,8 @@ class LayoutConsoleTest extends TestCase
 
     public function test_the_revisions_page_lists_the_history_and_restores_from_it(): void
     {
-        $this->save($this->document([['rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
-        $this->save($this->document([['rooms' => ['sola' => ['form' => 'open']]]]))->assertSessionHasNoErrors();
+        $this->save($this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
+        $this->save($this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'open']]]]))->assertSessionHasNoErrors();
 
         $page = $this->actingAs($this->operator())
             ->get(route('admin.layout.revisions'))
@@ -182,7 +185,7 @@ class LayoutConsoleTest extends TestCase
 
     public function test_a_revision_is_exported_as_the_document_that_was_authored(): void
     {
-        $document = $this->document([['rooms' => ['sola' => ['form' => 'office']]]]);
+        $document = $this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]);
 
         $this->save($document)->assertSessionHasNoErrors();
 
@@ -196,8 +199,8 @@ class LayoutConsoleTest extends TestCase
 
     public function test_the_diff_between_two_revisions_shows_what_moved(): void
     {
-        $this->save($this->document([['rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
-        $this->save($this->document([['rooms' => ['sola' => ['form' => 'open']]]]))->assertSessionHasNoErrors();
+        $this->save($this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
+        $this->save($this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'open']]]]))->assertSessionHasNoErrors();
 
         $this->actingAs($this->operator())
             ->get(route('admin.layout.diff').'?from=1&to=2')
@@ -220,7 +223,7 @@ class LayoutConsoleTest extends TestCase
         // first was the missing default, and this arm asserted the file's name; the rule it is
         // actually about is the one it asserts now. What must not happen, in either state, is a
         // plan being stored with no extent ever measured.
-        $this->save($this->document([['rooms' => [
+        $this->save($this->document([['name' => 'sola', 'rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
         ]]]))->assertSessionHasErrors('layout');
@@ -258,13 +261,13 @@ class LayoutConsoleTest extends TestCase
      */
     public function test_an_unshipped_theme_is_refused_at_the_save_and_a_shipped_one_saves(): void
     {
-        $this->save($this->document([['theme' => 'nowhere', 'rooms' => ['sola' => ['form' => 'office']]]]))
+        $this->save($this->document([['name' => 'sola', 'theme' => 'nowhere', 'rooms' => ['sola' => ['form' => 'office']]]]))
             ->assertSessionHasErrors('layout');
 
         $this->assertStringContainsString('names the theme `nowhere`, which this build does not ship', (string) session('errors')->first('layout'));
         $this->assertSame(0, Layouts::version());
 
-        $this->save($this->document([['theme' => 'studio', 'rooms' => ['sola' => ['form' => 'office']]]]))
+        $this->save($this->document([['name' => 'sola', 'theme' => 'studio', 'rooms' => ['sola' => ['form' => 'office']]]]))
             ->assertSessionHasNoErrors();
 
         $this->assertSame('studio', Layouts::layout()->floors[0]['theme']);
@@ -276,13 +279,13 @@ class LayoutConsoleTest extends TestCase
      */
     public function test_an_unshipped_theme_is_refused_at_the_restore(): void
     {
-        $this->save($this->document([['rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
+        $this->save($this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
 
         // A revision a build that shipped `gone` accepted — written past the save, as that build wrote it.
         $revision = Revisions::insert(Revisions::LAYOUT, Revisions::LAYOUT_SUBJECT,
-            $this->document([['theme' => 'gone', 'rooms' => ['sola' => ['form' => 'open']]]]), null, self::OPERATOR, '2026-10-07 00:00:00');
+            $this->document([['name' => 'sola', 'theme' => 'gone', 'rooms' => ['sola' => ['form' => 'open']]]]), null, self::OPERATOR, '2026-10-07 00:00:00');
         // …and a later save, so that revision is history and its restore is no no-op.
-        $this->save($this->document([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
+        $this->save($this->document([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]))->assertSessionHasNoErrors();
 
         $this->actingAs($this->operator())
             ->post(route('admin.layout.restore', $revision))

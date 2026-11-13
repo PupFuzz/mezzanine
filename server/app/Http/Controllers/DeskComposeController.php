@@ -20,7 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * `POST /desk/{install_id}/{seat_id}/compose` — `docs/design/BOARD-TASK.md § 15`, card#9417: the floor's
+ * `POST /desk/{seat_id}/compose` (by the seat's id alone since card#13117) — `docs/design/BOARD-TASK.md § 15`, card#9417: the floor's
  * one write, and THE ONE CALLER of `App\Compose` (AT-C10). Resolve, select, post, render; it holds no
  * channel logic and renders no sentence — the client renders § 15.11's row from the class.
  *
@@ -40,12 +40,12 @@ use Illuminate\Support\Facades\Log;
  */
 class DeskComposeController extends Controller
 {
-    public function store(Request $request, string $installId, string $seatId): JsonResponse
+    public function store(Request $request, string $seatId): JsonResponse
     {
-        $seat = $installId.'/'.$seatId;
+        $seat = $seatId;
 
         // Step 0, first half: the seat exists and renders — the read plane's own `404`.
-        $row = SeatRow::find($installId, $seatId);
+        $row = SeatRow::find($seatId);
 
         if ($row === null) {
             Log::info(sprintf('compose refused seat=%s class=seat_not_found status=404 url=-', $seat));

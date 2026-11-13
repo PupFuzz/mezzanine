@@ -4,6 +4,7 @@ namespace App\Building;
 
 use App\Floor\FloorMap;
 use App\Floor\InvalidFloorMap;
+use App\Read\SeatIdentity;
 
 /**
  * The building layout as authored — `docs/design/FLOOR.md § 4.6`, card#9267's operator ruling:
@@ -18,11 +19,13 @@ use App\Floor\InvalidFloorMap;
  * `docs/design/FLEET-STATE.md § 6.11`) and **not one rule below changed to follow it**. The store
  * is a new CALLER, never a new reader.
  *
- * ⛔ A FLOOR HAS NO AUTHORED ID — IT IS ITS ROOMS, AND ITS KEY IS DERIVED. § 4.6: the key is the
- * lexically least `install_id` among the floor's rooms. That is what keeps floor keys and install
- * ids apart in the one `/floor/{…}` namespace (every floor key is an install this layout places,
- * so an install it does NOT place can never be one) with no rule the author can break: the
- * document carries no key to get wrong, and a document that carries one is refused below.
+ * ⭐ A FLOOR IS NAMED, AND ITS KEY IS THE SLUG OF ITS NAME — card#13117 (the operator's ruling of 2026-11-10, *a
+ * floor's web address is its name*), REVERSING card#9273's *a label is never a key* and card#9267's key derived from
+ * the least room. A floor's entry carries a required `name`, stored byte for byte, and its key — the `{floor}` of
+ * § 4.4's route and the sort of § 4.1 — is `FloorSlug::of(name)`. Its optional `aliases` are the slugs it answered
+ * to before a rename, so an old link redirects in one hop (§ 4.4's precedence: current slug, alias, room key). The
+ * member `label` is refused by name: one shape, and the restore cost of a pre-13117 revision is the operator's
+ * accepted price (plan-13117-seat-identity.md § 13 Q5).
  *
  * ⛔ AND IT NEVER REPAIRS A BAD LAYOUT. Every rule below throws; none of them drops the offending
  * floor and composes the rest. A building silently missing a floor is § 4.6's *hole renders as
@@ -32,23 +35,11 @@ use App\Floor\InvalidFloorMap;
  * and nothing has changed for anybody; and still per REQUEST on the surfaces that read the store,
  * because a rule tightened after a document was written must not be answered with a repair.
  *
- * ⭐ A FLOOR MAY CARRY A LABEL, AND A LABEL IS DISPLAY TEXT — NEVER A KEY (card#9273, § 4.6's
- * operator ruling: "yes, I want to be able to name a floor"). A floors entry is therefore a
- * RECORD — `['rooms' => [install => ['form' => …], …]]`, optionally with `'label' => '…'` and,
- * on a planned floor, `'hallway' => …` — and a normalised floor is `floor`, `label`, `rooms`,
- * `hallway`, in that order. Nothing routes, sorts, redirects or matches on the label: § 4.4's
- * segment is the KEY whatever the label says, so a label is edited freely and no link moves. What
- * IS refused below is two floors that would READ the same — the label where given, else the key —
- * named by BOTH keys and the string, because two plates reading alike is a building nobody can
- * navigate, and drawing the key beside the label instead would be this reader repairing a
- * document, which it does nowhere else.
- *
- * ⭐ STORED EXACTLY AS AUTHORED, COMPARED ON WHAT IT RENDERS AS (§ 4.6). Those two are different
- * operations and `readsAs()` below is the second one, in ONE place: a viewer reads HTML, where
- * `white-space: normal` strips a run of whitespace at each end and collapses every run inside, so
- * `the solos`, ` the solos` and `the  solos` are one plate name on the screen and a comparison on
- * the BYTES would hand the operator the very building this refusal exists to prevent. Nothing is
- * normalised on the way IN: what `GET /api/building` delivers is still the operator's own string.
+ * ⭐ A NAME IS STORED EXACTLY AS AUTHORED, AND JUDGED BLANK ON WHAT IT RENDERS AS (§ 4.6): `readsAs()` below is
+ * what a browser's `white-space: normal` makes of it, so a name of one NO-BREAK SPACE is the blank it draws as.
+ * Two names that READ alike always SLUG alike, so the one cross-floor refusal — two floors with one slug — is
+ * asked of the slug. Nothing is normalised on the way IN: what `GET /api/building` delivers is the operator's own
+ * string.
  *
  * ⭐ THE PLAN IS POSITION AND NOTHING ELSE (card#9292, § 4.6 rule 1). A room's `origin` says where
  * its top-left corner goes; the room's SIZE is its map's grid (`App\Floor\FloorMap`) and is never
@@ -56,18 +47,6 @@ use App\Floor\InvalidFloorMap;
  * refusal this class does NOT make is the overlap, and the reason is that same rule: two
  * footprints can only be compared once the rooms' MAPS are read, which is a store this reader
  * does not touch. `App\Building\FloorPlan` owns it, at both of § 6.11's write sites.
- *
- * ⚠ AND AN EXPLICIT `label => null` IS AN ABSENT LABEL, NOT A REFUSAL. § 4.6's promise is that
- * the console could hold this document in a JSON column "without the reader changing", and a JSON
- * column encodes an unnamed floor as `"label": null` — so refusing it by type would make that
- * promise false for the one store it was made for. Every OTHER non-string is refused.
- *
- * ⚠ AND THE ONE CASE THAT REFUSAL CANNOT REACH, NAMED BY § 4.6 RATHER THAN LEFT TO LOOK COMPLETE:
- * a label equal to the `install_id` of an install the layout does NOT place — provisioned after
- * the document was written, which is the very case the derived key exists for. It composes to two
- * floors reading alike with different links, and it is not this reader's to refuse: "a refusal
- * there would take the building down for a name". The operator renames one, which the label being
- * free to edit makes cheap.
  *
  * ⚠ WHAT IS DELIBERATELY NOT VALIDATED: whether a room's id is a well-formed `install_id`.
  * `docs/design/EVENT-SCHEMA.md § 3.1` owns that pattern, and a second copy of it here would be a
@@ -85,27 +64,23 @@ final class BuildingLayout
     public const FORMS = ['open', 'office'];
 
     /**
-     * § 4.6 gives an install the layout does not place a floor of its own, alone, in the `open`
-     * form — "because subdividing a room is an operator act and no operator acted on this one".
+     * The form a room is drawn in when nobody chose one: a room on the Unassigned floor (§ 4.4 of
+     * plan-13117-seat-identity.md), and a room the console places — "because subdividing a room is an operator act
+     * and no operator acted on this one".
      */
     public const DEFAULT_FORM = 'open';
 
     /** § 4.6's floor record. A member outside this set is refused BY NAME, never read past. */
-    private const FLOOR_MEMBERS = ['rooms', 'label', 'theme', 'hallway'];
+    private const FLOOR_MEMBERS = ['name', 'aliases', 'rooms', 'theme', 'hallway'];
 
     /** § 4.6's room record (card#9292). `form` is required; `origin` is the plan's whole say. */
     private const ROOM_MEMBERS = ['form', 'origin'];
 
     /**
-     * ⛔ THE ONE PHP PREDICATE FOR "what a viewer READS", and the only place this rule is decided
-     * on this side (card#9273, § 4.6). Both users below — the blank refusal and the reads-the-same
-     * refusal — ask it, so a document that passes one cannot be a document the other measured
-     * differently; `App\Support\RetirementAttribution` is this repo's post-mortem for what the
-     * second copy costs (an enforcement hoisted while each caller re-derived the predicate it
-     * enforced on, and the two agreed until the input nobody types in a test).
+     * ⛔ THE ONE PHP PREDICATE FOR "what a viewer READS" (§ 4.6): a floor's name is blank when this is empty.
      *
      * It is NORMALISATION FOR COMPARISON ONLY and never a value to store or render: § 4.6 keeps a
-     * label "exactly as authored", and it is the BROWSER that produces this form — `white-space:
+     * name "exactly as authored", and it is the BROWSER that produces this form — `white-space:
      * normal` strips the ends of a text node and collapses every run of whitespace inside it, and
      * `\p{Z}` reaches the separators `trim()` cannot see, a NO-BREAK SPACE (U+00A0) among them.
      *
@@ -119,11 +94,11 @@ final class BuildingLayout
 
     private function __construct(
         /**
-         * The floors the layout composes, NORMALISED: floor keys ascending, each floor's rooms by
-         * `install_id` ascending (`docs/design/FLOOR.md § 2.1` row 6). This is the shape
+         * The floors the layout composes, NORMALISED: floor keys (the slugs of their names) ascending, each floor's
+         * rooms by `install_id` ascending (`docs/design/FLOOR.md § 2.1` row 6). This is the shape
          * `GET /api/building` delivers to the browser, so the client is handed keys and never derives one.
          *
-         * @var list<array{floor: string, label: string|null, theme?: string, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}}>, hallway?: \stdClass}>
+         * @var list<array{floor: string, name: string, aliases: list<string>, theme?: string, rooms: list<array{install: string, form: string, origin?: array{x: int, y: int}}>, hallway?: \stdClass}>
          */
         public readonly array $floors,
 
@@ -178,7 +153,7 @@ final class BuildingLayout
         } catch (\JsonException $e) {
             throw new InvalidBuildingLayout(
                 'This is not JSON ('.$e->getMessage().'). A layout is a document with a `floors` '
-                .'list in it: `{"floors": []}` is the empty building — one floor per install — '
+                .'list in it: `{"floors": []}` is the empty building — every room on the Unassigned floor — '
                 .'and is what this deployment started from (docs/design/FLOOR.md § 4.6).',
                 previous: $e,
             );
@@ -190,7 +165,7 @@ final class BuildingLayout
         if (! $decoded instanceof \stdClass) {
             throw new InvalidBuildingLayout(sprintf(
                 'This is %s, and a layout is a JSON object with a `floors` list in it: '
-                .'`{"floors": []}` is the empty building — one floor per install — and is what '
+                .'`{"floors": []}` is the empty building — every room on the Unassigned floor — and is what '
                 .'this deployment started from (docs/design/FLOOR.md § 4.6).',
                 is_array($decoded) ? 'a JSON array' : 'a JSON '.get_debug_type($decoded),
             ));
@@ -216,12 +191,12 @@ final class BuildingLayout
         // ⚠ And the value is read with `property_exists` rather than `??`, because the difference
         // is a document that says `"floors": null`: coalesced away, that reads as the EMPTY
         // building — a deliberate authoring choice this reader would be inventing on the author's
-        // behalf. It is NOT the `label => null` case: there, absent is legal and null is how a
+        // behalf. It is NOT the `theme => null` case: there, absent is legal and null is how a
         // JSON column spells it; here, absent is itself a refusal.
         if (! property_exists($document, 'floors')) {
             throw new InvalidBuildingLayout(
                 'This document declares no `floors` key. An EMPTY `floors` list is a legal layout '
-                .'and is the default building — one floor per install — but an absent one is a '
+                .'and is the default building — every room on the Unassigned floor — but an absent one is a '
                 .'document this reader cannot tell apart from a typo '
                 .'(docs/design/FLOOR.md § 4.6).'
             );
@@ -235,21 +210,17 @@ final class BuildingLayout
         if ($floors instanceof \stdClass) {
             throw new InvalidBuildingLayout(
                 '`floors` is a JSON object and is not a LIST of floors. docs/design/FLOOR.md § 4.6: '
-                .'the empty building — one floor per install — is `"floors": []`, and `{}` is not a '
-                .'spelling of it; and a floor has no authored id — it is its rooms, and its key is '
-                .'derived (the lexically least `install_id` among them) — so a keyed entry here '
-                .'would be a name the design does not have, and is refused rather than silently '
-                .'ignored.'
+                .'the empty building — every room on the Unassigned floor — is `"floors": []`, and `{}` is not a '
+                .'spelling of it; and a floor\'s key is the slug of the `name` its entry carries, so a keyed entry '
+                .'here is a second key, and is refused rather than silently ignored.'
             );
         }
 
         // In this decode a PHP array IS a JSON list, so what is left to refuse is a scalar or null.
         if (! is_array($floors)) {
             throw new InvalidBuildingLayout(
-                '`floors` is not a LIST of floors. docs/design/FLOOR.md § 4.6: a floor has no '
-                .'authored id — it is its rooms, and its key is derived (the lexically least '
-                .'`install_id` among them) — so a keyed entry here would be a name the design does '
-                .'not have, and is refused rather than silently ignored.'
+                '`floors` is not a LIST of floors. docs/design/FLOOR.md § 4.6: each entry is one floor, '
+                .'keyed by the slug of its `name`.'
             );
         }
 
@@ -259,9 +230,21 @@ final class BuildingLayout
         foreach ($floors as $position => $entry) {
             if (! $entry instanceof \stdClass) {
                 throw new InvalidBuildingLayout(sprintf(
-                    "Floor #%d is not a mapping — a floor's entry is ['rooms' => [install => "
-                    ."['form' => …], …]], optionally with 'label', 'theme' and, on a planned floor, "
+                    "Floor #%d is not a mapping — a floor's entry is ['name' => …, 'rooms' => [install => "
+                    ."['form' => …], …]], optionally with 'aliases', 'theme' and, on a planned floor, "
                     ."'hallway' (docs/design/FLOOR.md § 4.6).",
+                    $position,
+                ));
+            }
+
+            // ⭐ `label` IS REFUSED BY ITS OWN NAME (card#13117): it is the member `name` replaced, and a document
+            // carrying it is a pre-13117 revision or a hand copy of one — the author is told the one edit that
+            // makes it current rather than a list of members.
+            if (property_exists($entry, 'label')) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'Floor #%d declares `label`: since card#13117 the member is `name`, which every floor carries and '
+                    .'whose slug is the floor\'s web address (docs/design/FLOOR.md § 4.6). Rename the member, and give an '
+                    .'entry that had no label the name it read as: its old key.',
                     $position,
                 ));
             }
@@ -275,11 +258,10 @@ final class BuildingLayout
             if ($unknown !== []) {
                 throw new InvalidBuildingLayout(sprintf(
                     'Floor #%d declares the member%s %s, which a floor record does not carry: an '
-                    ."entry is ['rooms' => [install => ['form' => …], …]], optionally with "
-                    ."'label', 'theme' and, on a planned floor, 'hallway'. "
-                    .'A floor has NO id — its key is DERIVED, the lexically least `install_id` '
-                    .'among its rooms (docs/design/FLOOR.md § 4.6) — so the member is refused '
-                    .'rather than read past.',
+                    ."entry is ['name' => …, 'rooms' => [install => ['form' => …], …]], optionally with "
+                    ."'aliases', 'theme' and, on a planned floor, 'hallway'. "
+                    .'A floor\'s key is the slug of its `name` (docs/design/FLOOR.md § 4.6), so a second '
+                    .'key is refused rather than read past.',
                     $position,
                     count($unknown) === 1 ? '' : 's',
                     '`'.implode('`, `', $unknown).'`',
@@ -317,7 +299,9 @@ final class BuildingLayout
                 ));
             }
 
-            $label = self::label($entry, $position);
+            $name = self::name($entry, $position);
+            $floorKey = FloorSlug::of($name);
+            $aliases = self::aliases($entry, $position, $floorKey);
             $theme = self::theme($entry, $position);
 
             $onThisFloor = [];
@@ -326,34 +310,39 @@ final class BuildingLayout
                 // Iterating an object yields its member names as STRINGS, an all-digit
                 // `install_id` (`^[a-z0-9][a-z0-9-]{1,31}$`) included. The PHP arrays below are
                 // where such a key becomes an int, and each read of one casts it back.
+                // ⛔ `unassigned` IS RESERVED (card#13117, plan-13117-seat-identity.md § 4.4): it is the
+                // virtual install the snapshot groups the seats in no room under, which the console can
+                // never create as a room, so a layout placing it places a room that cannot exist — and
+                // would draw the roomless seats on an authored floor as though they had been placed.
+                // Refused here, so the write and every load refuse it alike.
+                if ((string) $installId === SeatIdentity::UNASSIGNED) {
+                    throw new InvalidBuildingLayout(sprintf(
+                        'Floor #%d places a room keyed `%s`, which is reserved: it is the group of the seats '
+                        .'the console has placed in no room (card#13117), never a room a layout may place.',
+                        $position,
+                        SeatIdentity::UNASSIGNED,
+                    ));
+                }
+
                 if (isset($floorByRoom[$installId])) {
                     throw new InvalidBuildingLayout(sprintf(
-                        'Room `%s` is on floor `%s` and again on floor #%d. A room is in one place '
+                        'Room `%s` is on floor `%s` and again on floor `%s`. A room is in one place '
                         .'(docs/design/FLOOR.md § 4.6), and two placements are a refusal rather '
                         .'than a precedence question this reader would have to invent an answer to.',
                         $installId,
                         $floorByRoom[$installId],
-                        $position,
+                        $floorKey,
                     ));
                 }
 
                 // A room repeated INSIDE one set is unrepresentable — the mapping shape collapses
-                // it before any reader sees it — so the check above is only ever ACROSS sets,
-                // and the index it reads is written once the floor's key is known below.
+                // it before any reader sees it — so the check above is only ever ACROSS sets.
                 $onThisFloor[$installId] = self::room($record, $installId, $position);
-            }
-
-            ksort($onThisFloor, SORT_STRING);
-
-            // § 4.6's derived key: the lexically least install id on the floor. `ksort` above
-            // put it first, so the key and the room order are one sort and cannot disagree. PHP
-            // turns a canonical-integer array key into an int, so the key is cast back to the
-            // string it was authored as — a round trip, not a coercion.
-            $floorKey = (string) array_key_first($onThisFloor);
-
-            foreach (array_keys($onThisFloor) as $installId) {
                 $floorByRoom[(string) $installId] = $floorKey;
             }
+
+            // PHP turns a canonical-integer array key into an int; the sort is on the string it was authored as.
+            ksort($onThisFloor, SORT_STRING);
 
             $placed = array_filter($onThisFloor, fn (array $room) => isset($room['origin']));
 
@@ -375,12 +364,28 @@ final class BuildingLayout
                 ));
             }
 
+            // ⛔ TWO FLOORS MAY NOT SHARE AN ADDRESS (§ 4.6): one slug cannot name two floors, and the reader does
+            // not pick. Two names that read alike always slug alike, so this is also the refusal of two plates
+            // reading the same. Named by both floors' names and the slug, since neither entry is wrong alone.
+            if (isset($parsed[$floorKey])) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'Floors `%s` and `%s` (#%d) would both be at the address `/floor/%s`. A floor\'s web address is the '
+                    .'slug of its name and names one floor, so the layout is refused rather than one of them picked: '
+                    .'rename one (docs/design/FLOOR.md § 4.6).',
+                    $parsed[$floorKey]['name'],
+                    $name,
+                    $position,
+                    $floorKey,
+                ));
+            }
+
             $floor = [
                 'floor' => $floorKey,
-                // Stored exactly as authored — NOT trimmed and not normalised (card#9273): the
-                // reader refuses a label it cannot accept and repairs none that it can, so what
-                // `GET /api/building` delivers is the operator's own string.
-                'label' => $label,
+                // Stored exactly as authored — NOT trimmed and not normalised: the reader refuses a name it
+                // cannot accept and repairs none that it can, so what `GET /api/building` delivers is the
+                // operator's own string.
+                'name' => $name,
+                'aliases' => $aliases,
                 'rooms' => array_values($onThisFloor),
             ];
 
@@ -404,7 +409,7 @@ final class BuildingLayout
 
         ksort($parsed, SORT_STRING);
 
-        self::refuseTwoFloorsThatReadTheSame($parsed);
+        self::refuseAliasesThatNameAFloor($parsed);
 
         return new self(array_values($parsed), $floorByRoom);
     }
@@ -416,55 +421,128 @@ final class BuildingLayout
     }
 
     /**
-     * § 4.6's optional `label`, refused by type, by blankness, and (across floors, below) by
-     * reading the same as another floor.
+     * § 4.6's required `name`, refused by type, by blankness, by an empty slug and by the reserved slug.
      */
-    private static function label(\stdClass $entry, int $position): ?string
+    private static function name(\stdClass $entry, int $position): string
     {
-        // § 4.6: "The SHAPE is the contract; the store is the caller's". An explicit `null`
-        // is read as an ABSENT label rather than refused by type, because a JSON column — the
-        // store card#9208's reversal moved this document into — is how an unnamed floor is
-        // encoded there, and a reader that refused it would have made the promise false for it.
-        $label = $entry->label ?? null;
-
-        if ($label === null) {
-            return null;
-        }
-
-        if (! is_string($label)) {
+        if (! property_exists($entry, 'name')) {
             throw new InvalidBuildingLayout(sprintf(
-                'Floor #%d declares a label that is not a string (%s). § 4.6\'s label '
-                .'is the name a viewer READS, so it is a string or it is absent: the '
-                .'layout is an authored document, and a value of another type is a '
-                .'mistake to return to the author rather than a value to render the floor as. '
-                .'(`null` is the one value that is not a mistake — it is an ABSENT label, and the '
-                .'floor then reads as its key.)',
-                $position,
-                get_debug_type($label),
-            ));
-        }
-
-        // § 4.6: a blank label is "a floor whose name renders as nothing", which is this
-        // document's own hole one level up — and the repair is the author's, because the
-        // reader has no name to put there that is not invented. It is asked of what the
-        // label RENDERS as, so a label of one NO-BREAK SPACE is the blank it draws as.
-        if (self::readsAs($label) === '') {
-            throw new InvalidBuildingLayout(sprintf(
-                'Floor #%d declares a blank label. Leave the member out instead and the '
-                .'floor reads as its key (docs/design/FLOOR.md § 4.6), which is honest and '
-                .'is not a placeholder; a label that renders as nothing is the hole this '
-                .'document exists to refuse, one level up.',
+                'Floor #%d declares no `name`. Every floor is named, and the slug of its name is its web address '
+                .'(docs/design/FLOOR.md § 4.6, card#13117).',
                 $position,
             ));
         }
 
-        return $label;
+        $name = $entry->name;
+
+        if (! is_string($name)) {
+            throw new InvalidBuildingLayout(sprintf(
+                'Floor #%d declares a `name` that is not a string (%s). A floor\'s name is what a viewer reads and '
+                .'what its address is made from (docs/design/FLOOR.md § 4.6); a value of another type is a mistake '
+                .'to return to the author, never one to coerce.',
+                $position,
+                get_debug_type($name),
+            ));
+        }
+
+        // Asked of what the name RENDERS as, so a name of one NO-BREAK SPACE is the blank it draws as.
+        if (self::readsAs($name) === '') {
+            throw new InvalidBuildingLayout(sprintf(
+                'Floor #%d declares a blank `name`. A floor whose name renders as nothing is a plaque nobody can '
+                .'read and an address nobody can type (docs/design/FLOOR.md § 4.6).',
+                $position,
+            ));
+        }
+
+        $slug = FloorSlug::of($name);
+
+        if ($slug === '') {
+            throw new InvalidBuildingLayout(sprintf(
+                'Floor #%d is named `%s`, and a floor\'s name must contain a letter or digit a–z 0–9 once accents '
+                .'are folded: its web address is made of them (docs/design/FLOOR.md § 4.6).',
+                $position,
+                $name,
+            ));
+        }
+
+        if ($slug === FloorSlug::RESERVED) {
+            throw new InvalidBuildingLayout(sprintf(
+                'Floor #%d is named `%s`, whose address `/floor/%s` is reserved for the Unassigned floor — the rooms '
+                .'no floor holds and the seats in no room (card#13117). Choose another name.',
+                $position,
+                $name,
+                $slug,
+            ));
+        }
+
+        return $name;
+    }
+
+    /**
+     * § 4.6's optional `aliases`: the addresses the floor answered to before a rename. Absent or `null` is none. Each
+     * is an address (`FloorSlug::isSlug()`), never the reserved one, never the floor's own current address and never
+     * twice in the list; that no alias is another floor's address or in another floor's list is the whole document's
+     * question, `refuseAliasesThatNameAFloor()`'s.
+     *
+     * @return list<string>
+     */
+    private static function aliases(\stdClass $entry, int $position, string $slug): array
+    {
+        $aliases = $entry->aliases ?? null;
+
+        if ($aliases === null) {
+            return [];
+        }
+
+        if (! is_array($aliases)) {
+            throw new InvalidBuildingLayout(sprintf(
+                'Floor #%d declares `aliases` as %s. It is a JSON list of the addresses the floor answered to before a '
+                .'rename (docs/design/FLOOR.md § 4.6).',
+                $position,
+                get_debug_type($aliases),
+            ));
+        }
+
+        $seen = [];
+
+        foreach ($aliases as $alias) {
+            if (! is_string($alias) || ! FloorSlug::isSlug($alias)) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'Floor #%d declares the alias %s, which is not an address: an alias is a slug — lower-case letters '
+                    .'and digits in runs joined by single hyphens (docs/design/FLOOR.md § 4.6).',
+                    $position,
+                    is_string($alias) ? '`'.$alias.'`' : 'of type '.get_debug_type($alias),
+                ));
+            }
+
+            if ($alias === FloorSlug::RESERVED) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'Floor #%d declares the alias `%s`, which is reserved for the Unassigned floor (card#13117).',
+                    $position,
+                    $alias,
+                ));
+            }
+
+            if ($alias === $slug || isset($seen[$alias])) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'Floor #%d declares the alias `%s` %s. An alias is a FORMER address, held once '
+                    .'(docs/design/FLOOR.md § 4.6).',
+                    $position,
+                    $alias,
+                    $alias === $slug ? 'beside the same address as its current one' : 'twice',
+                ));
+            }
+
+            $seen[$alias] = true;
+        }
+
+        return array_values($aliases);
     }
 
     /**
      * ⭐ § 4.6's optional `theme` (card#11046, docs/design/FLOOR.md § 10.6 item 5): the name of the
-     * theme the floor is drawn in. Absent or `null` is the house theme, as `label => null` is an
-     * absent label; any other non-string is refused at load, by name. A string is kept exactly as
+     * theme the floor is drawn in. Absent or `null` is the house theme, as `aliases => null` is
+     * no aliases; any other non-string is refused at load, by name. A string is kept exactly as
      * authored, and a name the build does not ship is NOT refused here — that is the write's
      * (`App\Building\Layouts::refuseUnshippedThemes()`), because a read-time refusal would take
      * the building down for an appearance.
@@ -677,40 +755,43 @@ final class BuildingLayout
     }
 
     /**
-     * ⛔ TWO FLOORS MAY NOT READ THE SAME (§ 4.6, card#9273), and the rule is stated on what a
-     * viewer READS — the label where given, else the key, in the form `readsAs()` produces — so a
-     * floor labelled with ANOTHER floor's key, a label that differs from one only in whitespace
-     * the page collapses, and two unlabelled floors whose KEYS differ only that way are all
-     * caught by this one clause rather than by a second one beside it. It runs over the whole
-     * document because the defect is a PAIR: neither plate is wrong alone, which is also why the
-     * message names both keys.
+     * ⛔ AN ALIAS NAMES ONE FLOOR AND NO FLOOR'S CURRENT ADDRESS (§ 4.6): an alias equal to another floor's slug, or held
+     * by two floors, is two answers to one address. A rename that takes over another floor's former address removes
+     * it from that floor's list in the same document (`App\Building\FloorEdits`), so this is reached only by a raw
+     * document that did not — refused as the collision it is, never repaired.
      *
-     * @param  array<string, array{label: string|null}>  $parsed
+     * @param  array<string, array{name: string, aliases: list<string>}>  $parsed  keyed by slug
      */
-    private static function refuseTwoFloorsThatReadTheSame(array $parsed): void
+    private static function refuseAliasesThatNameAFloor(array $parsed): void
     {
-        $readBy = [];
+        $heldBy = [];
 
-        foreach ($parsed as $floorKey => $floor) {
-            // What the author WROTE is what the message has to name — it is the string they have
-            // to go and edit — while what the two floors are COMPARED on is what the page renders
-            // that string as, which is `readsAs()` and is stored nowhere.
-            $authored = $floor['label'] ?? (string) $floorKey;
-            $reads = self::readsAs($authored);
+        foreach ($parsed as $slug => $floor) {
+            foreach ($floor['aliases'] as $alias) {
+                if (isset($parsed[$alias])) {
+                    throw new InvalidBuildingLayout(sprintf(
+                        'Floor `%s` keeps the former address `%s`, which is the address of floor `%s` now. One address '
+                        .'opens one floor: take `%s` out of `%s`\'s aliases (docs/design/FLOOR.md § 4.6).',
+                        $floor['name'],
+                        $alias,
+                        $parsed[$alias]['name'],
+                        $alias,
+                        $floor['name'],
+                    ));
+                }
 
-            if (isset($readBy[$reads])) {
-                throw new InvalidBuildingLayout(sprintf(
-                    'Floors `%s` and `%s` would both read as `%s`. A label is what a viewer sees '
-                    .'on the plate and two plates reading the same is a building nobody can '
-                    .'navigate; the layout is refused rather than one plate quietly gaining its '
-                    .'key beside the label (docs/design/FLOOR.md § 4.6).',
-                    (string) $readBy[$reads],
-                    (string) $floorKey,
-                    $authored,
-                ));
+                if (isset($heldBy[$alias])) {
+                    throw new InvalidBuildingLayout(sprintf(
+                        'Floors `%s` and `%s` both keep the former address `%s`, and a former address redirects to one '
+                        .'floor: take it out of one list (docs/design/FLOOR.md § 4.6).',
+                        $parsed[$heldBy[$alias]]['name'],
+                        $floor['name'],
+                        $alias,
+                    ));
+                }
+
+                $heldBy[$alias] = (string) $slug;
             }
-
-            $readBy[$reads] = $floorKey;
         }
     }
 

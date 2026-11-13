@@ -6,8 +6,8 @@ use App\Building\Building;
 use Tests\TestCase;
 
 /**
- * Composing the building — `docs/design/FLOOR.md § 4.6`. One authored layout plus the installs the
- * fleet reports, in; the floors this deployment draws, out.
+ * Composing the building — `docs/design/FLOOR.md § 4.6`. One authored layout, the installs the fleet
+ * reports and the rooms with an authored map, in; the floors this deployment draws, out.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⭐ THE CASES ARE A FIXTURE, NOT THIS FILE'S, because the rule has two homes. The browser
@@ -18,13 +18,13 @@ use Tests\TestCase;
  * A case added there reaches both; a rule one runtime has and the other lacks reds one of them.
  *
  * ⭐ THE TWO RULES THE FIXTURE EXISTS FOR ARE BOTH ABOUT A HOLE, and they point in opposite
- * directions, which is why neither one covers the other: an install the layout does not place
- * still gets a floor, and a room the fleet reports nothing for is still drawn. Between them no
+ * directions, which is why neither one covers the other: a room the layout does not place is still
+ * drawn — on the Unassigned floor since card#13117 — and a room the fleet reports nothing for is still drawn. Between them no
  * install and no authored room can fall off the building.
  */
 class TheBuildingComposesFloorsFromRoomsTest extends TestCase
 {
-    /** @return list<array{name: string, layout: list<array<string, mixed>>, installs: list<string>, floors: list<array<string, mixed>>}> */
+    /** @return list<array{name: string, layout: list<array<string, mixed>>, installs: list<string>, authored: list<string>, floors: list<array<string, mixed>>}> */
     public static function cases(): array
     {
         $path = __DIR__.'/../../fixtures/building/compose-cases.json';
@@ -59,16 +59,21 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
             $cases,
         ), 'no case has a room the fleet does not report');
 
-        // card#9273: the fixture is the cross-runtime statement of the LABEL too, so it must
-        // carry a labelled case and an unlabelled one — without both, a runtime that dropped
-        // labels entirely and one that invented them everywhere would each walk it clean.
-        $labels = array_merge(...array_map(
-            fn (array $c) => array_column($c['floors'], 'label'),
-            $cases,
-        ));
+        // card#13117: the fixture is the cross-runtime statement of the NAME and the Unassigned floor too, so it must
+        // carry a floor whose key is not its name, a floor with former addresses, an Unassigned floor holding an
+        // authored room the fleet does not report, and a case with no Unassigned floor — without each, a runtime
+        // that keyed by the name itself, dropped `aliases`, ignored the authored rooms or always minted the floor
+        // would walk it clean.
+        $floors = array_merge(...array_column($cases, 'floors'));
 
-        $this->assertContains(null, $labels, 'no fixture floor reads as its key');
-        $this->assertNotEmpty(array_filter($labels, 'is_string'), 'no fixture floor carries a label');
+        $this->assertNotEmpty(array_filter($floors, fn (array $f) => $f['floor'] !== $f['name']), 'no fixture floor is keyed apart from its name');
+        $this->assertNotEmpty(array_filter($floors, fn (array $f) => $f['aliases'] !== []), 'no fixture floor carries a former address');
+        $this->assertNotEmpty(array_filter($floors, fn (array $f) => $f['floor'] === Building::UNASSIGNED_FLOOR
+            && in_array(false, array_column($f['rooms'], 'reported'), true)), 'no Unassigned floor holds an authored, unreported room');
+        $this->assertContains(true, array_map(
+            fn (array $c) => $c['installs'] !== [] && ! in_array(Building::UNASSIGNED_FLOOR, array_column($c['floors'], 'floor'), true),
+            $cases,
+        ), 'every case with an install draws the Unassigned floor');
 
         // ⭐ card#9292: and of the PLAN. Three properties, because a runtime that dropped `origin`,
         // one that invented it everywhere, and one that paged a `hallway` onto every composed floor
@@ -98,7 +103,7 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         foreach (self::cases() as $case) {
             $this->assertSame(
                 $case['floors'],
-                Building::compose(LayoutFixture::read(['floors' => $case['layout']]), $case['installs']),
+                Building::compose(LayoutFixture::read(['floors' => $case['layout']]), $case['installs'], $case['authored']),
                 'fixture case: '.$case['name'],
             );
         }
@@ -111,7 +116,7 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
         // point (the per-install channel it once named is retired, card#9287) —
         // is carried through untouched whether the room is placed or not, and the composed floor
         // is the ONLY thing that differs between the two arms below.
-        $placed = Building::compose(LayoutFixture::read(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]]), ['sola', 'zeta']);
+        $placed = Building::compose(LayoutFixture::read(['floors' => [['name' => 'The Solos', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]]), ['sola', 'zeta']);
         $unplaced = Building::compose(LayoutFixture::read(['floors' => []]), ['sola', 'zeta']);
 
         $rooms = fn (array $b) => array_merge(...array_map(
@@ -121,33 +126,30 @@ class TheBuildingComposesFloorsFromRoomsTest extends TestCase
 
         $this->assertSame(['sola', 'zeta'], $rooms($placed));
         $this->assertSame(['sola', 'zeta'], $rooms($unplaced));
-        $this->assertNotSame(array_column($placed, 'floor'), array_column($unplaced, 'floor'));
+        $this->assertSame(['the-solos'], array_column($placed, 'floor'));
 
-        // And an implicit floor has no entry to carry a label, so it reads as its key (card#9273).
-        $this->assertSame([null, null], array_column($unplaced, 'label'));
+        // And a room nobody placed is on the Unassigned floor, named so (card#13117).
+        $this->assertSame([[Building::UNASSIGNED_FLOOR, Building::UNASSIGNED_NAME]], array_map(fn (array $f) => [$f['floor'], $f['name']], $unplaced));
     }
 
-    public function test_a_label_changes_what_a_floor_reads_as_and_nothing_else_about_the_building(): void
+    public function test_a_rename_moves_a_floors_address_and_its_name_and_nothing_else_about_the_building(): void
     {
-        // ⭐ THE GUARANTEE AT THE COMPOSER, card#9273: the same installs against two layouts that
-        // differ ONLY in labels compose to the same floors, the same keys and the same rooms. The
-        // reader's own copy of this property (`BuildingLayoutTest`) is about the document; this is
-        // about the BUILDING, which is what the console and the page actually read.
+        // ⭐ THE GUARANTEE AT THE COMPOSER, card#13117 (reversing card#9273's *a label is never a key*): the same installs
+        // against two layouts that differ ONLY in a floor's name compose to the same rooms, in the same places, while
+        // that floor's key — the slug of its name — and its name move with it.
         $rooms = ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']];
         $installs = ['sola', 'zeta', 'aimla'];
 
-        $plain = Building::compose(LayoutFixture::read(['floors' => [['rooms' => $rooms]]]), $installs);
-        $named = Building::compose(
-            LayoutFixture::read(['floors' => [['label' => 'the solos', 'rooms' => $rooms]]]),
+        $before = Building::compose(LayoutFixture::read(['floors' => [['name' => 'sola', 'rooms' => $rooms]]]), $installs);
+        $after = Building::compose(
+            LayoutFixture::read(['floors' => [['name' => 'The Solos', 'aliases' => ['sola'], 'rooms' => $rooms]]]),
             $installs,
         );
 
-        $this->assertSame(array_column($plain, 'floor'), array_column($named, 'floor'));
-        $this->assertSame(array_column($plain, 'rooms'), array_column($named, 'rooms'));
-
-        // The one member that moved — and the implicit `aimla` floor's stayed null, because there
-        // is no layout entry to name it.
-        $this->assertSame([null, null], array_column($plain, 'label'));
-        $this->assertSame([null, 'the solos'], array_column($named, 'label'));
+        $this->assertSame(array_column($before, 'rooms'), array_column($after, 'rooms'));
+        $this->assertSame(['sola', Building::UNASSIGNED_FLOOR], array_column($before, 'floor'));
+        $this->assertSame(['the-solos', Building::UNASSIGNED_FLOOR], array_column($after, 'floor'));
+        $this->assertSame(['The Solos', Building::UNASSIGNED_NAME], array_column($after, 'name'));
+        $this->assertSame([['sola'], []], array_column($after, 'aliases'));
     }
 }

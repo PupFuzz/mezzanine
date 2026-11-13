@@ -30,26 +30,30 @@
  */
 
 import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';
-import { footprintsIntersect, mapDesks, mapGrid, mapLayers } from './floor-layout.js';
-import { readEmbedded, splitGid, tilesetUrl } from './tileset.js';
-import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
+import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf } from './floor-layout.js';
+import { floorTheme } from './floor-theme.js';
+import { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles, sceneryInput } from './map-tiles.js';
+import { deskSlabs, floorCell, wallBodies } from './floor-walls.js';
+import { tilesetUrl } from './tileset.js';
+import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
+import { keyOf } from '../wire/seat-key.js';
 import { SNACK_LINES } from './snack-lines.js';
 
-/**
- * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`floor-layout.js`): a wall
- * about 2.2 m tall at the floor's scale (card#11045, the operator's 2026-10-01 ruling: tall office
- * windows, not a jail's). FLOOR.md § 12's *Back-wall band height* row is its other home, and
- * `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds the two equal — as it does `ZONE_W` and
- * `WINDOW`'s pitch and glazing below.
- */
-export const BAND_H = 160;
+// The pure readers a page without this module's scene machinery also needs (the cab's door view, card#12987) live
+// in modules that import no animation; each name stays readable from here.
+export { BAND_H } from './floor-layout.js';
+export { floorTheme, unshippedThemeNotice } from './floor-theme.js';
+export { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles } from './map-tiles.js';
 
 /**
  * THE FLOOR's FRAME (§ 4.2's frame list, card#11045 PR-D) — the band's parts, in scene px from the
- * band's left edge and top. Layout, carrying no fact, and this module's own.
+ * band's left edge and top. Layout, carrying no fact, and this module's own — but for the band's height and the
+ * elevator's place (`BAND_H`, `ELEVATOR`), which `floor-layout.js` holds beside the one threshold formula
+ * (`thresholdOf()`). `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds `ZONE_W` and `WINDOW`'s pitch and glazing
+ * equal to FLOOR.md § 12's rows, as it does `BAND_H`.
  *
  * ⛔ THE RESERVED ZONE IS THE BAND's LEFT `ZONE_W` px, AND NO WINDOW EVER ENTERS IT: the two-door
  * elevator and the wall clock hang there, so the clock is never covered whatever the floor's width.
@@ -72,7 +76,6 @@ export const BAND_H = 160;
  * window — or its sill — could only be drawn inside the zone. A stored map can be that narrow (F21).
  */
 const ZONE_W = 332;
-const ELEVATOR = { dx: 32, w: 84, h: 144, frame: 6, header: 14 };
 /**
  * The wall clock, RAISED 44 px to the top of the band (card#12241, the operator's ruling of 2026-10-23:
  * *"I want the clock raised to the height of the current birdhouse"*): its rect's top is `dy` under the
@@ -119,14 +122,6 @@ export const CALL_PRESS_FRAMES = 4;
 /** The slab under the floor's rooms — the front wall's top edge, scenery, outside every grid (§ 4.2). */
 export const SLAB_H = 8;
 
-/**
- * FLOOR.md § 10.6 item 6's two classes of tile kind: the PLANE kinds, whose cells are merged into runs by the
- * one region pass (`tileRegions()`) and handed to the grid's plane document, and every other kind of the
- * registry's set, which STANDS — drawn at its tile's cell rect by the floor's theme. A tile with no kind, or
- * a kind the registry does not name, is drawn by nothing: the floor never draws a tile's image.
- */
-export const PLANE_KINDS = Object.freeze(['wall', 'accent']);
-
 /** The overflow strip's gap below the floor's extent, and its header — § 3.2's labelled row. */
 export const STRIP_GAP = 24;
 
@@ -163,38 +158,6 @@ function glowOf(cell) {
  */
 export function intersectNotice(a, b, installId, seats) {
     return `desk objects \`${a}\` and \`${b}\` intersect — ${roomSuffix(installId, seats)}`;
-}
-
-/**
- * § 9 F23's notice, in § 5.5's words (card#11046, FLOOR.md § 10.6 item 5): the theme as the layout names
- * it, and the floor by its name — `label ?? key`, the one rendering rule § 4.6 states.
- */
-export function unshippedThemeNotice(name, floorName) {
-    return `floor theme \`${name}\` is not installed — drawn in the house theme — \`${floorName}\``;
-}
-
-/**
- * The theme a floor is drawn in (FLOOR.md § 10.6 item 5): the one its layout entry names when the registry
- * holds it; the house theme when it names none; and the house theme under § 9 F23's notice when it names
- * one the build does not ship. With no registry held (`themes` absent — it failed to load, which is § 9
- * F14's), nothing is resolved and nothing is claimed.
- *
- * @param {{theme: string|null, name: string}} floor the frame's floor
- * @param {{names: list<string>, house: string}|null|undefined} themes the registry's `THEMES` and `HOUSE_THEME`
- * @returns {{theme: string|null, notice: string|null}}
- */
-export function floorTheme(floor, themes) {
-    if (themes === null || themes === undefined) {
-        return { theme: null, notice: null };
-    }
-
-    if (floor.theme === null || floor.theme === undefined) {
-        return { theme: themes.house, notice: null };
-    }
-
-    return themes.names.includes(floor.theme)
-        ? { theme: floor.theme, notice: null }
-        : { theme: themes.house, notice: unshippedThemeNotice(floor.theme, floor.name) };
 }
 
 /**
@@ -363,24 +326,6 @@ export function snackSpacing(body) {
 export function snackSpotOffset(body) {
     return Object.freeze({ dx: -body.w / 2, mirror: body.w / 2, dy: CLEARANCE.depth + 1 });
 }
-
-/**
- * card#12786 — § 12's *Restroom door* (§ 6.7 item 2): the one standing kind of the restroom, and its tile's size — a door
- * frame taller than the *Character rect*'s character with its sign plate above. The tile's rect is the obstacle the
- * lattice blocks, read off the map like every standing tile's.
- */
-export const RESTROOM_DOOR = Object.freeze({ kind: 'restroom-door', w: 64, h: 144 });
-
-/**
- * card#12786 — § 12's *Restroom plates* (§ 6.7 item 2): the two rects the scene hands the theme with the door's tile, in
- * the tile's px from its top-left — `sign`, the slider plate the painter draws the vacant / occupied field inside, and
- * `plate`, the sign plate the theme draws the pictogram on. The theme draws the rims where the painter draws the field,
- * whatever the theme, as the elevator's surround is handed its call plates.
- */
-export const RESTROOM_PLATES = Object.freeze({
-    sign: Object.freeze({ x: 21, y: 58, w: 22, h: 12 }),
-    plate: Object.freeze({ x: 14, y: 2, w: 36, h: 18 }),
-});
 
 /**
  * card#12786 — THE RECESS the painter clips an occupant to and draws the leaf over (§ 6.7 item 2): the door frame's opening,
@@ -1052,7 +997,7 @@ export const INTERN_SIZE = Object.freeze({ w: STOOL_W, h: STOOL_H });
  * no band, or no open route, the row is drawn without its walk: no legs, frames 0 (walk note item 7).
  */
 function walkEffect(base, id, anchor, door, call, motion, character, box, walking, start = null) {
-    const key = `${base.install_id}/${base.seat_id}`;
+    const key = keyOf(base);
     const none = (narrate) => noWalk(base, id, walking, narrate);
 
     if (!motion || anchor === null || door === null) {
@@ -1172,7 +1117,7 @@ function seatWalk(base, id, walking, character, box, parts) {
  * touched the walk it replaces (`floor/in-flight.js`).
  */
 function seatTurn(base, id, flying, anchor, door, call, character, box, walking) {
-    const key = `${base.install_id}/${base.seat_id}`;
+    const key = keyOf(base);
     const routeTo = seatRoutes(walking, key, anchor);
     const turned = turnRound(flying, {
         // The row says where the person goes — an A1 to its desk, an A2 to the elevator — whatever shape the walk turned from.
@@ -1296,7 +1241,7 @@ const ONE_FRAME = new Set(['A5', 'A11', 'A12', 'A14', 'A17']);
  * @param {object} frame `FloorScreen#draw()`'s frame
  * @param {object} input `{ box, measure, character, draw, themes, maps, hallway, tilesets, layout_version,
  *        failed, reduce, effects, previous }` — `draw` the character tree's seeded draw (`seed.js`'s `draw()`, or
- *        `null` where the tree failed to load); `themes` is `painter.js`'s `themeInputs()`; `maps` is
+ *        `null` where the tree failed to load); `themes` is `cab-paint.js`'s `themeInputs()` (re-exported by `painter.js`); `maps` is
  *        install_id → the held map document or `null`; `tilesets` is `TilesetLoader#held`; `layout_version` the
  *        building layout's version held; `failed` the asset ids the painter reported; `effects` the animation-log
  *        rows this render wrote; `previous` key → the box the last scene drew; `interns_in_flight`, `laptop_at`,
@@ -1395,6 +1340,8 @@ export function buildScene(frame, input) {
     const snackTables = [];
     // card#12786 (§ 6.7 items 2 and 3): the restroom doors, read off the map by kind the same way.
     const restroomDoors = [];
+    // Each drawn grid's cells, in tile order — what the walls below are read from without tiling a map twice.
+    const cellsByGrid = new Map();
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -1404,6 +1351,8 @@ export function buildScene(frame, input) {
         }
 
         const cells = mapTiles(g.map, g.origin, tilesetFor, g.install_id);
+
+        cellsByGrid.set(g, cells);
 
         for (const c of cells) {
             if (c.kind === 'wall' || standing.includes(c.kind)) {
@@ -1449,16 +1398,7 @@ export function buildScene(frame, input) {
                 continue;
             }
 
-            // card#12786: the restroom door's theme document is handed the slider's and the sign plate's rects (§ 12's
-            // *Restroom plates*), where the painter draws the field and the theme the rims.
-            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', {
-                kind: cell.kind,
-                w: cell.w,
-                h: cell.h,
-                seed: g.seed,
-                index: cell.index,
-                ...(cell.kind === RESTROOM_DOOR.kind ? RESTROOM_PLATES : {}),
-            });
+            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', sceneryInput(cell, g.seed));
 
             if (doc === null) {
                 continue;
@@ -1487,6 +1427,20 @@ export function buildScene(frame, input) {
         }
     });
 
+    // ── The standing walls (`floor-walls.js`): every `wall` cell an `edge` or a `partition` of its footprint, as the cab's
+    // door view stands them — what the 3-D floor's world lifts (`floor-world.js`), and nothing the 2-D painter reads. A
+    // floor whose every room is mapless draws no room grid (F16), and so no wall.
+    const wallGrids = grids.flatMap((g, i) => (extents[i] === null ? [] : [{
+        map: g.map,
+        origin: g.origin,
+        footprint: { x: extents[i].x, y: extents[i].y, width: extents[i].w, height: extents[i].h },
+        room: g.install_id !== null,
+        seed: g.seed,
+        cells: cellsByGrid.get(g),
+    }]));
+    const wallCell = wallGrids.some((g) => g.room) ? floorCell(wallGrids) : null;
+    const walls = wallCell === null ? [] : wallBodies(wallGrids, (g) => g.cells, wallCell, deskSlabs(wallGrids, wallCell));
+
     // ── Desks: inside their slots, the later `id` on top; F21's notices per room ──────────────
     const desks = [];
     const notices = [];
@@ -1495,7 +1449,7 @@ export function buildScene(frame, input) {
     // § 9 F14: a desk draws its placeholder when its art cannot be drawn — the floor's theme held by
     // nothing, its furniture set reported failed (all or nothing, § 10.6 item 8), or its character's.
     const artFor = (desk) => {
-        const character = `character:${desk.install_id}/${desk.seat_id}`;
+        const character = characterAsset(desk);
         const set = theme.drawn ? furnitureAsset(theme.name, desk) : null;
 
         if (desk.character) {
@@ -1703,6 +1657,7 @@ export function buildScene(frame, input) {
         band_docs: bandDocs,
         planes: Object.freeze(planes),
         scenery: Object.freeze(scenery),
+        walls: Object.freeze(walls),
         desks: Object.freeze(desks),
         strip,
         effects,
@@ -2235,7 +2190,7 @@ export function slotOrigin(slot, box) {
  * as the placeholder), `{ crest: 0, clear: null }`: the rect's top, the line the tallest crest reaches, and a bubble set
  * as high as any seat's (`bubbleSeat()`).
  */
-function headOf(model, installId, elements, ctx) {
+function headOf(model, elements, ctx) {
     const character = elements.find((e) => e.kind === 'character');
     const none = { crest: 0, clear: null };
 
@@ -2246,7 +2201,7 @@ function headOf(model, installId, elements, ctx) {
     const at = { pose: character.pose, glyph: character.glyph, species: character.species, clear: character.clear };
 
     try {
-        return { crest: ctx.crest(installId, model.seat_id, at), clear: ctx.headClear(installId, model.seat_id, at) };
+        return { crest: ctx.crest(model.seat_id, at), clear: ctx.headClear(model.seat_id, at) };
     } catch {
         return none;
     }
@@ -2258,7 +2213,7 @@ function headOf(model, installId, elements, ctx) {
  */
 export function placeDesk(model, key, installId, slot, at, ctx, extra) {
     const { elements, bubble } = deskLayout(model, ctx);
-    const head = headOf(model, installId, elements, ctx);
+    const head = headOf(model, elements, ctx);
     const seat = bubbleSeat(ctx.box, ctx.character, head.clear, head.crest);
     // A character's or an intern's overdraw (§ 10.4's frame contract) moves with its element; a sleeper's clear rects are frame units and do not.
     const moved = elements.map((e) => Object.freeze({
@@ -2347,14 +2302,11 @@ export function placeBubbles(desks, measure, W, delivered) {
             source: b.source,
             degraded_note: b.degraded_note,
             truncated: b.truncated || title.truncated,
-            // card#12785: a desk whose character is away on its snack break keeps its bubble — the card it works on —
-            // and draws no trail, which is the thinker's and leaves with it (`in-flight.js`'s `awayDesk()`).
-            trail: b.trail !== false,
         });
     }
 
     const placed = bubbleLayout(wanted, (text, bubble) => bubble.size);
-    const bySeat = new Map(placed.map((rect) => [`${rect.install_id}/${rect.seat_id}`, rect]));
+    const bySeat = new Map(placed.map((rect) => [keyOf(rect), rect]));
 
     for (const desk of desks) {
         // The trail is the bubble's: a desk with no bubble draws none, and keeps no copy of where it would start.
@@ -2363,13 +2315,13 @@ export function placeBubbles(desks, measure, W, delivered) {
         delete desk.trail_foot;
         delete desk.bubble_bottom;
 
-        const want = wanted.find((b) => b.install_id === desk.install_id && b.seat_id === desk.seat_id);
+        const want = wanted.find((b) => keyOf(b) === keyOf(desk));
 
         if (want === undefined) {
             continue;
         }
 
-        const rect = bySeat.get(`${desk.install_id}/${desk.seat_id}`);
+        const rect = bySeat.get(keyOf(desk));
 
         desk.bubble = Object.freeze({
             x: rect.x,
@@ -2388,95 +2340,13 @@ export function placeBubbles(desks, measure, W, delivered) {
             // § 5.1 (card#11468): the cloud round the measured rect, and the trail of growing circles from just
             // above the creature to the cloud, on the anchor's line — to the bubble where it was set, parted or not.
             cloud: cloudOutline(rect),
-            trail: want.trail ? trailCircles(foot.x, foot.y, rect.y + rect.h) : Object.freeze([]),
+            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),
         });
     }
 
     for (const desk of desks) {
         Object.freeze(desk);
     }
-}
-
-/**
- * Every tile a map draws, in document order bottom first (§ 10.3's `layers[]` row), each cell
- * resolved to its tileset image and source rectangle — an image-collection tile is drawn at its own
- * size, bottom-aligned to its cell, as Tiled draws one.
- */
-export function mapTiles(map, origin, tilesetFor, owner) {
-    const grid = mapGrid(map);
-
-    if (grid === null) {
-        return [];
-    }
-
-    // Each `tilesets[]` entry by its `firstgid`, highest first, so a GID finds its own.
-    const sets = (Array.isArray(map.tilesets) ? map.tilesets : [])
-        .map((entry) => ({
-            firstgid: entry?.firstgid ?? 1,
-            tileset: typeof entry?.source === 'string' ? tilesetFor(tilesetUrl(entry.source)) : safeEmbedded(entry),
-            url: typeof entry?.source === 'string' ? tilesetUrl(entry.source) : null,
-        }))
-        .sort((a, b) => b.firstgid - a.firstgid);
-
-    const out = [];
-
-    // § 10.3's layer tree, groups walked, through the one walk `mapDesks()` reads it by too.
-    for (const { layer, offset: here, opacity: alpha, visible } of mapLayers(map)) {
-        if (!visible || layer.type !== 'tilelayer' || !Array.isArray(layer.data)) {
-            continue;
-        }
-
-        const columns = layer.width ?? grid.width;
-
-        layer.data.forEach((cell, i) => {
-            // Tiled's flip bits are stripped and never carried: the floor draws every tile unrotated (§ 10.6 item 6).
-            const { gid } = splitGid(cell);
-
-            if (gid === 0) {
-                return;
-            }
-
-            const set = sets.find((s) => gid >= s.firstgid);
-
-            if (set === undefined) {
-                return;
-            }
-
-            const tile = set.tileset?.tile(gid - set.firstgid) ?? null;
-            const col = i % columns;
-            const row = Math.floor(i / columns);
-            const offsetX = set.tileset?.offset.x ?? 0;
-            const offsetY = set.tileset?.offset.y ?? 0;
-            const w = tile?.sw ?? grid.tilewidth;
-            const h = tile?.sh ?? grid.tileheight;
-
-            out.push({
-                room: owner,
-                layer: layer.name ?? null,
-                x: origin.x + here.x + col * grid.tilewidth + offsetX,
-                y: origin.y + here.y + (row + 1) * grid.tileheight - h + offsetY,
-                w,
-                h,
-                image: tile?.image ?? null,
-                // The image's own size, so a sheet tile is drawn as a window onto its sheet.
-                iw: tile?.iw ?? w,
-                ih: tile?.ih ?? h,
-                tileset: set.url,
-                sx: tile?.sx ?? 0,
-                sy: tile?.sy ?? 0,
-                sw: w,
-                sh: h,
-                opacity: alpha,
-                properties: tile?.properties ?? null,
-                // § 10.6 item 6: what the floor's theme draws the tile as — never its image.
-                kind: typeof tile?.properties?.kind === 'string' ? tile.properties.kind : null,
-                // The cell's place in its layer — a standing piece's seeded choices are the cell's.
-                index: i,
-            });
-        });
-    }
-
-    return out.map((cell) => Object.freeze(cell));
 }
 
 /**
@@ -2670,14 +2540,6 @@ function misordered(tiles, regions, regionOf) {
     return late;
 }
 
-function safeEmbedded(entry) {
-    try {
-        return readEmbedded(entry);
-    } catch {
-        return null;
-    }
-}
-
 /**
  * § 9 F21 for one room, from the map alone: its `desks` objects pairwise on step 7's half-open
  * footprint test (`floor/floor-layout.js`'s own, F18's), and each against the furniture box.
@@ -2771,7 +2633,7 @@ export function backWall(span, room) {
             ...lift,
             frame: Object.freeze(frameRect),
             surround: Object.freeze({ ...frameRect, w: frameRect.w + SURROUND.elevator_reach }),
-            seam: lift.x + lift.w / 2,
+            seam: thresholdOf(span).x,
             // card#12747: the two call plates the theme draws in the surround — `main` at a seat's reach, `low` an intern's.
             calls: Object.freeze({ main: plate(CALL_PLATES.main), low: plate(CALL_PLATES.low) }),
         }),
@@ -2918,7 +2780,7 @@ function slotFoot(desk, slot, box, character) {
  * interns leaving on one delta wait apart and every viewer agrees.
  */
 function internWalks(row, base, frame, interns, band, moving, character, box, walking) {
-    const seat = `${row.install_id}/${row.seat_id}`;
+    const seat = keyOf(row);
     const move = (frame.desks.interns ?? []).find((m) => m.key === seat && m.cause === row.cause) ?? null;
 
     if (move === null || !move.exact || !moving) {
@@ -3295,7 +3157,7 @@ function internBlink(arrival, loss) {
  * motion and a row drawn without motion draw no fade: the laptop is simply present or absent on the applying render.
  */
 function laptopFades(row, base, frame, interns, moving) {
-    const seat = `${row.install_id}/${row.seat_id}`;
+    const seat = keyOf(row);
     const flip = (frame.desks.flips ?? []).find((f) => f.key === seat && f.cause === row.cause) ?? null;
     const opacity = (state) => (state === 'working' ? 1 : 0);
     const out = [];
@@ -3346,7 +3208,7 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
         const id = row.animation_id;
         const motion = row.motion === true;
-        const key = row.seat_id === null ? null : `${row.install_id}/${row.seat_id}`;
+        const key = row.seat_id === null ? null : keyOf(row);
         const base = {
             animation_id: id,
             cause: row.cause,
@@ -3367,18 +3229,17 @@ function buildEffects(rows, frame, anchors, previous, extent, band, reduce, char
 
             seen.add(tag);
 
-            // An install-scope post is its room's; a fleet-scope one (card#12239) is the floor's, and its
-            // ends are already `install_id/seat_id` keys, its travellers only the destinations drawn here.
+            // An install-scope post is its room's; a fleet-scope one (card#12239) is the floor's. Either arm's ends
+            // are `keyOf()` keys, which `anchors` is keyed by; a fleet round's travellers are the destinations drawn here.
             const local = frame.coord?.[row.install_id]?.rounds.find((r) => r.post_ref === row.cause) ?? null;
             const fleet = local === null ? (frame.coord_fleet?.rounds.find((r) => r.post_ref === row.cause) ?? null) : null;
             const round = local ?? fleet;
-            const keyOf = (seatId) => (fleet === null ? `${row.install_id}/${seatId}` : seatId);
-            const origin = round?.origin.agent?.resolved ? anchors.get(keyOf(round.origin.agent.seat_id)) ?? null : null;
+            const origin = round?.origin.agent?.resolved ? anchors.get(round.origin.agent.seat_id) ?? null : null;
             const destinations = round === null ? [] : fleet === null ? round.targets.desks.map((d) => d.seat_id) : round.travellers;
 
             if (id === 'A19' && round !== null && origin !== null) {
                 for (const target of destinations) {
-                    const to = anchors.get(keyOf(target)) ?? null;
+                    const to = anchors.get(target) ?? null;
 
                     if (to === null) {
                         continue;

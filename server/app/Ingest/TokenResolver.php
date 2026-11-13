@@ -2,6 +2,7 @@
 
 namespace App\Ingest;
 
+use App\Read\SeatIdentity;
 use App\Support\Anchored;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -74,9 +75,8 @@ final class TokenResolver
 
         $hash = hash('sha256', $presented);
 
-        $row = DB::table('ingest_tokens')
-            ->join('seats', 'seats.id', '=', 'ingest_tokens.seat_ref')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
+        $row = SeatIdentity::query()
+            ->join('ingest_tokens', 'ingest_tokens.seat_ref', '=', 'seats.id')
             ->where('ingest_tokens.token_hash', $hash)
             ->select([
                 'ingest_tokens.id as token_id',
@@ -84,7 +84,6 @@ final class TokenResolver
                 'ingest_tokens.revoked_at',
                 'seats.id as seat_ref',
                 'seats.seat_id',
-                'installs.install_id',
             ])
             ->first();
 
@@ -105,7 +104,6 @@ final class TokenResolver
             Counters::global(Counters::REVOKED_TOKEN_PRESENTED);
             Log::warning('mezzanine.ingest: a REVOKED seat token was presented — that seat is holding a dead credential', [
                 'token_prefix' => $row->prefix,
-                'install_id' => $row->install_id,
                 'seat_id' => $row->seat_id,
                 'source_ip' => $ip,
             ]);
@@ -119,7 +117,6 @@ final class TokenResolver
             tokenId: (int) $row->token_id,
             prefix: (string) $row->prefix,
             seatRef: (int) $row->seat_ref,
-            installId: (string) $row->install_id,
             seatId: (string) $row->seat_id,
         );
     }

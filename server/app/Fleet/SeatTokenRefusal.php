@@ -15,6 +15,8 @@ final readonly class SeatTokenRefusal
 
     public const SEAT_RETIRED = 'seat_retired';
 
+    public const RESERVED_ID = 'reserved_id';
+
     private function __construct(
         public string $reason,
         public string $field,
@@ -46,12 +48,26 @@ final readonly class SeatTokenRefusal
      * "a retired seat that keeps reporting is a misconfiguration") — and nothing in `App\Ingest`
      * reads `retired_at`, so the token would post into a seat no read surface shows.
      */
-    public static function seatRetired(string $installId, string $seatId, string $at, ?string $by, ?string $reason): self
+    public static function seatRetired(string $seatId, string $at, ?string $by, ?string $reason): self
     {
         return new self(self::SEAT_RETIRED, 'seat_id', sprintf(
-            'seat %s/%s was retired at %s by %s (reason: %s). There is no un-retire: a replacement seat '
+            'seat %s was retired at %s by %s (reason: %s). There is no un-retire: a replacement seat '
             .'takes a new seat_id. Nothing was issued.',
-            $installId, $seatId, $at, $by ?? 'an author not recorded', $reason ?? 'not recorded',
+            $seatId, $at, $by ?? 'an author not recorded', $reason ?? 'not recorded',
         ), $at, $by, $reason);
+    }
+
+    /**
+     * A seat id the floor's own routes spell (card#13033 stage 2, `docs/design/plan-13033-stage2-3d-floor.md` § 3.8): a
+     * seat named `3d` would have the drill-down address `/floor/{floor}/3d`, which is the 3-D floor's — its desk could
+     * never be opened by its link, and the 3-D floor could never be told from it.
+     */
+    public static function reservedId(string $seatId): self
+    {
+        return new self(self::RESERVED_ID, 'seat_id', sprintf(
+            'seat_id %s is reserved: it is a segment of the floor\'s own addresses (/floor/{floor}/%s). Nothing was issued.',
+            (string) json_encode($seatId, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            $seatId,
+        ));
     }
 }

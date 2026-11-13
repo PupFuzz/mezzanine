@@ -35,7 +35,7 @@ class SeatTokenConsoleTest extends TestCase
     {
         $operator = $this->confirmedOperator();
 
-        $response = $this->issueOnPage('newco', 'newco-pm')->assertOk();
+        $response = $this->issueOnPage('newco-pm')->assertOk();
         $token = $this->plaintextIn($response);
 
         $this->assertNotNull($token, 'the issue response shows the token');
@@ -45,8 +45,8 @@ class SeatTokenConsoleTest extends TestCase
         $this->assertSame($operator->email, $row->created_by);
 
         // The provisioned-but-silent seat, the CLI's four writes.
-        $seatRef = (int) DB::table('seats')->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('installs.install_id', 'newco')->where('seats.seat_id', 'newco-pm')->value('seats.id');
+        // card#13117: the new seat is in no room until the console places it.
+        $seatRef = (int) DB::table('seats')->whereNull('install_ref')->where('seat_id', 'newco-pm')->value('id');
         $this->assertSame($seatRef, (int) $row->seat_ref);
         $this->assertSame('no_data_yet', DB::table('seat_state')->where('seat_ref', $seatRef)->value('unknown_reason'));
 
@@ -60,8 +60,8 @@ class SeatTokenConsoleTest extends TestCase
     {
         $this->confirmedOperator();
 
-        $first = $this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')->assertOk());
-        $second = $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+        $first = $this->plaintextIn($this->issueOnPage('aimla-pm')->assertOk());
+        $second = $this->issueOnPage('aimla-pm')->assertOk();
 
         $second->assertSee('rotation');
         $second->assertSee(substr($first, 0, 12));
@@ -77,7 +77,7 @@ class SeatTokenConsoleTest extends TestCase
         $this->confirmedOperator();
 
         $key = $this->issueKeyIn($this->get(route('admin.tokens.index')));
-        $body = ['issue_key' => $key, 'install_id' => 'aimla', 'seat_id' => 'aimla-pm'];
+        $body = ['issue_key' => $key, 'seat_id' => 'aimla-pm'];
 
         $this->assertNotNull($this->plaintextIn($this->post(route('admin.tokens.issue'), $body)->assertOk()));
         $this->assertSame(1, $this->tokenRows());
@@ -104,7 +104,7 @@ class SeatTokenConsoleTest extends TestCase
 
         $key = $this->issueKeyIn($this->get(route('admin.tokens.index')));
         $sessionAsBothRequestsLoadedIt = session()->all();
-        $body = ['issue_key' => $key, 'install_id' => 'aimla', 'seat_id' => 'aimla-pm'];
+        $body = ['issue_key' => $key, 'seat_id' => 'aimla-pm'];
 
         $this->post(route('admin.tokens.issue'), $body)->assertOk();
 
@@ -150,15 +150,15 @@ class SeatTokenConsoleTest extends TestCase
     {
         $this->confirmedOperator();
 
-        $this->issueOnPage('Not A Slug', 'aimla-pm')
+        $this->issueOnPage('Not A Slug')
             ->assertRedirect(route('admin.tokens.index'))
-            ->assertSessionHasErrors('install_id');
+            ->assertSessionHasErrors('seat_id');
 
         $page = $this->get(route('admin.tokens.index'))->assertOk();
-        $page->assertSee('value="aimla-pm"', false); // the control: the input WAS re-rendered from old()
+        $page->assertSee('value="Not A Slug"', false); // the control: the input WAS re-rendered from old()
 
         $issued = $this->post(route('admin.tokens.issue'), [
-            'issue_key' => $this->issueKeyIn($page), 'install_id' => 'aimla', 'seat_id' => 'aimla-pm',
+            'issue_key' => $this->issueKeyIn($page), 'seat_id' => 'aimla-pm',
         ]);
 
         $issued->assertOk();
@@ -179,7 +179,7 @@ class SeatTokenConsoleTest extends TestCase
             (string) $this->get(route('admin.tokens.index'))->headers->get('Cache-Control'));
 
         $this->assertStringContainsString('no-store',
-            (string) $this->issueOnPage('aimla', 'aimla-pm')->assertOk()->headers->get('Cache-Control'));
+            (string) $this->issueOnPage('aimla-pm')->assertOk()->headers->get('Cache-Control'));
 
         $this->assertStringNotContainsString('no-store',
             (string) $this->get(route('admin.agents.index'))->assertOk()->headers->get('Cache-Control'),
@@ -201,11 +201,9 @@ class SeatTokenConsoleTest extends TestCase
     {
         $this->confirmedOperator();
 
-        $this->issueOnPage("aim\nla", 'aimla-pm')
+        $this->issueOnPage("aimla\npm")
             ->assertRedirect(route('admin.tokens.index'))
-            ->assertSessionHasErrors('install_id');
-
-        $this->issueOnPage('aimla', "aimla\npm")->assertSessionHasErrors('seat_id');
+            ->assertSessionHasErrors('seat_id');
 
         foreach (['installs', 'seats', 'seat_state', 'ingest_tokens'] as $table) {
             $this->assertSame(0, DB::table($table)->count(), "$table gained a row");
@@ -215,21 +213,21 @@ class SeatTokenConsoleTest extends TestCase
     /** Hazard: issuing for a retired seat succeeds — through the page, and through the CLI. */
     public function test_a_retired_seat_is_refused_a_token_by_the_page_and_by_the_cli(): void
     {
-        $this->artisan('mezzanine:ingest-token:issue', ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', '--by' => 'suite'])
+        $this->artisan('mezzanine:ingest-token:issue', ['seat_id' => 'aimla-pm', '--by' => 'suite'])
             ->assertSuccessful();
-        app(SeatRetirement::class)->retire('aimla', 'aimla-pm', 'ops', 'decommissioned');
+        app(SeatRetirement::class)->retire('aimla-pm', 'ops', 'decommissioned');
         $before = $this->tokenRows();
 
         $this->confirmedOperator();
 
-        $this->issueOnPage('aimla', 'aimla-pm')
+        $this->issueOnPage('aimla-pm')
             ->assertRedirect(route('admin.tokens.index'))
             ->assertSessionHasErrors('seat_id');
         $this->get(route('admin.tokens.index'))->assertSee('decommissioned')->assertSee('by ops');
 
-        $this->assertSame(1, Artisan::call('mezzanine:ingest-token:issue', ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', '--by' => 'suite']));
+        $this->assertSame(1, Artisan::call('mezzanine:ingest-token:issue', ['seat_id' => 'aimla-pm', '--by' => 'suite']));
         $this->assertMatchesRegularExpression(
-            '/seat aimla\/aimla-pm was retired at \S+ \S+ by ops \(reason: decommissioned\)\. There is no un-retire: '
+            '/seat aimla-pm was retired at \S+ \S+ by ops \(reason: decommissioned\)\. There is no un-retire: '
             .'a replacement seat takes a new seat_id\. Nothing was issued\./',
             Artisan::output(),
         );
@@ -237,10 +235,35 @@ class SeatTokenConsoleTest extends TestCase
 
         $this->assertSame($before, $this->tokenRows(), 'a retired seat was issued a token');
 
-        // The control: an unretired seat on the same install issues, from both.
-        $this->assertNotNull($this->plaintextIn($this->issueOnPage('aimla', 'aimla-dev')->assertOk()));
-        $this->artisan('mezzanine:ingest-token:issue', ['install_id' => 'aimla', 'seat_id' => 'aimla-dev', '--by' => 'suite'])
+        // The control: an unretired seat issues, from both.
+        $this->assertNotNull($this->plaintextIn($this->issueOnPage('aimla-dev')->assertOk()));
+        $this->artisan('mezzanine:ingest-token:issue', ['seat_id' => 'aimla-dev', '--by' => 'suite'])
             ->assertSuccessful();
+    }
+
+    /**
+     * Hazard (card#13033 stage 2, `docs/design/plan-13033-stage2-3d-floor.md` § 3.8): a seat named `3d` is issued, and its
+     * drill-down address `/floor/{floor}/3d` is the 3-D floor's — refused by name through the page and through the CLI,
+     * both of which mint through `SeatTokens::issue()`, and nothing is written.
+     */
+    public function test_the_seat_id_3d_is_refused_by_the_page_and_by_the_cli_and_nothing_is_written(): void
+    {
+        $this->confirmedOperator();
+
+        $this->issueOnPage('3d')
+            ->assertRedirect(route('admin.tokens.index'))
+            ->assertSessionHasErrors(['seat_id' => 'seat_id "3d" is reserved: it is a segment of the floor\'s own addresses (/floor/{floor}/3d). Nothing was issued.']);
+
+        $this->assertSame(1, Artisan::call('mezzanine:ingest-token:issue', ['seat_id' => '3d', '--by' => 'suite']));
+        $this->assertStringContainsString('seat_id "3d" is reserved', Artisan::output());
+        $this->assertStringNotContainsString('mzn_', Artisan::output());
+
+        foreach (['installs', 'seats', 'seat_state', 'ingest_tokens'] as $table) {
+            $this->assertSame(0, DB::table($table)->count(), "$table gained a row");
+        }
+
+        // The control: an id that merely contains the segment is a seat like any other.
+        $this->assertNotNull($this->plaintextIn($this->issueOnPage('3d-printer')->assertOk()));
     }
 
     /** Hazard: a long operator email is refused or truncated. */
@@ -251,7 +274,7 @@ class SeatTokenConsoleTest extends TestCase
 
         $this->confirmedOperator(['email' => $email]);
 
-        $token = $this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')->assertOk());
+        $token = $this->plaintextIn($this->issueOnPage('aimla-pm')->assertOk());
         $prefix = substr($token, 0, 12);
         $this->assertSame($email, DB::table('ingest_tokens')->where('prefix', $prefix)->value('created_by'));
 
@@ -265,15 +288,15 @@ class SeatTokenConsoleTest extends TestCase
         $this->confirmedOperator();
 
         for ($i = 1; $i <= 10; $i++) {
-            $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+            $this->issueOnPage('aimla-pm')->assertOk();
         }
 
-        $this->issueOnPage('aimla', 'aimla-pm')->assertStatus(429);
+        $this->issueOnPage('aimla-pm')->assertStatus(429);
         $this->assertSame(10, $this->tokenRows());
 
         // A second account, from the same address (the test client's), still issues.
         $this->confirmedOperator();
-        $this->issueOnPage('aimla', 'aimla-pm')->assertOk();
+        $this->issueOnPage('aimla-pm')->assertOk();
         $this->assertSame(11, $this->tokenRows());
     }
 
@@ -287,7 +310,7 @@ class SeatTokenConsoleTest extends TestCase
     public function test_revoking_records_the_operator_and_the_time_with_no_reason_and_names_a_dark_seat(): void
     {
         $operator = $this->confirmedOperator();
-        $prefix = substr($this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')), 0, 12);
+        $prefix = substr($this->plaintextIn($this->issueOnPage('aimla-pm')), 0, 12);
 
         $form = $this->get(route('admin.tokens.index'))->assertOk();
         $form->assertSee('Revoke '.$prefix, false);
@@ -296,8 +319,8 @@ class SeatTokenConsoleTest extends TestCase
         $this->post(route('admin.tokens.revoke', $prefix))
             ->assertRedirect(route('admin.tokens.index'))
             ->assertSessionHasNoErrors()
-            ->assertSessionHas('status', fn (string $s) => str_contains($s, "Revoked $prefix — aimla / aimla-pm.")
-                && str_contains($s, 'aimla / aimla-pm now has NO active token and cannot post.'));
+            ->assertSessionHas('status', fn (string $s) => str_contains($s, "Revoked $prefix — aimla-pm.")
+                && str_contains($s, 'aimla-pm now has NO active token and cannot post.'));
 
         $row = DB::table('ingest_tokens')->where('prefix', $prefix)->first();
         $this->assertNotNull($row->revoked_at);
@@ -319,7 +342,7 @@ class SeatTokenConsoleTest extends TestCase
     public function test_a_reason_posted_to_the_console_revoke_is_ignored(): void
     {
         $this->confirmedOperator();
-        $prefix = substr($this->plaintextIn($this->issueOnPage('aimla', 'aimla-pm')), 0, 12);
+        $prefix = substr($this->plaintextIn($this->issueOnPage('aimla-pm')), 0, 12);
 
         $this->post(route('admin.tokens.revoke', $prefix), ['reason' => 'laptop lost'])->assertSessionHasNoErrors();
 
@@ -330,7 +353,7 @@ class SeatTokenConsoleTest extends TestCase
     public function test_an_unknown_prefix_revokes_nothing(): void
     {
         $this->confirmedOperator();
-        $this->issueOnPage('aimla', 'aimla-pm');
+        $this->issueOnPage('aimla-pm');
 
         $this->post(route('admin.tokens.revoke', 'mzn_nothere1'))->assertSessionHasErrors('revoke');
 
@@ -339,7 +362,7 @@ class SeatTokenConsoleTest extends TestCase
 
     public function test_the_cli_records_its_revoking_author(): void
     {
-        Artisan::call('mezzanine:ingest-token:issue', ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', '--by' => 'suite']);
+        Artisan::call('mezzanine:ingest-token:issue', ['seat_id' => 'aimla-pm', '--by' => 'suite']);
         $prefix = (string) DB::table('ingest_tokens')->value('prefix');
 
         $this->artisan('mezzanine:ingest-token:revoke', ['prefix' => $prefix, '--by' => 'ops-shell'])
@@ -354,7 +377,7 @@ class SeatTokenConsoleTest extends TestCase
      */
     public function test_a_revocation_from_before_the_author_column_renders_as_not_recorded(): void
     {
-        Artisan::call('mezzanine:ingest-token:issue', ['install_id' => 'aimla', 'seat_id' => 'aimla-pm', '--by' => 'suite']);
+        Artisan::call('mezzanine:ingest-token:issue', ['seat_id' => 'aimla-pm', '--by' => 'suite']);
         DB::table('ingest_tokens')->update([
             'revoked_at' => now()->format('Y-m-d H:i:s.v'), 'revoked_by' => null,
         ]);

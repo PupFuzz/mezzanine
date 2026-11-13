@@ -49,7 +49,7 @@ almost nothing else — [§ 18.9](#189-why-this-does-not-ride-the-batch-contract
    ([§ 8](#8-call-lifecycle--the-kill-vs-complete-contract)).
 7. The batch envelope carries one `schema_version`; the ingest declares its accepted set and
    **rejects an unaccepted version loudly**, per [`docs/VERSIONING.md § Wire compatibility`](../VERSIONING.md#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line).
-8. Identity is `install_id` + `seat_id` from an install-time config file — never inferred from
+8. Identity is `seat_id` (with `install_id` until card#13117) from an install-time config file — never inferred from
    harness environment markers ([§ 3.4](#34-why-identity-never-comes-from-the-environment)) — and the
    server trusts the **bearer token's** binding, never the payload's claim.
 9. Delivery is best-effort with **bounded, counted** loss: at-least-once with server-side dedup, a
@@ -347,19 +347,21 @@ Written once, at install time, by the installer. It is the **only** source of th
 These rows are the installer's platform table, as [§ 2.1](#21-one-file-four-subcommands)'s are (`node
 fleet-reporter/install.js --paths`). **The token reaches this file from a TOKEN FILE the installer is given by
 path** (card#12571; `docs/design/REPORTER-INSTALL.md` § 4 owns the contract's rationale). **v1** is the bare token
-on one line with an optional LF. **v2** is the form the site's *Seat tokens* page saves (its *Save token file*
-button, card#12571's server half): exactly four `<key> <value>` lines — `token`, `ingest_url`, `install_id`,
-`seat_id` — once each, in any order, LF only and no carriage return, `ingest_url` an `https://` URL ending
-`/api/ingest/events`, the two slugs by the rows below; a v2 file gives the installer the seat's identity and
-site. One parser in `fleet-reporter/install.js` reads both and refuses anything else by name, never printing
-the content. The installer takes the file into this file's directory, owner-only — a file another principal
+on one line with an optional LF. **v3** is the form the site's *Seat tokens* page saves (its *Save token file*
+button) since card#13117: exactly three `<key> <value>` lines — `token`, `ingest_url`, `seat_id` — once each,
+in any order, LF only and no carriage return, `ingest_url` an `https://` URL ending `/api/ingest/events`,
+`seat_id` by its row below; a v3 file gives the installer the seat's identity and site. **v2**, the form the
+page saved from card#12571 until card#13117, is those three lines and an `install_id` line; the installer holds
+that value to its row's pattern and discards it, so a v2 file still installs and writes no `install_id` into
+this file. One parser in `fleet-reporter/install.js` reads all three and refuses anything else by name, never
+printing the content. The installer takes the file into this file's directory, owner-only — a file another principal
 could have read is **taken with a warning** (the operator's ruling of 2026-10-29, which loosens the earlier
 *treat it as exposed* rule for a file given by path) — writes the config, and removes the file.
 
 | Key | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
-| `install_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,31}$` | `"aimla"` |
-| `seat_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,47}$` | `"aimla-pm"` |
+| `install_id` | slug | no — **absent** on a seat installed since card#13117 | `^[a-z0-9][a-z0-9-]{1,31}$` when present. ⭐ **Optional since card#13117**: the seat's identity is `seat_id` alone, and a 13117-era server reads no `install_id` ([§ 4.2](#42-batch-envelope-fields)). The installer no longer writes it; a config written before that card keeps it and is never rewritten, and the reporter sends it on every batch and event exactly when this file carries it | `"aimla"` |
+| `seat_id` | slug | no | `^[a-z0-9][a-z0-9-]{1,47}$`, and never `3d`: the server issues no token for that id (`App\Fleet\SeatTokens::RESERVED_IDS`, card#13033 stage 2), because `/floor/{floor}/3d` is the 3-D floor's address and no desk's ([FLOOR.md § 4.4](FLOOR.md#44-routes-and-what-each-one-fetches)) | `"aimla-pm"` |
 | `ingest_url` | string | no — **the single-site form**; absent when `sites` is set | absolute `https://` URL, ≤ 256 B | `"https://mezzanine.example.org/api/ingest/events"` |
 | `token` | string | no — the single-site form | `mzn_` + 43 base64url chars | `"mzn_kQ7…"` *(never printed, never logged, never echoed)* |
 | `spool_dir` | string | no | absolute path, ≤ 256 B | `"/home/agent/.local/state/fleet-reporter"` |
@@ -377,8 +379,8 @@ could have read is **taken with a warning** (the operator's ruling of 2026-10-29
 **What the reporter enforces of this table.** `loadConfig` checks every row at each read except
 `protocol_agent_name` (below) and two byte bounds, and a value outside its row is a **config error**:
 `selftest`'s `config_readable` fails with an error naming the field, and at runtime the flusher counts
-`config_invalid` ([§ 9.3](#93-degradation-counters)), keeps spooling and sends nothing. `install_id`,
-`seat_id` and `token` must match their patterns. `ingest_url` must start `https://`, parse as a URL
+`config_invalid` ([§ 9.3](#93-degradation-counters)), keeps spooling and sends nothing. `seat_id` and
+`token` must match their patterns, and `install_id` must match its pattern when it is present. `ingest_url` must start `https://`, parse as a URL
 (`new URL`, the parser every request uses) and fit 256 B. `spool_dir` must be an absolute path, and one
 that is not — absent, empty or relative — is the one config error with nowhere to report it at runtime:
 it names no directory a process may write, so the hooks and the flusher write **nothing**, no spool, log,
@@ -420,7 +422,7 @@ under a typo carry no more once it is fixed than the seat asked for.
 the heartbeat's last transmission. There is no other kill switch and no environment variable that
 disables the reporter ([§ 3.4](#34-why-identity-never-comes-from-the-environment)).
 
-**Identity stability rule.** `install_id` and `seat_id` are file-resident, so they survive session
+**Identity stability rule.** `seat_id` — and `install_id`, where a config written before card#13117 carries it — are file-resident, so they survive session
 restarts, `/clear`, reboots, host renames, and harness upgrades. They change only when a human edits
 the file or re-runs the installer — which is a re-identification of the desk and is intended to be a
 deliberate act. Neither is ever derived from hostname, cwd, username, process tree, or any harness
@@ -430,15 +432,16 @@ variable.
 support questions ("is `impl-2` reporting?"). A random identifier makes every such exchange require a
 lookup table. Uniqueness is not enforced by the format — it is enforced by the **token binding**
 ([§ 3.3](#33-authentication-and-the-identity-binding-rule)): a token is issued to exactly one
-`(install_id, seat_id)` pair, so two seats claiming one identity is a provisioning error caught at
-token-issue time, not a silent merge of two desks.
+seat — one `seat_id`, live once across the whole site since card#13117 — so two seats claiming one identity
+is a provisioning error caught at token-issue time, not a silent merge of two desks.
 
 #### Sites: one seat reporting to several Mezzanine deployments
 
 **Card#12180, the operator's ask of 2026-10-21: one reporter install reports to more than one
 Mezzanine site at once — a production deployment and the sandbox — so the same desk is on both
-floors.** The seat's identity does not move with it: `install_id` and `seat_id` are the seat's,
-declared once in this file, and each site binds its own token to that same pair
+floors.** The seat's identity does not move with it: `seat_id` is the seat's — the whole identity since
+card#13117, `install_id` an optional key a site no longer reads — declared once in this file, and each site
+binds its own token to that same seat
 ([§ 3.3](#33-authentication-and-the-identity-binding-rule)) — a seat is provisioned on a site by that
 site issuing it a token, and on no other site by it. What becomes per site is the transport half of
 the table above: `ingest_url`, `token`, `ca_file` and `proxy_url`. Everything a site is told is told
@@ -465,7 +468,7 @@ accepts both while the writer emits one is the migration). Each element is one s
 |---|---|---|---|---|
 | `name` | slug | no | `install_id`'s own pattern, `^[a-z0-9][a-z0-9-]{1,31}$`, reused rather than minted; unique within the file. **Local, never on the wire**: it keys the site's entry in `state.json`, prefixes its log lines, names its block in `selftest`'s report and tags its quarantine records ([§ 11.1](#111-layout)) | `"prod"` |
 | `ingest_url` | string | no | as the top-level row; unique within the file **by its site key** (*What the reporter enforces*, below) | `"https://mezzanine.example.org/api/ingest/events"` |
-| `token` | string | no | as the top-level row: the token **this site** issued to this seat's `(install_id, seat_id)` | `"mzn_kQ7…"` *(never printed, never logged, never echoed)* |
+| `token` | string | no | as the top-level row: the token **this site** issued to this seat's `seat_id` | `"mzn_kQ7…"` *(never printed, never logged, never echoed)* |
 | `ca_file` | string | **yes** | as the top-level row, per site: one site may pin a private CA while another trusts the default store | `null` |
 | `proxy_url` | string | **yes** | as the top-level row, per site | `null` |
 
@@ -881,7 +884,8 @@ request is then the only thing the lane sends until the site has answered it.
   or without a persisted request.** `install_id` and `seat_id` are seat-wide, and the site's epoch
   and `next_seq` are a fact about *which seat's sequence they continue*, exactly as its cursor is a
   fact about which server holds the lines. So the entry records **`identity_sha256`**, the lowercase
-  hex SHA-256 of `install_id|seat_id`, beside `ingest_url_sha256`, and `siteEntry` compares it with
+  hex SHA-256 of `install_id|seat_id` — `install_id` the empty string when the config carries none
+  (card#13117), so a config that has one hashes as it always did — beside `ingest_url_sha256`, and `siteEntry` compares it with
   the config's pair by the same binding shape as rule 2: a difference is the age rule's epoch reset
   — `request` cleared if one is persisted, a new `seq_epoch`, `next_seq` 1, the heartbeat a cleared
   request carried counted, the cursors kept, in one save, before anything is built. A legacy entry
@@ -1584,11 +1588,17 @@ belongs to no session.
   standard floor for a bearer credential with no rate-limit-independent guessing defence.
 - **Server storage: SHA-256 of the token, never the plaintext.** A token table an app can read is a
   fleet-wide credential dump the first time any read primitive leaks.
-- The token row binds exactly one `(install_id, seat_id)`.
+- The token row binds exactly one **seat**. ⭐ **Since card#13117 a seat is known by its `seat_id` alone**,
+  unique across the site among live seats (the store's `uq_live_seat`); the room
+  a seat is drawn in is a console fact the operator changes, and is no part of the binding
+  ([`plan-13117-seat-identity.md § 3.2`](plan-13117-seat-identity.md)). Until that card the row bound a
+  `(install_id, seat_id)` pair and both members were compared.
 
-> **The binding rule (MUST).** The server derives the authoritative `(install_id, seat_id)` **from the
-> token**. The batch's claimed `install_id`/`seat_id` are validated for *equality* with the binding
-> and are never used to route, create, or attribute a record. A mismatch is `403 identity_mismatch`,
+> **The binding rule (MUST).** The server derives the authoritative `seat_id` **from the token**. The
+> batch's claimed `seat_id` is validated for *equality* with the binding and is never used to route,
+> create, or attribute a record; the batch's and each event's `install_id` are **accepted and not read**
+> ([§ 4.2](#42-batch-envelope-fields), [§ 4.3](#43-common-per-event-fields)). A mismatch is
+> `403 identity_mismatch` carrying `expected_seat_id`,
 > the whole batch is rejected, the refusal is counted against the **token's** binding — never
 > against the identity the body claimed, including for the refusals that happen before this check
 > runs ([§ 12.1](#121-validation-order)) — and that seat renders degraded.
@@ -1697,7 +1707,7 @@ anything — no unix socket, no shared filesystem, no "it's local so a retry is 
 |---|---|---|---|---|---|
 | `schema_version` | int | — | no | ≥ 1 | `1` |
 | `batch_id` | ULID | — | no | 26 chars | `"01K3T8ZQ5N7M2X9V4B6D0FGHJK"` |
-| `install_id` | slug | — | no | ≤ 32 B | `"aimla"` |
+| `install_id` | slug | — | **optional** | ≤ 32 B — ⭐ **not read since card#13117**: accepted present, absent or of any value, with no bound and no pattern checked; a reporter writing to a server before that card must still send it ([§ 3.3](#33-authentication-and-the-identity-binding-rule)). **The reporter sends it exactly when its config carries it** ([§ 3.1](#31-the-seat-config-file)): a seat installed before that card keeps sending its value, one installed since sends none | `"aimla"` |
 | `seat_id` | slug | — | no | ≤ 48 B | `"aimla-pm"` |
 | `reporter_version` | semver | — | no | ≤ 24 B | `"0.1.0"` |
 | `reporter_platform` | enum | — | no | `linux` \| `win32` \| `darwin` \| `other` — `other` is the unknown member for any `process.platform` outside the three ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)) | `"linux"` |
@@ -1729,7 +1739,7 @@ Present on **every** event of every kind.
 | `kind` | string | — | no | ≤ 32 B, `^[a-z]+\.[a-z_]+$`; the 16 currently-defined kinds are listed in [§ 6](#6-event-kinds), and an **unknown kind is accepted, ignored and counted** ([§ 5](#5-compatibility--what-this-document-owes-the-policy)), never a rejection | `"tool.start"` |
 | `event_time` | rfc3339_ms | UTC, seat clock | no | — | `"2026-08-23T14:07:03.118Z"` |
 | `seq` | int | — | no | 1…2^53−1, monotonic per `seq_epoch` | `48211` |
-| `install_id` | slug | — | no | ≤ 32 B, **must equal the batch's** | `"aimla"` |
+| `install_id` | slug | — | **optional** | ≤ 32 B — ⭐ **not read since card#13117**, as [§ 4.2](#42-batch-envelope-fields)'s row; it was compared with the batch's until that card, and a reporter writing to a server before it must still send it. The reporter puts it on an event exactly when its config carries it, as on the envelope | `"aimla"` |
 | `seat_id` | slug | — | no | ≤ 48 B, **must equal the batch's** | `"aimla-pm"` |
 | `session_id` | string | — | **yes** (null only on `reporter.heartbeat`) | ≤ 128 B | `"e3c1a5f0-9b21-4a77-8f0e-2d61c4b8a913"` |
 | `data` | object | — | no | kind-specific, ≤ 3 KiB serialized | `{ … }` |
@@ -3621,7 +3631,7 @@ split of the fields is stated under the table.
 | `counters_omitted` | int | — | no | ≥ 0, counters dropped to fit the cap | `0` |
 | `predicates` | object | — | no | ≤ 512 B, `{name:{true:int,false:int}}`; one member per [§ 9.4](#94-the-predicate-constant-alarm) predicate, worst case **316 B** — **no reduction rule, and none owed** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read) rule 5's named exemption; the arithmetic is below) | see below |
 | `selftest` | object | — | no | ≤ 256 B, `{name:"pass"\|"fail"}`, every key matching `^[a-z][a-z0-9_]*$` and ≤ 32 B; one member per check the member table below declares, worst case **254 B** — **no reduction rule, and none owed** (same exemption) | see below |
-| `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** — the `ingest_url` of the site receiving the heartbeat, so a single-site seat's fingerprint is what it was before card#12180 | `"9f2c41a7be03d518"` |
+| `config_fingerprint` | string | — | no | 16 hex chars = SHA-256 of `install_id\|seat_id\|ingest_url`, **token excluded** — the `ingest_url` of the site receiving the heartbeat, so a single-site seat's fingerprint is what it was before card#12180; `install_id` the empty string when the config carries none (card#13117) | `"9f2c41a7be03d518"` |
 
 
 **Which members are the site's and which are the seat's (card#12180).** A heartbeat is built for one
@@ -6525,10 +6535,11 @@ Cheapest and most-fatal first; **the first failure wins and nothing is ingested*
    step 4 owns → else `429`.
 6. `schema_version` present on the batch, an integer, and in the accepted set → else
    `400 unsupported_schema_version`.
-7. Batch `install_id`/`seat_id` equal the token's binding → else `403 identity_mismatch`.
+7. Batch `seat_id` equals the token's binding → else `403 identity_mismatch` with `expected_seat_id`. The
+   batch's `install_id` is not read (card#13117; until then both members were compared).
 8. `events` is a non-empty array of ≤ 200 elements → else `422 invalid_batch`.
-9. Every event validates: common fields present and in-bounds; per-event `install_id`/`seat_id` and
-   `schema_version` equal the batch's; `kind` a string matching `^[a-z]+\.[a-z_]+$`; `data` an object
+9. Every event validates: common fields present and in-bounds; per-event `seat_id` and
+   `schema_version` equal the batch's (the event's `install_id` is not read since card#13117); `kind` a string matching `^[a-z]+\.[a-z_]+$`; `data` an object
    ≤ 3 KiB → else `422 invalid_event`. This step is safe to keep strict **only because the reporter
    clamps every bound before it writes** ([§ 6.0](#60-conventions-and-how-harness-payloads-are-read)
    rule 5): a conforming reporter cannot reach it, so a `422` here means a genuine reporter bug —
@@ -6560,14 +6571,14 @@ answered. Note equally that **4 comes before all of them**, which is what makes 
 below possible.
 
 **D2: attribution — every refusal is attributed to the *token*, never to the body.** The claimed
-`install_id`/`seat_id` in a payload are an assertion by whoever holds the token; they are validated
-for equality and are never used to name a seat. Concretely:
+`seat_id` in a payload is an assertion by whoever holds the token; it is validated for equality and is
+never used to name a seat (and the payload's `install_id` is not read at all, since card#13117). Concretely:
 
 | Where the refusal happens | Attributed to | Rendered |
 |---|---|---|
 | steps 1–3, before authentication | nothing — the request has no established identity | counted globally as `unattributed_refusals`; **no seat is rendered degraded**, because no seat is known. The reporter still surfaces it locally ([§ 11.5](#115-retry-and-backoff)) |
 | step 4 (`401`, and the `429` the failed-auth limit returns) | the presented token's **hash prefix**, plus the source IP the limit is keyed on | counted globally as `unattributed_refusals`, beside the specific fact [§ 12.7](#127-server-side-counters) counts for it (`auth_failed_by_ip` for a token that resolves to nothing, `revoked_token_presented` for a revoked one); **no seat is rendered degraded**, because a token that resolves to nothing names no seat |
-| steps 5–11 | the token's bound `(install_id, seat_id)` | that seat renders degraded |
+| steps 5–11 | the token's bound seat | that seat renders degraded |
 
 Without this rule, a `400 unsupported_schema_version` at step 6 — which happens *before* the identity
 equality check at step 7 — would be counted against whatever seat the body claimed to be. Any holder
@@ -6587,7 +6598,7 @@ reporter can branch on `error` and a human can read `message`.
 | body too large | `413` | `batch_too_large` | `max_bytes`, `received_bytes` | halve and retry once ([§ 11.5](#115-retry-and-backoff)) |
 | unparseable or non-object body ([§ 12.1](#121-validation-order) step 3) | `400` | `malformed_body` | `detail` | permanent → quarantine when the body carries this `error`; any other body is retried ([§ 11.5](#115-retry-and-backoff), card#12180) |
 | missing/unknown/revoked token | `401` | `unauthenticated` | — | **auth stop for that site** when the body carries this `error` ([§ 11.5](#115-retry-and-backoff), card#12180): cursor and persisted request kept, nothing quarantined, `auth_refused` counted on the site, marker and log written, nothing sent or probed until the flusher restarts on a corrected config and resends the request. A `401` with any other body is not the ingest's and is retried (§ 11.5). Before the card: permanent → quarantine |
-| identity ≠ token binding | `403` | `identity_mismatch` | `expected_install_id`, `expected_seat_id` | **auth stop for that site** when the body carries this `error`, as the row above — every batch this seat sends claims the same identity, so none will be accepted; the health probe cannot foresee it, because that route compares no identity ([§ 6.14](#614-reporterheartbeat)). A `403` with any other body is not the ingest's and is retried (§ 11.5). Before the card: permanent → quarantine |
+| identity ≠ token binding | `403` | `identity_mismatch` | `expected_seat_id` (`expected_install_id` left the body with card#13117; no reporter reads either) | **auth stop for that site** when the body carries this `error`, as the row above — every batch this seat sends claims the same identity, so none will be accepted; the health probe cannot foresee it, because that route compares no identity ([§ 6.14](#614-reporterheartbeat)). A `403` with any other body is not the ingest's and is retried (§ 11.5). Before the card: permanent → quarantine |
 | **unaccepted schema version** | `400` | `unsupported_schema_version` | `received_version`, `accepted_versions` | permanent → quarantine, `REJECTED.<site>.txt`, badge `degraded`, when the body carries this `error`; any other `400` body is retried ([§ 11.5](#115-retry-and-backoff)) |
 | **batch** envelope validation failure ([§ 12.1](#121-validation-order) step 8) | `422` | `invalid_batch` | `field`, `reason` | permanent → quarantine, badge `degraded`, when the body carries this `error`; any other `422` body is retried ([§ 11.5](#115-retry-and-backoff)) |
 | **event** validation failure ([§ 12.1](#121-validation-order) steps 9–10) | `422` | `invalid_event` | `index`, `field`, `reason`; **and, on a per-field byte-bound overrun, `kind`, `max_bytes`, `received_bytes`** | permanent → quarantine, badge `degraded`, when the body carries this `error`; any other `422` body is retried ([§ 11.5](#115-retry-and-backoff)) |
@@ -9118,7 +9129,7 @@ for:**
 
 | Member | What it is for | Absent or unreadable ⇒ |
 |---|---|---|
-| `roster[]` — ⛔ **specified, not provisioned** (card#12239 r5): its one consumer, the `all` expansion of [`coord.round`](#187-coordround)`.targets`, is not derived since the broadcast renders as a ring, so no binding carries a roster copy and the two counters that guarded it are likewise specified and not derived ([§ 18.8.1](#1881-the-counters-this-route-mints)). Were it provisioned: for an **`install`-scope** binding the install's roster names; for a **`fleet`-scope** binding the cross-install repository's identity set | expanding `all` into [`coord.round`](#187-coordround)`.targets` | `targets` is `null` — *the fan-out is not resolvable here* — and `coord_targets_unresolved` counts it. Not `[]`, which reads as *it reached nobody* |
+| `roster[]` — ⛔ **specified, not provisioned** (card#12239 r5): its one consumer, the `all` expansion of [`coord.round`](#187-coordround)`.targets`, is not derived since the broadcast renders as a ring, so no binding carries a roster copy and the two counters that guarded it are likewise specified and not derived ([§ 18.8.1](#1881-the-counters-this-route-mints)). Were it provisioned: for a **`room`-scope** binding the room's roster names; for a **`fleet`-scope** binding the cross-install repository's identity set | expanding `all` into [`coord.round`](#187-coordround)`.targets` | `targets` is `null` — *the fan-out is not resolvable here* — and `coord_targets_unresolved` counts it. Not `[]`, which reads as *it reached nobody* |
 | `shared_identity` | whether `sender.login` can name an actor on a **non**-authoring action ([§ 18.6](#186-coordthread)) | assumed **true**, so `attribution` is `unattributable` on `closed` and `reopened`. That is the direction the bridge's own allow-list is built in — *"a widening can only lose a name, never invent one"* |
 
 **Where it comes from: the hook registration, not a cross-repo read.** It is provisioned by the same
@@ -9346,8 +9357,8 @@ they are withdrawn with it and recorded at `docs/design/COORD-STORE.md § 13`.
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
 | `thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` | `"synthetic-org/coordination-fixture#900742"` |
-| `scope` | slug | no | ≤ 16 B — the binding's scope, `install` or `fleet` ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)): set by the operator at issue and copied from the binding, never read from a payload. `install` is a coordination repository that belongs to one install; `fleet` is one whose threads span installs — this fleet's roundtable. Operator, 2026-10-23 (card#12239) | `"install"` |
-| `install_id` | slug | **yes** | ≤ 32 B — from the **hook binding**, never from `repository.full_name`, per [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s rule applied to this wire. `null` **iff** `scope` is `fleet`: a fleet-scope binding names no install, and a `null` here is that fact and not a missing one | `"aimla"` |
+| `scope` | slug | no | ≤ 16 B — the binding's scope, `room` or `fleet` ([§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order)): set by the operator at issue and copied from the binding, never read from a payload. `room` is a coordination repository that belongs to one room; `fleet` is one whose threads span rooms — this fleet's roundtable. Operator, 2026-10-23 (card#12239). ⭐ **`room` was `install` until card#13117**, which made the room a console record and renamed the value in one deploy with the browser that reads it (the feed is browser-only, so its one consumer ships in the same deploy) | `"room"` |
+| `install_id` | slug | **yes** | ≤ 32 B — the **room key** of the hook binding, never from `repository.full_name`, per [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s rule applied to this wire (the name is kept; the `installs` row is the room, card#13117). `null` **iff** `scope` is `fleet`: a fleet-scope binding names no room, and a `null` here is that fact and not a missing one | `"aimla"` |
 | `lifecycle` | slug | no | ≤ 32 B — the delivery's own `action`, verbatim. Exactly three values would reach this field — `opened`, `closed`, `reopened` — the three thread actions this object is specified over; since the ruling above, [§ 18.8](#188-receipt-the-endpoint-its-authentication-and-its-validation-order) step 8 derives this object from none of them | `"closed"` |
 | `carrier` | slug | **yes** | ≤ 16 B — the title's **leading bracketed token**, lowercased and slug-validated, with no set consulted ([§ 18.3.1](#1831-the-install-facts-input-declared-once)). `null` when the title leads with none — which is absence, not malformation, and is uncounted — or when the token fails validation, which is `coord_name_malformed`'s one definition at [§ 18.8.1](#1881-the-counters-this-route-mints) | `"brief"` |
 | `subject` | string | **yes** | ≤ 200 B, sanitized ([§ 18.10](#1810-sanitization-at-the-coordination-producer)) | `"the coordination-event producer"` |
@@ -9555,7 +9566,7 @@ number space, and `thread_ref` is `<owner>/<repo>#<n>` either way — the bridge
 |---|---|---|---|---|
 | `post_ref` | string | no | ≤ 256 B — `<thread_ref>` for the opening post, `<thread_ref>-c<comment id>` for a comment | `"synthetic-org/coordination-fixture#900742-c900743"` |
 | `thread_ref` | string | no | ≤ 256 B | `"synthetic-org/coordination-fixture#900742"` |
-| `scope` | slug | no | ≤ 16 B — the binding's scope, as [§ 18.6](#186-coordthread) | `"install"` |
+| `scope` | slug | no | ≤ 16 B — the binding's scope, `room` or `fleet`, as [§ 18.6](#186-coordthread) | `"room"` |
 | `install_id` | slug | **yes** | ≤ 32 B, from the hook binding; `null` iff `scope` is `fleet` ([§ 18.6](#186-coordthread)) | `"aimla"` |
 | `from` | slug | **yes** | ≤ 48 B — the author this post evidences; `null` when it evidences none | `"pm"` |
 | `attribution` | slug | no | ≤ 16 B — as [§ 18.6](#186-coordthread) | `"resolved"` |
@@ -9663,7 +9674,7 @@ and not derived (card#12239 r5) — read off the rule above rather than asserted
 {
   "post_ref": "synthetic-org/coordination-fixture#900742",
   "thread_ref": "synthetic-org/coordination-fixture#900742",
-  "scope": "install",
+  "scope": "room",
   "install_id": "aimla",
   "from": "pm",
   "attribution": "resolved",
@@ -9686,7 +9697,7 @@ produce, which is how a worked example becomes a second, disagreeing specificati
 ```json
 {
   "thread_ref": "synthetic-org/coordination-fixture#900742",
-  "scope": "install",
+  "scope": "room",
   "install_id": "aimla",
   "lifecycle": "closed",
   "carrier": "announce",
@@ -9727,7 +9738,7 @@ credential is one GitHub also holds.
 **The binding rule is [§ 3.3](#33-authentication-and-the-identity-binding-rule)'s, transposed, and it
 is not restated.** The authoritative `install_id` is derived from **the secret the delivery verified
 against** — one secret per registered hook, issued for exactly one `(scope, install_id, repository)`,
-where `scope` is `install` with an `install_id` or `fleet` with none (card#12239; the objects of a
+where `scope` is `room` with the room's key in `install_id` (`install` until card#13117) or `fleet` with none (card#12239; the objects of a
 fleet-scope binding then carry `install_id: null`, [§ 18.6](#186-coordthread)). The
 payload's `repository.full_name` is a claim, validated for equality with the binding and never used to
 route or attribute. The reason is identical to the one [§ 3.3](#33-authentication-and-the-identity-binding-rule)

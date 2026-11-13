@@ -387,7 +387,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -815,7 +815,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1243,7 +1243,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1671,7 +1671,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2107,7 +2107,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2151,7 +2151,7 @@
           {
             "at_ms": 50,
             "assets": [
-              "character:aimla/aimla-pm"
+              "character:aimla-pm"
             ]
           }
         ]
@@ -2543,7 +2543,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2587,7 +2587,7 @@
           {
             "at_ms": 50,
             "assets": [
-              "theme:studio/desk:aimla/aimla-pm"
+              "theme:studio/desk:aimla-pm"
             ]
           }
         ]
@@ -2979,7 +2979,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3410,7 +3410,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3503,7 +3503,7 @@
       }
     },
     "scene_crowded": {
-      "note": "AT-D3-20 (f): the crowded map — the slots of `aimla-impl-2` (slot 2) and `aimla-impl-1` (slot 3) overlap (§ 3.2 over this stub map's own objects, not the shipped default's): object 4 is drawn 100 px right of object 3.",
+      "note": "AT-D3-20 (f): the crowded map — the slots of `aimla-impl-2` (slot 9) and `aimla-pm` (slot 11) overlap (§ 3.2 over this stub map's own objects, not the shipped default's): object 12 is drawn 100 px right of object 10.",
       "http": {
         "/api/fleet/snapshot": [
           {
@@ -3888,7 +3888,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3965,7 +3965,7 @@
                         "type": "",
                         "rotation": 0,
                         "visible": true,
-                        "x": "@box.width*2+100",
+                        "x": "@box.width*3",
                         "y": 0,
                         "width": "@box.width",
                         "height": "@box.height"
@@ -4053,7 +4053,7 @@
                         "type": "",
                         "rotation": 0,
                         "visible": true,
-                        "x": "@box.width*11",
+                        "x": "@box.width*9+100",
                         "y": 0,
                         "width": "@box.width",
                         "height": "@box.height"
@@ -4476,7 +4476,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4553,7 +4553,7 @@
                         "type": "",
                         "rotation": 0,
                         "visible": true,
-                        "x": "@box.width*2+100",
+                        "x": "@box.width*3",
                         "y": 0,
                         "width": "@box.width",
                         "height": "@box.height"
@@ -4641,7 +4641,7 @@
                         "type": "",
                         "rotation": 0,
                         "visible": true,
-                        "x": "@box.width*11",
+                        "x": "@box.width*9+100",
                         "y": 0,
                         "width": "@box.width",
                         "height": "@box.height"
@@ -5064,7 +5064,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -5787,7 +5787,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6350,7 +6350,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6394,7 +6394,7 @@
           {
             "at_ms": 50,
             "assets": [
-              "intern:aimla/aimla-impl-1~01K3TB00000000000000000102"
+              "intern:aimla-impl-1~01K3TB00000000000000000102"
             ]
           }
         ]
@@ -6584,7 +6584,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }

@@ -466,9 +466,9 @@ class TheFloorComposesItsRoomsTest extends TestCase
      */
     public function test_green_a_floor_with_nothing_measurable_on_it_still_has_no_extent(): void
     {
-        $gridless = $this->mutatedModules([self::FLOOR_SCREEN,
-            '            const grid = mapGrid(map);',
-            '            const grid = null;',
+        $gridless = $this->mutatedModules(['../floor/floor-compose.js',
+            '        const grid = mapGrid(map);',
+            '        const grid = null;',
         ]);
 
         $frame = $this->lastFloor($this->floorRun(self::MAP_FAILS, $gridless));
@@ -580,9 +580,10 @@ class TheFloorComposesItsRoomsTest extends TestCase
      */
     public function test_red_a_failed_map_drawn_from_the_last_held_one_hides_the_failure(): void
     {
-        $silent = $this->mutatedModules([self::FLOOR_SCREEN,
-            '            const mapless = state.state === null || state.state.failure !== null;',
-            '            const mapless = state.state === null;',
+        // The predicate is `wire/building.js`'s `mapless()`, which the floor screen and the cab's door view both read.
+        $silent = $this->mutatedModules(['building.js',
+            '        return room === null || room.failure !== null;',
+            '        return room === null;',
         ]);
 
         $frame = $this->lastFloor($this->floorRun(self::ROOM_MAP, $silent));
@@ -613,16 +614,18 @@ class TheFloorComposesItsRoomsTest extends TestCase
     public function test_red_a_failed_layout_composed_into_a_one_room_floor(): void
     {
         $composing = $this->mutatedModules([self::FLOOR_SCREEN,
-            '        return floors(this.#snapshotShape(), this.#building.floors);',
-            "        return floors(this.#snapshotShape(), this.#building.floors ?? []);",
+            '        return floors(this.#snapshotShape(), this.#building.floors, null, this.#building.authored);',
+            "        return floors(this.#snapshotShape(), this.#building.floors ?? [], null, this.#building.authored);",
         ]);
 
         $frame = $this->lastFloor($this->floorRun(self::LAYOUT_FAILS, $composing));
 
         $this->assertTrue($frame['composed'],
             'the RED did not bite: the empty layout was read out of a failed fetch and nothing was composed');
-        $this->assertNotNull($frame['floor'],
-            'the planted client composed no floor for the segment, so this RED is red for a reason nobody wrote');
+        // ⭐ card#13117: the empty layout composes every room onto the Unassigned floor, so the planted client draws a
+        // building — and states nothing about the failure it drew it out of, which is the defect.
+        $this->assertNull($frame['statement'],
+            'the planted client still stated the failure, so this RED is red for a reason nobody wrote');
 
         // The shipped client composes nothing, and still says why.
         $shipped = $this->lastFloor($this->floorRun(self::LAYOUT_FAILS));

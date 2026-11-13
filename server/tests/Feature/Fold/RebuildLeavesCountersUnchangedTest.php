@@ -172,7 +172,7 @@ class RebuildLeavesCountersUnchangedTest extends FoldTestCase
     /** @param  array<string, string>  $options */
     private function rebuild(array $options = []): void
     {
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT] + $options)->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT] + $options)->assertSuccessful();
     }
 
     /**

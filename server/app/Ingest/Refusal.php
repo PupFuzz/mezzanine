@@ -109,13 +109,12 @@ final class Refusal
 
     // ── step 7 ───────────────────────────────────────────────────────────────────────────────
 
-    public static function identityMismatch(string $expectedInstall, string $expectedSeat): self
+    public static function identityMismatch(string $expectedSeat): self
     {
         return new self(403, 'identity_mismatch', sprintf(
-            'This token is bound to (%s, %s); the batch claims a different identity.',
-            $expectedInstall,
+            'This token is bound to seat %s; the batch claims a different seat_id.',
             $expectedSeat,
-        ), ['expected_install_id' => $expectedInstall, 'expected_seat_id' => $expectedSeat]);
+        ), ['expected_seat_id' => $expectedSeat]);
     }
 
     /**

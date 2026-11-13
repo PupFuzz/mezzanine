@@ -19,9 +19,9 @@ use Illuminate\Support\Facades\DB;
  * — and `App\Building\BuildingLayout` still takes a DECODED DOCUMENT and knows nothing about
  * where it came from. This class is that caller.
  *
- * ⚠ NO ROW IS *TODAY'S BUILDING*, NOT A MISSING ONE. `docs/design/FLEET-STATE.md § 8.7`:
- * "`layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
- * building, one floor per install." So `version()` answers 0 and `document()` answers
+ * ⚠ NO ROW IS THE EMPTY BUILDING, NOT A MISSING ONE. `docs/design/FLEET-STATE.md § 8.7`:
+ * "`layout_version` is `0` with an empty `floors` when no layout was ever saved: every room on
+ * the Unassigned floor." So `version()` answers 0 and `document()` answers
  * `{"floors": []}` — which § 4.6 calls "a legal and meaningful document". Nothing seeds a row to
  * say that, because a seeded revision 1 would claim an operator pressed save.
  *
@@ -225,25 +225,169 @@ final class Layouts
     }
 
     /**
-     * Save an authored layout document. Answers the new `layout_version`.
+     * Save an authored layout document — the console's textarea. Answers the new `layout_version`.
      *
-     * @throws InvalidBuildingLayout on a document this reader refuses, on an overlap, or on a
-     *                               byte-identical no-op
+     * ⛔ `$base` IS THE COMPARE-AND-SWAP (card#13117, `docs/design/FLEET-STATE.md § 6.11`): the
+     * `layout_version` the author's form was rendered from, compared with the current one under the
+     * lock. The textarea replaces the WHOLE document, so a save from a stale base would silently undo
+     * whatever `amend()` — a console action — or another save wrote in between; unequal is refused,
+     * naming both revisions, and the store is unchanged.
+     *
+     * @throws InvalidBuildingLayout on a stale base, on a document this reader refuses, on an
+     *                               overlap, or on a byte-identical no-op
      */
-    public static function save(string $document, string $by): int
+    public static function save(string $document, string $by, int $base): int
     {
-        $version = self::serialise(function () use ($document, $by) {
+        $version = self::serialise(function () use ($document, $by, $base) {
+            $current = self::versionOf(self::lockedCurrent());
+
+            if ($current !== $base) {
+                throw new InvalidBuildingLayout(sprintf(
+                    'The layout changed since you opened it (revision %d is current; you edited from %d): '
+                    .'reload and re-apply your edit. Nothing was saved (docs/design/FLEET-STATE.md § 6.11).',
+                    $current,
+                    $base,
+                ));
+            }
+
             self::refuseANoOp($document);
 
-            $layout = BuildingLayout::fromJson($document);
-
-            self::refuseOverlaps($layout);
-            self::refuseUnshippedThemes($layout);
+            self::validate(BuildingLayout::fromJson($document));
 
             return self::write($document, null, $by);
         });
 
         return $version;
+    }
+
+    /**
+     * ⭐ THE ONE WRITER EVERY CONSOLE ACTION USES (card#13117, `docs/design/FLEET-STATE.md § 6.11`).
+     * Inside `serialise()`'s lock it reads the CURRENT document, hands it to `$edit` — which returns
+     * the new document or throws a named refusal — validates the result exactly as `save()` does,
+     * refuses a no-op, and writes one revision. Answers the new `layout_version`.
+     *
+     * ⛔ SO A DECISION ABOUT THE DOCUMENT IS MADE AGAINST THE DOCUMENT THE WRITE REPLACES, never against
+     * the one a form was rendered from: a console action that raced a textarea save, or another action,
+     * sees the winner's document in `$edit`, and the textarea's own loser is refused by `save()`'s base.
+     *
+     * ⚠ THE NO-OP IS DECIDED ON THE DECODED DOCUMENT, NOT ON BYTES. The edited document is re-encoded
+     * (pretty-printed), so a byte comparison against the operator's own formatting would call an edit
+     * that changed nothing a change; the two decoded documents are compared through one encoder.
+     *
+     * @param  callable(\stdClass): \stdClass  $edit  handed a decoded copy of the current document
+     *
+     * @throws InvalidBuildingLayout on a stored document the reader refuses, on a refusal `$edit` throws, on an
+     *                               edited document the reader refuses, on an overlap, a theme the build does not ship, a
+     *                               retired room, or a no-op
+     */
+    public static function amend(callable $edit, string $by): int
+    {
+        return self::serialise(function () use ($edit, $by) {
+            $current = self::lockedDocument();
+            self::refuseAnUnreadableBase($current);
+            $edited = $edit(self::decode(self::encode($current)));
+
+            if (self::encode($edited) === self::encode($current)) {
+                throw new InvalidBuildingLayout(
+                    'That change leaves the building layout as it already is, so there is nothing to record. '
+                    .'docs/design/FLEET-STATE.md § 6.11 refuses a no-op rather than minting an empty revision.'
+                );
+            }
+
+            $document = self::encode($edited);
+
+            self::validate(BuildingLayout::fromJson($document));
+
+            return self::write($document, null, $by);
+        });
+    }
+
+    /**
+     * ⛔ `amend()` EDITS ONLY A DOCUMENT THE READER ACCEPTS. A stored document a later rule refuses (FLOOR.md § 9 F17)
+     * can hold an entry of any shape, and a closure reading it would fail on the shape rather than refuse by name; the
+     * textarea and a restore are what repair it, and the refusal says so.
+     */
+    private static function refuseAnUnreadableBase(\stdClass $current): void
+    {
+        try {
+            BuildingLayout::parse($current);
+        } catch (InvalidBuildingLayout $e) {
+            throw new InvalidBuildingLayout(
+                'The stored building layout is refused by this build\'s reader, so no console action can change it: '
+                .$e->getMessage().' Repair it in the building layout editor, or restore a revision, first. Nothing '
+                .'was changed.',
+                previous: $e,
+            );
+        }
+    }
+
+    /**
+     * The current document, decoded, by a LOCKING read — for a decision a caller takes inside `serialise()`
+     * about whether to amend at all (`Rooms::retire()`: is the room placed?). `amend()`'s own closure is
+     * handed the same read.
+     */
+    public static function lockedDocument(): \stdClass
+    {
+        return self::decode(self::textOf(self::lockedCurrent()));
+    }
+
+    /**
+     * The current row by a LOCKING read — a current read, whatever snapshot the enclosing transaction
+     * holds, so a caller nested in a longer transaction (a room's creation, its retirement) still
+     * decides against the row the write replaces. The lock is `serialise()`'s, already held.
+     */
+    private static function lockedCurrent(): ?object
+    {
+        return DB::table('building_layout')->where('id', self::ROW_ID)->lockForUpdate()->first();
+    }
+
+    /** The one encoding `amend()` writes and compares through. */
+    private static function encode(\stdClass $document): string
+    {
+        return json_encode($document, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * The checks every write of the layout runs against the store, beyond the reader's own — one list
+     * for `save()`, `amend()` and `restore()`, so the three write sites cannot come to check different
+     * things.
+     */
+    private static function validate(BuildingLayout $layout): void
+    {
+        self::refuseOverlaps($layout);
+        self::refuseUnshippedThemes($layout);
+        self::refuseRetiredRooms($layout);
+    }
+
+    /**
+     * ⭐ A PLACED ROOM THE STORE HOLDS AS RETIRED IS REFUSED AT THE WRITE (card#13117,
+     * `docs/design/FLEET-STATE.md § 6.11`). Retiring a room removes it from the layout in the same act
+     * (`App\Building\Rooms::retire()`), so no stored layout places one, and this is what keeps that
+     * true against the raw textarea and a restore of a revision written before the retirement. The
+     * READ refuses nothing for it: no load can meet one.
+     */
+    private static function refuseRetiredRooms(BuildingLayout $layout): void
+    {
+        $placed = [];
+
+        foreach ($layout->floors as $floor) {
+            foreach ($floor['rooms'] as $room) {
+                $placed[] = (string) $room['install'];
+            }
+        }
+
+        $retired = DB::table('installs')->whereIn('install_id', $placed)->whereNotNull('retired_at')
+            ->orderBy('install_id')->pluck('install_id')->all();
+
+        if ($retired !== []) {
+            throw new InvalidBuildingLayout(sprintf(
+                'This layout places the retired room%s `%s`. A retired room is drawn nowhere and is listed in the '
+                .'console\'s Rooms module only (docs/design/FLEET-STATE.md § 6.11, card#13117): take it out of the '
+                .'document and save again.',
+                count($retired) === 1 ? '' : 's',
+                implode('`, `', $retired),
+            ));
+        }
     }
 
     /**
@@ -273,10 +417,7 @@ final class Layouts
 
             self::refuseANoOp($document, $revision);
 
-            $layout = BuildingLayout::fromJson($document);
-
-            self::refuseOverlaps($layout);
-            self::refuseUnshippedThemes($layout);
+            self::validate(BuildingLayout::fromJson($document));
 
             return self::write($document, $revision, $by);
         });

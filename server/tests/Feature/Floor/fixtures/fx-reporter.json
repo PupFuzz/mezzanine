@@ -228,7 +228,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -256,7 +256,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.100Z",
             "install_id": "aimla",
@@ -278,7 +278,7 @@
         {
           "at_ms": 200,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:17.200Z",
             "install_id": "aimla",
@@ -298,7 +298,7 @@
         {
           "at_ms": 300,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:18.300Z",
             "install_id": "aimla",

@@ -8,6 +8,7 @@ use App\Fleet\SeatTokens;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\Fold\CommittedSeatTestCase;
+use Tests\Support\Rooms;
 
 /**
  * AT-D2-31's concurrency legs (card#12443, `docs/design/FLEET-STATE.md § 6.13`): a seat's creation takes the one-row
@@ -70,7 +71,7 @@ class SeatCharacterAllocationLockOrderTest extends CommittedSeatTestCase
         for ($n = 0; $n < 1000; $n++) {
             $seat = $this->install()."-q{$n}";
 
-            if (! in_array($list->drawOf($this->install()."/{$seat}"), $live, true)) {
+            if (! in_array($list->drawOf($seat), $live, true)) {
                 return $seat;
             }
         }
@@ -80,7 +81,14 @@ class SeatCharacterAllocationLockOrderTest extends CommittedSeatTestCase
 
     private function issue(string $seatId): void
     {
-        $issued = $this->on(self::WRITER_1, fn () => SeatTokens::issue($this->install(), $seatId, 'suite'));
+        // A new seat's preference key is its room's — `unassigned` at issue (card#13117) — and it is then put in this
+        // class's room, which is what scopes the committed rows' cleanup.
+        $issued = $this->on(self::WRITER_1, function () use ($seatId) {
+            $issued = SeatTokens::issue($seatId, 'suite');
+            Rooms::place($seatId, $this->install());
+
+            return $issued;
+        });
 
         $this->assertInstanceOf(SeatTokenIssued::class, $issued, "{$seatId} was refused a token");
     }
@@ -156,8 +164,8 @@ class SeatCharacterAllocationLockOrderTest extends CommittedSeatTestCase
     {
         $list = SpeciesList::current();
         $seat = $this->newSeat();
-        $own = $list->drawOf($this->install()."/{$seat}");
-        $next = $this->preferenceOf($this->install()."/{$seat}")[1];
+        $own = $list->drawOf($seat);
+        $next = $this->preferenceOf($seat)[1];
         $live = DB::connection(self::FIXTURE)->table('seats')->whereNull('retired_at')->pluck('species')->all();
         $this->assertNotContains($next, $live, 'precondition: the species past the issuing seat\'s draw is taken, so "around" has no single answer');
 
@@ -184,11 +192,11 @@ class SeatCharacterAllocationLockOrderTest extends CommittedSeatTestCase
     {
         $list = SpeciesList::current();
         $seat = $this->newSeat();
-        $own = $list->drawOf($this->install()."/{$seat}");
+        $own = $list->drawOf($seat);
 
         $this->probeCommitsASeat($seat.'a', $own);
         $this->issue($seat);
 
-        $this->assertSame($this->preferenceOf($this->install()."/{$seat}")[1], $this->species($seat));
+        $this->assertSame($this->preferenceOf($seat)[1], $this->species($seat));
     }
 }

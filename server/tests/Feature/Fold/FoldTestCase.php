@@ -11,6 +11,7 @@ use App\Ingest\SchemaVersions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Rooms;
 use Tests\TestCase;
 
 /**
@@ -88,14 +89,10 @@ abstract class FoldTestCase extends TestCase
     /** @return array{string, int} */
     protected function issueToken(string $install, string $seat): array
     {
-        $this->artisan('mezzanine:ingest-token:issue', [
-            'install_id' => $install, 'seat_id' => $seat, '--by' => 'suite',
-        ])->assertSuccessful();
+        $this->artisan('mezzanine:ingest-token:issue', ['seat_id' => $seat, '--by' => 'suite'])->assertSuccessful();
 
-        $seatRef = (int) DB::table('seats')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('installs.install_id', $install)->where('seats.seat_id', $seat)
-            ->value('seats.id');
+        // Issued in no room since card#13117; the fixture's seat is in `$install`'s room.
+        $seatRef = Rooms::place($seat, $install);
 
         $token = 'mzn_'.rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 

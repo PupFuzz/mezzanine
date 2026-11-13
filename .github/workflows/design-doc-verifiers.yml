@@ -49,9 +49,13 @@
 # installs ONE pinned headless Chromium and runs `floor-ride.browser.mjs --row starts --selftest`:
 # the lobby and a floor, each loaded once, red on any uncaught exception and on a page that never
 # asks for its stream or never draws its first scene, with that row's own plants each required to
-# red on the same checkout. It is the only floor-ride row wired, and it drives no ride and no timing. The same
+# red on the same checkout. It is the only floor-ride row wired, and it drives no ride and no timing. The building
+# view's two static rows (card#13033, `building-view.browser.mjs --row still --row no-webgl --selftest`) run after it. The same
 # job runs the character species distinctness check (card#12796, card#12842, `tools/characters/distinct.browser.mjs
-# --selftest`): a static render of the generator's standing frames, with its own planted controls.
+# --selftest`): a static render of the generator's standing frames, with its own planted controls — and its 3-D
+# source (card#13033 stage 2 slice 3, `--source 3d --selftest`), the 3-D bodies' front silhouettes under the same bar,
+# and the 3-D creatures' draw-call leg (`tools/characters/sheet3d.browser.mjs --calls --selftest`): one seat drawn alone
+# is one call, one intern with its laptop two, each plant required to red.
 # The job also runs `seat-token-file.selftest.mjs` (card#12571), which needs its PHP and no browser.
 #
 # WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY — the gates in `tools/design/` named below.
@@ -82,6 +86,13 @@
 #       way (card#11795): absent for the same reason. Its `starts` row is the `browser-smoke` job.
 #   `sleeper-zs.browser.mjs` — the same browser, resolved the same way (card#12187): absent for
 #       the same reason.
+#   `building-view.browser.mjs --selftest`, its `tab`, `press`, `boxes`, `stream` and `first` rows — the same browser
+#       (card#13033): each times a glide, a keyboard path, a wheel stream or the page's start, which nobody has
+#       measured on a runner.
+#       Its `still` and `no-webgl` rows are the `browser-smoke` job's.
+#   `floor3d.browser.mjs --selftest`, its `url`, `camera`, `cutaway`, `loop`, `labels`, `face`, `budget`, `churn` and
+#       `first` rows — the same browser (card#13033 stage 2): each times a gesture, a tween, a frame rate or a load on
+#       the shell, which nobody has measured on a runner. Its `still` and `no-webgl` rows are the `browser-smoke` job's.
 #
 # ⛔ NONE IS WIRED AS A SKIP. The card's own argument: an "N/A" that reads green re-mints this
 # very defect one layer down — a check reported as passed that never ran. They are absent and
@@ -187,6 +198,13 @@ jobs:
       - name: fx-turn-back and its fuzz set are the generator's output over the shipped floor screen
         run: node tools/design/gen-fx-turn-back.mjs --check
 
+      # card#12987: the cab's door view (`server/public/js/floor/door-view.js`) — the plan's fixture floors read in the
+      # rider's frame, and its draw order checked against an exact ray cast over random floors, ties on a shared plane
+      # included; every planted RED (each a mirror of the module tree with one defect) must red the leg it names. Stock
+      # `node`, no dependencies.
+      - name: The cab's door view — its fixture readings and its draw order, with its own planted REDs
+        run: node tools/design/door-view.selftest.mjs
+
   # THE BROWSER SMOKE (card#12326). The lobby (`/dashboard`) and a floor (`/floor/aimla`), each loaded
   # once in headless Chromium, as the served markup (`render-floor-view.php` renders each view through
   # the layout, so it needs `php` and `server/`'s composer install, and no database and no `.env`), the
@@ -279,6 +297,23 @@ jobs:
       - name: The lobby and a floor start (no uncaught exception, the stream asked for, a scene drawn), with the row's own planted controls
         run: node tools/design/floor-ride.browser.mjs --row starts --selftest
 
+      # card#13033: the building view (`/building`) starts and draws in this pinned Chromium — a WebGL 2 canvas, one
+      # picture per composed floor read in the page's own canvas, no nameplate in a picture, the list docked over the stage,
+      # the painter's failure on the strip — and without WebGL 2 is its list. Its two static rows only, with their planted
+      # controls: the rows that time a glide or a stream (`tab`, `press`, `boxes`, `stream`) are run by hand, as
+      # floor-ride's timed rows are, until they are shown to run clean on a runner. `!cancelled()`: independent of the row above.
+      - name: The building view starts and draws its pictures, and is its list without WebGL 2, with the rows' own planted controls
+        if: ${{ !cancelled() }}
+        run: node tools/design/building-view.browser.mjs --row still --row no-webgl --selftest
+
+      # card#13033 stage 2: the 3-D floor (`/floor/{floor}/3d`) draws in this pinned Chromium — no uncaught exception, a
+      # WebGL 2 context, the entry pose at the home tilt, every label one element in reading order after a desk that
+      # arrives late, each kit file fetched once — and without WebGL 2 is its statement and its list. Its two static rows
+      # only, with their planted controls; its rows that time a gesture, a tween or a frame rate are run by hand.
+      - name: The 3-D floor draws its world and labels, and is its statement and list without WebGL 2, with the rows' own planted controls
+        if: ${{ !cancelled() }}
+        run: node tools/design/floor3d.browser.mjs --row still --row no-webgl --selftest
+
       # card#12796, card#12842: every pair of character species is told apart by silhouette or by body colour, measured
       # from the generator's standing frames as this pinned Chromium draws them. `--selftest`
       # runs the planted controls on this checkout: dev's pale pumpkin beside the hedgehog (the pair the operator named)
@@ -287,3 +322,9 @@ jobs:
       - name: Character species are told apart (silhouette or colour), with the check's own planted controls
         if: ${{ !cancelled() }}
         run: node tools/characters/distinct.browser.mjs --selftest
+      - name: The 3-D creatures are told apart from the front (the same bar), with the check's planted twin
+        if: ${{ !cancelled() }}
+        run: node tools/characters/distinct.browser.mjs --source 3d --selftest
+      - name: A 3-D seat is one draw call and an intern two, read off a page holding one character, each plant red
+        if: ${{ !cancelled() }}
+        run: node tools/characters/sheet3d.browser.mjs --calls --selftest

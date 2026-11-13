@@ -1037,7 +1037,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1653,7 +1653,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2711,7 +2711,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -3327,7 +3327,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -3759,7 +3759,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4381,7 +4381,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -4399,12 +4399,12 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:14.800Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -5067,7 +5067,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -5085,7 +5085,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -5489,7 +5489,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -6105,7 +6105,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -6123,7 +6123,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -6527,7 +6527,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -7143,7 +7143,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -7162,7 +7162,7 @@
       "until_ms": 5000
     },
     "reload_unknown": {
-      "note": "AT-D3-8, `fleet.reload` leg one: a `feed_version` (2) this client does not know. F8's banner; a delta delivered after it changes nothing; nothing is re-opened.",
+      "note": "AT-D3-8, `fleet.reload` leg one: a `feed_version` (4) this client does not know. F8's banner; a delta delivered after it changes nothing; nothing is re-opened.",
       "recovery": true,
       "floor": {
         "key": "aimla"
@@ -7551,7 +7551,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -8167,7 +8167,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -8185,7 +8185,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -8203,7 +8203,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -8212,7 +8212,7 @@
         {
           "at_ms": 2100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.500Z",
             "install_id": "aimla",
@@ -8232,7 +8232,7 @@
         {
           "at_ms": 2200,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.600Z",
             "reason": "reload",
@@ -8637,7 +8637,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -9253,7 +9253,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -9271,7 +9271,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -9289,7 +9289,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -9298,7 +9298,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -9312,7 +9312,7 @@
         {
           "at_ms": 12100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:26.500Z",
             "fleet": {
@@ -9727,7 +9727,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -10343,7 +10343,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -10361,7 +10361,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -10379,7 +10379,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -10388,7 +10388,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -10402,7 +10402,7 @@
         {
           "at_ms": 52100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:24:06.500Z",
             "fleet": {
@@ -10817,7 +10817,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -11433,7 +11433,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -11451,7 +11451,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -11469,7 +11469,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -11478,7 +11478,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -11889,7 +11889,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -12505,7 +12505,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -12523,7 +12523,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -12935,7 +12935,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -13551,7 +13551,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -13569,7 +13569,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -13978,7 +13978,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -14594,7 +14594,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -14612,7 +14612,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -14626,7 +14626,7 @@
         {
           "at_ms": 230160,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:27:04.560Z",
             "fleet": {
@@ -14644,7 +14644,7 @@
         {
           "at_ms": 231000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:27:05.400Z",
             "reason": "unavailable",
@@ -15059,7 +15059,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -16065,7 +16065,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -16681,7 +16681,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -16699,7 +16699,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:15.400Z",
             "reason": "stalled",
@@ -16713,7 +16713,7 @@
         {
           "at_ms": 11100,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:25.500Z",
             "fleet": {

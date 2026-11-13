@@ -114,7 +114,7 @@ class RetirementRemovesTheDeskAndExplainsTheRemovalTest extends TestCase
         $result = $this->floorRun($run, $dir, [], );
         $fixture = $this->fixture($run);
         $retired = $this->firstAnnouncement($fixture);
-        $key = "{$retired['install_id']}/{$retired['seat_id']}";
+        $key = $retired['seat_id'];
         $defects = [];
 
         // ── The desk is gone from the first frame after the announcement, and stays gone. ──
@@ -170,7 +170,7 @@ class RetirementRemovesTheDeskAndExplainsTheRemovalTest extends TestCase
         $result = $this->floorRun($run);
         $fixture = $this->fixture($run);
         $message = array_values(array_filter($fixture['messages'], static fn (array $m): bool => $m['envelope']['t'] === 'seat.retired'))[0];
-        $key = "{$message['envelope']['install_id']}/{$message['envelope']['seat_id']}";
+        $key = $message['envelope']['seat_id'];
         $before = null;
         $after = null;
 
@@ -194,7 +194,7 @@ class RetirementRemovesTheDeskAndExplainsTheRemovalTest extends TestCase
         $this->assertNotNull($after, 'no frame was drawn after the retirement');
 
         $collision = $this->documentCollision();
-        $displaced = "aimla/{$collision['displaced']}";
+        $displaced = $collision['displaced'];
         $defects = [];
 
         if (($before[$displaced] ?? null) !== $collision['moves_to'] || ($after[$displaced] ?? null) !== $collision['slot']) {
@@ -234,7 +234,7 @@ class RetirementRemovesTheDeskAndExplainsTheRemovalTest extends TestCase
 
         foreach ($second['installs'] as $install) {
             foreach ($install['seats'] as $seat) {
-                $listed[] = "{$seat['install_id']}/{$seat['seat_id']}";
+                $listed[] = $seat['seat_id'];
             }
         }
 
@@ -242,7 +242,7 @@ class RetirementRemovesTheDeskAndExplainsTheRemovalTest extends TestCase
 
         foreach ($first['installs'] as $install) {
             foreach ($install['seats'] as $seat) {
-                $k = "{$seat['install_id']}/{$seat['seat_id']}";
+                $k = $seat['seat_id'];
 
                 if (! in_array($k, $listed, true)) {
                     $absent[] = $k;

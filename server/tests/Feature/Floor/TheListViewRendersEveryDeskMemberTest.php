@@ -15,7 +15,8 @@ use Tests\TestCase;
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ BOTH POPULATIONS ARE DERIVED, NEITHER IS LISTED. The RUNS are every run of every checked-in
  * fixture file (`fixtureFileNames()`, the one population every harness reader shares) that draws a
- * desk: a run that starts the floor screen is replayed as written, a run that starts no renderer is
+ * desk: a run that starts the floor screen or the building view is replayed as written (the building view's
+ * desks are its one desk floor's, carried on every floor's frame), a run that starts no renderer is
  * replayed under the desk floor — the page condition `DrivesTheDeskFloor` already adds — and a lobby
  * run is skipped because the lobby draws no desk model. The LEAVES are whatever `deskModel()` returned
  * on those runs, walked by `desk-list-probe.mjs`; nothing here or in the module names a fact the model
@@ -48,7 +49,7 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
     }
 
     /**
-     * `floor/main.js`'s `paintDesks()` writes text only from `deskListRow()`'s output: the nameplate's
+     * `floor/floor-page.js`'s `paintDesks()` writes text only from `deskListRow()`'s output: the nameplate's
      * line into the link, the rest through `items()`, no other text sink, and no `desk.<member>` read
      * beside the ids it routes by (`seat_id`, `install_id`). `deskLine()` is gone, not kept beside it.
      * ⚠ "Only" is as wide as the source read in `pageDefects()`: a desk member reached without `desk.`
@@ -56,7 +57,7 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
      */
     public function test_the_floor_page_paints_the_list_views_lines(): void
     {
-        $this->assertSame([], $this->pageDefects((string) file_get_contents($this->jsRoot().'/floor/main.js')));
+        $this->assertSame([], $this->pageDefects((string) file_get_contents($this->jsRoot().'/floor/floor-page.js')));
     }
 
     /**
@@ -107,16 +108,16 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
         $this->assertRedNaming($this->defects($this->verdict($darkAge, $darkAge, 'fx-degraded')), '`dark.age`',
             'is excluded as carried by `label_line`', '`labelLine()` dropping `dark.age`');
 
-        $main = (string) file_get_contents($this->jsRoot().'/floor/main.js');
+        $main = (string) file_get_contents($this->jsRoot().'/floor/floor-page.js');
         $composed = str_replace('const [first, ...rest] = deskListRow(desk);',
             'const [first, ...rest] = [deskLine(desk)];', $main);
-        $this->assertNotSame($composed, $main, 'the page control\'s anchor is gone from floor/main.js');
+        $this->assertNotSame($composed, $main, 'the page control\'s anchor is gone from floor/floor-page.js');
         $this->assertNotSame([], $this->pageDefects($composed.
             "\nfunction deskLine(desk) { return [desk.nameplate, desk.glyph].join(' — '); }\n"),
             'CONTROL (the page composing its own desk line) did not bite');
 
         $appended = str_replace('link.textContent = first;', "link.textContent = first + ' — ' + desk.glyph;", $main);
-        $this->assertNotSame($appended, $main, 'the page control\'s anchor is gone from floor/main.js');
+        $this->assertNotSame($appended, $main, 'the page control\'s anchor is gone from floor/floor-page.js');
         $this->assertRedNaming($this->pageDefects($appended), 'writes text that is not the list view\'s own line',
             '`first + \' — \' + desk.glyph`', 'the page appending a model member to the nameplate\'s line');
         $this->assertRedNaming($this->pageDefects($appended), 'reads `desk.glyph` itself', '',
@@ -165,12 +166,21 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
                 }
 
                 $floor = array_key_exists('floor', $scenario);
-                $result = $this->replay($run, $dir, $floor || ($scenario['desk_floor'] ?? false) === true ? [] : ['desk_floor' => true]);
+                $building = array_key_exists('building', $scenario);
+                $result = $this->replay($run, $dir, $floor || $building || ($scenario['desk_floor'] ?? false) === true ? [] : ['desk_floor' => true]);
                 $perRun[$run] = 0;
 
-                $frames = $floor
-                    ? array_map(fn (array $r): array => $r['frame']['desks']['desks'], $result['floor_renders'])
-                    : array_map(fn (array $r): array => $r['frame']['desks'], $result['desk_renders']);
+                $frames = match (true) {
+                    $floor => array_map(fn (array $r): array => $r['frame']['desks']['desks'], $result['floor_renders']),
+                    // Every floor's frame carries the one desk floor's frame; a render before the layout has no floor.
+                    $building => array_map(fn (array $r): array => $r['frame']['floors'][0]['frame']['desks']['desks'] ?? [], $result['building_renders']),
+                    default => array_map(fn (array $r): array => $r['frame']['desks'], $result['desk_renders']),
+                };
+
+                if ($building) {
+                    $this->assertGreaterThan(0, array_sum(array_map('count', $frames)),
+                        "[{$run}] the building view's frames carry no desk — the reader of its floors' frames read nothing");
+                }
 
                 foreach ($frames as $frame) {
                     foreach ($frame as $key => $model) {
@@ -234,7 +244,7 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
     }
 
     /**
-     * The page half, read off `floor/main.js`'s source: it imports the list view, and its `paintDesks()`
+     * The page half, read off `floor/floor-page.js`'s source: it imports the list view, and its `paintDesks()`
      * writes text only from `deskListRow()`'s output — every text-property assignment is the nameplate's
      * line (`first`), every `items()` call is the other lines (`rest`), no other text sink appears, no
      * DOM insertion is handed a string built in place, and no `desk.<member>` is read beside the ids the
@@ -250,15 +260,15 @@ class TheListViewRendersEveryDeskMemberTest extends TestCase
         $defects = [];
 
         if (! str_contains($main, "import { deskListRow } from '../desk/desk-list.js';")) {
-            $defects[] = 'floor/main.js does not import the list view';
+            $defects[] = 'floor/floor-page.js does not import the list view';
         }
 
         if (preg_match('/function\s+deskLine\b/', $main) === 1) {
-            $defects[] = 'floor/main.js composes a desk line of its own (`deskLine()`), beside the list view';
+            $defects[] = 'floor/floor-page.js composes a desk line of its own (`deskLine()`), beside the list view';
         }
 
-        if (preg_match('/^function paintDesks\(.*?\n\}\n/ms', $main, $match) !== 1) {
-            return [...$defects, 'floor/main.js has no `paintDesks()` — the page check reads nothing'];
+        if (preg_match('/^( *)function paintDesks\(.*?\n\1\}\n/ms', $main, $match) !== 1) {
+            return [...$defects, 'floor/floor-page.js has no `paintDesks()` — the page check reads nothing'];
         }
 
         $body = $match[0];

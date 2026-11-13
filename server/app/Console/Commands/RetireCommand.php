@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\SeatOption;
 use App\Fleet\SeatRetirement;
 use App\Fleet\SeatRetirementOutcome;
 use App\Support\RetirementAttribution;
@@ -30,7 +31,7 @@ use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 class RetireCommand extends Command
 {
     protected $signature = 'mezzanine:retire
-        {--seat= : <install>/<seat>}
+        {--seat= : the seat id}
         {--by= : the operator performing the retirement}
         {--reason= : why}';
 
@@ -42,8 +43,8 @@ class RetireCommand extends Command
         $by = (string) $this->option('by');
         $reason = (string) $this->option('reason');
 
-        if (! str_contains($seat, '/')) {
-            $this->error('--seat=<install>/<seat> is required');
+        if (($refusal = SeatOption::refusal($seat)) !== null) {
+            $this->error($refusal);
 
             return self::INVALID;
         }
@@ -59,10 +60,8 @@ class RetireCommand extends Command
             return self::INVALID;
         }
 
-        [$installId, $seatId] = explode('/', $seat, 2);
-
         try {
-            $result = $retirement->retire($installId, $seatId, $by, $reason);
+            $result = $retirement->retire($seat, $by, $reason);
         } catch (\Throwable $e) {
             // card#9466: the same classified refusal the console's retire route gives — the act
             // rolled back whole once its bounded wait and retries were spent, so the operator gets

@@ -89,13 +89,13 @@ class TheConsoleListsMapsNamingRetiredArtTest extends TestCase
     {
         $this->provisionTheRoom();
         $this->plantACurrentMap($this->naming('tiles/furniture-kit.tsx', 1));
-        $layout = (string) json_encode(['floors' => [['rooms' => [
+        $layout = (string) json_encode(['floors' => [['name' => 'beta', 'rooms' => [
             self::INSTALL => ['form' => 'open', 'origin' => ['x' => 0, 'y' => 0]],
             'beta' => ['form' => 'office', 'origin' => ['x' => 8000, 'y' => 0]],
         ]]]]);
 
         try {
-            Layouts::save($layout, 'ops@example.com');
+            Layouts::save($layout, 'ops@example.com', Layouts::version());
             $this->fail('a layout placing a room whose map names the retired kit was saved');
         } catch (InvalidBuildingLayout $e) {
             $this->assertStringContainsString('Room `'.self::INSTALL.'`', $e->getMessage());
@@ -105,7 +105,7 @@ class TheConsoleListsMapsNamingRetiredArtTest extends TestCase
         // THE CONTROL: once the room's map names only what ships, the same layout saves.
         DB::table('floors')->where('install_id', self::INSTALL)->update(['map' => FloorMapFixture::valid(2)]);
 
-        $this->assertSame(1, Layouts::save($layout, 'ops@example.com'));
+        $this->assertSame(1, Layouts::save($layout, 'ops@example.com', Layouts::version()));
     }
 
     /** The valid fixture with its one tileset re-pointed and its every cell set to `$gid`. */

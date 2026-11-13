@@ -28,6 +28,7 @@
 // the drawing primitives are the themes' shared ones (`../paint.js`, card#12845), handed this theme's paint rules.
 
 import { brushes, doc, draw, f, finite, leafPath, mix, pick, rr, stream, wallRuns } from '../paint.js';
+import { pieces3d } from './pieces-3d.js';
 
 /** The paint rules (§ 10.6, the creatures' own): the shade, the highlight and the line colour. */
 export const RULES = Object.freeze({ shade: '#3d2b3c', highlight: '#fff6e6', line: '#3a2420' });
@@ -48,6 +49,10 @@ export const PALETTE = Object.freeze({
     landing: Object.freeze({ top: '#f7f0e0', bottom: '#ebdfc6', rim: '#d9a54a', glow: '#fff4d6' }),
     'wall-run': Object.freeze({ strip: '#9aa982' }),
     desk: Object.freeze({ wood: '#b5794c' }),
+    // card#12987: the floor seen through the cab's open doors — the empty desks' tops and edges, the monitors' backs and the
+    // partitions, which the cab's painter reads as `--dv-…` custom properties (`floor/door-view.js`). Every theme carries
+    // the house theme's keys (the drift leg).
+    view: Object.freeze({ desk: '#b5794c', desk_edge: '#8a5a3a', monitor: '#efe2cc', partition: '#b7c6a0', partition_cap: '#8d9b74' }),
     chair: Object.freeze({ colours: Object.freeze(['#c8714f', '#d9a54a', '#8fa66b', '#c98b8f', '#6f9a9a', '#a77c5a']) }),
     'monitor-frame': Object.freeze({ bezel: '#efe2cc' }),
     'desk-props': Object.freeze({
@@ -1276,8 +1281,6 @@ const PLANT_REACH = Object.freeze({
 
 // ── a desk's furniture set ────────────────────────────────────────────────────────────────────
 
-const deskKey = (installId, seatId) => `${installId}/${seatId}`;
-
 /** The chair's rect (§ 10.6's table): 54 × 64. */
 const CHAIR = Object.freeze({ w: 54, h: 64 });
 
@@ -1285,11 +1288,11 @@ const CHAIR = Object.freeze({ w: 54, h: 64 });
  * THE CHAIR's BACK, behind the creature, at every desk with art — its colour seeded from the desk's key. With
  * nobody in it it is § 7.1's empty chair; the drawing itself carries no fact.
  *
- * @param {{install_id: string, seat_id: string}} input the desk's key
+ * @param {{seat_id: string}} input the desk's key
  */
-export function chair({ install_id: installId, seat_id: seatId }) {
+export function chair({ seat_id: seatId }) {
     const pen = new Pen();
-    const c = pick(deskKey(installId, seatId), 'theme:chair', PALETTE.chair.colours);
+    const c = pick(seatId, 'theme:chair', PALETTE.chair.colours);
     const cx = CHAIR.w / 2;
     const w = 52;
     const y = 2;
@@ -1367,11 +1370,11 @@ const PROPS = Object.freeze({ w: 68, h: 50, top: 42 });
  * THE DESK PROPS, on the desk's left third: a desk lamp leaning in, with its small pool of light on the desk
  * top, and beside it a mug or a small plant — the choice and the colours seeded per desk.
  *
- * @param {{install_id: string, seat_id: string}} input the desk's key
+ * @param {{seat_id: string}} input the desk's key
  */
-export function deskProps({ install_id: installId, seat_id: seatId }) {
+export function deskProps({ seat_id: seatId }) {
     const pen = new Pen();
-    const key = deskKey(installId, seatId);
+    const key = seatId;
     const P = PALETTE['desk-props'];
     const lamp = pick(key, 'theme:lamp', P.lamps);
     const pot = pick(key, 'theme:mug', P.pots);
@@ -1423,13 +1426,13 @@ const TABLE = Object.freeze({ w: 228, h: 98, seat_x: 4, seat_pitch: 41, seat_w: 
  * is drawn over it. As many places as it is handed — so an empty desk shows its front couch — and a plant beside the front
  * couch where the rect leaves room. The table's teapot went with the table.
  *
- * @param {{install_id: string, seat_id: string, seats: number}} input the desk's key and the seat count
+ * @param {{seat_id: string, seats: number}} input the desk's key and the seat count
  */
-export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
+export function sideTable({ seat_id: seatId, seats }) {
     finite(seats);
 
     const pen = new Pen();
-    const key = deskKey(installId, seatId);
+    const key = seatId;
     const P = PALETTE['side-table'];
     const c = pick(key, 'theme:couch', P.couch);
     const rows = Math.ceil(seats / TABLE.per_row);
@@ -1487,4 +1490,12 @@ export function sideTable({ install_id: installId, seat_id: seatId, seats }) {
     }
 
     return doc(pen, TABLE.w, TABLE.h, s.join(''));
+}
+
+/**
+ * § 10.6 item 1's optional `piece3d` (card#13033 stage 2): a standing kind the furniture kit carries no piece for, as the
+ * part list the 3-D floor builds — `./pieces-3d.js`'s, in this theme's `PALETTE` — or `null` for a kind it does not draw.
+ */
+export function piece3d(kind, inputs) {
+    return pieces3d(PALETTE, kind, inputs);
 }

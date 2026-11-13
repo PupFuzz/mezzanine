@@ -151,7 +151,7 @@ class StateVersionAnnouncesEveryTransitionTest extends FoldTestCase
         $this->deliver($this->cleanTurn());
         $this->fold();
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla-pm'])->assertSuccessful();
 
         $rows = $this->transitionRows();
 

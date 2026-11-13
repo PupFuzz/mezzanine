@@ -58,7 +58,7 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         // a divergence here is a divergence about the FOLD and not about the fixture's clock.
         $this->advanceServerClock(5);
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla-pm'])->assertSuccessful();
 
         // "Every column of `seat_state`, `sessions`, `calls` and `attention_requests` is IDENTICAL
         // except `updated_at`, `state_computed_at` and `state_version` (which counts transitions,
@@ -90,7 +90,7 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
      */
     public function test_at_d4_1_a_board_titled_seat_rebuilds_equal_to_its_fold(): void
     {
-        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'aimla/aimla-pm', '--board-user' => '14'])
+        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'aimla-pm', '--board-user' => '14'])
             ->assertSuccessful();
 
         config([
@@ -133,7 +133,7 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
         $renderedFolded = json_encode($rendered());
 
         $this->advanceServerClock(5);
-        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla-pm'])->assertSuccessful();
 
         // FIRST, because it is what makes the comparison below mean what its message says: no poll
         // ran between the snapshot and the rebuild.
@@ -160,7 +160,7 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
 
         $before = $this->snapshot();
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm'])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla-pm'])->assertSuccessful();
 
         $this->assertSame($before, $this->snapshot());
     }
@@ -189,7 +189,7 @@ class At10RebuildEqualsFoldTest extends FoldTestCase
 
         $newest = DB::table('events')->where('seat_ref', $this->seatRef)->max('received_at');
 
-        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla/aimla-pm', '--since' => $newest])
+        $this->artisan('mezzanine:rebuild', ['--seat' => 'aimla-pm', '--since' => $newest])
             ->assertSuccessful();
 
         $this->assertSame(1, $this->counter('rebuild_truncated'));

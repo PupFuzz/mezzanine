@@ -221,7 +221,9 @@ class Harness:
 
         # The token, from the real command. Its plaintext is printed once and stored nowhere, so
         # this is the only place it can be read — which is the property D1 § 3.3 asks for.
-        out = self.artisan("mezzanine:ingest-token:issue", INSTALL_ID, SEAT_ID, "--by=roundtrip").stdout
+        # The seat id alone since card#13117; the seat is created in no room, and the reporter's
+        # INSTALL_ID below is sent and not read.
+        out = self.artisan("mezzanine:ingest-token:issue", SEAT_ID, "--by=roundtrip").stdout
         m = re.search(r"(mzn_[A-Za-z0-9_-]{43})", out)
         if not m:
             raise RuntimeError(f"could not read the issued token from:\n{out}")

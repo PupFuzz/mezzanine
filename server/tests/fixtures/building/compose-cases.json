@@ -1,47 +1,42 @@
 {
   "_": [
-    "docs/design/FLOOR.md § 4.6 — THE ONE STATEMENT of how a layout and the installs the fleet",
-    "reports compose into floors. Two runtimes implement it — App\\Building\\Building::compose()",
-    "for the admin console and public/js/lobby/lobby-model.js floors() for the lobby — and both",
-    "are held to every case here (Tests\\Feature\\Building, Tests\\Feature\\Lobby). A case is the",
-    "RAW authored document (a list of floor records, each carrying its `rooms` — a mapping of",
-    "install id to that room's RECORD, `{\"form\": …}` and, on a planned floor, `{\"origin\": …}`",
-    "(card#9292) — and optionally its `label` (card#9273), its `theme` (card#11046) and its `hallway`), the installs the",
-    "fleet reports, and the floors that must come out: floor keys ascending, each floor's `label`",
-    "(null where the layout names no label, and null on every implicit floor), rooms by install",
-    "ascending, each room's `origin` where the floor is planned, and `reported` per room —",
-    "and each floor's `theme` as the entry names it (null where it names none, and null on every implicit floor — card#11046).",
-    "⚠ A floor's `hallway` is deliberately NOT among them: it is a whole Tiled document that only",
-    "the floor SCREEN draws, and the cases pin both runtimes to leaving it in the layout.",
-    "Add a case here and both suites gain it; a rule that lives in one runtime and not the other",
-    "is what this file exists to red."
+    "docs/design/FLOOR.md § 4.6 — THE ONE STATEMENT of how a layout, the installs the fleet reports and the rooms with an",
+    "authored map compose into floors. Two runtimes implement it — App\\Building\\Building::compose() for the admin console",
+    "and public/js/lobby/lobby-model.js floors() for the lobby and the floor route — and both are held to every case here",
+    "(Tests\\Feature\\Building, Tests\\Feature\\Lobby). A case is the RAW authored document (a list of floor records, each",
+    "carrying its `name`, optionally its `aliases` (card#13117), its `rooms` — a mapping of install id to that room's RECORD,",
+    "`{\"form\": …}` and, on a planned floor, `{\"origin\": …}` (card#9292) — optionally its `theme` (card#11046) and its",
+    "`hallway`), the installs the fleet reports, the rooms with an authored map (`authored`), and the floors that must come",
+    "out: the named floors by key — the slug of the name — ascending, then the Unassigned floor (key `unassigned`, name",
+    "`Unassigned`, no aliases, the house theme) when any room no floor places is reported or authored; each floor's `name`",
+    "and `aliases`, rooms by install ascending, each room's `origin` where the floor is planned, and `reported` per room,",
+    "and each floor's `theme` as the entry names it (null where it names none — card#11046).",
+    "⚠ A floor's `hallway` is deliberately NOT among them: it is a whole Tiled document that only the floor SCREEN draws,",
+    "and the cases pin both runtimes to leaving it in the layout.",
+    "Add a case here and both suites gain it; a rule that lives in one runtime and not the other is what this file",
+    "exists to red."
   ],
   "cases": [
     {
-      "name": "the empty layout is today's building: one floor per install, open",
+      "name": "the empty layout draws every reported room on the Unassigned floor, open (card#13117)",
       "layout": [],
       "installs": [
         "sola",
         "aimla"
       ],
+      "authored": [],
       "floors": [
         {
-          "floor": "aimla",
-          "label": null,
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
               "install": "aimla",
               "form": "open",
               "reported": true
-            }
-          ]
-        },
-        {
-          "floor": "sola",
-          "label": null,
-          "theme": null,
-          "rooms": [
+            },
             {
               "install": "sola",
               "form": "open",
@@ -52,9 +47,10 @@
       ]
     },
     {
-      "name": "the operator's hallway: two solo installs composed onto one floor, keyed by the least room",
+      "name": "the operator's hallway: two solo installs composed onto one named floor",
       "layout": [
         {
+          "name": "sola",
           "rooms": {
             "zeta": {
               "form": "office"
@@ -69,10 +65,12 @@
         "zeta",
         "sola"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -93,6 +91,7 @@
       "name": "the operator's mixed floor: one open PM+impl room and two offices on one floor",
       "layout": [
         {
+          "name": "aimla",
           "rooms": {
             "sola": {
               "form": "office"
@@ -111,10 +110,12 @@
         "sola",
         "zeta"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "aimla",
-          "label": null,
+          "name": "aimla",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -140,6 +141,7 @@
       "name": "two PM+impl rooms on one floor, and a second floor of offices",
       "layout": [
         {
+          "name": "mira",
           "rooms": {
             "mira": {
               "form": "open"
@@ -150,6 +152,7 @@
           }
         },
         {
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office"
@@ -166,10 +169,12 @@
         "zeta",
         "sola"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "mira",
-          "label": null,
+          "name": "mira",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -186,7 +191,8 @@
         },
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -204,9 +210,10 @@
       ]
     },
     {
-      "name": "an install the layout does not place gets a floor of its own, open, and sorts among the composed ones",
+      "name": "an install the layout does not place is drawn on the Unassigned floor, which sorts after every named floor (card#13117)",
       "layout": [
         {
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office"
@@ -222,22 +229,12 @@
         "zeta",
         "aimla"
       ],
+      "authored": [],
       "floors": [
         {
-          "floor": "aimla",
-          "label": null,
-          "theme": null,
-          "rooms": [
-            {
-              "install": "aimla",
-              "form": "open",
-              "reported": true
-            }
-          ]
-        },
-        {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -251,6 +248,65 @@
               "reported": true
             }
           ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a seat in no room: the snapshot's virtual install `unassigned` is a room of the Unassigned floor (card#13117 S4)",
+      "layout": [
+        {
+          "name": "aimla",
+          "rooms": {
+            "aimla": {
+              "form": "open"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "unassigned",
+        "aimla"
+      ],
+      "authored": [],
+      "floors": [
+        {
+          "floor": "aimla",
+          "name": "aimla",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "unassigned",
+              "form": "open",
+              "reported": true
+            }
+          ]
         }
       ]
     },
@@ -258,6 +314,7 @@
       "name": "a room the fleet reports nothing for is drawn on its floor and flagged, never omitted",
       "layout": [
         {
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office"
@@ -271,10 +328,12 @@
       "installs": [
         "sola"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -295,6 +354,7 @@
       "name": "a floor none of whose rooms report is still a floor",
       "layout": [
         {
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office"
@@ -306,10 +366,12 @@
         }
       ],
       "installs": [],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -330,6 +392,7 @@
       "name": "a one-room floor is worth authoring only for its form",
       "layout": [
         {
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office"
@@ -340,10 +403,12 @@
       "installs": [
         "sola"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -359,6 +424,7 @@
       "name": "an all-digit install id survives the integer-key cast in both runtimes",
       "layout": [
         {
+          "name": "42",
           "rooms": {
             "42": {
               "form": "open"
@@ -373,10 +439,12 @@
         "42",
         "7"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "42",
-          "label": null,
+          "name": "42",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -394,10 +462,10 @@
       ]
     },
     {
-      "name": "a labelled floor carries its label and is still keyed by its least room (card#9273)",
+      "name": "a named floor is keyed by the slug of its name, not by its least room (card#13117)",
       "layout": [
         {
-          "label": "the solos",
+          "name": "the solos",
           "rooms": {
             "zeta": {
               "form": "office"
@@ -412,10 +480,12 @@
         "sola",
         "zeta"
       ],
+      "authored": [],
       "floors": [
         {
-          "floor": "sola",
-          "label": "the solos",
+          "floor": "the-solos",
+          "name": "the solos",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -433,10 +503,10 @@
       ]
     },
     {
-      "name": "a labelled floor beside a composed floor the operator did not name: the second's label is null",
+      "name": "two named floors sort by their slugs",
       "layout": [
         {
-          "label": "the solos",
+          "name": "the solos",
           "rooms": {
             "sola": {
               "form": "office"
@@ -447,6 +517,7 @@
           }
         },
         {
+          "name": "mira",
           "rooms": {
             "mira": {
               "form": "open"
@@ -463,10 +534,12 @@
         "mira",
         "nova"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "mira",
-          "label": null,
+          "name": "mira",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -482,8 +555,9 @@
           ]
         },
         {
-          "floor": "sola",
-          "label": "the solos",
+          "floor": "the-solos",
+          "name": "the solos",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -501,10 +575,10 @@
       ]
     },
     {
-      "name": "a labelled floor beside an unplaced install: the implicit floor has no label to carry",
+      "name": "a named floor beside an unplaced install: the install is on the Unassigned floor",
       "layout": [
         {
-          "label": "the solos",
+          "name": "the solos",
           "rooms": {
             "sola": {
               "form": "office"
@@ -520,22 +594,12 @@
         "zeta",
         "aimla"
       ],
+      "authored": [],
       "floors": [
         {
-          "floor": "aimla",
-          "label": null,
-          "theme": null,
-          "rooms": [
-            {
-              "install": "aimla",
-              "form": "open",
-              "reported": true
-            }
-          ]
-        },
-        {
-          "floor": "sola",
-          "label": "the solos",
+          "floor": "the-solos",
+          "name": "the solos",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -549,14 +613,27 @@
               "reported": true
             }
           ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
         }
       ]
     },
     {
-      "name": "§ 4.6's residual: a label equal to an UNPLACED install's id reads the same on two floors, and neither runtime refuses it or disambiguates it",
+      "name": "a floor named like an UNPLACED room's key holds that address, and the room is on the Unassigned floor (card#13117)",
       "layout": [
         {
-          "label": "nova",
+          "name": "nova",
           "rooms": {
             "sola": {
               "form": "office"
@@ -568,22 +645,12 @@
         "sola",
         "nova"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "nova",
-          "label": null,
-          "theme": null,
-          "rooms": [
-            {
-              "install": "nova",
-              "form": "open",
-              "reported": true
-            }
-          ]
-        },
-        {
-          "floor": "sola",
-          "label": "nova",
+          "name": "nova",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -592,14 +659,27 @@
               "reported": true
             }
           ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "nova",
+              "form": "open",
+              "reported": true
+            }
+          ]
         }
       ]
     },
     {
-      "name": "a label equal to its own floor's key is allowed and changes nothing about the floor",
+      "name": "a name equal to its least room's key keys the floor as before",
       "layout": [
         {
-          "label": "sola",
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office"
@@ -614,10 +694,12 @@
         "sola",
         "zeta"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": "sola",
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -638,7 +720,7 @@
       "name": "a PLANNED floor carries each room's origin through to the composed floor (card#9292)",
       "layout": [
         {
-          "label": "the solos",
+          "name": "the solos",
           "rooms": {
             "zeta": {
               "form": "office",
@@ -661,10 +743,12 @@
         "sola",
         "zeta"
       ],
+      "authored": [],
       "floors": [
         {
-          "floor": "sola",
-          "label": "the solos",
+          "floor": "the-solos",
+          "name": "the solos",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -693,6 +777,7 @@
       "name": "a floor's HALLWAY is the layout's and is never carried onto the composed floor (card#9292)",
       "layout": [
         {
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office",
@@ -744,10 +829,12 @@
         "sola",
         "zeta"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -776,6 +863,7 @@
       "name": "an unplanned floor beside a planned one: neither runtime invents an origin for it",
       "layout": [
         {
+          "name": "sola",
           "rooms": {
             "sola": {
               "form": "office",
@@ -794,6 +882,7 @@
           }
         },
         {
+          "name": "mira",
           "rooms": {
             "mira": {
               "form": "open"
@@ -810,10 +899,12 @@
         "mira",
         "nova"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "mira",
-          "label": null,
+          "name": "mira",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -830,7 +921,8 @@
         },
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -856,9 +948,10 @@
       ]
     },
     {
-      "name": "a floor naming a theme carries it as authored, and an unplaced install beside it is the house theme's (card#11046)",
+      "name": "a floor naming a theme carries it as authored, and the Unassigned floor beside it is the house theme's (card#11046)",
       "layout": [
         {
+          "name": "sola",
           "theme": "studio",
           "rooms": {
             "sola": {
@@ -871,27 +964,30 @@
         "sola",
         "aimla"
       ],
+      "authored": [],
       "floors": [
         {
-          "floor": "aimla",
-          "label": null,
-          "theme": null,
-          "rooms": [
-            {
-              "install": "aimla",
-              "form": "open",
-              "reported": true
-            }
-          ]
-        },
-        {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": "studio",
           "rooms": [
             {
               "install": "sola",
               "form": "office",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
               "reported": true
             }
           ]
@@ -902,6 +998,7 @@
       "name": "an explicit null theme is an absent one: the house theme (card#11046)",
       "layout": [
         {
+          "name": "sola",
           "theme": null,
           "rooms": {
             "sola": {
@@ -913,10 +1010,12 @@
       "installs": [
         "sola"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": null,
           "rooms": [
             {
@@ -932,6 +1031,7 @@
       "name": "a theme the build does not ship is carried by the READ in both runtimes — the write refuses it, and the floor screen draws the house theme under F23 (card#11046)",
       "layout": [
         {
+          "name": "sola",
           "theme": "nowhere",
           "rooms": {
             "sola": {
@@ -943,15 +1043,296 @@
       "installs": [
         "sola"
       ],
+      "authored": [],
       "floors": [
         {
           "floor": "sola",
-          "label": null,
+          "name": "sola",
+          "aliases": [],
           "theme": "nowhere",
           "rooms": [
             {
               "install": "sola",
               "form": "office",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a floor's former addresses ride the composed floor, for the floor route's redirect (card#13117)",
+      "layout": [
+        {
+          "name": "The Den",
+          "aliases": [
+            "the-nook",
+            "sola"
+          ],
+          "rooms": {
+            "sola": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola"
+      ],
+      "authored": [],
+      "floors": [
+        {
+          "floor": "the-den",
+          "name": "The Den",
+          "aliases": [
+            "the-nook",
+            "sola"
+          ],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an AUTHORED room no floor places is drawn on the Unassigned floor, flagged unreported (card#13117)",
+      "layout": [
+        {
+          "name": "aimla",
+          "rooms": {
+            "aimla": {
+              "form": "open"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "aimla"
+      ],
+      "authored": [
+        "zeta"
+      ],
+      "floors": [
+        {
+          "floor": "aimla",
+          "name": "aimla",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "zeta",
+              "form": "open",
+              "reported": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a reported and an authored unplaced room share the Unassigned floor, by key; an authored PLACED room stays on its floor (card#13117)",
+      "layout": [
+        {
+          "name": "aimla",
+          "rooms": {
+            "aimla": {
+              "form": "open"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "sola",
+        "aimla"
+      ],
+      "authored": [
+        "zeta",
+        "aimla"
+      ],
+      "floors": [
+        {
+          "floor": "aimla",
+          "name": "aimla",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "open",
+              "reported": true
+            },
+            {
+              "install": "zeta",
+              "form": "open",
+              "reported": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a room neither reported nor authored is drawn nowhere: with every known room placed there is no Unassigned floor (card#13117)",
+      "layout": [
+        {
+          "name": "aimla",
+          "rooms": {
+            "aimla": {
+              "form": "open"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "aimla"
+      ],
+      "authored": [
+        "aimla"
+      ],
+      "floors": [
+        {
+          "floor": "aimla",
+          "name": "aimla",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the virtual room alone: the seats in no room are the Unassigned floor (card#13117)",
+      "layout": [],
+      "installs": [
+        "unassigned"
+      ],
+      "authored": [],
+      "floors": [
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "unassigned",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "the virtual room beside an unplaced reported room, by key (card#13117)",
+      "layout": [],
+      "installs": [
+        "unassigned",
+        "sola"
+      ],
+      "authored": [],
+      "floors": [
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "sola",
+              "form": "open",
+              "reported": true
+            },
+            {
+              "install": "unassigned",
+              "form": "open",
+              "reported": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "nothing to draw: the empty layout and no room compose no floor at all (card#13117)",
+      "layout": [],
+      "installs": [],
+      "authored": [],
+      "floors": []
+    },
+    {
+      "name": "the Unassigned floor sorts LAST by rule, after a named floor whose key sorts after its own (card#13117)",
+      "layout": [
+        {
+          "name": "Zeta",
+          "rooms": {
+            "zeta": {
+              "form": "office"
+            }
+          }
+        }
+      ],
+      "installs": [
+        "zeta",
+        "aimla"
+      ],
+      "authored": [],
+      "floors": [
+        {
+          "floor": "zeta",
+          "name": "Zeta",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "zeta",
+              "form": "office",
+              "reported": true
+            }
+          ]
+        },
+        {
+          "floor": "unassigned",
+          "name": "Unassigned",
+          "aliases": [],
+          "theme": null,
+          "rooms": [
+            {
+              "install": "aimla",
+              "form": "open",
               "reported": true
             }
           ]

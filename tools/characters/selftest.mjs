@@ -77,7 +77,7 @@ const all = [
 ];
 for (const [kind, inst, key] of all) {
   try {
-    const frames = kind === 'seat' ? [C.standingFrame(inst, key), ...C.walkFrames(inst, key)] : [C.chibiFrame(inst, key), ...C.internFrames(inst, key).frames];
+    const frames = kind === 'seat' ? [C.standingFrame(key), ...C.walkFrames(key)] : [C.chibiFrame(key), ...C.internFrames(key).frames];
     docs.set(`${kind}:${inst}/${key}`, frames);
     drawn++;
   } catch (e) { threw.push(`${inst}/${key}: ${e.message}`); }
@@ -85,8 +85,8 @@ for (const [kind, inst, key] of all) {
 check(threw.length === 0, `${drawn} keys drew and none threw${threw.length ? ` — threw: ${threw.slice(0, 3).join('; ')}` : ''}`);
 const fresh = await import(pathToFileURL(join(TREE, 'index.js')).href + '?fresh');
 const twiceBad = all.filter(([kind, inst, key]) => kind === 'seat'
-  ? C.standingFrame(inst, key) !== fresh.standingFrame(inst, key)
-  : C.chibiFrame(inst, key) !== fresh.chibiFrame(inst, key) || C.internFrames(inst, key).frames.join() !== fresh.internFrames(inst, key).frames.join());
+  ? C.standingFrame(key) !== fresh.standingFrame(key)
+  : C.chibiFrame(key) !== fresh.chibiFrame(key) || C.internFrames(key).frames.join() !== fresh.internFrames(key).frames.join());
 check(twiceBad.length === 0, `every key draws byte-identical markup again, from a fresh module load${twiceBad.length ? ` — differs: ${twiceBad[0].join(' ')}` : ''}`);
 
 // ---- 2. the space is the document's (a guard: FLOOR.md § 10.4's table against the closed lists) ----
@@ -262,7 +262,7 @@ section('3. every member of every closed list is drawn by some key of the synthe
 function coverage(drawFn) {
   const fields = { [C.SPECIES_FIELD]: KEYS, eyes: C.EYES, mouth: C.MOUTHS, blush: C.BLUSH, brows: C.BROWS, size: C.SIZES, stout: C.STOUT, tilt: C.TILTS, acc1: C.ACCENTS, acc2: C.ACCENTS };
   const seen = Object.fromEntries(Object.keys(fields).map((f) => [f, new Set()]));
-  const keys = [...synthetic, ...desks.map((d) => d.seat)].map(([i, s]) => `${i}/${s}`);
+  const keys = [...synthetic, ...desks.map((d) => d.seat)].map(([, s]) => s);
   for (let n = 0; n < 2000; n++) keys.push(`reach/${n}`);
   for (const key of keys) for (const [f, list] of Object.entries(fields)) seen[f].add(JSON.stringify(list[drawFn(key, f) % list.length]));
   return Object.entries(fields).map(([f, list]) => [f, seen[f].size, new Set(list.map((x) => JSON.stringify(x))).size]);
@@ -280,14 +280,14 @@ const literal = readFileSync(join(TREE, 'creatures.js'), 'utf8').match(/^export 
 const literalKeys = literal === null ? null : [...literal[1].matchAll(/'([a-z0-9_-]+)'/g)].map((m) => m[1]);
 check(JSON.stringify(literalKeys) === JSON.stringify(Object.keys(C.SPECIES)) && JSON.stringify(KEYS) === JSON.stringify(literalKeys),
   `SPECIES_KEYS is one literal line (the server's reader parses it) and equals the drawn species, in order (${literalKeys?.length ?? 'no'} keys)`);
-const delivered = (inst, seat) => KEYS[(KEYS.indexOf(C.speciesOf(`${inst}/${seat}`)) + 1) % KEYS.length];
+const delivered = (inst, seat) => KEYS[(KEYS.indexOf(C.speciesOf(seat)) + 1) % KEYS.length];
 const OWN = ['eyes', 'mouth', 'blush', 'brows', 'size', 'stout', 'tilt', 'acc1', 'acc2'];
 let bodyBad = [], ownBad = [];
 for (const [i, s] of [...synthetic, ...desks.map((d) => d.seat)]) {
-  const sp = delivered(i, s), key = `${i}/${s}`;
-  const frames = [C.standingFrame(i, s, sp), ...C.walkFrames(i, s, sp)];
+  const sp = delivered(i, s), key = s;
+  const frames = [C.standingFrame(s, sp), ...C.walkFrames(s, sp)];
   const want = [C.frameDocument(key, { species: sp, phase: 0 }), ...[0, 1, 2].map((phase) => C.frameDocument(key, { species: sp, phase }))];
-  if (frames.join() !== want.join() || frames[0] === C.standingFrame(i, s) || C.describe(key, sp).species !== sp) bodyBad.push(key);
+  if (frames.join() !== want.join() || frames[0] === C.standingFrame(s) || C.describe(key, sp).species !== sp) bodyBad.push(key);
   const forced = C.recipe(key, sp), own = C.recipe(key);
   if (OWN.some((f) => forced[f] !== own[f])) ownBad.push(key);
 }
@@ -295,16 +295,16 @@ check(bodyBad.length === 0, `every synthetic seat delivered a species apart from
 check(ownBad.length === 0, `forcing the body moves no other field of the key's draw (${OWN.join(', ')})${ownBad.length ? ` — moved: ${ownBad.slice(0, 3).join(', ')}` : ''}`);
 const [di, ds] = synthetic[0];
 const sleepSp = delivered(di, ds);
-const slept = C.poseFrames(di, ds, { pose: 'asleep', deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }], species: sleepSp });
-check(slept.frames[0] === C.sleepDocument(`${di}/${ds}`, { species: sleepSp, frame: 0, deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }] }),
+const slept = C.poseFrames(ds, { pose: 'asleep', deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }], species: sleepSp });
+check(slept.frames[0] === C.sleepDocument(ds, { species: sleepSp, frame: 0, deskTop: 70 / 96, clear: [{ name: 'props', x: 0, y: 0, w: 1, h: 1 }] }),
   'a sleeping desk is drawn asleep in the delivered species');
 let unheld = null;
-try { C.standingFrame(di, ds, 'no-such-species'); } catch (e) { unheld = e; }
+try { C.standingFrame(ds, 'no-such-species'); } catch (e) { unheld = e; }
 check(unheld instanceof RangeError && /no-such-species/.test(unheld.message), `a species the tree does not hold is a throw naming it — the painter's F14 — never the key's own body${unheld ? '' : ' (it drew one)'}`);
 
 // ---- 5. collisions, measured (FLOOR.md § 10.4, § 12's *Full-drawing collisions*) ----
 section('5. collisions: no two keys draw the same document, each in the frame it is drawn in');
-const collisions = (keys) => { const seen = new Map(); let n = 0; for (const [i, s] of keys) { const d = C.standingFrame(i, s); if (seen.has(d)) n++; seen.set(d, s); } return n; };
+const collisions = (keys) => { const seen = new Map(); let n = 0; for (const [i, s] of keys) { const d = C.standingFrame(s); if (seen.has(d)) n++; seen.set(d, s); } return n; };
 const rosterCollisions = collisions(roster.map((s) => [s.install_id, s.seat_id]));
 const fleetCollisions = collisions(synthetic);
 measure(`full-drawing collisions: committed roster ${rosterCollisions} over ${roster.length} seats; synthetic roster ${fleetCollisions} over ${FLEET} seats (seed ${SEED})`);
@@ -317,10 +317,10 @@ let sameBody = 0, deskDup = 0, chibiBad = 0, bodyRepeat = 0, bodyColourRepeat = 
 for (const { seat, interns } of desks) {
   // The seat's DELIVERED body (card#12443), apart from its key's own draw: the one an intern must not wear.
   const seatSpecies = delivered(...seat);
-  const bodies = interns.map((k) => C.recipe(`${seat[0]}/${k}`, C.internSpeciesOf(`${seat[0]}/${k}`, seatSpecies)));
+  const bodies = interns.map((k) => C.recipe(k, C.internSpeciesOf(k, seatSpecies)));
   sameBody += bodies.filter((r) => r.species === seatSpecies).length;
-  const drawings = [C.standingFrame(...seat, seatSpecies), ...interns.map((k) => C.chibiFrame(seat[0], k, seatSpecies))];
-  chibiBad += interns.filter((k, n) => drawings[n + 1] !== C.frameDocument(`${seat[0]}/${k}`, { chibi: true, species: bodies[n].species })).length;
+  const drawings = [C.standingFrame(seat[1], seatSpecies), ...interns.map((k) => C.chibiFrame(k, seatSpecies))];
+  chibiBad += interns.filter((k, n) => drawings[n + 1] !== C.frameDocument(k, { chibi: true, species: bodies[n].species })).length;
   if (new Set(drawings).size < drawings.length) deskDup++;
   if (new Set(bodies.map((r) => r.species)).size < bodies.length) bodyRepeat++;
   if (new Set(bodies.map((r) => `${r.species}/${r.pal}`)).size < bodies.length) bodyColourRepeat++;
@@ -337,7 +337,7 @@ for (const sp of KEYS) {
     check(g.share >= C.CHIBI_HEAD_SHARE, `${sp}${v ? ` (${v})` : ''}: the chibi head takes ${g.share.toFixed(3)} of the drawn height (least ${C.CHIBI_HEAD_SHARE})`);
   }
 }
-const chibiRoot = C.chibiFrame('desk-0', desks[0].interns[0]).match(/^<svg[^>]*>/)[0];
+const chibiRoot = C.chibiFrame(desks[0].interns[0]).match(/^<svg[^>]*>/)[0];
 const vb = C.CHIBI_VIEWBOX;
 check(chibiRoot.includes(`viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}"`) && vb.y + vb.h >= 188,
   `the chibi frame's viewBox is CHIBI_VIEWBOX and holds the foot line (${vb.x} ${vb.y} ${vb.w} ${vb.h}); § 7b holds it to the intern's overdraw`);
@@ -373,11 +373,11 @@ measure(`laptop repeat rates at the cap of ${CAP} (gate nothing): a repeated she
 // THE FRAMES: the still, then INTERN_LOOP loop frames — centre, left, centre, right — so frames 1 and 3 are the still
 // (the centre) and 2 and 4 lean opposite ways; the still carries the laptop and the plain chibi frame does not.
 const [ii, ik] = ['desk-0', desks[0].interns[0]];
-const IF = C.internFrames(ii, ik);
+const IF = C.internFrames(ik);
 check(IF.loopFrom === 1 && IF.frames.length === 1 + C.INTERN_LOOP, `internFrames draws the still and ${C.INTERN_LOOP} loop frames, loopFrom 1 (got ${IF.frames.length} documents, loopFrom ${IF.loopFrom})`);
 check(IF.frames[1] === IF.frames[0] && IF.frames[3] === IF.frames[0] && IF.frames[2] !== IF.frames[0] && IF.frames[4] !== IF.frames[0] && IF.frames[2] !== IF.frames[4],
   'the loop is centre, left, centre, right: its centre frames are the still and its two sway frames differ from it and from each other');
-check(/data-part="lid"/.test(IF.frames[0]) && !/data-part="lid"/.test(C.chibiFrame(ii, ik)), 'the still carries the laptop; the plain chibi frame does not');
+check(/data-part="lid"/.test(IF.frames[0]) && !/data-part="lid"/.test(C.chibiFrame(ik)), 'the still carries the laptop; the plain chibi frame does not');
 let swayRefused = 0;
 for (const bad of [-1, C.INTERN_LOOP, 0.5]) { try { C.frameDocument('sway/x', { chibi: true, laptop: true, sway: bad }); } catch { swayRefused++; } }
 try { C.frameDocument('sway/x', { sway: 1 }); } catch { swayRefused++; }
@@ -600,7 +600,7 @@ for (const sp of KEYS) {
 }
 check(walkBad.length === 0, `every species draws three distinct walk phases${walkBad.length ? ` — not: ${walkBad.join(', ')}` : ''}`);
 const anySeat = roster[0];
-check(C.walkFrames(anySeat.install_id, anySeat.seat_id)[0] === C.standingFrame(anySeat.install_id, anySeat.seat_id), "the walk's phase 0 is the standing frame");
+check(C.walkFrames(anySeat.seat_id)[0] === C.standingFrame(anySeat.seat_id), "the walk's phase 0 is the standing frame");
 
 // ---- 7b. the sleeper (card#12159; § 10.4's frame contract item 4) — what a pose draws ----
 // The painter's half, and the sleeper's own legs over every species, are server/tests/Feature/Floor/sleeper-probe.mjs.
@@ -624,7 +624,7 @@ const odUnits = { x: (overdraw.x - sitter.x) * FRAME_UNITS_PER_PX, y: (overdraw.
 // to 1e-9: the overdraw's px times a non-integer units-per-px is a float product, which the frame's own sum need not equal bit for bit
 check(['x', 'y', 'w', 'h'].every((k) => Math.abs(odUnits[k] - C.SEAT_VIEWBOX[k]) < 1e-9), `the character's overdraw in frame units (${JSON.stringify(odUnits)}) is SEAT_VIEWBOX (${JSON.stringify(C.SEAT_VIEWBOX)}), the frame of every seat document`);
 const seatVb = `viewBox="${C.SEAT_VIEWBOX.x} ${C.SEAT_VIEWBOX.y} ${C.SEAT_VIEWBOX.w} ${C.SEAT_VIEWBOX.h}"`;
-check([C.standingFrame(roster[0].install_id, roster[0].seat_id), ...C.walkFrames(roster[0].install_id, roster[0].seat_id)].every((d) => d.includes(seatVb)),
+check([C.standingFrame(roster[0].seat_id), ...C.walkFrames(roster[0].seat_id)].every((d) => d.includes(seatVb)),
   `the standing frame and every walk frame are drawn in SEAT_VIEWBOX (${seatVb}), the sleeper's widened, raised frame (card#12259)`);
 // The tree states the intern's rect and gap (it cannot import the floor); held equal to the floor's own.
 check(C.CHIBI_STOOL.w === STOOL_W && C.CHIBI_STOOL.h === STOOL_H && C.CHIBI_STOOL.frame === STOOL_FRAME,
@@ -659,11 +659,11 @@ const least = leastBoxHeight(FURNITURE_BOX.width, { w: C.SCENE_W, h: C.SCENE_H }
 check(FURNITURE_BOX.height === least,
   `furniture-box.js's height (${FURNITURE_BOX.height}) is leastBoxHeight() for its width (${least}) — the box is the desk's need, not a guess`);
 const [si, ss] = [anySeat.install_id, anySeat.seat_id];
-const asleep = C.poseFrames(si, ss, { pose: 'asleep', deskTop: DESK_TOP, clear: CLEAR });
-const own = C.sleepFrames(si, ss, DESK_TOP, CLEAR);
+const asleep = C.poseFrames(ss, { pose: 'asleep', deskTop: DESK_TOP, clear: CLEAR });
+const own = C.sleepFrames(ss, DESK_TOP, CLEAR);
 check(asleep.loopFrom === 1 && asleep.frames.length === 1 + C.SLEEP_LOOP && asleep.frames.join() === own.frames.join() && own.loopFrom === 1,
   `asleep draws the sleeper's still and its ${C.SLEEP_LOOP} loop frames, loopFrom 1 (got ${asleep.frames?.length} documents, loopFrom ${asleep.loopFrom})`);
-check(asleep.frames[0] !== C.standingFrame(si, ss) && /data-pose="asleep"/.test(asleep.frames[0]), 'the sleeper is not the standing frame');
+check(asleep.frames[0] !== C.standingFrame(ss) && /data-pose="asleep"/.test(asleep.frames[0]), 'the sleeper is not the standing frame');
 // Every pose the desk model names (desk-poses.js's DESK, and A4's think pose, which desk-render.js keeps unexported)
 // but the sleeper and the empty chair, which draws no character.
 const { DESK } = await import(pathToFileURL(join(REPO, 'server', 'public', 'js', 'desk', 'desk-poses.js')).href);
@@ -673,20 +673,20 @@ const posed = [...new Map([...Object.values(DESK), { pose: 'leaning-back', glyph
   .filter((d) => d.pose !== 'asleep' && d.pose !== 'empty-chair').map((d) => [`${d.pose}/${d.glyph}`, d])).values()];
 const unmarked = posed.filter((d) => !C.EXPRESSIONS[C.expressionOf(d.pose, d.glyph)].marker);
 const walkBadPose = unmarked.filter(({ pose, glyph }) => {
-  const p = C.poseFrames(si, ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR }), expression = C.expressionOf(pose, glyph);
-  const walk = [0, 1, 2].map((phase) => C.frameDocument(C.seatKey(si, ss), { phase, expression }));
-  return !(p.loopFrom === 0 && p.frames.join() === walk.join() && (expression !== 'neutral' || p.frames.join() === C.walkFrames(si, ss).join()));
+  const p = C.poseFrames(ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR }), expression = C.expressionOf(pose, glyph);
+  const walk = [0, 1, 2].map((phase) => C.frameDocument(C.seatKey(ss), { phase, expression }));
+  return !(p.loopFrom === 0 && p.frames.join() === walk.join() && (expression !== 'neutral' || p.frames.join() === C.walkFrames(ss).join()));
 });
 check(unmarked.length > 0 && walkBadPose.length === 0,
   `every unmarked pose (${unmarked.map((d) => `${d.pose}/${d.glyph} → ${C.expressionOf(d.pose, d.glyph)}`).join(', ')}) draws the walk in its expression, the neutral one the walk itself, { frames, loopFrom: 0 }${walkBadPose.length ? ` — not: ${walkBadPose.map((d) => d.pose).join(', ')}` : ''}`);
-const faces = new Set(unmarked.filter((d) => C.expressionOf(d.pose, d.glyph) !== 'neutral').map((d) => C.poseFrames(si, ss, { pose: d.pose, glyph: d.glyph, deskTop: DESK_TOP, clear: CLEAR }).frames[0]));
-check(faces.size === new Set(unmarked.map((d) => C.expressionOf(d.pose, d.glyph)).filter((x) => x !== 'neutral')).size && ![...faces].includes(C.standingFrame(si, ss)),
+const faces = new Set(unmarked.filter((d) => C.expressionOf(d.pose, d.glyph) !== 'neutral').map((d) => C.poseFrames(ss, { pose: d.pose, glyph: d.glyph, deskTop: DESK_TOP, clear: CLEAR }).frames[0]));
+check(faces.size === new Set(unmarked.map((d) => C.expressionOf(d.pose, d.glyph)).filter((x) => x !== 'neutral')).size && ![...faces].includes(C.standingFrame(ss)),
   `each expressed pose draws its own face, none of them the neutral standing frame (${faces.size} distinct)`);
 let edgeRefused = 0;
-for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(si, ss, bad, CLEAR); } catch { edgeRefused++; } }
+for (const bad of [undefined, 0, 1, Number.NaN]) { try { C.sleepFrames(ss, bad, CLEAR); } catch { edgeRefused++; } }
 check(edgeRefused === 4, "a sleeper with no desk edge inside its frame is refused, never drawn against a guessed one");
 let clearRefused = 0;
-for (const bad of [undefined, [], CLEAR.filter((c) => c.name !== 'props')]) { try { C.sleepFrames(si, ss, DESK_TOP, bad); } catch { clearRefused++; } }
+for (const bad of [undefined, [], CLEAR.filter((c) => c.name !== 'props')]) { try { C.sleepFrames(ss, DESK_TOP, bad); } catch { clearRefused++; } }
 check(clearRefused === 3, "a sleeper handed no clear rects, or none for the desk's props, is refused, never drawn against guessed furniture");
 let docRefused = 0;
 for (const bad of [-1, C.SLEEP_LOOP + 1, 0.5]) { try { C.sleepDocument('sleep/x', { frame: bad, deskTop: DESK_TOP, clear: CLEAR }); } catch { docRefused++; } }
@@ -741,7 +741,7 @@ const markedPoses = otherPoses.filter((pose) => MARKED.includes(C.expressionOf(p
 const pulseBad = [];
 for (const pose of markedPoses) {
   const glyph = pose === 'present' ? 'question' : null;
-  const p = C.poseFrames(si, ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR });
+  const p = C.poseFrames(ss, { pose, glyph, deskTop: DESK_TOP, clear: CLEAR });
   const want = [3, ...Array.from({ length: C.SLEEP_LOOP }, (_, n) => C.zLevels(n)[0])];
   const got = (p.frames ?? []).map(levelOf);
   if (p.loopFrom !== 1 || JSON.stringify(got) !== JSON.stringify(want)) pulseBad.push(`${pose}: loopFrom ${p.loopFrom}, marker levels ${JSON.stringify(got)} for ${JSON.stringify(want)}`);
@@ -996,6 +996,87 @@ const pushedOver = past(inkBounds(pushed), C.SEAT_VIEWBOX);
 check(pushedOver > 0, `CONTROL — a standing frame pushed ${PUSH} units sideways is past its frame by ${pushedOver.toFixed(1)}, so the leg can tell a part outside the frame from one inside`);
 const unpushedOver = past(inkBounds(C.frameDocument('bounds/control', { species: KEYS[0] })), C.SEAT_VIEWBOX);
 check(unpushedOver <= 0, `CONTROL — the same frame unpushed is inside (${unpushedOver.toFixed(1)}), so the push alone made the difference`);
+
+// ---- 8c. the 3-D creatures (card#13033 stage 2 slice 3; docs/design/plan-13033-stage2-3d-floor.md § 8 item 2's character half) ----
+// Each leg is a function of the population it is handed, so its planted control runs the SAME function over a planted
+// population and must red. The renderer's half — one seat one draw call, an intern two — is `sheet3d.browser.mjs --calls`;
+// the 3-D silhouettes' distinctness is `distinct.browser.mjs --source 3d`.
+section('8c. the 3-D creatures: every species a body from its one shape, standing on the foot inside its frame; the chibi head share on the parts; the poses and clips closed');
+// TOTALITY — every species has a SOLID in its shape: a lathe profile (`body` or `head`) or a body feature. A species with
+// none would draw no 3-D body, which is a red (the ruling's *every species included*).
+const solidless = (species) => Object.keys(species).filter((k) => {
+  const S = species[k].shape;
+  return !S || !((S.profiles && (S.profiles.body || S.profiles.head)) || (S.features ?? []).some((ft) => ft.name === 'body' || ft.kind === 'lobes'));
+});
+check(solidless(C.SPECIES).length === 0, `every one of SPECIES_KEYS' ${KEYS.length} species has a 3-D solid in its shape${solidless(C.SPECIES).length ? ` — none: ${solidless(C.SPECIES).join(', ')}` : ''}`);
+{
+  const planted = { ...C.SPECIES, [KEYS[0]]: { ...C.SPECIES[KEYS[0]], shape: undefined } };
+  check(solidless(planted).join() === KEYS[0], `CONTROL — the ${KEYS[0]}'s shape removed, the totality leg names it (${solidless(planted).join(', ')})`);
+}
+// THE FOOT AND THE FRAME — every part list, seat and intern, every variant: its lowest point within FOOT_SLACK of the foot
+// line, its highest inside its frame's top (the seat's SEAT_VIEWBOX, the intern's CHIBI_VIEWBOX).
+const FOOT_SLACK = 4;
+const DEG = Math.PI / 180;
+function partSpan(p) {
+  const rz = (p.rotate?.[2] ?? 0) * DEG;
+  const turn = ([x, y]) => [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+  let ys;
+  if (p.params.points) {
+    // a tube stands its radius out of its line; an extrusion's bevel starts inside its outline, so the outline is its extent
+    const pad = p.shape === 'tube' ? p.params.radius : 0;
+    ys = p.params.points.flatMap((q) => { const y = turn(q)[1] * (p.scale?.[1] ?? 1) + p.at[1]; return [y - pad, y + pad]; });
+  } else if (p.shape === 'sphere') { const r = rz ? Math.max(p.scale[0], p.scale[1]) : p.scale[1]; ys = [p.at[1] - r, p.at[1] + r]; }
+  else if (p.shape === 'cone') ys = [p.at[1], p.at[1] + p.params.dir[1] * p.params.height];
+  else if (p.shape === 'box') ys = [p.at[1] - p.params.size[1] / 2, p.at[1] + p.params.size[1] / 2];
+  else if (p.shape === 'cylinder') ys = [p.at[1] - p.params.height / 2, p.at[1] + p.params.height / 2];
+  // a ring turned a quarter about x (a scarf) lies flat: its height is its tube's
+  else if (p.shape === 'torus') { const h = Math.abs(p.rotate?.[0] ?? 0) === 90 ? p.params.tube : p.params.radius + p.params.tube; ys = [p.at[1] - h, p.at[1] + h]; }
+  else ys = [p.at[1], p.at[1]];
+  return [Math.min(...ys), Math.max(...ys)];
+}
+const spanOf = (body) => body.parts.reduce(([lo, hi], p) => { const [a, b] = partSpan(p); return [Math.min(lo, a), Math.max(hi, b)]; }, [Infinity, -Infinity]);
+const SEAT_TOP = C.FOOT - C.SEAT_VIEWBOX.y, CHIBI_TOP = C.FOOT - C.CHIBI_VIEWBOX.y;
+const bodies3d = [], threw3d = [];
+for (const sp of KEYS) for (const key of [`d3/${sp}`, ...variantsOf(sp).map((v) => keyOfVariant('d3', sp, v))]) for (const chibi of [false, true]) {
+  try { bodies3d.push({ sp, key, chibi, body: C.bodyParts(key, { species: sp, chibi }) }); } catch (e) { threw3d.push(`${sp}${chibi ? ' (intern)' : ''}: ${e.message}`); }
+}
+check(threw3d.length === 0, `bodyParts() answers a part list for every species and variant, seat and intern (${bodies3d.length} lists)${threw3d.length ? ` — threw: ${threw3d.slice(0, 3).join('; ')}` : ''}`);
+const footFaults = (list) => list.filter(({ body, chibi }) => { const [lo, hi] = spanOf(body); return Math.abs(lo) > FOOT_SLACK || hi > (chibi ? CHIBI_TOP : SEAT_TOP); }).map(({ sp, chibi, body }) => `${sp}${chibi ? ' (intern)' : ''} ${spanOf(body).map((v) => v.toFixed(1)).join('..')}`);
+const lows = bodies3d.map(({ body }) => spanOf(body)[0]);
+measure(`the part lists' lowest points ${Math.min(...lows).toFixed(1)} to ${Math.max(...lows).toFixed(1)} units off the foot line; the seats' highest ${Math.max(...bodies3d.filter((b) => !b.chibi).map(({ body }) => spanOf(body)[1])).toFixed(1)} of ${SEAT_TOP.toFixed(1)}, the interns' ${Math.max(...bodies3d.filter((b) => b.chibi).map(({ body }) => spanOf(body)[1])).toFixed(1)} of ${CHIBI_TOP.toFixed(1)}`);
+check(footFaults(bodies3d).length === 0, `every part list stands on the foot line (within ${FOOT_SLACK} units) and inside its frame's top${footFaults(bodies3d).length ? ` — ${footFaults(bodies3d).slice(0, 4).join('; ')}` : ''}`);
+{
+  const lifted = [{ ...bodies3d[0], body: { ...bodies3d[0].body, parts: bodies3d[0].body.parts.map((p) => ({ ...p, at: [p.at[0], p.at[1] + 20, p.at[2]] })) } }];
+  check(footFaults(lifted).length === 1, `CONTROL — a part list lifted 20 units off the foot is named by the leg (${footFaults(lifted).join('; ')})`);
+}
+// THE CHIBI HEAD SHARE, MEASURED ON THE PARTS — the head (the parts' top down to the chin) at least CHIBI_HEAD_SHARE of the
+// intern's measured height, as the 2-D chibi frame holds it on its drawing.
+const shareOf = (body) => { const [lo, hi] = spanOf(body); return (hi - body.chin) / (hi - lo); };
+const interns3d = bodies3d.filter((b) => b.chibi);
+const leastShare = interns3d.reduce((m, b) => (shareOf(b.body) < m.share ? { share: shareOf(b.body), sp: b.sp } : m), { share: Infinity, sp: null });
+measure(`the interns' least head share on their parts ${leastShare.share.toFixed(3)} (${leastShare.sp}), over ${interns3d.length} interns`);
+check(leastShare.share >= C.CHIBI_HEAD_SHARE, `every intern's head is at least ${C.CHIBI_HEAD_SHARE} of its height, measured on its part list`);
+{
+  // the plant: every part above the chin squashed to a third about the chin — the head scaled down
+  const b = interns3d[0].body, ch = b.chin;
+  const squash = (y) => (y > ch ? ch + (y - ch) / 3 : y);
+  const small = { ...b, parts: b.parts.map((p) => (p.params.points ? { ...p, params: { ...p.params, points: p.params.points.map(([x, y, ...r]) => [x, squash(y), ...r]) } } : { ...p, at: [p.at[0], squash(p.at[1]), p.at[2]], scale: p.at[1] > ch ? [p.scale[0], p.scale[1] / 3, p.scale[2]] : p.scale })) };
+  check(shareOf(small) < C.CHIBI_HEAD_SHARE, `CONTROL — the ${interns3d[0].sp} intern's head scaled to a third reads a share of ${shareOf(small).toFixed(3)}, under ${C.CHIBI_HEAD_SHARE}`);
+}
+// THE POSES AND THE CLIPS — closed: every pose of DESK that draws a body is a pose, every bone a pose names is a bone, every
+// clip names poses that exist, and the walk's three phases are three different poses.
+const bodyPoses = (desk) => [...new Set(Object.values(desk).map((d) => d.pose))].filter((p) => p !== 'empty-chair');
+const missingPoses = (poses) => bodyPoses(DESK).filter((p) => !(p in poses));
+check(missingPoses(C.POSES).length === 0, `every pose of desk-poses.js's DESK that draws a body (${bodyPoses(DESK).join(', ')}) is in POSES`);
+check(missingPoses(Object.fromEntries(Object.entries(C.POSES).filter(([k]) => k !== 'asleep'))).join() === 'asleep', 'CONTROL — POSES without `asleep` is named by the leg');
+const strayBones = Object.entries(C.POSES).flatMap(([p, m]) => Object.keys(m).filter((b) => !C.BONES.includes(b)).map((b) => `${p}:${b}`));
+check(strayBones.length === 0, `every bone a pose moves is one of BONES${strayBones.length ? ` — ${strayBones.join(', ')}` : ''}`);
+const clipFaults = (clips) => Object.entries(clips).flatMap(([c, seq]) => (seq.length === 0 ? [`${c}: empty`] : seq.filter((p) => !(p in C.POSES)).map((p) => `${c}: ${p}`)));
+check(clipFaults(C.CLIPS).length === 0, `every one of CLIPS' ${Object.keys(C.CLIPS).length} clips names poses that exist${clipFaults(C.CLIPS).length ? ` — ${clipFaults(C.CLIPS).join(', ')}` : ''}`);
+check(clipFaults({ ...C.CLIPS, walk: ['stand', 'nope'] }).length === 1, 'CONTROL — a clip naming a pose that does not exist is named by the leg');
+const walkPoses = [...new Set(C.CLIPS.walk)];
+check(walkPoses.length === 3 && new Set(walkPoses.map((p) => JSON.stringify(C.POSES[p]))).size === 3, `the walk steps through three different poses (${walkPoses.join(', ')})`);
+check(C.CLIPS['intern-type'].length === C.INTERN_LOOP, `the intern's typing clip is the 2-D sway's ${C.INTERN_LOOP} loop frames`);
 
 // ---- 9. the controls — each leg above is known to be able to say both things ----
 section('9. controls');

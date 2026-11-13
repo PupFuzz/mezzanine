@@ -2,10 +2,8 @@
 
 namespace App\Read;
 
-use Illuminate\Support\Facades\DB;
-
 /**
- * One renderable seat's row — the `seat_state` ⋈ `seats` ⋈ `installs` selection, hoisted out of
+ * One renderable seat's row — the `seat_state` ⋈ `seats` ⋈ its room (`App\Read\SeatIdentity`) selection, hoisted out of
  * `FleetController::seat()` at its second caller (`docs/design/BOARD-TASK.md § 15.9`): the compose
  * path resolves its target from the SAME row the desk is rendered from, through the same retirement
  * filter, so a retired seat is a `404` on both.
@@ -16,16 +14,15 @@ use Illuminate\Support\Facades\DB;
  */
 final class SeatRow
 {
-    public static function find(string $installId, string $seatId): ?object
+    /** The live seat of this id — there is at most one (`uq_live_seat`, card#13117). */
+    public static function find(string $seatId): ?object
     {
         return RetirementFilter::renderable(
-            DB::table('seat_state')
-                ->join('seats', 'seats.id', '=', 'seat_state.seat_ref')
-                ->join('installs', 'installs.id', '=', 'seats.install_ref')
-                ->where('installs.install_id', $installId)
+            SeatIdentity::query()
+                ->join('seat_state', 'seat_state.seat_ref', '=', 'seats.id')
                 ->where('seats.seat_id', $seatId)
         )->first([
-            'seat_state.*', 'installs.install_id', 'seats.seat_id', 'seats.species',
+            'seat_state.*', SeatIdentity::installId(), 'seats.seat_id', 'seats.species',
             'seats.retired_at', 'seats.retired_by', 'seats.retired_reason', 'seats.board_user_id',
         ]);
     }

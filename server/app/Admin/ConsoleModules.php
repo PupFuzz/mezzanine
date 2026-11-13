@@ -35,12 +35,18 @@ final class ConsoleModules
                     .'administer this install.',
             ],
             [
-                'key' => 'floors',
+                'key' => 'building',
                 'label' => 'Floors',
+                'route' => 'admin.building.index',
+                'blurb' => 'The floors of the building: name one and its web address follows the name, rename it '
+                    .'and its old links keep working, choose its theme, and put rooms on it.',
+            ],
+            [
+                'key' => 'floors',
+                'label' => 'Room maps',
                 'route' => 'admin.floors.index',
-                'blurb' => 'The floors this deploy renders, and the Tiled map each one takes its '
-                    .'desk slots from. The map says how many desks a room has and where they '
-                    .'sit; which seat sits at which desk stays derived.',
+                'blurb' => 'The Tiled map each room takes its desk slots from. The map says how many '
+                    .'desks a room has and where they sit; which seat sits at which desk stays derived.',
             ],
             [
                 'key' => 'layout',
@@ -51,11 +57,18 @@ final class ConsoleModules
                     .'them looks like. Every save is a revision, and any of them can be restored.',
             ],
             [
+                'key' => 'rooms',
+                'label' => 'Rooms',
+                'route' => 'admin.rooms.index',
+                'blurb' => 'The rooms seats are placed in: create one with its name, put it on a floor, '
+                    .'rename it, and retire it once it is empty.',
+            ],
+            [
                 'key' => 'agents',
                 'label' => 'Agents',
                 'route' => 'admin.agents.index',
-                'blurb' => 'Seats reporting to this install: their current state, and the '
-                    .'operator retirement act that takes one off the floor.',
+                'blurb' => 'Seats reporting to this install: their current state, the room each is '
+                    .'placed in, and the operator retirement act that takes one off the floor.',
             ],
             [
                 'key' => 'tokens',

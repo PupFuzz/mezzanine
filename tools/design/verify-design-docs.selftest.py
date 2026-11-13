@@ -857,15 +857,14 @@ PLANTS = [
         "reserved, assigns slot",
     ),
     (
-        # The same leg on a hashed row: the probe count of the seat whose hash slot IS the reserved
-        # desk, which probes past it.  A rule that skipped the reserved desk instead of counting it
-        # taken would state a different count here.
+        # The same leg on a hashed row: the probe count of a seat whose hash slot is held, which probes
+        # past it.  A function that probed any other way would state a different count here.
         "verify-floor.py",
         "docs/design/FLOOR.md",
-        r"(\| `aimla/aimla-impl-2` \| \d+ \| \d+ \| )(\d+)( \|)",
+        r"(\| `aimla-impl-1` \| \d+ \| \d+ \| )(\d+)( \|)",
         "bump",
-        "the probe count section 3.2's worked table states for the seat hashing to the reserved desk, "
-        "which G8 re-derives with that desk taken (card#11144)",
+        "the probe count section 3.2's worked table states for a seat whose hash slot is held, "
+        "which G8 re-derives with the reserved desk taken (card#11144)",
         "reserved, assigns slot",
     ),
     (

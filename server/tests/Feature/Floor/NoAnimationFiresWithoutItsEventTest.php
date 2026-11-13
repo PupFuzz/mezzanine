@@ -99,7 +99,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         foreach ($rows as $row) {
             $this->assertSame('entered', $row['phase']);
-            $seatKey = "{$row['install_id']}/{$row['seat_id']}";
+            $seatKey = $row['seat_id'];
             // The log row names no half of A25 or A26 (§ 11's schema is unchanged); the set enters the seat's half before its
             // interns', so a seat's first A25 row is `~snack` where its own object holds that half, and A26's `~restroom`.
             $suffix = match (true) {
@@ -122,7 +122,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         // Each with that seat's own `state_version` as its cause, and each opening a DISTINCT episode.
         foreach ($rows as $row) {
-            $key = "{$row['install_id']}/{$row['seat_id']}";
+            $key = $row['seat_id'];
 
             $this->assertSame($this->snapshotSeats('instrument')[$key]['state_version'], $row['cause'],
                 "[{$key}] the held entry's cause is not the `state_version` of the object holding it");
@@ -197,7 +197,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
         $this->assertNotSame([], $walk, '§ 11\'s `fx-clear-trace` walk table did not parse — the expectation below is unread');
 
-        $rows = $this->heldRows($result, 'aimla/aimla-pm');
+        $rows = $this->heldRows($result, 'aimla-pm');
         $observed = [];
 
         foreach ($rows as $row) {
@@ -372,7 +372,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
                 continue;
             }
 
-            $key = "{$row['install_id']}/{$row['seat_id']}";
+            $key = $row['seat_id'];
             $object = $this->seatAtVersion($result, $key, $row['cause']);
 
             $this->assertNotNull($object,
@@ -438,7 +438,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
 
                 $this->assertNotNull($entry, "[{$run}] a desk `left` row's `episode_id` matches no earlier `entered` row");
 
-                $key = "{$row['install_id']}/{$row['seat_id']}";
+                $key = $row['seat_id'];
                 $given = $this->precedenceGives($run, $render, $previous, $entry);
 
                 // A25's two halves (card#12749): the row names neither, so the interns' half is asked where the seat's
@@ -507,7 +507,7 @@ class NoAnimationFiresWithoutItsEventTest extends TestCase
      */
     private function precedenceGives(string $run, array $render, ?array $previous, array $entry, string $half = '~snack'): ?array
     {
-        $key = "{$entry['install_id']}/{$entry['seat_id']}";
+        $key = $entry['seat_id'];
         $held = $render['held'][$key] ?? null;
         // A side-table episode (§ 6.2 A23, card#12448) is its own hold: its row is the side table's, which the
         // desk's empty chair does not take away, and its `motion` is the frame's `interns_held`.

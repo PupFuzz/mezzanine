@@ -1638,7 +1638,7 @@ def assign_slots(keys, S, k=None, holder=None):
     probes), probes `None` for the holder."""
     taken = set() if k is None else {k}
     out = {} if holder is None else {holder: (k, None)}
-    for key in sorted((x for x in keys if x != holder), key=lambda x: (fnv1a32(x), x.split("/")[-1])):
+    for key in sorted((x for x in keys if x != holder), key=lambda x: (fnv1a32(x), x)):
         h = fnv1a32(key)
         for i in range(S):
             if (h + i) % S not in taken:
@@ -1654,7 +1654,7 @@ if not m:
     fail.append("G8 CONTROL: section 3.3's collision example did not parse — the one worked case "
                 "of the displacement rule would be unchecked")
 else:
-    key = "aimla/" + m.group(1)
+    key = m.group(1)
     h, mod_s, mod_v = fnv1a32(key), int(m.group(3)), int(m.group(4))
     if h != int(m.group(2)) or h % mod_s != mod_v:
         fail.append(f"G8: section 3.3's collision example states h(`{key}`) = {m.group(2)} mod "
@@ -1663,12 +1663,12 @@ else:
     if not m2:
         fail.append("G8 CONTROL: section 3.3 names no incumbent for the collision")
     else:
-        inc_h = fnv1a32("aimla/" + m2.group(1))
+        inc_h = fnv1a32(m2.group(1))
         if inc_h != int(m2.group(2)):
             fail.append(f"G8: section 3.3 states the incumbent's h = {m2.group(2)}; it is {inc_h}")
         # The arrival collides with the incumbent's SLOT, which is the incumbent's hash slot or, as on
         # the shipped default's reservation (card#11144), the slot it probed to: section 3.2's table states it.
-        _inc_slot = next((p[4] for p in parsed if p[0] == "aimla/" + m2.group(1)), None)
+        _inc_slot = next((p[4] for p in parsed if p[0] == m2.group(1)), None)
         if int(m2.group(3)) != _inc_slot or h % mod_s != _inc_slot:
             fail.append(f"G8: section 3.3's 'collision' pair does not collide under the stated "
                         f"function — the arrival hashes to {h % mod_s}, section 3.3 places the incumbent at "
@@ -2064,7 +2064,7 @@ elif S and parsed:
                         "so this leg cannot tell a client that seats by role from one that ignores it")
         g8i = f"MEASURED: {len(parsed)} rows, `{_holder}` at index {_g8i_k} by its role"
         if m and m2 and m33_to:
-            _arr, _inc = "aimla/" + m.group(1), "aimla/" + m2.group(1)
+            _arr, _inc = m.group(1), m2.group(1)
             _after = assign_slots(_keys + [_arr], S, _g8i_k, _holder)
             if _after[_arr][0] != int(m.group(4)):
                 fail.append(f"G8: section 3.3 says `{_arr}` takes slot {m.group(4)}; with index {_g8i_k} "

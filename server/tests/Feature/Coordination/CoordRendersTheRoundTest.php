@@ -206,7 +206,7 @@ class CoordRendersTheRoundTest extends TestCase
             'messages' => [$this->roundMessage(['install_id' => 'sola'])],
         ], $this->mutatedModules([
             'coord-model.js',
-            '        if ((room !== null && body.install_id !== room) || body.scope !== INSTALL_SCOPE) {',
+            '        if ((room !== null && body.install_id !== room) || body.scope !== ROOM_SCOPE) {',
             '        if (false) {',
         ]))['model'];
         $this->assertCount(1, $wider['rounds'],

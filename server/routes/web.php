@@ -160,6 +160,26 @@ Route::middleware(['auth', 'mfa'])->group(function () {
         'floor' => $floor, 'seat' => null, 'composeRefusal' => ComposeCredential::refusal(),
     ]))->name('floor');
 
+    // THE BUILDING VIEW — `docs/design/FLOOR.md` § 4.4's `/building`, Appendix B row 47 (card#13033): every floor
+    // stacked in 3-D, each slab carrying that floor's drawing. Like the lobby and the floor it carries no layout and no
+    // fleet data — both are fetched by its client. ⛔ NAMED `building.view`, never `building`: that name is
+    // `GET /api/building`'s (`routes/fleet.php`), which `FleetReadGate::SESSION_ONLY_ROUTES` lists by it, and a second
+    // route of the name would make `php artisan route:cache` throw and `route('building')` resolve to the API.
+    Route::get('/building', fn () => view('building'))
+        ->name('building.view');
+
+    // § 4.4's `/floor/{floor}/3d` and `/floor/{floor}/3d/{seat_id}` — THE FLOOR IN 3-D (card#13033 stage 2 slice 4;
+    // `docs/design/plan-13033-stage2-3d-floor.md` § 3.8, B2): the same page over the 3-D renderer, the segments handed
+    // over as data as the 2-D page's are. ⛔ REGISTERED BEFORE THE SEAT ROUTE, which is unconstrained, so registration
+    // order alone sends `/floor/x/3d` here rather than to a drill-down on a seat named `3d` — and no seat can be named
+    // `3d`: `App\Fleet\SeatTokens::issue()` refuses the id where seats are minted.
+    Route::get('/floor/{floor}/3d', fn (string $floor) => view('floor3d', [
+        'floor' => $floor, 'seat' => null, 'composeRefusal' => ComposeCredential::refusal(),
+    ]))->name('floor3d.view');
+    Route::get('/floor/{floor}/3d/{seat}', fn (string $floor, string $seat) => view('floor3d', [
+        'floor' => $floor, 'seat' => $seat, 'composeRefusal' => ComposeCredential::refusal(),
+    ]))->name('floor3d.seat');
+
     // § 4.4's `/floor/{floor}/{seat_id}` — the drill-down open (Appendix B row 10). The SAME page: "the
     // drill-down is a panel over the floor rather than a route of its own, because closing it must not
     // cost a reconnect" (§ 4), so the seat segment is handed over as data exactly as the floor's is,
@@ -173,10 +193,11 @@ Route::middleware(['auth', 'mfa'])->group(function () {
     // admits an `mzr_` machine token, which carries no account and so can never be an operator, and
     // D2 § 8.2's REST surface is `GET`-only by contract. In `web`, so the group's CSRF check applies.
     // `can:operate` refuses an observer `403`; `throttle:compose` is per account
-    // (`App\Providers\AppServiceProvider`). The segments are D1 § 3.1's slugs, so a malformed one is
-    // the router's `404` and reaches no gate and no store.
-    Route::post('/desk/{install_id}/{seat_id}/compose', [DeskComposeController::class, 'store'])
-        ->where(['install_id' => Slug::INSTALL_ID, 'seat_id' => Slug::SEAT_ID])
+    // (`App\Providers\AppServiceProvider`). The segment is D1 § 3.1's seat slug, so a malformed one is
+    // the router's `404` and reaches no gate and no store. A seat is addressed by its `seat_id` alone
+    // since card#13117 (plan-13117-seat-identity.md § 3.3) — browser-only, so no window was kept.
+    Route::post('/desk/{seat_id}/compose', [DeskComposeController::class, 'store'])
+        ->where('seat_id', Slug::SEAT_ID)
         ->middleware(['can:operate', 'throttle:compose'])
         ->name('desk.compose');
 

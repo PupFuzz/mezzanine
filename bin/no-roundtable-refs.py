@@ -72,6 +72,14 @@ is what catches a new one.
 
 THE POPULATION. `git ls-files` — every tracked file — read as UTF-8 with replacement; a file holding
 a NUL byte is binary and skipped (a binary can still carry the text, and that is not seen here).
+One narrowing: a file under `UPSTREAM_BODY_DIR` that is a row of `bin/vendor-pin-check.sh`'s MANIFEST
+and whose header says `DECLARED LOCAL EDITS — none` is read only as far as its `//` header. Its body
+is the published upstream file byte for byte, pinned to the upstream digest, so a reference reaches it
+only through a body edit that reds the pin or an edit to `bin/vendor-pin-check.sh` itself, which review
+reads; upstream's
+own text (Three.js names two eigenvalues with the short form plus a digit) is not this repository's
+writing. The header, which mezzanine writes, is still read. A file there that is not a manifest row,
+or lacks the declaration, is read whole, and so is every file when the manifest cannot be read.
 
 EXEMPTIONS — THIS LIST ONLY SHRINKS. `EXEMPT` names a (path, exact matched text) pair this repository
 cannot clean in place, with the reason and the owner who can. A pair is consumed one hit at a time, so
@@ -177,6 +185,38 @@ FORMS = {
 }
 PRIVATE_FORM = "private-name"
 
+UPSTREAM_BODY_DIR = "server/public/js/vendor/three/"
+UPSTREAM_BODY_DECLARATION = "DECLARED LOCAL EDITS — none"
+
+
+def pinned_paths(root: str) -> frozenset[str]:
+    """The paths `bin/vendor-pin-check.sh`'s MANIFEST pins with the `//` comment leader — the header
+    rule `readable_text` applies — and empty when the manifest cannot be read."""
+    try:
+        with open(os.path.join(root, "bin", "vendor-pin-check.sh"), encoding="utf-8") as fh:
+            src = fh.read()
+    except OSError:
+        return frozenset()
+    block = re.search(r"^MANIFEST=\(\n(.*?)^\)", src, re.MULTILINE | re.DOTALL)
+    if not block:
+        return frozenset()
+    rows = (m.group(1).split("|") for m in re.finditer(r'^\s*"([^"]+)"\s*$', block.group(1), re.MULTILINE))
+    return frozenset(r[0] for r in rows if len(r) == 4 and r[3] == "//")
+
+
+def readable_text(rel: str, text: str, pinned: frozenset[str]) -> str:
+    """The part of a tracked file this scan reads — see THE POPULATION in the module docstring."""
+    if not rel.startswith(UPSTREAM_BODY_DIR) or rel not in pinned:
+        return text
+    header = []
+    for line in text.split("\n"):
+        if line.strip() and not line.lstrip().startswith("//"):
+            break
+        header.append(line)
+    joined = "\n".join(header)
+    return joined if UPSTREAM_BODY_DECLARATION in joined else text
+
+
 # (repo-relative path, exact matched text, reason and owner). See the module docstring: only shrinks.
 EXEMPT = [
     ("CLAUDE.md", _W + " #255",
@@ -202,6 +242,7 @@ def scan(root: str, digests: frozenset[str] = PRIVATE_NAME_DIGESTS) -> tuple[lis
         pending[(path, text)] += 1
     failures: list[str] = []
     read = 0
+    pinned = pinned_paths(root)
     seen: set[str] = set()
     for rel in tracked_files(root):
         full = os.path.join(root, rel)
@@ -212,7 +253,7 @@ def scan(root: str, digests: frozenset[str] = PRIVATE_NAME_DIGESTS) -> tuple[lis
         if b"\0" in data:
             continue
         read += 1
-        text = data.decode("utf-8", "replace")
+        text = readable_text(rel, data.decode("utf-8", "replace"), pinned)
         spans = [(form, m.start(), m.end()) for form, rx in FORMS.items() for m in rx.finditer(text)]
         spans += [(PRIVATE_FORM, a, b) for a, b in private_name_hits(text, digests, seen)]
         for form, start, end in spans:
@@ -416,6 +457,34 @@ def _selftest(scratch: str) -> int:
     d = repo({"docs/x.md": b"nothing here\n"})
     failures, _ = scan(d)
     expect("stale exemption reds", len(failures) == 1 and failures[0].startswith("STALE"),
+           repr(failures))
+
+    # A pinned upstream body is not read; its header is, and so is a file there with no declaration.
+    vend = "server/public/js/vendor/three/x.js"
+    pin = {"bin/vendor-pin-check.sh": ('MANIFEST=(\n  "' + vend + '|three|0|//"\n)\n').encode()}
+    pinned_file = dict(exempt_file, **pin)
+    head = "// header\n//   " + UPSTREAM_BODY_DECLARATION + ".\n"
+    d = repo(dict(pinned_file, **{vend: (head + "let r" + "t1 = 0, r" + "t2 = 1;\n").encode()}))
+    failures, _ = scan(d)
+    expect("a pinned upstream body under the declaration is not read", failures == [], repr(failures))
+    d = repo(dict(exempt_file, **{vend: (head + "let r" + "t1 = 0;\n").encode()}))
+    failures, _ = scan(d)
+    expect("a declared file there that the manifest does not pin is read whole", len(failures) == 1,
+           repr(failures))
+    slash = {"bin/vendor-pin-check.sh": ('MANIFEST=(\n  "' + vend + '|three|0|/"\n)\n').encode()}
+    d = repo(dict(exempt_file, **slash, **{vend: (head + "let r" + "t1 = 0;\n").encode()}))
+    failures, _ = scan(d)
+    expect("a file the manifest pins under another comment leader is read whole", len(failures) == 1,
+           repr(failures))
+    d = repo(dict(pinned_file, **{vend: (head + "// per r" + "t#9020\nlet a = 0;\n").encode()}))
+    failures, _ = scan(d)
+    expect("the header of a declared upstream file is still read", len(failures) == 1, repr(failures))
+    d = repo(dict(pinned_file, **{vend: ("// header\nlet r" + "t1 = 0;\n").encode()}))
+    failures, _ = scan(d)
+    expect("a file there without the declaration is read whole", len(failures) == 1, repr(failures))
+    d = repo(dict(exempt_file, **{"server/public/js/x.js": (head + "let r" + "t1 = 0;\n").encode()}))
+    failures, _ = scan(d)
+    expect("the declaration outside the upstream directory narrows nothing", len(failures) == 1,
            repr(failures))
 
     # Untracked files are outside the population; binaries are skipped.

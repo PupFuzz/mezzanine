@@ -68,6 +68,15 @@ export const LINE_PX = 16;
 /** How far one arrow key pans, in CSS px on the surface. */
 export const PAN_STEP_PX = 48;
 
+/**
+ * A drag's turn, in radians, for `px` CSS px across a stage `width` wide: one turn across the stage's width — the 3-D
+ * views' rate for a drag and for an arrow key's `PAN_STEP_PX` (`building/building-acts.js`, `floor3d/camera-acts.js`;
+ * hoisted at its second caller, card#13033 stage 2).
+ */
+export function turnOf(px, width) {
+    return (px * 2 * Math.PI) / width;
+}
+
 /** The closest the viewer may zoom, in CSS px per scene px — the reference's ceiling of 4. */
 export const ZOOM_CEILING = 4;
 

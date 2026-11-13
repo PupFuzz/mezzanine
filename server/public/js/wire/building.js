@@ -157,6 +157,17 @@ export class Building {
         return this.#layout === null ? null : this.#layout.floors;
     }
 
+    /**
+     * The rooms the client was last told have an authored map — `rooms[]`, then each map answer and `room.map` it
+     * applied, a removal taking the room out. The browser's composition draws such a room on the Unassigned floor when
+     * no floor places it (`lobby/lobby-model.js`'s `floors()`, § 4.6), as the server's does.
+     *
+     * @returns {list<string>}
+     */
+    get authored() {
+        return [...this.#reported].filter(([, version]) => version !== null).map(([installId]) => installId);
+    }
+
     /** The `layout_version` of the layout held, or `null` when none is — part of what a walk's route reads (`floor/scene.js`). */
     get layoutVersion() {
         return this.#layout === null ? null : this.#layout.layout_version;
@@ -221,6 +232,18 @@ export class Building {
      */
     room(installId) {
         return this.#rooms.get(installId) ?? null;
+    }
+
+    /**
+     * § 9 F16's predicate, the one every reader of a room's map asks: a room is MAPLESS when it was never answered or its
+     * last request failed — under a failure `held` is F16's extent, not a map to draw. The floor page draws the room's
+     * desks with no map by it (`floor/floor-screen.js`), and the cab's door view draws the floor's bare room by it
+     * (`floor/door-view.js`), so the two cannot disagree on which rooms have a map.
+     */
+    mapless(installId) {
+        const room = this.room(installId);
+
+        return room === null || room.failure !== null;
     }
 
     /**

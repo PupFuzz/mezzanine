@@ -6,7 +6,7 @@ they are actually doing right now — with a drill-down into their tasks and sub
 
 > Status: **early build.** The Laravel host exists in [`server/`](server/) — an MFA-gated
 > shell with no floor behind it yet, plus the **admin console** at `/admin` (users, agent
-> manage/remove, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
+> manage/remove/move, rooms, and floors + their maps) and `php artisan mezzanine:user:create`, which is what makes a fresh deploy
 > reachable at all — see [The first account](#the-first-account-and-the-way-back-from-a-lockout). The **creature generator** exists in
 > [`resources/characters/`](resources/characters/) — dependency-free ES modules that draw each
 > seat's animal, vegetable or fruit creature, as vector SVG, from its identity and the species the server
@@ -328,9 +328,11 @@ who does not want that property leaves `MAIL_MAILER` unconfigured and the path s
 
 `/admin`, behind the same session + second factor as the dashboard, **for operators only** — an
 observer is refused it with a `403` and the dashboard does not link it (card#9415). It carries **users** (create,
-edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, and the
-**retired seats** record — a removed seat's desk goes from the floor immediately, so the console is
-where *who retired it, when and why* lives, `card#9078`), **floors** (each room's Tiled map: how
+edit, retire), **agents** (read seat state, the `mezzanine:retire` operator act, the *Room* control that
+moves a seat between rooms, and the **retired seats** record — a removed seat's desk goes from the floor
+immediately, so the console is where *who retired it, when and why* lives, `card#9078`), **rooms** (create,
+rename and retire the rooms seats are placed in, `card#13117`), **floors** (name, rename and theme the
+floors of the building and put rooms on them, `card#13117`), **room maps** (each room's Tiled map: how
 many desks it has and where they sit, `card#9085`), the **building layout** (which rooms share a
 floor, what each floor is called, and where each room is drawn on a planned one, `card#9208`) and
 **seat tokens** (issue a seat's reporter token, shown once to copy, and revoke one later,
@@ -374,17 +376,56 @@ with the operator's ruling on card#9415. `server/routes/admin.php` carries the s
 the middleware.
 
 **A seat is added on the Seat tokens page** (`/admin/tokens`, card#12331). It asks for your password
-again before it opens. Type the install id and the seat id — a new one creates the install and the
-seat — and the page shows the seat's reporter token once, with a *Save token file* button that saves it as
+again before it opens. Type the seat id — one name for the whole site (card#13117): a new id creates the
+seat, in no room, and an id that is already live is a **re-issue** for that seat, which the page says
+with the seat's room and last receipt — and the page shows the seat's reporter token once, with a *Save token file* button that saves it as
 the file the seat's installer takes (`fleet-reporter/INSTALL.md` § The token file). Save it right away, because
 only its SHA-256 is kept and the page cannot show it again. The button appears when the site's `APP_URL` starts
 with `https://`, the only kind of site the installer accepts. The seat is on the floor from that moment, as *no data yet*, until its first
-batch (`docs/design/FLOOR.md § 3.4`). A seat that already holds a token gets a second one beside it,
+batch (`docs/design/FLOOR.md § 3.4`) — a new seat under *unassigned*, on a floor of that name, until it
+is placed in a room. A seat that already holds a token gets a second one beside it,
 which is a rotation: revoke the old prefix on the same page once the seat's config holds the new one.
 A revoked token is refused on the seat's next request, and the list keeps who revoked it and when;
 a revocation takes no reason. A retired seat is refused a token; its replacement takes a new seat id. The same act runs from a
-shell as `php artisan mezzanine:ingest-token:issue <install_id> <seat_id>` and
+shell as `php artisan mezzanine:ingest-token:issue <seat_id>` and
 `mezzanine:ingest-token:revoke <prefix>`.
+
+**Rooms are the console's** (`/admin/rooms`, card#13117). A room has a **key**, typed once — lower-case
+letters, digits and hyphens, `unassigned` reserved, and the page names the bounds it refuses — which never
+changes because the room's map history is kept under it, and a **name**, which a rename changes. Creating a room
+may place it on a floor of the current building layout in the same act, as one layout revision, as the Floors
+page places a room (below). A room
+is retired once no live seat is in it and no coordination binding is bound to it; retiring it takes it off
+its floor in the same act, and a layout save or restore that would place it again is refused. A retired
+room is listed as a record and drawn nowhere; its key is never reused.
+
+**A seat is placed in a room from the Agents page**: the *Room* control beside each live seat moves it to a
+live room, or back to *Unassigned*. The move redraws the desk in its new room on every connected floor,
+keeps the seat's character, and records who moved it on the seat's transitions ledger
+(`docs/design/FLEET-STATE.md § 4.10`). The seat's coordination scope moves with it: the page warns, and does
+not refuse, when the seat declares an agent name another seat in the destination room also declares, and
+when it leaves a room a coordination binding is bound to. A seat's reporter needs nothing on a move.
+
+**The building layout's editor refuses a stale save**: the form carries the revision it was opened at, and
+a save made after another save or a console action wrote a newer one is refused, naming both revisions, so
+reload and re-apply the edit.
+
+**A floor's web address is its name** (card#13117): every floor in the layout carries a `name`, and *The Burrow*
+is at `/floor/the-burrow`. A floor's `aliases` keep the addresses it had before a rename, so old links redirect
+to it; a link naming a room reaches the floor that holds the room. A room no floor places is drawn on the
+**Unassigned** floor, last in the directory, until it is placed.
+
+**Floors are named and given rooms on the Floors page** (`/admin/building`, card#13117). A floor is created with a
+name, a theme and its first room, since a floor always holds one; the name field shows the address the name will
+get and, before the save, the floor that holds that address now. A rename keeps the old address as a former
+address that still opens the floor, and a name whose address another floor used to have takes that address over,
+which the page says when it saves; an address another floor answers to now is refused, naming that floor. Each
+former address can be forgotten. Placing a room on a floor takes it off the floor it was on; a floor left with no
+room is removed, and its addresses then open nothing, so a new floor is refused the only room of another floor —
+rename that floor instead and its links keep working. Placing a room on a floor laid out with positions clears that
+floor's positions and hallway, which the revision before still holds; positions and hallways are written in the
+building layout editor. Every act is one revision of the building layout, decided against the layout as it is when
+the save arrives: an act on a floor renamed since the page was opened is refused, naming the address.
 
 **To install the reporter on a seat**, see [Install the reporter on an agent machine](#install-the-reporter-on-an-agent-machine):
 the seat's own Claude Code agent runs it, and the token reaches the seat as a file, never through the agent.
@@ -411,9 +452,9 @@ operator's:
    the seat back to its declaration:
 
 ```sh
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<board user id>   # pin
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --refuse                       # refuse its declaration
-php artisan mezzanine:seat-board-user --seat=<install>/<seat> --clear                        # back to automatic
+php artisan mezzanine:seat-board-user --seat=<seat_id> --board-user=<board user id>   # pin
+php artisan mezzanine:seat-board-user --seat=<seat_id> --refuse                       # refuse its declaration
+php artisan mezzanine:seat-board-user --seat=<seat_id> --clear                        # back to automatic
 ```
 
    A seat's detail counts why a declaring seat is not linked: `board_link_conflict` (another seat holds
@@ -458,15 +499,15 @@ into the sender's floor's birdhouse and out of the recipient's, so each floor sh
 drawn once; an end the floor cannot place on a desk is written to the page's event log with the reason.
 
 Mezzanine receives the posts itself, as GitHub webhook deliveries to `POST /api/ingest/github/{hook}`.
-Each repository gets **one binding**: `install` scope for an install's own coordination repository, or
-`fleet` scope for a repository whose threads span installs. Issuing one is an **operator act at your own
+Each repository gets **one binding**: `room` scope for a room's own coordination repository (`install`
+until card#13117), or `fleet` scope for a repository whose threads span rooms. Issuing one is an **operator act at your own
 terminal**, because the secret must stay out of every transcript and command line:
 
 ```sh
 # on the Mezzanine host, as the deploy user; both output paths outside any git checkout
 php artisan mezzanine:coord-hook:issue <owner>/<repo> --scope=fleet --shared-identity=true \
     --by=<you> --secret-out ~/coord-secret --hook-request-out ~/coord-hook.json
-#   …or --scope=install --install=<install_id> for an install's own repository
+#   …or --scope=room --room=<room key> for a room's own repository
 
 # register the hook with YOUR GitHub credential (admin on that repository)
 gh api repos/<owner>/<repo>/hooks --input ~/coord-hook.json
@@ -511,7 +552,8 @@ draws the wall, the windows, the floor, the scenery and every desk's furniture a
 (`docs/design/FLOOR.md § 10.6`, card#11046), and the house theme is the room the operator chose. The CC0
 tiles that stood in for it from 2026-09-12 (Kenney's Furniture Kit, a bridge chosen explicitly as a
 stand-in) left the tree when it landed; their record stays in git and in `docs/PLAN.md § 0`'s D-07
-appends.
+appends. The 3-D floor (card#13033 stage 2) takes its furniture models from the same kit: its `.glb` files
+(CC0) are under `resources/floor/models/`, each with its row in `docs/ATTRIBUTION.md`.
 
 The characters are **first-party**: original animal, vegetable and fruit creatures drawn by the code in
 `resources/characters/` as vector SVG (`docs/design/FLOOR.md § 10.2`, card#11046), replacing the
@@ -519,8 +561,8 @@ interim pixel people that came with an earlier port of munder-difflin's generato
 tree whole, and its record stays in git and in `docs/PLAN.md § 0`'s D-07 appends. A seat's **body** —
 which creature it is — is allocated by the server when the seat is created, one no other live seat
 holds while there are enough to go round, and kept for the seat's life (`docs/design/FLEET-STATE.md
-§ 6.13`, card#12443); everything else about its appearance is a pure function of `(install_id,
-seat_id)`. Both are the same on every browser.
+§ 6.13`, card#12443); everything else about its appearance is a pure function of its
+`seat_id`. Both are the same on every browser.
 
 Two CI gates enforce the licence claim rather than leaving it to discipline: **every asset
 needs a provenance row** — hash, SPDX from a closed allowlist, and an `origin` of `first-party`

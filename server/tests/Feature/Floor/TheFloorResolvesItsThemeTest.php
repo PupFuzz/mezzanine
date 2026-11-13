@@ -81,7 +81,7 @@ class TheFloorResolvesItsThemeTest extends TestCase
 
     public function test_red_the_unshipped_name_drawn_as_named(): void
     {
-        $dir = $this->mutatedModules(['../floor/scene.js',
+        $dir = $this->mutatedModules(['../floor/floor-theme.js',
             "        : { theme: themes.house, notice: unshippedThemeNotice(floor.theme, floor.name) };",
             "        : { theme: floor.theme, notice: null };"]);
 
@@ -100,7 +100,7 @@ class TheFloorResolvesItsThemeTest extends TestCase
     private function themed(?string $theme, ?string $dir = null): array
     {
         $http = $this->fixture(self::RUN)['http'];
-        $floor = ['floor' => 'aimla', 'label' => null, 'theme' => $theme, 'rooms' => [['install' => 'aimla', 'form' => 'open']]];
+        $floor = ['floor' => 'aimla', 'name' => 'aimla', 'aliases' => [], 'theme' => $theme, 'rooms' => [['install' => 'aimla', 'form' => 'open']]];
 
         $http['/api/building'] = [['status' => 200, 'body' => ['layout' => ['layout_version' => 1, 'floors' => [$floor]], 'rooms' => []]]];
 

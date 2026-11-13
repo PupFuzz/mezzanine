@@ -33,7 +33,7 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
     use DrivesTheLobbyClient;
 
     /**
-     * Three installs — three floors on the empty layout, two on the composed one.
+     * Three installs — three floors when each is placed on one of its own, two on the composed one.
      *
      * @return array<string, mixed> the snapshot body, as served
      */
@@ -65,10 +65,15 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
     public function test_the_directory_lists_the_lobbys_own_floors_and_changes_nothing_in_them(): void
     {
         $body = $this->threeFloors();
-        $probe = $this->probe(['snapshot' => $body]);
+        $layout = LayoutFixture::read(['floors' => [
+            ['name' => 'zeta', 'rooms' => ['zeta' => ['form' => 'open']]],
+            ['name' => 'aimla', 'rooms' => ['aimla' => ['form' => 'open']]],
+            ['name' => 'sola', 'rooms' => ['sola' => ['form' => 'open']]],
+        ]])->floors;
+        $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
         $plates = $probe['plates'];
 
-        // § 4.1 / § 4.6: the empty layout is one floor per install, floor keys ascending.
+        // § 4.1 / § 4.6: one floor per placed install, floor keys ascending.
         $this->assertSame(['aimla', 'sola', 'zeta'], array_column($plates, 'floor'));
 
         // ⛔ AND THEY ARE THE LOBBY'S OWN ROWS, MEMBER FOR MEMBER. § 4.1: the cross-section "is a
@@ -99,18 +104,18 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
      * ⭐ THE OPERATOR'S OWN CASE over a served snapshot: "a floor could hold multiple solo
      * agents … divided into a hallway with separate offices". `sola` and `zeta` are real installs
      * provisioned through the real ingest, composed onto one floor by a layout parsed by the real
-     * reader; `aimla` is left unplaced. Three installs, two floors.
+     * reader; `aimla` is left unplaced, so it is on the Unassigned floor (card#13117). Three installs, two floors.
      */
-    public function test_two_rooms_composed_onto_one_floor_are_one_plate_and_an_unplaced_install_is_its_own(): void
+    public function test_two_rooms_composed_onto_one_floor_are_one_plate_and_an_unplaced_install_is_on_the_unassigned_floor(): void
     {
         $body = $this->threeFloors();
-        $layout = LayoutFixture::read(['floors' => [['rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
+        $layout = LayoutFixture::read(['floors' => [['name' => 'The Solos', 'rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]])->floors;
 
         $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
         $plates = $probe['plates'];
 
-        $this->assertSame(['aimla', 'sola'], array_column($plates, 'floor'));
-        $this->assertSame(['/floor/aimla', '/floor/sola'], array_column($plates, 'href'),
+        $this->assertSame(['the-solos', 'unassigned'], array_column($plates, 'floor'));
+        $this->assertSame(['/floor/the-solos', '/floor/unassigned'], array_column($plates, 'href'),
             'the plate is no longer the link to § 4.4’s floor route, keyed by the FLOOR');
 
         // The composed floor names its rooms, § 2.1 row 6's order, each with its form and each
@@ -120,27 +125,27 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
                 ['install_id' => 'sola', 'form' => 'office', 'reported' => true],
                 ['install_id' => 'zeta', 'form' => 'office', 'reported' => true],
             ],
-            $plates[1]['rooms'],
+            $plates[0]['rooms'],
         );
 
         // § 2.1 row 5: the plate's summary counts the seats of EVERY install its rooms name —
-        // one seat each here, so the composed plate holds two and the lone one holds one. A
-        // summary that counted only the key room's seats would read `held: 1` on both.
-        $this->assertSame(2, $plates[1]['held']);
-        $this->assertSame(1, $plates[0]['held']);
-        $this->assertSame([['install_id' => 'aimla', 'form' => 'open', 'reported' => true]], $plates[0]['rooms']);
+        // one seat each here, so the composed plate holds two and the Unassigned one holds one. A
+        // summary that counted only the first room's seats would read `held: 1` on both.
+        $this->assertSame(2, $plates[0]['held']);
+        $this->assertSame(1, $plates[1]['held']);
+        $this->assertSame([['install_id' => 'aimla', 'form' => 'open', 'reported' => true]], $plates[1]['rooms']);
 
         // ⛔ CONTROL 15 — § 4.6's default rule removed from the client. The unplaced install
         // must then fall off the building, which is the hole the rule exists to refuse; a check
         // that stayed clean here would be measuring the layout and not the rule.
         $holed = $this->mutatedModules([
             'lobby-model.js',
-            '        if (!placed.has(install_id)) {',
-            '        if (false) {',
+            '        .filter((install_id) => !placed.has(install_id))',
+            '        .filter(() => false)',
         ]);
         $hole = $this->probe(['snapshot' => $body, 'layout' => $layout], $holed)['plates'];
 
-        $this->assertSame(['sola'], array_column($hole, 'floor'),
+        $this->assertSame(['the-solos'], array_column($hole, 'floor'),
             'CONTROL 15 did not bite: the default rule was removed from the shipped module and '
             .'the unplaced install still got a floor — so the rule is not what the check measures');
     }
@@ -154,82 +159,60 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
     {
         $this->issueToken('sola', 'sola-solo');
         $body = $this->oneFloor();
-        $layout = LayoutFixture::read(['floors' => [['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]])->floors;
+        $layout = LayoutFixture::read(['floors' => [['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]])->floors;
 
         $plates = $this->probe(['snapshot' => $body, 'layout' => $layout])['plates'];
 
-        $this->assertSame(['aimla', 'sola'], array_column($plates, 'floor'));
-        $this->assertSame([true, false], array_column($plates[1]['rooms'], 'reported'));
-        $this->assertSame(1, $plates[1]['held'], 'an unreported room contributed to the held count');
+        $this->assertSame(['sola', 'unassigned'], array_column($plates, 'floor'));
+        $this->assertSame([true, false], array_column($plates[0]['rooms'], 'reported'));
+        $this->assertSame(1, $plates[0]['held'], 'an unreported room contributed to the held count');
 
         // THE CONTROL: provision `zeta` and the same room on the same floor flips to reported.
         $this->issueToken('zeta', 'zeta-solo');
         $flipped = $this->probe(['snapshot' => $this->oneFloor(), 'layout' => $layout])['plates'];
 
-        $this->assertSame([true, true], array_column($flipped[1]['rooms'], 'reported'));
-        $this->assertSame(2, $flipped[1]['held']);
+        $this->assertSame([true, true], array_column($flipped[0]['rooms'], 'reported'));
+        $this->assertSame(2, $flipped[0]['held']);
     }
 
-    // ── the FLOOR'S LABEL, card#9273 ─────────────────────────────────────────────────────────
+    // ── the FLOOR'S NAME, card#13117 (its LABEL, card#9273, until then) ────────────────────
 
     /**
-     * ⭐ THE OPERATOR'S RULING, DRIVEN END TO END: *"yes, I want to be able to name a floor"*
-     * (§ 4.6). The composed floor reads *the solos* on its plate and on the ride control, and
-     * EVERY key in sight is still the derived one — the link, the cab's stop, the sort. That
-     * pairing is the whole card: a name a viewer reads, and nothing that reads it back.
+     * ⭐ THE OPERATOR'S RULINGS, DRIVEN END TO END: *"yes, I want to be able to name a floor"* (card#9273) and *a floor's
+     * web address is its name* (card#13117). The composed floor reads *The Solos* on its plate and on the ride control,
+     * and its key — the link, the cab's stop, the sort — is the slug of that name.
      */
-    public function test_a_labelled_floor_reads_as_its_label_and_links_by_its_key(): void
+    public function test_a_named_floor_reads_as_its_name_and_links_by_its_slug(): void
     {
         $body = $this->threeFloors();
         $layout = LayoutFixture::read(
-            ['floors' => [['label' => 'the solos', 'rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]],
+            ['floors' => [['name' => 'The Solos', 'rooms' => ['zeta' => ['form' => 'office'], 'sola' => ['form' => 'office']]]]],
         )->floors;
 
-        $probe = $this->probe(['snapshot' => $body, 'layout' => $layout]);
-        $plates = $probe['plates'];
+        $plates = $this->probe(['snapshot' => $body, 'layout' => $layout])['plates'];
 
-        // The unplaced install has no entry to name it, so it reads as its key; the composed one
-        // reads its label. Both are NAMES — neither is a placeholder.
-        $this->assertSame(['aimla', 'sola'], array_column($plates, 'floor'));
-        $this->assertSame([null, 'the solos'], array_column($plates, 'label'));
-        $this->assertSame(['aimla', 'the solos'], array_column($plates, 'name'));
+        $this->assertSame(['the-solos', 'unassigned'], array_column($plates, 'floor'));
+        $this->assertSame(['The Solos', 'Unassigned'], array_column($plates, 'name'));
+        $this->assertSame(['/floor/the-solos', '/floor/unassigned'], array_column($plates, 'href'));
 
-        // ⛔ AND THE LINK IS THE KEY, WHICH IS THE PROPERTY THE LABEL IS SEPARATE FOR. `/floor/the
-        // solos` would be a route to a floor the design does not have, and would move the moment
-        // the operator renamed the floor.
-        $this->assertSame(['/floor/aimla', '/floor/sola'], array_column($plates, 'href'));
-
-        // ⛔ CONTROL 16 — the label dropped in the shipped client, which is how this feature
-        // half-ships: the surface delivers the label, the browser ignores it, and the plate quietly
-        // reads its key. `test_the_browsers_composition_agrees_with_the_fixture_case_by_case`
-        // reds on the same mutation; what is asserted here is what the VIEWER would see.
+        // ⛔ CONTROL 16 — the name dropped in the shipped client, which is how this feature half-ships: the surface
+        // delivers the name, the browser ignores it, and the plate quietly reads its key.
         $dropped = $this->mutatedModules([
             'lobby-model.js',
-            "const label = typeof floor?.label === 'string' ? floor.label : null;",
-            'const label = null;',
+            'const name = String(floor?.name);',
+            'const name = String(floor?.floor);',
         ]);
-        $unnamed = $this->probe(['snapshot' => $body, 'layout' => $layout], $dropped)['plates'];
+        $this->assertSame(['the-solos', 'Unassigned'], array_column($this->probe(['snapshot' => $body, 'layout' => $layout], $dropped)['plates'], 'name'),
+            'CONTROL 16 did not bite: the name read was removed from the shipped module and the plate read it anyway');
 
-        $this->assertSame([null, null], array_column($unnamed, 'label'),
-            'CONTROL 16 did not bite: the label read was removed from the shipped module and the '
-            .'plate carried a label anyway');
-        $this->assertSame(['aimla', 'sola'], array_column($unnamed, 'name'),
-            'CONTROL 16 did not bite: with no label read, the plate still read as one');
-
-        // ⛔ CONTROL 17 — the FALLBACK removed instead: `name` becomes the key and the label is
-        // carried but never read. The plate then reads `sola` on a floor the operator named,
-        // which is the defect that would survive CONTROL 16's mutation being fixed wrongly.
-        $keyed = $this->mutatedModules([
+        // ⛔ CONTROL 17 — the link built from the NAME instead of the key: a route the server never answers for.
+        $named = $this->mutatedModules([
             'lobby-model.js',
-            'name: label ?? floor,',
-            'name: floor,',
+            'href: `/floor/${encodeURIComponent(floor)}`,',
+            'href: `/floor/${encodeURIComponent(name)}`,',
         ]);
-        $keyedPlates = $this->probe(['snapshot' => $body, 'layout' => $layout], $keyed)['plates'];
-
-        $this->assertSame([null, 'the solos'], array_column($keyedPlates, 'label'));
-        $this->assertSame(['aimla', 'sola'], array_column($keyedPlates, 'name'),
-            'CONTROL 17 did not bite: the label-else-key fallback was removed from the shipped '
-            .'module and the plate still read its label');
+        $this->assertSame(['/floor/The%20Solos', '/floor/Unassigned'], array_column($this->probe(['snapshot' => $body, 'layout' => $layout], $named)['plates'], 'href'),
+            'CONTROL 17 did not bite: the link was built from the name and still read as the key');
     }
 
     /**
@@ -261,16 +244,17 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
             ];
             $layout = LayoutFixture::read(['floors' => $case['layout']])->floors;
 
-            $rows = $this->probe(['snapshot' => $snapshot, 'layout' => $layout])['model']['floors'];
+            $rows = $this->probe(['snapshot' => $snapshot, 'layout' => $layout, 'authored' => $case['authored']])['model']['floors'];
 
             // Project the lobby row onto the fixture's shape: the fixture states the composition
             // and nothing about summaries or links.
             $composed = array_map(fn (array $row) => [
                 'floor' => $row['floor'],
-                // ⛔ THE PIN FOR card#9273's LABEL, and it is this projection: a label PHP carries
-                // and the browser drops reds HERE, on the fixture's own cases, rather than being
-                // caught by whichever screen noticed first.
-                'label' => $row['label'],
+                // ⛔ THE PIN FOR card#13117's NAME AND FORMER ADDRESSES, and it is this projection: a member PHP
+                // carries and the browser drops reds HERE, on the fixture's own cases, rather than being caught
+                // by whichever screen noticed first.
+                'name' => $row['name'],
+                'aliases' => $row['aliases'],
                 // card#11046 row 21: the floor's `theme`, the same pin — a theme PHP carries and the
                 // browser drops reds here.
                 'theme' => $row['theme'],
@@ -316,7 +300,7 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
 
         // ⛔ CONTROL 19 — card#9273's shipped defect, in its card#12113 shape: the cab's stops composed without the layout,
         // so the ride and the directory beside it name two buildings.
-        $recomposed = str_replace('plates(this.#body(), this.#building.floors)', 'plates(this.#body(), [])', $js);
+        $recomposed = str_replace('plates(this.#body(), this.#building.floors, null, this.#building.authored)', 'plates(this.#body(), [], null, this.#building.authored)', $js);
 
         $this->assertNotSame($recomposed, $js, "CONTROL 19's anchor is gone — it mutated nothing");
         $this->assertNotSame([], $this->labelMissingFrom($recomposed), 'CONTROL 19 did not bite: the cab composed the building without the layout');
@@ -351,6 +335,11 @@ class TheDirectoryListsTheComposedFloorsTest extends FeedTestCase
         foreach ($m[1] as $args) {
             if (! str_contains($args, 'this.#building.floors')) {
                 $missing[] = "a composition of the floors is not handed the building's layout: ({$args})";
+            }
+
+            // card#13117: and the rooms with an authored map, which the Unassigned floor draws when no floor places them.
+            if (! str_contains($args, 'this.#building.authored')) {
+                $missing[] = "a composition of the floors is not handed the building's authored rooms: ({$args})";
             }
         }
 

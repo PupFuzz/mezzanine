@@ -122,10 +122,10 @@ final class FleetClientPlants
     public const NOPARAM = [
         [
             <<<'JS'
-            `${seatPath(installId, seatId)}?resync_from=${resyncFrom}`
+            `${seatPath(seatId)}?resync_from=${resyncFrom}`
             JS,
             <<<'JS'
-            seatPath(installId, seatId)
+            seatPath(seatId)
             JS,
         ],
     ];
@@ -148,7 +148,7 @@ final class FleetClientPlants
             <<<'JS'
                     if (held === undefined) {
                         this.#push(k, d);
-                        this.#fetchSeat(d.install_id, d.seat_id, null);
+                        this.#fetchSeat(d.seat_id, null);
             
                         return;
                     }
@@ -497,7 +497,7 @@ final class FleetClientPlants
             
                         for (const install of res.body.installs) {
                             for (const row of install.seats) {
-                                this.#seats.set(key(row.install_id, row.seat_id), row);
+                                this.#seats.set(keyOf(row), row);
                             }
                         }
                     }
@@ -575,7 +575,7 @@ final class FleetClientPlants
         [
             <<<'JS'
                     this.#push(k, d);
-                    this.#fetchSeat(d.install_id, d.seat_id, held.state_version);
+                    this.#fetchSeat(d.seat_id, held.state_version);
             JS,
             <<<'JS'
                     this.#push(k, d);
@@ -584,7 +584,7 @@ final class FleetClientPlants
                         return;
                     }
             
-                    this.#fetchSeat(d.install_id, d.seat_id, held.state_version);
+                    this.#fetchSeat(d.seat_id, held.state_version);
             JS,
         ],
     ];

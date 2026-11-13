@@ -7,6 +7,7 @@ use App\Feed\SeatRetired;
 use App\Fold\Clock;
 use App\Fold\SeatFacts;
 use App\Fold\StateRecompute;
+use App\Read\SeatIdentity;
 use App\Support\RetirementAttribution;
 use Illuminate\Support\Facades\DB;
 
@@ -140,41 +141,41 @@ final class SeatRetirement
     /**
      * @throws \InvalidArgumentException if the author or the reason is empty
      */
-    public function retire(string $installId, string $seatId, string $by, string $reason): SeatRetirementOutcome
+    public function retire(string $seatId, string $by, string $reason): SeatRetirementOutcome
     {
         RetirementAttribution::demand($by, $reason);
 
-        $row = DB::table('seats')
-            ->join('installs', 'installs.id', '=', 'seats.install_ref')
-            ->where('installs.install_id', $installId)
-            ->where('seats.seat_id', $seatId)
-            ->first(['seats.id']);
+        // ⭐ BY `seat_id` ALONE, AMONG LIVE SEATS (card#13117): at most one live seat carries an id. With no
+        // live one, an id whose rows are all retired is ALREADY retired — the § 2.1 no-op, answered with the
+        // latest retirement's instant — and an id no row carries is no seat.
+        $row = SeatIdentity::byId($seatId);
 
         if ($row === null) {
-            return SeatRetirementOutcome::noSuchSeat();
+            $retired = SeatIdentity::latest($seatId);
+
+            return $retired === null
+                ? SeatRetirementOutcome::noSuchSeat()
+                : SeatRetirementOutcome::alreadyRetired((string) $retired->retired_at);
         }
 
-        // ⚠ THIS READ RESOLVES `<install>/<seat>` TO A ROW AND ANSWERS NOTHING ELSE. It used to
-        // decide the § 2.1 no-op as well, and that is the defect the third review round measured:
+        // ⚠ THIS READ RESOLVES THE ID TO A ROW AND ANSWERS NOTHING ELSE. It used to decide the § 2.1
+        // no-op for a seat it found as well, and that is the defect the third review round measured:
         // whether the seat is already retired is a question about the state at the moment of the
         // WRITE, so it is asked there — see the UPDATE below. A row that exists here cannot stop
         // existing (§ 6.7 retains `seats` forever and nothing deletes one), so this answer does
-        // not go stale in the only direction it is used.
-        $seatRef = (int) $row->id;
+        // not go stale in the only direction it is used. The room it reads is the one `seat.retired`
+        // names — the room at retirement, `unassigned` for none.
+        $seatRef = (int) $row->seat_ref;
+        $installId = (string) $row->install_id;
         $at = Clock::sql(now());
 
-        // THE SHORT WAIT IS RESTORED ON EVERY EXIT, not pinned and left: the `finally` covers the
-        // retired return, the already-retired return (both return from inside the callback) and a
-        // throw once the attempts are spent, so nothing run later on this connection inherits it.
-        // The value restored is read from this session rather than assumed to be the server's.
-        $wait = (int) DB::selectOne('SELECT @@session.innodb_lock_wait_timeout AS v')->v;
-        DB::statement('SET SESSION innodb_lock_wait_timeout = '.self::LOCK_WAIT_TIMEOUT_S);
-
-        try {
-            return $this->act($seatRef, $installId, $seatId, $at, $by, $reason);
-        } finally {
-            DB::statement('SET SESSION innodb_lock_wait_timeout = '.$wait);
-        }
+        // THE SHORT WAIT IS RESTORED ON EVERY EXIT, not pinned and left — `SeatLock::withOperatorWait()`
+        // covers the retired return, the already-retired return (both return from inside the callback)
+        // and a throw once the attempts are spent, so nothing run later on this connection inherits it.
+        return SeatLock::withOperatorWait(
+            self::LOCK_WAIT_TIMEOUT_S,
+            fn () => $this->act($seatRef, $installId, $seatId, $at, $by, $reason),
+        );
     }
 
     private function act(int $seatRef, string $installId, string $seatId, string $at, string $by, string $reason): SeatRetirementOutcome

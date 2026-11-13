@@ -154,7 +154,7 @@ function hourWhere(keys, within, lead) {
 
 const SEATS = Object.fromEntries(BASE.installs[0].seats.map((s) => [s.seat_id, s]));
 const PM_CALL = SEATS['aimla-pm'].subagents[0].call_id;
-const K = { pm: 'aimla/aimla-pm', i1: 'aimla/aimla-impl-1', i2: 'aimla/aimla-impl-2', rv: 'aimla/aimla-review', pmIntern: `aimla/aimla-pm~${PM_CALL}` };
+const K = { pm: 'aimla-pm', i1: 'aimla-impl-1', i2: 'aimla-impl-2', rv: 'aimla-review', pmIntern: `aimla-pm~${PM_CALL}` };
 
 /**
  * One run: the snapshot `seats` (seat_id → patch over fx-snapshot-4's object), its window anchor (`at_s`, the corrected
@@ -163,6 +163,12 @@ const K = { pm: 'aimla/aimla-pm', i1: 'aimla/aimla-impl-1', i2: 'aimla/aimla-imp
 function run({ note, at_s, seats = {}, deltas = [], beats = null, until_ms, map = '@json:resources/floor/default.tmj', maps = null, extra_http = {}, reduce = false }) {
     const body = clone(BASE);
     body.installs[0].seats = body.installs[0].seats.map((s) => ({ ...s, ...(seats[s.seat_id] ?? {}) }));
+    // The published counts are D2 § 8.2.4's over the population the run seeds (`seats_live` counts `link_state ==
+    // "live"`), so a run that seeds a seat non-live publishes it — never fx-snapshot-4's all-live 4 / 4. The
+    // heartbeats count the same population as the run's deltas leave it at each beat.
+    const seeded = new Map(body.installs[0].seats.map((s) => [s.seat_id, s.link_state]));
+    const counts = (links) => ({ seats_total: links.size, seats_live: [...links.values()].filter((l) => l === 'live').length });
+    body.fleet = { ...body.fleet, ...counts(seeded) };
     const d = at_s * 1000 - T0;
     const shifted = shift(body, d);
     const http = {
@@ -173,15 +179,18 @@ function run({ note, at_s, seats = {}, deltas = [], beats = null, until_ms, map 
         ...extra_http,
     };
     const server = (ms) => iso(at_s * 1000 + ms);
-    const fleet = (ms) => ({ db: 'ok', fold: 'ok', sweep: 'ok', sweep_last_run_at: server(ms - 2000), ingest_last_receipt_at: server(ms), max_fold_lag_ms: 50, seats_total: 4, seats_live: 4 });
     const messages = [];
+    // A beat counts every link_state delta strictly before it: a beat at a delta's own instant sorts ahead of it below.
+    const linkDeltas = deltas.filter((m) => m.t !== 'room.map' && 'link_state' in m.patch).sort((a, b) => a.at_ms - b.at_ms);
+    const linksAt = (ms) => new Map([...seeded, ...linkDeltas.filter((m) => m.at_ms < ms).map((m) => [m.seat, m.patch.link_state])]);
     for (const ms of beats ?? range(500, until_ms, 15000)) {
-        messages.push({ at_ms: ms, envelope: { feed_version: 2, t: 'feed.heartbeat', server_time: server(ms), fleet: fleet(ms) } });
+        const fleet = { db: 'ok', fold: 'ok', sweep: 'ok', sweep_last_run_at: server(ms - 2000), ingest_last_receipt_at: server(ms), max_fold_lag_ms: 50, ...counts(linksAt(ms)) };
+        messages.push({ at_ms: ms, envelope: { feed_version: 3, t: 'feed.heartbeat', server_time: server(ms), fleet } });
     }
     for (const m of deltas) {
         messages.push(m.t === 'room.map'
-            ? { at_ms: m.at_ms, envelope: { feed_version: 2, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
-            : { at_ms: m.at_ms, envelope: { feed_version: 2, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
+            ? { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
+            : { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
     }
     messages.sort((a, b) => a.at_ms - b.at_ms);
     return { note, http, messages, until_ms, floor: clone(tpl.floor), ...(reduce ? { reduce: true } : {}) };
@@ -297,7 +306,7 @@ runs['no-route'] = run({ note: `idle-trip (${i2note}) over \`fixtures/maps/snack
 runs['reload-mid-trip'] = run({ note: `idle-trip (${i2note}), then at 46 s — thirty seconds or more into the dwell — a delta two versions ahead for \`aimla-impl-2\`, whose resync fetch returns the seat still idle: a non-delta entry, so the trip is re-derived from it and continues at its phase.`,
     at_s: i2.s - LEAD, until_ms: 90000,
     deltas: [{ at_ms: 46000, seat: 'aimla-impl-2', v: V2 + 2, patch: { activity_state: 'idle' } }],
-    extra_http: { '/api/fleet/seats/aimla/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, 46000, i2.s - LEAD) }] } });
+    extra_http: { '/api/fleet/seats/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, 46000, i2.s - LEAD) }] } });
 
 runs['reload-mid-trip-viewer'] = run({ note: `reload-mid-trip's SECOND VIEWER: a page whose clock 0 is one loop frame after reload-mid-trip's resync instant (${i2note}, so clock 0 here is ${LEAD + 41}.25 s after reload-mid-trip's clock 0): it enters the trip at its phase.`,
     at_s: i2.s + 41.25, until_ms: 40000, beats: [0, 15000, 30000] });
@@ -317,7 +326,7 @@ runs['map-moves-table'] = run({ note: `idle-trip (${i2note}), then at 35 s, duri
 runs['stilled-mid-trip'] = run({ note: `idle-trip (${i2note}), then at 35 s, during the dwell, a delta two versions ahead for \`aimla-impl-1\` whose resync fetch answers 401: the floor stilled (§ 9 F6), the trip ends and the sleeper is at its desk.`,
     at_s: i2.s - LEAD, until_ms: 60000,
     deltas: [{ at_ms: 35000, seat: 'aimla-impl-1', v: SEATS['aimla-impl-1'].state_version + 2, patch: { activity_state: 'working' } }],
-    extra_http: { '/api/fleet/seats/aimla/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso((i2.s - LEAD) * 1000 + 35000), error: 'token_revoked' } }] } });
+    extra_http: { '/api/fleet/seats/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso((i2.s - LEAD) * 1000 + 35000), error: 'token_revoked' } }] } });
 
 // ─── stage 2: card#12785's chained breaks ───────────────────────────────────────────────────────────────────────
 // card#12785 re-derived every run from stage 1's: each timeline moved by ONE constant (every ISO instant in it), so a
@@ -327,11 +336,11 @@ runs['stilled-mid-trip'] = run({ note: `idle-trip (${i2note}), then at 35 s, dur
 const sc = await import(pathToFileURL(join(ROOT, 'server', 'public', 'js', 'floor', 'scene.js')).href);
 
 function chained(old) {
-    const PM = 'aimla/aimla-pm';
-    const I1 = 'aimla/aimla-impl-1';
-    const I2 = 'aimla/aimla-impl-2';
-    const RV = 'aimla/aimla-review';
-    const N = 'aimla/aimla-pm~01K3TA6G7H8J9K0M1N2P3Q4R5T';
+    const PM = 'aimla-pm';
+    const I1 = 'aimla-impl-1';
+    const I2 = 'aimla-impl-2';
+    const RV = 'aimla-review';
+    const N = 'aimla-pm~01K3TA6G7H8J9K0M1N2P3Q4R5T';
     const ALL = [PM, I1, I2, RV, N];
 
     const breaks = (key, from, to) => sc.snackBreaks(draw, key, from, to);
@@ -493,7 +502,7 @@ function chained(old) {
         msgs.push({
             at_ms: 35000,
             envelope: {
-                feed_version: 2,
+                feed_version: 3,
                 t: 'seat.delta',
                 server_time: iso(E + 35),
                 install_id: 'aimla',
@@ -577,11 +586,11 @@ function chained(old) {
 // through the harness's probe and the instant a later delta lands is derived from the legs it drew — so a re-laid map
 // moves those instants with it, and `--check` says so.
 function restroomRuns() {
-    const PM = 'aimla/aimla-pm';
-    const I1 = 'aimla/aimla-impl-1';
-    const I2 = 'aimla/aimla-impl-2';
-    const RV = 'aimla/aimla-review';
-    const N = `aimla/aimla-pm~${PM_CALL}`;
+    const PM = 'aimla-pm';
+    const I1 = 'aimla-impl-1';
+    const I2 = 'aimla-impl-2';
+    const RV = 'aimla-review';
+    const N = `aimla-pm~${PM_CALL}`;
     const ALL = [PM, I1, I2, RV, N];
     const R = sc.RESTROOM_CHAIN;
     const rBreaks = (k, a, b) => sc.snackBreaks(draw, k, a, b, R);
@@ -695,10 +704,10 @@ function restroomRuns() {
         const at = dwellAt(fx, 20);
         const v1 = SEATS['aimla-impl-1'].state_version;
 
-        r.messages.push({ at_ms: at, envelope: { feed_version: 2, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
+        r.messages.push({ at_ms: at, envelope: { feed_version: 3, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
         r.messages.sort((a, b) => a.at_ms - b.at_ms);
         runs['busy-visit'] = r;
-        notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping every fact; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
+        notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping its facts and drawing no task bubble; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
     }
 
     // ── intern-visit: aimla-pm's intern idle, the seat working. ────────────────────────────────────────────────────────────
@@ -715,6 +724,38 @@ function restroomRuns() {
         deltas: [{ at_ms: cThirty, seat: 'aimla-pm', v: pm.state_version + 1, patch: { subagents: [], subagents_open: 0 } }] });
     notes['intern-stop-inside'] = `intern-visit, then at ${cThirty} ms — thirty seconds into the dwell, the leaf closed over the intern — the element lost (\`subagents_open\` 1 → 0): one A10, walked from the threshold once the leaf has opened. ${clock(C)}.`;
 
+    // ── card#12993: a walker that arrives by the elevator after its break began, or during it, takes no trip for it. ────
+    const NONE = { subagents: [], subagents_open: 0 };
+    const GAIN = 65000;
+    const STOP = GAIN + 41000;
+    const working = { ...pm.subagents[0], activity_state: 'working', started_at: iso(C + (GAIN - 6000) / 1000) };
+
+    runs['intern-arrives-in-its-break'] = make({ at_s: C, until_ms: STOP + 70000, seats: { 'aimla-pm': NONE },
+        deltas: [
+            { at_ms: GAIN, seat: 'aimla-pm', v: pm.state_version + 1, patch: { subagents: [working], subagents_open: 1 } },
+            { at_ms: STOP, seat: 'aimla-pm', v: pm.state_version + 2, patch: { subagents: [], subagents_open: 0 } },
+        ] });
+    notes['intern-arrives-in-its-break'] = `\`aimla-pm\` with no interns, then at ${GAIN} ms its intern \`${PM_CALL}\` gained \`working\` (\`subagents_open\` 0 → 1; \`started_at\` 6 s earlier on the seat's clock), ${(GAIN - 5000) / 1000} s after the intern's restroom break began (${breakNote(N, C + 5)}, 5 s after clock 0) — before the intern existed — and at ${STOP} ms, 41 s after the gain, lost (1 → 0): it arrives, sits, takes no trip for that break, and leaves from its stool by the elevator (the sequence seen live on 2026-11-08). ${clock(C)}.`;
+
+    runs['seat-arrives-in-its-break'] = make({ at_s: A, until_ms: 60000, seats: { 'aimla-impl-2': { render_state: 'stale', link_state: 'stale' } },
+        deltas: [{ at_ms: 2000, seat: 'aimla-impl-2', v: V2 + 1, patch: { render_state: 'idle', link_state: 'live' } }] });
+    notes['seat-arrives-in-its-break'] = `\`aimla-impl-2\` \`stale\` from the snapshot, then at 2000 ms \`stale → idle\`: its A1 walk from the elevator is in flight when its restroom break begins (${breakNote(I2, A + 5)}, 5 s after clock 0), so it takes no trip for that break and sits at its desk. ${clock(A)}.`;
+
+    // A resync for the seat while its intern waits at the elevator: the intern walks on. Clock 0 well clear of every break.
+    {
+        const Q = search(N, (ref) => quiet(ref + 2000 - 600, 720)) + 2000;
+        const resync = seatBody('aimla-pm', pm.state_version + 3, 13000, Q);
+
+        Object.assign(resync, NONE);
+        runs['intern-leave-resync'] = make({ at_s: Q, until_ms: 90000, seats: { 'aimla-pm': { subagents: [{ ...pm.subagents[0], activity_state: 'working' }] } },
+            deltas: [
+                { at_ms: 5000, seat: 'aimla-pm', v: pm.state_version + 1, patch: NONE },
+                { at_ms: 13000, seat: 'aimla-pm', v: pm.state_version + 3, patch: { open_calls: 0 } },
+            ],
+            extra_http: { '/api/fleet/seats/aimla-pm': [{ status: 200, body: resync }] } });
+        notes['intern-leave-resync'] = `\`aimla-pm\`'s intern \`${PM_CALL}\` seated \`working\` from the snapshot, lost at 5000 ms (\`subagents_open\` 1 → 0), and at 13000 ms, while its walk out is in flight, a delta two versions ahead for \`aimla-pm\` whose resync fetch returns the seat without it: a non-delta entry for the seat, which leaves the intern walking out to the elevator. No break of either chain falls near. ${clock(Q)}.`;
+    }
+
     // ── the interrupts over idle-visit. ─────────────────────────────────────────────────────────────────────────────────
     const blocked = (at) => ({ at_ms: at, seat: 'aimla-impl-2', v: V2 + 1, patch: { render_state: 'blocked', activity_state: 'blocked', blocked_since: iso(A + at / 1000) } });
 
@@ -726,7 +767,7 @@ function restroomRuns() {
     notes['leave-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, \`idle → stale\`: the leaf opens and one A2 walks from the threshold.`;
     runs['reload-inside'] = make({ at_s: A, until_ms: aUntil,
         deltas: [{ at_ms: thirtyIn, seat: 'aimla-impl-2', v: V2 + 2, patch: { activity_state: 'idle' } }],
-        extra_http: { '/api/fleet/seats/aimla/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, thirtyIn, A) }] } });
+        extra_http: { '/api/fleet/seats/aimla-impl-2': [{ status: 200, body: seatBody('aimla-impl-2', V2 + 2, thirtyIn, A) }] } });
     notes['reload-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms — thirty seconds into the dwell — a delta two versions ahead for \`aimla-impl-2\`, whose resync fetch returns the seat still idle: a non-delta entry, so the visit is re-derived from it and continues at its phase, inside.`;
     runs['reload-inside-viewer'] = make({ at_s: A + thirtyIn / 1000 + 0.25, until_ms: aUntil - thirtyIn, beats: range(0, aUntil - thirtyIn, 15000) });
     notes['reload-inside-viewer'] = `reload-inside's SECOND VIEWER: a page whose clock 0 is one loop frame after reload-inside's resync instant (${aNote}, so clock 0 here is ${thirtyIn / 1000 + 0.25} s after idle-visit's): its first render draws the leaf closed and the field occupied, no walker on the floor.`;
@@ -745,7 +786,7 @@ function restroomRuns() {
     notes['map-removes-door'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, a \`room.map\` revision — \`fixtures/maps/restroom-none.json\` as map version 5: the lattice key moved, so the visit ends, the sleeper is at its desk and the door is gone.`;
     runs['stilled-inside'] = make({ at_s: A, until_ms: thirtyIn + 20000,
         deltas: [{ at_ms: thirtyIn, seat: 'aimla-impl-1', v: SEATS['aimla-impl-1'].state_version + 2, patch: { activity_state: 'working' } }],
-        extra_http: { '/api/fleet/seats/aimla/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso(A + thirtyIn / 1000), error: 'token_revoked' } }] } });
+        extra_http: { '/api/fleet/seats/aimla-impl-1': [{ status: 401, body: { api_version: 1, server_time: iso(A + thirtyIn / 1000), error: 'token_revoked' } }] } });
     notes['stilled-inside'] = `idle-visit (${aNote}), then at ${thirtyIn} ms, inside, a delta two versions ahead for \`aimla-impl-1\` whose resync fetch answers 401: the floor stilled (§ 9 F6), the visit ends, the door closed and vacant, the sleeper at its desk.`;
 
     // ── two-at-the-door: impl-2 at + 5, impl-1 2–10 s after it, both idle. ─────────────────────────────────────────────────
@@ -810,7 +851,7 @@ function restroomRuns() {
         }
 
         return false;
-    }, 19900, 80000);
+    }, 19900, 400000);
     {
         const ref = q.s - 5;
         const seats = { 'aimla-impl-1': IDLE_SEAT, 'aimla-review': { ...IDLE_SEAT, blocked_since: null } };
@@ -835,7 +876,7 @@ function restroomRuns() {
             p = { a: a[0].start_s, c: c[0].start_s };
 
             return true;
-        }, 19900, 80000);
+        }, 19900, 400000);
 
         runs['restroom-past-the-last-spot'] = make({ at_s: ref, until_ms: 5000 + (sc.restroomBreak(draw, I2, ref + 5).dwell_s + 60) * 1000,
             seats: { 'aimla-impl-1': IDLE_SEAT, 'aimla-review': { ...IDLE_SEAT, blocked_since: null } }, map: `@json:${MAPS}/restroom-one-spot.json` });
@@ -981,7 +1022,7 @@ function restroomRuns() {
 
     const ORDER = ['idle-visit', 'busy-visit', 'blocked-visit', 'intern-visit', 'two-at-the-door', 'three-at-the-door', 'queue-of-three', 'restroom-past-the-last-spot',
         'lane-two-at-the-door', 'lane-straight-in',
-        'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'snack-then-restroom', 'restroom-then-snack',
+        'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'intern-arrives-in-its-break', 'seat-arrives-in-its-break', 'intern-leave-resync', 'snack-then-restroom', 'restroom-then-snack',
         'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
         'map-removes-door', 'stilled-inside', ...lateNames];
 

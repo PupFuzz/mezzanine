@@ -22,7 +22,7 @@ use Tests\TestCase;
  * `aimla`'s `desks` layer moved into a group, so the room's desks — key, slot and pixel — must be
  * exactly `plan_default`'s. `beta`, left at the top level, is the same run's control.
  *
- * ⛔ THE TILES WALK THE SAME TREE. `floor/scene.js`'s `mapTiles()` and `mapDesks()` both read the
+ * ⛔ THE TILES WALK THE SAME TREE. `floor/map-tiles.js`'s `mapTiles()` and `mapDesks()` both read the
  * layer tree through `floor/floor-layout.js`'s `mapLayers()`, so the last test holds the tile half
  * of that walk — a group's offset summed, its opacity multiplied, a hidden group's tiles left out —
  * over a map the server's reader also accepts.

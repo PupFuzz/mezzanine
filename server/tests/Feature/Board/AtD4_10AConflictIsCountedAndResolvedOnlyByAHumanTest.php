@@ -40,13 +40,13 @@ class AtD4_10AConflictIsCountedAndResolvedOnlyByAHumanTest extends BoardTaskTest
         $this->assertSame(1, $this->seatCounter(LinkPass::CONFLICT, $refB));
         $this->assertSame(0, $this->seatCounter(LinkPass::CONFLICT), 'the holder was counted');
         Log::shouldHaveReceived('warning')->withArgs(fn ($m) => is_string($m)
-            && $m === 'board link conflict: user 14 declared by aimla/aimla-impl, held by aimla/aimla-pm')->once();
+            && $m === 'board link conflict: user 14 declared by aimla-impl, held by aimla-pm')->once();
 
         $this->assertSame(0, $this->poll()[0]);
         $this->assertSame(2, $this->seatCounter(LinkPass::CONFLICT, $refB), 'the conflict is not counted on every poll');
 
         // Retire A: the retirement act clears its mapping, row and source; the next poll maps B.
-        $this->artisan('mezzanine:retire', ['--seat' => self::INSTALL.'/'.self::SEAT, '--by' => 'suite', '--reason' => 'replaced'])
+        $this->artisan('mezzanine:retire', ['--seat' => self::SEAT, '--by' => 'suite', '--reason' => 'replaced'])
             ->assertSuccessful();
         $this->assertSame([null, null], $this->mapping());
         $this->assertSame(0, $this->poll()[0]);
@@ -71,7 +71,7 @@ class AtD4_10AConflictIsCountedAndResolvedOnlyByAHumanTest extends BoardTaskTest
         $this->assertSame([1, 1], [$this->seatCounter(LinkPass::CONFLICT, $refC), $this->seatCounter(LinkPass::CONFLICT, $refD)]);
         Log::shouldHaveReceived('warning')->withArgs(fn ($m) => is_string($m) && str_starts_with($m, 'board link conflict: user 16 declared by '))->twice();
 
-        $this->artisan('mezzanine:seat-board-user', ['--seat' => self::INSTALL.'/aimla-impl-d', '--refuse' => true])->assertSuccessful();
+        $this->artisan('mezzanine:seat-board-user', ['--seat' => 'aimla-impl-d', '--refuse' => true])->assertSuccessful();
         $this->assertSame(0, $this->poll()[0]);
         $this->assertSame([16, 'declared'], $this->mapping($refC), 'D left the contention set by the operator\'s word, and C did not map');
         $this->assertSame([null, 'refused'], $this->mapping($refD));

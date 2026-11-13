@@ -116,10 +116,11 @@ class TheDeskIsReLaidTest extends TestCase
     public function test_red_a_rect_that_is_not_the_tables(): void
     {
         foreach ([
-            'the frame 4 px further left' => ['const frame = { x: desk.x + desk.w - 96, y: slab - 46, w: 96, h: 46 };', 'const frame = { x: desk.x + desk.w - 100, y: slab - 46, w: 96, h: 46 };', 'monitor-frame'],
-            'the creature centred again' => ['const sitter = desk.x + desk.w / 3 - cw / 2;', 'const sitter = mid - cw / 2;', 'character'],
-        ] as $what => [$from, $to, $kind]) {
-            $defects = $this->tableDefects($this->sceneOf(self::SHIPPED, $this->mutatedModules(['../floor/desk-layout.js', $from, $to])));
+            // The frame's rect is `desk-geometry.js`'s `monitorFrame()`, which `deskRects()` and the cab's door view both read.
+            'the frame 4 px further left' => ['../floor/desk-geometry.js', 'return { x: slab.x + slab.w - 96, y: slab.y - 46, w: 96, h: 46 };', 'return { x: slab.x + slab.w - 100, y: slab.y - 46, w: 96, h: 46 };', 'monitor-frame'],
+            'the creature centred again' => ['../floor/desk-layout.js', 'const sitter = desk.x + desk.w / 3 - cw / 2;', 'const sitter = mid - cw / 2;', 'character'],
+        ] as $what => [$file, $from, $to, $kind]) {
+            $defects = $this->tableDefects($this->sceneOf(self::SHIPPED, $this->mutatedModules([$file, $from, $to])));
 
             $this->assertNotSame([], array_filter($defects, fn (string $d): bool => str_contains($d, "`{$kind}`")), "RED ({$what}) did not fail the table leg on `{$kind}`");
         }
@@ -180,9 +181,9 @@ class TheDeskIsReLaidTest extends TestCase
         foreach ([
             "the bubble back in the box's top band" => ['../floor/scene.js', '            anchor: { x: centre, y: desk.bubble_bottom },', '            anchor: { x: centre, y: desk.box.y + 2 * LINE + 2 * BUBBLE_PAD },', 'not set on its character'],
             // 22 px, the trail's least reach (`TRAIL_REACH`), written as its figure so the plant reads alone
-            'the trail at its least reach whatever the bubble' => ['../floor/scene.js', '            trail: want.trail ? trailCircles(foot.x, foot.y, rect.y + rect.h) : Object.freeze([]),', '            trail: want.trail ? trailCircles(foot.x, foot.y, foot.y - 22) : Object.freeze([]),', 'does not reach the bubble'],
+            'the trail at its least reach whatever the bubble' => ['../floor/scene.js', '            trail: trailCircles(foot.x, foot.y, rect.y + rect.h),', '            trail: trailCircles(foot.x, foot.y, foot.y - 22),', 'does not reach the bubble'],
             // the seat's ruling of the same day: the trail starts at the character's drawn head, not its frame's top
-            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return { crest: ctx.crest(installId, model.seat_id, at), clear: ctx.headClear(installId, model.seat_id, at) };', '        return { crest: 0, clear: ctx.headClear(installId, model.seat_id, at) };', 'does not reach the head'],
+            'the trail started at the frame\'s top' => ['../floor/scene.js', '        return { crest: ctx.crest(model.seat_id, at), clear: ctx.headClear(model.seat_id, at) };', '        return { crest: 0, clear: ctx.headClear(model.seat_id, at) };', 'does not reach the head'],
             // card#12446 (the operator's *"The bubble can also be lowered"*): a bubble left where card#12444 set it, at the
             // character's frame whatever its face, is not set as low as the face allows
             'the bubble not lowered to the face' => ['../floor/desk-layout.js', '    const bottom = head === null', '    const bottom = head === null || true', 'not set on its character'],

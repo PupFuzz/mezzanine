@@ -67,7 +67,7 @@ class ALayoutActFiresNoAnimationTest extends TestCase
         foreach ($rows as $row) {
             $this->assertSame('held', $row['class'], 'a layout act fired an `edge` row');
             $this->assertSame('entered', $row['phase'], 'a layout act ended a held render');
-            $this->assertContains("{$row['install_id']}/{$row['seat_id']}", $snapshotSeats);
+            $this->assertContains($row['seat_id'], $snapshotSeats);
         }
 
         // (c) AND THE DESK IS UNTOUCHED: § 2.5 says every seat keeps its state across a map apply.

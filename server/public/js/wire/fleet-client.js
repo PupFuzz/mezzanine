@@ -57,32 +57,32 @@
 import { request } from './building.js';
 import { clockOffsetMs } from './duration.js';
 import { DiscrepancyBudget } from './discrepancy-budget.js';
+import { keyOf } from './seat-key.js';
 
 /** § 2.2 step 3 / D2 § 8.2's full snapshot — the connect read, and the discovery read. */
 const SNAPSHOT_PATH = '/api/fleet/snapshot';
 
-/** D2 § 8.2.3's per-seat read. Each segment is encoded, never trusted — `building.js` does the same. */
-function seatPath(installId, seatId) {
-    return `/api/fleet/seats/${encodeURIComponent(installId)}/${encodeURIComponent(seatId)}`;
+/**
+ * D2 § 8.2.3's per-seat read, by the seat's id alone since card#13117 (a seat is known by its `seat_id`
+ * across the whole site; the client's key keeps the pair until the slice that re-keys it). The segment is
+ * encoded, never trusted — `building.js` does the same.
+ */
+function seatPath(seatId) {
+    return `/api/fleet/seats/${encodeURIComponent(seatId)}`;
 }
 
 /**
  * D2 § 8.2's recent-activity window for one seat — the drill-down's second request (FLOOR § 4.3):
  * `limit` 50 on open, and the SERVER's own `next_before` cursor for the page after it.
  */
-function timelinePath(installId, seatId, before) {
-    const base = `${seatPath(installId, seatId)}/timeline?limit=${TIMELINE_LIMIT}`;
+function timelinePath(seatId, before) {
+    const base = `${seatPath(seatId)}/timeline?limit=${TIMELINE_LIMIT}`;
 
     return before === null ? base : `${base}&before=${encodeURIComponent(before)}`;
 }
 
 /** § 4.3: "`limit=50`", and "`limit` never above 200" — 50 is the only figure this client sends. */
 export const TIMELINE_LIMIT = 50;
-
-/** The one key shape for the held map, the buffers, the streaks and the record's lines. */
-function key(installId, seatId) {
-    return `${installId}/${seatId}`;
-}
 
 /** § 5.5: the record is "newest first, capped at 200 lines, text only". The cap is the record's own. */
 const LOG_CAP = 200;
@@ -110,7 +110,7 @@ const MISSING_AFTER = 2;
  * FEED_VERSION` — and `Tests\Feature\Floor\TheStreamRecoveryIsTheDocumentsTest` reds if the two
  * disagree. An envelope carrying any other value is § 9 F8.
  */
-export const FEED_VERSION = 2;
+export const FEED_VERSION = 3;
 
 /** § 9 F1: "no message of any kind for 45 s" — D2 § 8.3's three heartbeat intervals. */
 export const SILENCE_MS = 45000;
@@ -205,7 +205,7 @@ export class FleetClient {
 
     #es = null;
 
-    /** `"install_id/seat_id"` → the held seat object (D2 § 8.2.1's shape, no REST envelope). */
+    /** `keyOf()` key (the `seat_id`) → the held seat object (D2 § 8.2.1's shape, no REST envelope). */
     #seats = new Map();
 
     /** key → deltas held back while this seat cannot be applied to yet. */
@@ -461,13 +461,13 @@ export class FleetClient {
      * the held seat exactly as § 2.2 says every seat object does — one map, one rule. It admits
      * nothing: a panel is opened on a desk the floor draws, and membership is § 2.3's to change.
      */
-    async readSeatDetail(installId, seatId) {
+    async readSeatDetail(seatId) {
         if (this.#terminal()) {
             return null;
         }
 
-        const k = key(installId, seatId);
-        const res = await this.#get(seatPath(installId, seatId));
+        const k = keyOf({ seat_id: seatId });
+        const res = await this.#get(seatPath(seatId));
 
         if (!failed(res) && this.#seats.has(k)) {
             this.#offerSeatBody(res.body);
@@ -483,12 +483,12 @@ export class FleetClient {
      * it (D2 § 8.2's `next_before`, the server's own cursor). Through `#get` for `readSeatDetail`'s
      * reasons; it touches no held seat.
      */
-    async readTimeline(installId, seatId, before = null) {
+    async readTimeline(seatId, before = null) {
         if (this.#terminal()) {
             return null;
         }
 
-        return this.#get(timelinePath(installId, seatId, before));
+        return this.#get(timelinePath(seatId, before));
     }
 
     /** The held seat map — a COPY, so a caller cannot mutate what the protocol holds. */
@@ -1259,7 +1259,7 @@ export class FleetClient {
 
         for (const install of body.installs) {
             for (const row of install.seats) {
-                listed.add(key(row.install_id, row.seat_id));
+                listed.add(keyOf(row));
                 this.#replaceIfHigher(row, 'snapshot', body.server_time);
                 this.#stampIfHeld(row, body.server_time);
             }
@@ -1306,7 +1306,7 @@ export class FleetClient {
      * answered with an insert fetch.
      */
     #retire(envelope) {
-        const k = key(envelope.install_id, envelope.seat_id);
+        const k = keyOf(envelope);
         const fields = {
             install_id: envelope.install_id,
             seat_id: envelope.seat_id,
@@ -1520,7 +1520,7 @@ export class FleetClient {
             return;
         }
 
-        const k = key(d.install_id, d.seat_id);
+        const k = keyOf(d);
 
         // § 3.5: a retired seat's desk is gone for good, and a delta about it — the other of the two
         // announcements, or a straggler — changes nothing. Answering it as a seat the client does not
@@ -1541,7 +1541,7 @@ export class FleetClient {
 
         if (held === undefined) {
             this.#push(k, d);
-            this.#fetchSeat(d.install_id, d.seat_id, null);
+            this.#fetchSeat(d.seat_id, null);
 
             return;
         }
@@ -1559,7 +1559,7 @@ export class FleetClient {
         }
 
         this.#push(k, d);
-        this.#fetchSeat(d.install_id, d.seat_id, held.state_version);
+        this.#fetchSeat(d.seat_id, held.state_version);
     }
 
     /**
@@ -1611,14 +1611,14 @@ export class FleetClient {
      * the envelope, not the seat, and a held object carrying them would put `server_time` one
      * shallow merge away from being treated as a seat member by every later reader.
      */
-    async #fetchSeat(installId, seatId, resyncFrom) {
-        const k = key(installId, seatId);
+    async #fetchSeat(seatId, resyncFrom) {
+        const k = keyOf({ seat_id: seatId });
 
         this.#pendingSeats.add(k);
 
         const path = resyncFrom === null
-            ? seatPath(installId, seatId)
-            : `${seatPath(installId, seatId)}?resync_from=${resyncFrom}`;
+            ? seatPath(seatId)
+            : `${seatPath(seatId)}?resync_from=${resyncFrom}`;
 
         if (resyncFrom !== null) {
             this.#resyncs++;
@@ -1730,7 +1730,7 @@ export class FleetClient {
      * office's nouns (§ 4.6: a room is an install) and nothing else.
      */
     #replaceIfHigher(row, source, serverTime) {
-        const k = key(row.install_id, row.seat_id);
+        const k = keyOf(row);
         const held = this.#seats.get(k);
 
         // § 3.5: a retired seat is never re-admitted — not by a seat fetch that was in flight when
@@ -1801,7 +1801,7 @@ export class FleetClient {
      * held values to a response they did not come from.
      */
     #stampIfHeld(row, serverTime) {
-        const k = key(row.install_id, row.seat_id);
+        const k = keyOf(row);
 
         if (this.#seats.get(k) === row) {
             this.#stamps.set(k, {});

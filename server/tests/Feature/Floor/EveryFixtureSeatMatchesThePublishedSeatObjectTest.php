@@ -519,7 +519,8 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
      * ⛔ SELECTED BY THE ENDPOINT, NOT ONLY BY A `seat_id` MEMBER. D2 § 8.2's timeline response for one
      * seat carries `install_id` and `seat_id` too (card#7342 step 10's drill-down runs serve it), and it
      * is a list of events rather than a seat object — held to § 8.2.1 it would be read as a seat missing
-     * every member. `GET /api/fleet/seats/{install_id}/{seat_id}` is the one endpoint whose body is a seat.
+     * every member. `GET /api/fleet/seats/{seat_id}` (the client's read since card#13117) is the one endpoint
+     * whose body is a seat.
      *
      * @return list<array{0: string, 1: array<string, mixed>}>
      */
@@ -531,7 +532,7 @@ class EveryFixtureSeatMatchesThePublishedSeatObjectTest extends TestCase
             foreach ($body['runs'] as $run => $scenario) {
                 foreach ($scenario['http'] ?? [] as $path => $responses) {
                     foreach ($responses as $n => $response) {
-                        if (isset($response['body']['seat_id']) && preg_match('#^/api/fleet/seats/[^/]+/[^/]+$#', $path) === 1) {
+                        if (isset($response['body']['seat_id']) && preg_match('#^/api/fleet/seats/[^/]+$#', $path) === 1) {
                             $bodies[] = ["{$file} {$run} {$path}#{$n}", $response['body']];
                         }
                     }

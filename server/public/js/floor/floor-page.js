@@ -1,0 +1,499 @@
+/**
+ * THE FLOOR PAGE's WIRING, ITS RENDERER A PARAMETER — `docs/design/FLOOR.md` Appendix B row 8, § 4.4's `/floor/{floor}`;
+ * hoisted out of `floor/main.js` (`docs/design/plan-13033-stage2-3d-floor.md` § 4, M6 and round 3's M2; card#13033 stage 2
+ * slice 2) so the 2-D page and the 3-D floor (`/floor/{floor}/3d`, slice 4) are one page over two renderers, never two
+ * copies of this wiring. `floor/main.js` calls it with `floor/painter-renderer.js` and `route: '2d'`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ * ⛔ THE RENDERER CONTRACT. `renderer` answers two things, and the page touches no camera module itself:
+ *  · `camera(screen)`, called at once — `{ show(camera), current(camera), fit(), resize(surface), gestures(stage),
+ *    keys: { acts, shortcuts? } }`: what the page shows a camera with, the camera a paint draws at (`current()`, a
+ *    glide's step where one is in flight), *Fit the floor*, what the drawing's `ResizeObserver` calls, the pointer's
+ *    wiring on the stage, and the acts `wire/camera-keys.js` is handed with the shortcuts `offerKeys()` names (its own
+ *    default where a renderer gives none). Bound before the art answers because the page wires its surface, gestures,
+ *    keys and *Fit* at load, as it did inline: a resize before the art answers still reaches the screen.
+ *  · `create(art, hooks)`, called once the art modules have answered (`loadArt()`) — the drawing, `{ paint(scene,
+ *    camera), refresh(view), paintCab(host, ride), cabTheme(dialog) }`, over `hooks` `{ failed, select, link, ride, clock }`
+ *    — `link(seatId)` the desk's drill-down URL on this route, for a renderer that writes its desks as links.
+ * `route` is `'2d'` or `'3d'`: the URL shape the page reads and writes (§ 4.4; the 3-D floor's segment follows the
+ * floor's, the seat's follows it).
+ *
+ * ⛔ THIS FILE DECIDES NOTHING. Every fact on the page is `floor/floor-screen.js`'s frame — the floor, its desks, the
+ * room render, the coordination line, the status strip (`floor/status-strip.js`) and the failure renders
+ * (`wire/failure-render.js`) — and every one of those is exercised headlessly under `node`. What IS checked is that every
+ * element id it addresses exists on `resources/views/floor.blade.php` and the reverse (`FloorPageWiringTest`). If a rule
+ * appears below that is not in one of those modules, it is in the wrong file.
+ *
+ * ⛔ THE CLIENT PROTOCOL IS CONSTRUCTED WITH ITS SCHEDULER, AND ONLY WITH IT (Appendix B row 8's ⛔) — by
+ * `wire/live-page.js`, which the lobby shares since card#7341 step 9. A real `EventSource` held without the stream
+ * recovery inherits the browser's own reconnect, which re-runs none of § 2.2's steps 1–5; the wiring test reds if this
+ * page stops constructing it there.
+ *
+ * ⛔ THE BOUND A PAGE NEEDS AND THE HARNESS MUST NOT HAVE IS APPLIED FOR IT: the animation log is `wire/live-page.js`'s,
+ * constructed with § 12's retention (`ANIMATION_LOG_RETENTION`, § 14 item 26). The floor screen's `post_ref` memory is
+ * bounded by § 12's *Remembered coordination post identities* inside the screen itself (`coord/post-memory.js`,
+ * card#12239), so a harness run carries it too.
+ *
+ * ⛔ A RENDER FOLLOWS EVERY THING THAT CAN CHANGE WHAT THE PROTOCOL HOLDS, coalesced into one `screen.render()` at a time
+ * (`wire/live-page.js` says why). The 1 s age tick re-draws the desks' ages from the last frame and drains nothing (§ 2.5).
+ *
+ * ⛔ THE ROOM IS DRAWN BY THE RENDERER FROM THE FRAME's `scene` (Appendix B row 14). This file imports the art modules
+ * (`loadArt()`, the asset route's URLs), hands the screen the scene's inputs once they answer, and paints each frame's
+ * scene; the renderer reports every asset it could not draw back to the screen, which is § 9 F14's placeholder and the
+ * strip's `art` line on the next render. Below the drawing each desk is also its row of the LIST VIEW (Appendix B row
+ * 15, slice A), the desks as text beside the drawing at every size: `desk/desk-list.js`'s `deskListRow()` decides every
+ * line from the desk model and this file paints them.
+ *
+ * ⛔ THE CAMERA IS THE RENDERER's (Appendix B row 15, § 4.5); this file supplies the drawing surface's size — the drawing
+ * element's own box, re-read whenever it changes — wires the keyboard and the zoom buttons (through
+ * `wire/camera-keys.js`, which the lobby shares) to the renderer's acts and *Fit the floor* to its fit, and offers them
+ * from each frame's camera. The drawing is shown at every window size — there is no minimum and no substitute view
+ * (§ 4.5, the operator's ruling of 2026-10-01 on card#7341): a window smaller than the room is one the viewer pans and
+ * zooms across, and the desk list — `paintDesks()`, over `deskListRow()` — is painted below it at every size too. The
+ * whole-building control is a link to `/` (§ 4.4's lobby route), never a second scale drawn here.
+ *
+ * ⛔ THE DRILL-DOWN IS OPENED FROM A DESK AND CLOSED TO THE FLOOR WITHOUT LEAVING THE PAGE (§ 4, § 4.3; Appendix B row
+ * 10). Selecting a desk pushes the seat's URL (§ 4.4) into the browser's history and asks the screen to open the panel;
+ * the URL is the screen's to decide (`frame.seat`) and this file's to perform, as the floor segment's redirect already
+ * is — a panel a retirement closed takes the seat segment off the URL with it. The panel's strings are
+ * `drilldown/main.js`'s slots over the model the frame carries; nothing is fetched here, and no second stream is opened.
+ *
+ * ⛔ THE ELEVATOR RIDES, AND THE PAGE PERFORMS THE RIDE THE SCREEN DECIDES (§ 4.5, card#11795). The drawn elevator is the
+ * renderer's control, and its press is the screen's `ride()`; everything after it — each phase's entry, the ride's one
+ * timer, the cab dialog (`#floor-cab`, `partials/ride-cab.blade.php` under the `floor` prefix), a stop's press, the
+ * cab's Escape, and the departing page's one `pageswap` rule — is `wire/ride-page.js`'s, which the lobby wires with its
+ * own dialog (card#12113: one ride, one cab). This file hands it the screen, its paint, the renderer's `paintCab()`, the
+ * drawn elevator and the last painted frame's ride, and calls its `perform()` last in every paint; a press's fetches for
+ * the floor behind the cab's doors (card#12987) each ask for a render as they land, so the cab repaints on the floor's
+ * arrival. The arrival is the layout head script's (`wire/ride-arrival.js` says how the halves meet): the screen is told
+ * before its first render, and the hold ends on the first frame that drew a scene — `revealed()` is called there and
+ * nowhere else.
+ */
+
+import { livePage } from '../wire/live-page.js';
+import { startAgeTicker } from '../wire/age-readout.js';
+import { startFloorScreen } from './floor-screen.js';
+import { renderCompose, renderDrillDown } from '../drilldown/main.js';
+import { ComposeBox } from '../drilldown/compose-box.js';
+import { loadArt, measurer } from './painter.js';
+import { artInputs } from './floor-compose.js';
+import { cameraKeys, offerKeys } from '../wire/camera-keys.js';
+import { deskListRow } from '../desk/desk-list.js';
+import { arrival, revealed } from '../wire/ride-arrival.js';
+import { ridePage } from '../wire/ride-page.js';
+import { keyOf } from '../wire/seat-key.js';
+
+/** The path segments each route kind puts between the floor's segment and the seat's (§ 4.4). */
+const ROUTE_SEGMENTS = Object.freeze({ '2d': Object.freeze([]), '3d': Object.freeze(['3d']) });
+
+/**
+ * Start the floor page over `document` and `window`.
+ *
+ * @param {Document} document
+ * @param {Window} window
+ * @param {{renderer: {camera: function(object): object, create: function(object, object): object}, route: '2d'|'3d'}} options
+ */
+export function startFloorPage(document, window, { renderer, route }) {
+    const kind = ROUTE_SEGMENTS[route];
+
+    /** A missing element throws rather than being guarded past — the lobby's rule, for its reason. */
+    function el(id) {
+        const node = document.getElementById(id);
+
+        if (node === null) {
+            throw new Error(`the floor page has no #${id}`);
+        }
+
+        return node;
+    }
+
+    /** Text into an element, hidden when there is none. */
+    function say(id, text) {
+        const node = el(id);
+
+        node.textContent = text ?? '';
+        node.hidden = text === null || text === undefined || text === '';
+    }
+
+    /** One `<li>` per line, each line text a model has already decided. */
+    function items(lines) {
+        return lines.map((line) => {
+            const item = document.createElement('li');
+
+            item.textContent = line;
+
+            return item;
+        });
+    }
+
+    /** A list element rebuilt from lines the model has already decided the text of. */
+    function list(id, lines) {
+        const node = el(id);
+
+        node.replaceChildren(...items(lines));
+        node.hidden = lines.length === 0;
+    }
+
+    const root = el('floor');
+
+    /** The document element: the layout head script's record of a ride arrival, and the hold it ended (§ 4.5). */
+    const html = document.documentElement;
+
+    /** The page's own *Back to the lobby* link — the one source of the cab's lobby stop (§ 4.5). */
+    const lobbyHref = document.querySelector('a.floor-home').href;
+
+    /** The browser's timers, as the screen's walks and the ride's one timer use them. */
+    const timers = { after: (ms, fire) => window.setTimeout(fire, ms), cancel: (id) => window.clearTimeout(id) };
+
+    /**
+     * The drawing's zoom buttons — handed to `wire/camera-keys.js` to wire — its framing control, *Fit the floor*, and
+     * the gesture hint under the drawing (card#11045): all four offered by `offerKeys()` on every render (card#7343
+     * comment 7692).
+     */
+    const zoomButtons = { zoomIn: el('floor-zoom-in'), zoomOut: el('floor-zoom-out'), fit: el('floor-fit'), hint: el('floor-hint') };
+
+    /** The drawing element — the stage the renderer draws on and the keys are pressed on. */
+    const stage = el('floor-drawing');
+
+    let lastFrame = null;
+
+    /** The renderer's drawing, once the art modules have answered (Appendix B row 14). */
+    let drawing = null;
+
+    /**
+     * The drawing surface: `#floor-drawing`'s own box, as the lobby reads `#lobby-building`'s. Its height is the page
+     * chrome sheet's (`public/css/mezzanine.css`: the room takes the viewport height the chrome above it leaves, which
+     * changes whenever a banner, a statement or a notice is shown), so it is read off the element and never off the
+     * window — a surface the drawing is not is one the camera fits wrongly, and the painter's `viewBox` then letterboxes
+     * the room off every pointer position (card#11045, design review r3 MAJOR-A).
+     */
+    function surface() {
+        const box = el('floor-drawing');
+
+        return { width: box.clientWidth, height: box.clientHeight };
+    }
+
+    const { client, clock, fetch: pageFetch, requestRender, log } = livePage(() => screen.render());
+
+    /** § 4.4's URL shapes for this page and its route kind, the floor segment first and the seat's last. */
+    function routeOf(floor, seat) {
+        return `/${['floor', floor, ...kind, ...(seat === null ? [] : [seat])].map(encodeURIComponent).join('/')}`;
+    }
+
+    /**
+     * The floor segment the page's URLs carry: the drawn floor's own key once a frame has resolved one (§ 4.4 — an
+     * address typed in another case reads canonically from then on), else the route's segment as served.
+     */
+    function floorSegment() {
+        return lastFrame?.floor?.key ?? root.dataset.floor;
+    }
+
+    /** The seat segment the URL carries now — the one after the route kind's — or `null` on the floor alone. */
+    function seatSegment() {
+        const parts = window.location.pathname.split('/').filter((part) => part !== '');
+        const at = 2 + kind.length;
+
+        return parts.length > at ? decodeURIComponent(parts[at]) : null;
+    }
+
+    /** § 4.3's "opened by selecting a desk" — from the drawing or the list, one path. */
+    function openDesk(seatId) {
+        window.history.pushState(null, '', routeOf(floorSegment(), seatId));
+        screen.openPanel(seatId).then(requestRender);
+        requestRender();
+    }
+
+    /**
+     * The desks, each its list-view row (Appendix B row 15): the row's first line — the nameplate's — is a link to the
+     * desk's own drill-down (§ 4.3: "opened by selecting a desk"), and the rest of its lines follow it. The link is a
+     * real URL (§ 4.4) so it can be opened, copied or bookmarked; a plain click opens the panel in place.
+     */
+    function paintDesks(frame, desks) {
+        const node = el('floor-desks');
+
+        node.replaceChildren(...Object.values(desks).map((desk) => {
+            const [first, ...rest] = deskListRow(desk);
+            const item = document.createElement('li');
+            const link = document.createElement('a');
+
+            link.href = routeOf(floorSegment(), desk.seat_id);
+            link.textContent = first;
+            link.addEventListener('click', (event) => {
+                event.preventDefault();
+                openDesk(desk.seat_id);
+            });
+            item.append(link);
+
+            if (rest.length > 0) {
+                const lines = document.createElement('ul');
+
+                lines.replaceChildren(...items(rest));
+                item.append(lines);
+            }
+
+            return item;
+        }));
+        node.hidden = Object.keys(desks).length === 0;
+        node.dataset.dimmed = String(frame.failure.sign_in !== null);
+    }
+
+    /**
+     * BOARD-TASK § 15.10's compose block (card#9417) — present on an OPERATOR's page only (`@can('operate')`), so on an
+     * observer's this is `null` and nothing below touches it. The server's render-time refusal (§ 15.5) and the form's
+     * CSRF token are read off the block, once.
+     */
+    const composeBlock = document.querySelector('[data-panel-compose]');
+    const composeBox = composeBlock === null ? null : new ComposeBox(pageFetch, {
+        csrf: composeBlock.querySelector('input[name="_token"]')?.value ?? '',
+        unconfigured: composeBlock.dataset.composeRefusal ? {
+            class: composeBlock.dataset.composeRefusal,
+            key: composeBlock.dataset.composeKey || null,
+        } : null,
+    });
+
+    /** The held seat object the open panel is over — the target line is computed from it alone (§ 15.10). */
+    function panelSeat(panel) {
+        return panel === null ? null : client.seats.get(keyOf(panel.seat)) ?? null;
+    }
+
+    /** The open drill-down, or none — `drilldown/main.js` fills the slots from the frame's model. */
+    function paintPanel(panel) {
+        const node = el('floor-panel');
+
+        node.hidden = panel === null;
+
+        if (panel !== null) {
+            renderDrillDown(node, panel);
+            el('floor-panel-retry').hidden = !panel.can_retry;
+            el('floor-panel-more').hidden = panel.activity.next_before === null;
+
+            const seat = panelSeat(panel);
+
+            renderCompose(node, composeBox === null || seat === null ? null : composeBox.view(seat));
+        }
+    }
+
+    function paint(frame) {
+        lastFrame = frame;
+
+        // § 4.4 row 3: the redirect is decided by the screen and performed here — on the FLOOR segment, with the seat
+        // segment untouched ("a published drill-down link resolves for the same reason a published floor link does").
+        if (frame.redirect !== null) {
+            window.location.replace(routeOf(frame.redirect, frame.seat));
+
+            return;
+        }
+
+        // The seat segment follows the screen's: a panel a retirement closed takes it off the URL. The floor segment is
+        // the drawn floor's key (§ 4.4, card#13117), so `/floor/The-Nook` reads `/floor/the-nook` once it is drawn.
+        const route = routeOf(floorSegment(), frame.seat);
+
+        if (window.location.pathname !== route) {
+            window.history.replaceState(null, '', route);
+        }
+
+        const strip = frame.strip;
+
+        say('floor-feed', `feed: ${strip.feed}`);
+        say('floor-connection', `stream: ${strip.connection}`);
+        say('floor-resyncs', strip.resyncs);
+        say('floor-fleet-counts', `building: ${strip.totals}`);
+        say('floor-last-message', strip.last_message);
+        // § 9 F14: the strip's own line when art the room drawing asked for did not load.
+        say('floor-art', strip.art);
+
+        for (const indicator of strip.indicators) {
+            say(`floor-${indicator.key}`, indicator.detail === null
+                ? `${indicator.label}: ${indicator.value}`
+                : `${indicator.label}: ${indicator.value} · ${indicator.detail}`);
+        }
+
+        const failure = frame.failure;
+
+        say('floor-statement', failure.statement);
+        say('floor-kept', failure.kept);
+        say('floor-banner', failure.banner);
+        say('floor-layout-statement', frame.statement);
+        el('floor-signin').hidden = failure.sign_in === null;
+        say('floor-signin-prompt', failure.sign_in?.prompt ?? null);
+        say('floor-not-live', failure.sign_in?.label ?? null);
+
+        // § 4.6: the floor's name, as the screen carries it; before a floor is composed the heading names the segment
+        // the route was entered on.
+        el('floor-name').textContent = frame.floor === null ? `The floor ${root.dataset.floor}` : frame.floor.name;
+
+        // § 6.5: a room with no value is drawn as having none — "unset", never a plausible time.
+        const room = frame.room;
+        const face = el('floor-clock');
+
+        face.textContent = room === null ? 'clock not set — no live feed yet' : `${room.text} (${room.label})`;
+        face.setAttribute('aria-label', room === null ? 'clock not set' : room.text);
+        say('floor-sky', room === null ? 'sky not set' : `sky: ${room.sky}`);
+
+        list('floor-notices', [...frame.notices]);
+        list('floor-rooms', frame.composed ? [] : frame.rooms.map((r) => `${r.install_id} — no floor claimed`));
+        list('floor-overflow', [...(frame.overflow ?? [])]);
+        // card#12239: no coordination list — nothing coordination-related is held on this page (FLOOR.md § 5.7); each
+        // post is an edge drawn on arrival, and an end it could not draw is a line of the log.
+
+        // § 9 F6/F7: the floor beneath the sign-in prompt is dimmed, never blanked — the drawing as the list.
+        el('floor-drawing').dataset.dimmed = String(frame.failure.sign_in !== null);
+        el('floor-camera').hidden = frame.scene === null;
+        // The camera is offered only while it frames the floor (card#7343 r4b, comment 7692): with nothing framed its
+        // controls do nothing, so the zoom buttons and *Fit the floor* are hidden and the drawing is no tab stop and
+        // names no keys. Whether a floor is framed is the screen's (`frame.camera`), whichever renderer draws it.
+        offerKeys(el('floor-drawing'), zoomButtons, frame.camera, view.keys.shortcuts);
+
+        // § 4.5: the room is drawn at every window size. A render never moves the viewer: a glide in flight keeps its
+        // step, and otherwise the drawing shows the screen's camera, which the render left where the viewer put it.
+        drawing?.paint(frame.scene ?? null, view.current(frame.camera));
+
+        paintDesks(frame, frame.desks.desks);
+        paintPanel(frame.panel);
+        list('floor-log', client.eventLog);
+
+        // § 4.5: the arrival's hold ends on the first drawn scene — on nothing else (`wire/ride-arrival.js`).
+        if (frame.scene !== null) {
+            revealed(html);
+        }
+
+        // Last, so a phase performed at once paints its next frame over this one, never under it.
+        cab.perform({
+            ride: frame.ride,
+            cab: frame.scene?.ride ?? null,
+            feed: `feed: ${frame.strip.feed}`,
+            layout: frame.last_known_layout === null || frame.last_known_layout === false ? null : frame.last_known_layout,
+        });
+    }
+
+    /** The drawn elevator, which the renderer rebuilds on every paint. */
+    function elevator() {
+        return el('floor-drawing').querySelector('[data-key="elevator"]');
+    }
+
+    /**
+     * THE ELEVATOR's CAB (§ 4.5, card#11795) — the page's `#floor-cab` dialog, wired to the screen's ride by the module
+     * both pages share (card#12113). The drawing is the renderer's `paintCab()`, from the frame's `scene.ride`, once the
+     * art has answered.
+     */
+    const cab = ridePage({
+        prefix: 'floor',
+        screen: () => screen,
+        paint,
+        paintCab: (host, ride) => drawing?.paintCab(host, ride),
+        elevator,
+        lastRide: () => lastFrame?.ride ?? null,
+        timers,
+    });
+
+    const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
+        floor: root.dataset.floor,
+        seat: root.dataset.seat === '' ? null : root.dataset.seat,
+        reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        surface: surface(),
+        lobby_href: lobbyHref,
+        // § 6.2's walk note item 4: a walk's last frame is a paint-only refresh on the browser's timer — it reaches
+        // `paint` and never `screen.render()`, so it drains nothing and writes no animation-log row.
+        timers,
+        // card#12987: a ride's press-time fetch for the view behind the cab's doors asks for a render as it lands.
+        wake: requestRender,
+    });
+
+    /** The renderer's camera over the screen (the contract above): bound now, before the art answers. */
+    const view = renderer.camera(screen);
+
+    // § 4.5: entered by a ride — the layout head script's record — so the first drawn scene arrives (the screen's
+    // `arriving`), told before the first render.
+    const rideArrival = arrival(html, performance.now());
+
+    if (rideArrival !== null) {
+        screen.arriveByRide(rideArrival);
+    }
+
+    // § 2.5's 1 s tick: the ages over the desks the last render read — and the open panel's — with nothing drained.
+    startAgeTicker(screen.desks, clock, window, (readouts) => {
+        if (lastFrame !== null) {
+            const desks = screen.desks.view(readouts);
+
+            drawing?.refresh(screen.sceneView(desks));
+            paintDesks(lastFrame, desks.desks);
+
+            paintPanel(screen.panelView(lastFrame.floor?.name ?? null));
+        }
+    });
+
+    // Appendix B row 14: the art modules, by the asset route. The screen draws no scene until they have answered; a
+    // module that failed is reported as the failed asset it is (§ 9 F14).
+    loadArt().then(({ furniture, characters, registry, themes, failed }) => {
+        drawing = renderer.create({ characters, themes, registry }, {
+            failed: (ids) => {
+                screen.assetsFailed(ids);
+                requestRender();
+            },
+            select: openDesk,
+            link: (seatId) => routeOf(floorSegment(), seatId),
+            ride: () => cab.act(screen.ride()),
+            clock,
+        });
+        // § 4.5 (card#12039): the cab's drawing and its button popup in the house theme's elevator palette.
+        drawing.cabTheme(cab.dialog);
+
+        if (furniture !== null) {
+            screen.sceneInputs(artInputs({ furniture, characters, registry, themes }, measurer()));
+        }
+
+        screen.assetsFailed(failed);
+        requestRender();
+    });
+
+    // § 4.3: the panel's user actions. Each asks for a render once its requests have answered.
+    el('floor-panel-close').addEventListener('click', () => {
+        window.history.pushState(null, '', routeOf(floorSegment(), null));
+        screen.closePanel();
+        requestRender();
+    });
+    el('floor-panel-retry').addEventListener('click', () => {
+        screen.retryPanel().then(requestRender);
+    });
+    el('floor-panel-more').addEventListener('click', () => {
+        screen.morePanel().then(requestRender);
+    });
+
+    // BOARD-TASK § 15.10: the compose post — one press, one request, the render asked for on the answer.
+    // `compose-box.js` refuses a press while one is in flight, so a double click sends one comment.
+    composeBlock?.querySelector('[data-panel-compose-post]')?.addEventListener('click', () => {
+        const seat = panelSeat(lastFrame?.panel ?? null);
+
+        if (seat !== null) {
+            composeBox.post(seat, composeBlock.querySelector('[data-panel-compose-text]').value).then(requestRender);
+            requestRender();
+        }
+    });
+
+    // Appendix B row 15: the viewer's camera (§ 4.5, the operator's ruling of 2026-10-01 on card#11045). The pointer is
+    // the renderer's to wire (`gestures`); the keyboard and the zoom buttons are `wire/camera-keys.js`'s — the lobby's
+    // too — over the renderer's acts. None renders — each shows the camera an act hands back, and each leaves its event
+    // to the browser while the camera frames nothing (card#7343 r4b).
+    view.gestures(stage);
+    cameraKeys(stage, zoomButtons, view.keys.acts, view.show);
+    el('floor-fit').addEventListener('click', () => {
+        view.fit();
+    });
+    // A resize of the DRAWING reaches the renderer's camera at once, before the render it asks for. The drawing's box,
+    // not the window's: the chrome above it grows and shrinks with what the page has to say (a banner, a statement, a
+    // notice), and each of those resizes the drawing with no window resize at all (card#11045, design review r3 MAJOR-A).
+    new ResizeObserver(() => {
+        view.resize(surface());
+        requestRender();
+    }).observe(stage);
+
+    // Back and forward move the seat segment; the screen resolves it on the next render (§ 4.4).
+    window.addEventListener('popstate', () => {
+        screen.routeSeat(seatSegment());
+        requestRender();
+    });
+
+    // § 4.4: "deep-linking to a floor on a cold start runs the whole of § 2.2 first".
+    client.start();
+    screen.enter().then(requestRender);
+}

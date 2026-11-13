@@ -44,13 +44,15 @@
  * hold, constructed with what is the lobby's own — `endsRide()`, the sign-in prompt alone (the lobby has no redirect
  * and no floor to lose); `currentStop`, the lobby's `null` with *Lobby* as its name; and the stops, § 4.1's plaques of
  * the composed floors (`building-model.js`'s `plates()`), re-derived on every frame — and asked on every frame for
- * `frame.ride` (`rideFrame()`) and `scene.ride` (`sceneRide()`, the leaves and the view behind the cab's doors). A
- * press is accepted only on a frame that drew the room, and the arrival flag `arriveByRide()` records is consumed by
+ * `frame.ride` (`rideFrame()`) and `scene.ride` (`sceneRide()`, the leaves and the view behind the cab's doors, with the
+ * floor's model behind them attached by `floor/door-views.js`, card#12987). A press is accepted only on a frame that drew
+ * the room, and the arrival flag `arriveByRide()` records is consumed by
  * the first render that draws it. The page paints `rideView()` after each ride method rather than waiting on a
  * render. ⛔ NO CAB POSITION ANYWHERE: the ride is navigation, which is never state (§ 4.5).
  *
- * ⛔ NAVIGATION IS NEVER STATE (§ 4.5). A ride, a zoom and a pan draw nothing, drain nothing and fetch nothing, and
- * write no animation-log row: the one path to the log on this screen is `render()`'s A17 over a drained journal
+ * ⛔ NAVIGATION IS NEVER STATE (§ 4.5). A ride, a zoom and a pan draw nothing and drain nothing, and write no animation-log
+ * row — a ride's press fetches the stops' maps, tilesets and theme modules for the view behind the cab's doors and nothing
+ * a frame reads as a fact (`floor/door-views.js`, card#12987): the one path to the log on this screen is `render()`'s A17 over a drained journal
  * (`TheBuildingCameraMovesTheViewerAndNeverTheFleetTest` holds the camera acts to an unchanged log, and the lobby page's
  * whole import graph to its one path; `TheLobbysElevatorIsTheFloorsRideTest` holds the ride's acts to it).
  */
@@ -65,6 +67,9 @@ import { Ride, LOBBY_STOP } from '../wire/ride.js';
 import { statusStrip } from '../floor/status-strip.js';
 import { plates } from './building-model.js';
 import { lobbyScene } from './building-scene.js';
+import { DoorViews } from '../floor/door-views.js';
+import { TilesetLoader } from '../floor/tileset.js';
+import { loadThemes } from '../floor/cab-paint.js';
 import { discrepancyNotice, heldBody, lobbyModel } from './lobby-model.js';
 
 /**
@@ -101,6 +106,9 @@ export class LobbyScreen {
     /** The elevator's ride (§ 4.5) — `wire/ride.js`'s state machine, the floor screen's. */
     #ride;
 
+    /** The views behind the cab's doors (card#12987) — `floor/door-views.js`, over this screen's building and its own loader. */
+    #doorViews;
+
     /** The last frame DRAWN, or `null` — what a press is asked of, what the tick and `rideView()` re-read. */
     #drawn = null;
 
@@ -112,9 +120,11 @@ export class LobbyScreen {
      * @param {{surface: {width: number, height: number}, reduce?: boolean, local_time?: Function, lobby_href?: string|null}} options
      *        the room's drawing surface in CSS px, whether the viewer prefers reduced motion, the viewer's civil time
      *        for the sky (`floor-screen.js`'s `local_time`, for its reason), and the lobby's own route — the cab's
-     *        *Lobby* stop's `href`
+     *        *Lobby* stop's `href`; `wake` the page's render request, asked each time a ride's press-time fetch answers
+     * @param {object} [tilesets] a `floor/tileset.js` `TilesetLoader` of the lobby's own — it holds no map and no tileset
+     *        but a ride's, for the floor behind the cab's doors (card#12987)
      */
-    constructor(client, building, clock, log, options) {
+    constructor(client, building, clock, log, options, tilesets = null) {
         this.#client = client;
         this.#building = building;
         this.#clock = clock;
@@ -122,14 +132,20 @@ export class LobbyScreen {
         this.#reduce = options.reduce === true;
         this.#room = new RoomClock(clock, options.local_time);
         this.#set = new AnimationSet(log, { reduce: this.#reduce, edgeRows: ['A17'] });
+
+        // The cab's stops — the plaques, which the ride offers and whose floors the door view draws.
+        const stops = () => plates(this.#body(), this.#building.floors, null, this.#building.authored);
+
         this.#ride = new Ride({
             clock,
             reduce: this.#reduce,
             lobby_href: options.lobby_href ?? null,
             endsRide,
             currentStop: () => ({ current: null, current_name: LOBBY_STOP }),
-            stops: () => plates(this.#body(), this.#building.floors),
+            stops,
         });
+        // The lobby holds no theme module but the house theme's palette, so the press loads them all for the view.
+        this.#doorViews = new DoorViews({ building, tilesets, rows: stops, loadThemes, wake: options.wake });
     }
 
     /** The camera as it stands — the viewer's head, as data. */
@@ -240,7 +256,7 @@ export class LobbyScreen {
         const client = this.#client;
 
         return client.feed.applied
-            ? lobbyModel(this.#body(), this.#building.floors, this.#building.layoutFailure, correctedNowMs(client.clockOffsetMs, this.#clock.now()))
+            ? lobbyModel(this.#body(), this.#building.floors, this.#building.layoutFailure, correctedNowMs(client.clockOffsetMs, this.#clock.now()), this.#building.authored)
             : null;
     }
 
@@ -249,7 +265,7 @@ export class LobbyScreen {
         return Object.freeze({
             ...frame,
             ride: this.#ride.rideFrame(now),
-            scene: frame.room === null ? null : Object.freeze({ ...frame.room, ride: this.#ride.sceneRide(now) }),
+            scene: frame.room === null ? null : Object.freeze({ ...frame.room, ride: this.#doorViews.attach(this.#ride.sceneRide(now)) }),
         });
     }
 
@@ -298,7 +314,14 @@ export class LobbyScreen {
             return null;
         }
 
-        return this.#ride.press(last);
+        const answer = this.#ride.press(last);
+
+        // The press fetches every stop's data for the view behind the cab's doors (card#12987), and wakes the page as it lands.
+        if (answer !== null) {
+            this.#doorViews.prefetch();
+        }
+
+        return answer;
     }
 
     entered() {
@@ -471,7 +494,7 @@ function within(outer, inner) {
  * @param {object} options `LobbyScreen`'s
  */
 export function startLobbyScreen(client, fetchImpl, clock, log, draw, options) {
-    const screen = new LobbyScreen(client, new Building(fetchImpl), clock, log, options);
+    const screen = new LobbyScreen(client, new Building(fetchImpl), clock, log, options, new TilesetLoader(fetchImpl));
 
     return {
         render: async () => {

@@ -9,7 +9,9 @@
  *
  * stdin  — JSON: `{ "snapshot": <a GET /api/fleet/snapshot body>,
  *                   "layout": <the floors GET /api/building answered (§ 4.6, D2 § 8.7), or absent =
- *                              the empty layout's floors, `[]`>,
+ *                              each install the snapshot carries placed on a floor of its own, named by
+ *                              its id — the building the card#13117 migration leaves; `[]` is the empty
+ *                              layout, every room on the Unassigned floor>,
  *                   "notices": [[held, total], …],           // § 4.1's words for each pair
  *                   "context_candidates": <absent, or seat objects for § 4.1's (b) population>,
  *                   "primitives": <absent, or a list of argument lists for `floors()` / `plates()`>,
@@ -17,7 +19,7 @@
  * stdout — JSON: `{ "render_states": [...], "model": {...}, "plates": [...] | null,
  *                   "primitives": { "floors": [...], "plates": [...] } | null, "notices": [...],
  *                   "directory": { "marker_cap", "context_attention_pct", "long_call_ms",
- *                                  "context_candidates": [<install_id/seat_id>, …] | null },
+ *                                  "context_candidates": [<seat_id>, …] | null },
  *                   "scenario": [<one record per step>] | null }`
  *
  * THE SCENARIO drives the shipped lobby entry — `lobby-screen.js` over the client protocol
@@ -62,15 +64,23 @@ const building = await import(url('building-model.js'));
 const payload = JSON.parse(readFileSync(0, 'utf8') || '{}');
 
 
+// The building the card#13117 migration leaves a store in: each reported install on a floor of its own, named by its id
+// (the seats in no room excepted — they are the Unassigned floor's). A test that means another building names its layout.
+const layout = payload.layout ?? (payload.snapshot?.installs ?? [])
+    .map((install) => String(install.install_id))
+    .filter((id) => id !== 'unassigned')
+    .map((id) => ({ floor: id, name: id, aliases: [], rooms: [{ install: id, form: 'open' }] }));
+
 console.log(JSON.stringify({
     render_states: RENDER_STATES,
     // The membership predicate, sampled on values the caller names — so a test can assert the
     // client does not KNOW a value as well as that it does not render it as one.
     membership: Object.fromEntries((payload.membership_probe ?? []).map((v) => [String(v), isRenderState(v)])),
-    model: payload.snapshot === undefined ? null : model.lobbyModel(payload.snapshot, payload.layout ?? []),
+    // `authored`: the rooms with an authored map (`GET /api/building`'s `rooms[]`), for the Unassigned floor.
+    model: payload.snapshot === undefined ? null : model.lobbyModel(payload.snapshot, layout, null, null, payload.authored ?? []),
     // § 4.1's floor list as the directory and both cabs read it (`building-model.js`'s `plates()`), over the layout
     // named (absent, the empty layout's floors).
-    plates: payload.snapshot === undefined ? null : building.plates(payload.snapshot, payload.layout ?? []),
+    plates: payload.snapshot === undefined ? null : building.plates(payload.snapshot, layout, null, payload.authored ?? []),
     // The composition PRIMITIVES, called directly: `floors()` and `plates()`, once per argument list
     // named here, each list spread after the snapshot. So `[]` calls with no layout argument at all
     // and `[null]` passes `null`, the two a JSON `layout` member cannot tell apart.
@@ -81,7 +91,7 @@ console.log(JSON.stringify({
     // § 4.1's two ratified sentences, worded for each `(held, total)` pair named here.
     notices: (payload.notices ?? []).map(([held, total]) => model.discrepancyNotice(held, total)),
     // The directory plaque's § 12 figures as the module carries them (card#12113), and § 4.1's (b)
-    // population over the seats named here, as `install_id/seat_id` — AT-D3-27's reading of the
+    // population over the seats named here, as `seat_id` — AT-D3-27's reading of the
     // population a threshold is asked of, which the attention line alone cannot show.
     directory: {
         marker_cap: model.MARKER_CAP,
@@ -89,7 +99,7 @@ console.log(JSON.stringify({
         long_call_ms: model.LONG_CALL_MS,
         context_candidates: payload.context_candidates === undefined
             ? null
-            : model.contextCandidates(payload.context_candidates).map((s) => `${s.install_id}/${s.seat_id}`),
+            : model.contextCandidates(payload.context_candidates).map((s) => s.seat_id),
     },
     scenario: payload.scenario === undefined ? null : await runScenario(payload.scenario),
 }, null, 2));

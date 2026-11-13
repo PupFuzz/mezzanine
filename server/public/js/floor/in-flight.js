@@ -75,6 +75,7 @@
 
 import { emptyChair, staffed } from '../wire/animation-set.js';
 import { pointAt } from './route.js';
+import { keyOf } from '../wire/seat-key.js';
 import { ELEVATOR_DOOR, RESTROOM_GAP_S, SNACK_GAP_S, departureLegs, laneFrame, leafLevel, queueLater, queueShape, restroomExit, restroomHome, seatInCab, snackHome, waitFrom } from './scene.js';
 
 /** The § 6.2 rows drawn as a walk, one per seat at most. */
@@ -87,9 +88,6 @@ export const WALK_ROWS = Object.freeze(['A1', 'A2']);
 export function walkSide(renderState) {
     return staffed(renderState) ? 'staffed' : emptyChair(renderState) ? 'empty' : 'neither';
 }
-
-/** The held walks' seat keys. */
-const keyOf = (effect) => `${effect.install_id}/${effect.seat_id}`;
 
 /** An intern's A10 walk (card#12450) — keyed by its intern key, never by its seat's. */
 const isInternWalk = (effect) => effect.animation_id === 'A10' && typeof effect.intern_key === 'string';
@@ -206,6 +204,12 @@ export class EffectsInFlight {
     /** § 5.5's *no open route … snack table* and *… restroom door* lines already written, `<seat key> <lattice key>`. */
     #narrated = new Set();
 
+    /**
+     * card#12993 — walker key → the instant (the page's clock, ms) its latest elevator walk ends: a seat's A1 or A2, an
+     * intern's A10, a turn-round of either. A break that begins before it takes no trip (`breaks()`).
+     */
+    #elevatorUntil = new Map();
+
     /** @param {number} intervalMs one loop frame (§ 12's loop rate) */
     constructor(intervalMs) {
         this.#intervalMs = intervalMs;
@@ -228,7 +232,7 @@ export class EffectsInFlight {
         // seat's object or removes it, and touches it as it always did (clause 2).
         const touchedKeys = new Set((ctx.journal ?? [])
             .filter((entry) => entry.outcome === 'applied' && entry.t !== 'seat.delta' && typeof entry.seat_id === 'string')
-            .map((entry) => `${entry.install_id}/${entry.seat_id}`));
+            .map(keyOf));
         // Two opposite edges applied in one render leave the side unchanged and still cancel: their rows are here.
         const rowKeys = new Set(effects.filter((effect) => WALK_ROWS.includes(effect.animation_id)).map(keyOf));
         const cancelled = [];
@@ -267,7 +271,10 @@ export class EffectsInFlight {
 
             if (h.intern === true) {
                 const seat = keyOf(h.effect);
-                const touched = touchedKeys.has(seat)
+                // card#12993: an intern walking out has left the array, and a closed call never reopens, so no object that
+                // replaces its seat's can change where it is going — a non-delta entry leaves it on its way. Cancelled, it
+                // would be drawn nowhere: its stool is already empty.
+                const touched = (touchedKeys.has(seat) && h.effect.leg_kind === 'arrive')
                     || h.lattice_key !== ctx.lattice_key
                     || h.unconfirmed !== ctx.unconfirmed(seat)
                     || h.stilled !== ctx.stilled
@@ -366,6 +373,7 @@ export class EffectsInFlight {
 
                 const was = inCab.get(effect.intern_key);
 
+                this.#rideUntil(effect.intern_key, now, effect.frames);
                 this.#held.push({
                     effect,
                     at: now,
@@ -408,6 +416,7 @@ export class EffectsInFlight {
 
             const was = turn ? inCab.get(key) : undefined;
 
+            this.#rideUntil(key, now, effect.frames);
             this.#held.push({
                 effect,
                 at: now,
@@ -477,6 +486,11 @@ export class EffectsInFlight {
         for (const { h } of riders) {
             h.effect = Object.freeze({ ...h.effect, legs: seatInCab(h.effect.legs, door, h.cab_slot, h.cab_from ?? null) });
         }
+    }
+
+    /** card#12993: walker `key`'s elevator walk, admitted at `now` with `frames` to run, ends no earlier than this one. */
+    #rideUntil(key, now, frames) {
+        this.#elevatorUntil.set(key, Math.max(this.#elevatorUntil.get(key) ?? -Infinity, now + frames * this.#intervalMs));
     }
 
     /**
@@ -775,6 +789,13 @@ export class EffectsInFlight {
             }
         }
 
+        // No break this pass can reach began more than a gap before now, so an elevator walk that ended earlier bars none.
+        for (const [k, until] of this.#elevatorUntil) {
+            if (until < now - GAP_MAX_S * 1000) {
+                this.#elevatorUntil.delete(k);
+            }
+        }
+
         // Every break whose second has come and that no pass has decided — at most one per walker and chain in a gap's
         // length, since the gaps are at least an hour — oldest first, ties by key.
         const due = [];
@@ -810,6 +831,12 @@ export class EffectsInFlight {
             // a bound chosen past the routes of the floors shipped and measured, and the cost of a longer one is only that
             // a page loaded during its trip does not enter it at its phase.
             if (!ctx.live || !(chain === 'restroom' ? w.restroom_eligible : w.eligible) || ctx.server_ms - s.start_s * 1000 > (s.dwell_s + 600) * 1000) {
+                continue;
+            }
+
+            // § 6.6 item 4's *When* (card#12993): a walker on an elevator walk at its break's second was not at its desk or
+            // stool — and an intern a delta gained since did not exist then, so every break it had before is declined here.
+            if (page(s.start_s) < (this.#elevatorUntil.get(w.key) ?? -Infinity)) {
                 continue;
             }
 
@@ -1254,30 +1281,15 @@ export class EffectsInFlight {
 }
 
 /**
- * ⛔ THE INBOUND DESK — THE ONE PLUG POINT FOR THE OPERATOR's RULING ON IT (card#9566, r3 F1). While an
- * A1 walker is on its way, its desk draws the empty chair: no character, so no bubble (§ 5.1 rule 3) and
- * no held marker, with its label line, chip, badges and every other fact the applied object's. That is
- * option A, the seat's recommendation, in force until the ruling.
- */
-export function inboundDesk(model) {
-    return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });
-}
-
-/**
- * ⛔ THE AWAY DESK — a desk whose character is away on its snack break (FLOOR.md § 6.6 item 4; card#12749, card#12785).
- * The desk keeps EVERY fact of the applied object at the desk — its chip, its label line, its monitor lit as its state
- * lights it, its badges, its facts plate and its task bubble, the card the seat works on — and draws its chair empty: no
- * character, so no pose and no held marker (no z's, no typing). The bubble stays with no thought trail, the trail being
- * the thinker's and away with it (`scene.js`'s `placeBubbles()`); § 5.1 rule 3's *a desk that draws no character draws
- * no bubble* is read for a state that draws no character, and this desk's state draws one, which is away. An A1
- * walker's desk is `inboundDesk()`'s, and is not this.
+ * ⛔ THE AWAY DESK — THE ONE RENDER OF A DESK WHOSE AGENT IS NOT AT IT (FLOOR.md § 5.1 rule 3). Every way a character
+ * leaves a desk whose state draws one comes here: an A1 walker still on its way in from the elevator (§ 6.2's walk note
+ * item 4), and a walker away on a snack break or a restroom break, or walking home from one on a recall
+ * (§ 6.6 item 4, § 6.7). The desk draws its chair empty — no character, so no pose, no held marker (no z's, no typing) and
+ * no task bubble, a bubble showing only while its agent is at the desk — and every other fact of the applied object: its
+ * label line, chip, badges, facts plate and its monitor lit as its state lights it. The paint-only refresh at the walk's
+ * end draws the desk from the applied object again, bubble and all. A desk whose STATE draws no character — `stale`,
+ * `offline`, an unconfirmed seat — has none already (`desk/desk-render.js`), so an A2 departure needs nothing here.
  */
 export function awayDesk(model) {
-    return Object.freeze({
-        ...model,
-        character: false,
-        pose: 'empty-chair',
-        bubble: model.bubble === null || model.bubble === undefined ? null : Object.freeze({ ...model.bubble, trail: false }),
-        held: null,
-    });
+    return Object.freeze({ ...model, character: false, pose: 'empty-chair', bubble: null, held: null });
 }

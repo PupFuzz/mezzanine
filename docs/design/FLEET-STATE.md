@@ -167,8 +167,8 @@ checked deploy requirement** rather than a sizing note.
 | **feed reload** | deploy command (`mezzanine:feed-reload`), run by `bin/deploy.sh` **immediately before** the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot (the pool's master is root's, `docs/PLAN.md § 5`) | per deploy | write one `fleet.reload` row to `feed_outbox` carrying the release's `feed_version`, **then wait lag + tick + margin (3 s)**: a row is invisible to every handler for [§ 8.3](#83-the-websocket-delta-feed)'s 2 s visibility lag and is delivered on the tick after that — and, the read being a prefix, after every lower id has left the lag too, which under [§ 8.3](#83-the-websocket-delta-feed)'s condition (a) is at most one `INSERT` round trip later and inside the margin — so when the command returns every stream that is draining has read it and ended with `feed.close{reason:"reload"}` ([§ 8.3](#83-the-websocket-delta-feed)) — which is what takes it off the previous release's code, since opcache revalidation reaches new requests only and the client's reconnect is a new request. ⭐ **What ends the streams that did NOT read it is DECIDED ([§ 14](#14-open-questions-for-the-review-loop) item 17, closed by measurement on card#9300):** `bin/deploy.sh` then reads the **stream pool's** full status over its `pm.status_listen` ([§ 8.3](#83-the-websocket-delta-feed) R2) and waits, up to a **30 s ceiling** (`MEZZ_FEED_DRAIN_CEILING_S`), for every request that **started before the row was written** to finish; at the ceiling it sends those workers **SIGTERM**, and the pool's master starts fresh ones in their place. ⚠ **The ceiling's default has a consumer at the CLIENT:** [FLOOR.md § 2.2](FLOOR.md#22-connect-snapshot-deltas)'s reload grace — the span in which a browser re-opens silently instead of rendering a failure over a routine deploy — is derived at [FLOOR.md § 12](FLOOR.md#12-every-number-and-where-it-comes-from) from this ceiling among other figures, so a host that raises `MEZZ_FEED_DRAIN_CEILING_S` beyond this default **can** hold the maintenance window past that grace — it does so on a deploy where a stream missed `fleet.reload`, since the drain returns as soon as no previous-release stream remains. No client can read the setting, and those two sections own what its viewer sees then. A stream is picked by **when its request started, never by its URI** — behind the front controller every request in the listing reads `/index.php` (measured) — and that is exact only because the pool is **dedicated** (R2): the only other requests the maintenance window lets into it are `503`s, milliseconds long. The signal needs no root because the pool runs as the deploy user, which the deploy's A14 refuses a host without. A residual the signal does not end, or a status that stops answering, is **logged and does not fail the window** — a deploy must not block, or stay down, on one wedged stream. ⚠ The poll and the signal are `bin/deploy.sh`'s and not this command's, which an earlier revision of this row gave the poll to: they read the host's FPM pool, which the deploy's one FPM reader already resolves (card#9300: never a second reader), and the command then runs the same on a host with no FPM at all | the deploy's window fails on it, like any other step of phase B. Were it skipped, streams would keep serving the previous release's code until each ended on its own clock — for a healthy client, not before its session expires ([§ 9](#9-read-side-authentication)) — and each client would learn of the deploy only when it next reconnected, from the first envelope whose `feed_version` it does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures)) |
 | **purge** | scheduled command (`mezzanine:purge`) | hourly | delete rows past retention in bounded batches | the store grows; alarmed at a stated size, and the dedup guarantee is unaffected for 4 days ([§ 6.7](#67-retention-and-purge)) |
 | **board poll** | scheduled command (`mezzanine:board-poll`) | every **5 min** | **first the link pass** (card#12447 — `BOARD-TASK.md § 4.4`): for every unretired seat whose `board_user_source` is neither `operator` nor `refused`, read the board user its last heartbeat declares; a declaration the board confirms — fingerprint equal to this site's `BOARD_API_BASE`, user a member of a configured board and not disabled — is written to `seats.board_user_id` with `board_user_source = declared`, counting `board_link_mapped`; a user another seat holds, or one that two declaring seats contend for in the same pass (then neither is written), is refused counting `board_link_conflict` on each refused seat; a user no configured board lists, or lists disabled, is refused counting `board_link_unknown_user`; no account type is read (seat ruling on card#12447: agent logins measure `human`, and the operator's pin or `--refuse` is the control against a wrong declaration); a fingerprint of another kanban is refused counting `board_link_site_mismatch`; a `declared` mapping whose seat now declares none, or declares a user the pass refused, is cleared in the same transaction counting `board_link_cleared` — the *declares none* leg only for a seat whose last batch's `reporter_version` is at least the build that sends the members; a degraded members read closes the pass for that poll and counts `board_link_failed` on the fleet while the card read below still runs. Every `seats` row the pass writes is locked `FOR UPDATE` first, in `id` order, and a UNIQUE refusal at the write is a conflict counted, never an error raised; then read every configured kanban board's cards once, join `assigned_user_id` to a seat through `seats.board_user_id`, and upsert `seat_board_task` for every mapped, unretired seat in one transaction — the tier-1 INPUT the fold and the sweeper derive `task_*` from ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), `BOARD-TASK.md`), counting `board_poll_ok`. ⛔ It never writes `seat_state`, and a degraded read writes **nothing at all** — `board_poll_failed` increments and not one row moves | `observed_at` stops moving, every tier-1 title is dropped at its 30-minute bound and `task.degraded` goes true per seat — a degradation that is rendered rather than silent. A poller that NEVER ran is the one case that signal cannot show, and `board_poll_ok` at `0` on `GET /api/fleet/health` is its instrument |
-| **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<install>/<seat> --board-user=<id> \| --refuse \| --clear`) | on demand | the operator's **pin** on `seats.board_user_id` — since card#12447 one of its TWO writers, the other being the board poll's link pass above: `--board-user` writes the column with `board_user_source = operator`, which the link pass never overrides; `--refuse` writes `NULL` with `board_user_source = refused`, which the pass also never overrides, so a seat whose declaration must not be honoured — a human's account, another install's seat on this site's board — stays unlinked by the operator's word; and `--clear` writes `NULL` to both and so returns the seat to automatic linking at the next poll — and **any** write of that column, by either writer, setting it or clearing it, deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
-| **retire** | operator command (`mezzanine:retire --seat=<install>/<seat> --by= --reason=`), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, publish the `seat.retired` message and the delta, and **clear the seat's board-user mapping** — `board_user_id` back to `NULL` and the seat's `seat_board_task` row deleted ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.7](#67-retention-and-purge)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
+| **seat→board-user** | operator command (`mezzanine:seat-board-user --seat=<seat_id> --board-user=<id> \| --refuse \| --clear`) | on demand | the operator's **pin** on `seats.board_user_id` — since card#12447 one of its TWO writers, the other being the board poll's link pass above: `--board-user` writes the column with `board_user_source = operator`, which the link pass never overrides; `--refuse` writes `NULL` with `board_user_source = refused`, which the pass also never overrides, so a seat whose declaration must not be honoured — a human's account, another install's seat on this site's board — stays unlinked by the operator's word; and `--clear` writes `NULL` to both and so returns the seat to automatic linking at the next poll — and **any** write of that column, by either writer, setting it or clearing it, deletes that seat's `seat_board_task` row in the same transaction, so a re-mapped seat cannot go on answering from the previous user's card for a poll cadence | no seat is a tier-1 candidate, which is the arrival state; the merge falls through to tier 3 with `task.degraded` false |
+| **retire** | operator command (`mezzanine:retire --seat=<seat_id> --by= --reason=`; the seat id alone since card#13117), or the admin console's agent module — two entry points, ONE implementation (card#9070; [§ 4.10](#410-retirement-is-a-rendered-state) carries the amendment) | on demand | the **only** writer of retirement, and it does the whole of it in one transaction: set `seats.retired_at` / `retired_by` / `retired_reason`, recompute `render_state` (which [§ 4.2](#42-render-precedence) collapses to `retired`), write the transition row with `cause: operator`, bump `state_version`, publish the `seat.retired` message and the delta, and **clear the seat's board-user mapping** — `board_user_id` back to `NULL` and the seat's `seat_board_task` row deleted ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.7](#67-retention-and-purge)) | nothing retires — which is correct, because retirement is an operator act and no timeout may ever stand in for one. Re-running it on an already-retired seat is a no-op |
 | **coordination receipt** | HTTP request (PHP-FPM) — `POST /api/ingest/github/{hook}` ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)), card#12239 | per delivery | validate in D1 § 18.8's order, derive the `coord.round`(s) per [D1 § 18.7](EVENT-SCHEMA.md#187-coordround), and write the `coord_deliveries` digest row and the `coord.round` outbox rows in **one** transaction ([§ 6.12](#612-the-coordination-store)) — the digest committed with the derivation or not at all — then return `202`. No thread and no post is stored: the floor holds no coordination state (operator, 2026-10-23). No seat lock, no fold, no daemon: a delivery is not a seat event ([D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)) and its derivation is one pure function over one JSON object | GitHub **does not retry** and records the failure (DOCS-CITED, `docs/design/COORD-STORE.md § 2.3`); the operator's Redeliver — reaching **3 days** back — is the retry, and it derives only because a failed receipt committed no digest. A lost post is one animation that never fired, and nothing later re-fires it |
 
 **15 s sweep cadence, derived.** The tightest deadline any time-derived transition has is the `stale`
@@ -1173,6 +1173,32 @@ retirement columns, and every row the ledger holds, are untouched — what goes 
 live board, which is exactly the thing a retired seat must stop holding. The board poll
 ([§ 2.1](#21-processes)) already skips a retired seat, so nothing re-creates the row.
 
+⭐ **A RETIRED `seat_id` IS NEVER ISSUED AGAIN, ANYWHERE ON THE SITE (card#13117).** A seat is known by its
+`seat_id` alone, so *its replacement takes a new seat id* holds across every room: issue refuses an id any
+seat has ever carried, live or retired, in whatever room it was (§ 6.4's `uq_live_seat` is the store's
+backstop for the live half; the never-reused half is `App\Fleet\SeatTokens::issue()`'s).
+
+**The ROOM MOVE is the second operator act on a seat (card#13117), and like retirement it has one
+implementation.** The admin console's Agents page places a live seat in a live room, or in none
+(`PATCH /admin/agents/{seat_id}/room`, session + MFA, operator only), through `App\Fleet\SeatMove` — the
+only writer of `seats.install_ref` after the seat's creation. One transaction: the destination room's
+`installs` row `FOR UPDATE` first (the lock a room's retirement takes, so a seat is never placed in a room in
+the act of retiring), then the seat's rows in [§ 6.5](#65-the-fold)'s lock order, then `install_ref`, then the
+shared recompute. `install_id` — the room the seat is drawn in — is version-bearing
+([§ 6.5](#65-the-fold)), so the recompute bumps `state_version` and publishes ONE `seat.delta` whose
+`changed[]` names `install_id` and whose `patch` carries the new room (`unassigned` for none); nothing new
+rides the feed, and the delta's own `install_id` — the outbox row's tenancy key ([§ 9](#9-read-side-authentication)) — is the
+new room's from that delta on. The act's author is kept where retirement's cause is: a
+`seat_state_transitions` row with `cause: operator`, written although the render does not move, whose
+`detail` names who moved the seat and from which room to which. A move into the room the seat is already
+in changes nothing and publishes nothing; a move into a room that does not exist or is retired, or of a seat
+that is not live, is refused and writes nothing. The seat's coordination scope moves with it
+([§ 8.3.3](#833-the-coordination-objects) rule 1's room arm reads the room the seat is in NOW), so the console
+**warns and does not refuse** on two moves: into a room where another live seat declares the same
+`protocol_agent_name`, and out of a room an unrevoked room-scope binding is bound to while the seat declares
+a name. A move removes nothing from the floor: the seat's desk leaves one room and is drawn in the other
+([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)).
+
 `retired` sits at the top of [§ 4.2](#42-render-precedence)'s collapse because it is the one state that
 is true regardless of what the seat is still doing: a retired seat that keeps reporting is a
 misconfiguration, and storing it as `working` would hide that.
@@ -1517,7 +1543,7 @@ Sketches, not migrations: they state every column, its type, its nullability and
 what an implementer needs. Names are final; a builder may reorder columns and add nothing.
 
 ```sql
-CREATE TABLE installs (
+CREATE TABLE installs (                     -- the ROOM (card#9267; created in the console since card#13117)
   id            SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   install_id    VARCHAR(32)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   display_name  VARCHAR(64)  NULL,
@@ -1528,8 +1554,16 @@ CREATE TABLE installs (
 
 CREATE TABLE seats (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  install_ref   SMALLINT UNSIGNED NOT NULL,
+  install_ref   SMALLINT UNSIGNED NULL,     -- the seat's ROOM; NULL = in no room (card#13117): a seat
+                                            -- is issued in none and the console places it
   seat_id       VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  live_seat_id  VARCHAR(48)  CHARACTER SET ascii COLLATE ascii_bin
+                AS (IF(retired_at IS NULL, seat_id, NULL)) STORED,
+                                            -- card#13117: the key's spelling of "a live seat's id";
+                                            -- a retired row carries NULL, which a unique key admits
+                                            -- any number of. STORED, as `coord_hooks.active_key`:
+                                            -- a VIRTUAL column makes MariaDB refuse every later
+                                            -- `ADD COLUMN … ALGORITHM=INSTANT` on the table
   species       VARCHAR(16)  CHARACTER SET ascii COLLATE ascii_bin NOT NULL,  -- the CHARACTER (§ 6.13)
   species_drawn_at DATETIME(3) NULL,        -- set by the card#12443 migration only (§ 6.13)
   board_user_id INT UNSIGNED NULL,          -- § 4.9 tier 1's join. Two writers since card#12447:
@@ -1545,11 +1579,19 @@ CREATE TABLE seats (
                                             -- one writer is named in § 2.1 / § 4.10
   retired_by    VARCHAR(64)  NULL,
   retired_reason VARCHAR(255) NULL,
-  UNIQUE KEY uq_seat (install_ref, seat_id),
+  UNIQUE KEY uq_live_seat (live_seat_id),  -- card#13117: at most one LIVE seat per seat_id, site-wide
   UNIQUE KEY uq_seat_board_user (board_user_id),
+  KEY ix_seat_install (install_ref),
   CONSTRAINT fk_seat_install FOREIGN KEY (install_ref) REFERENCES installs (id)
 ) ENGINE=InnoDB;
--- A seat row is created at seat-token issue time (CLI or console; D1 § 3.3), which is why the row can exist
+-- ⭐ A SEAT IS KNOWN BY ITS `seat_id` ALONE (card#13117). `uq_seat (install_ref, seat_id)` — uniqueness
+-- per install — is gone, replaced by the LIVE-only `uq_live_seat`: a `UNIQUE (seat_id)` over every row
+-- is false of a store that held one id retired under two installs, which the per-install namespace let
+-- through, and renaming those rows would back-edit a retirement record. That a retired id is never
+-- issued again is `SeatTokens::issue()`'s rule, under the species mutex
+-- (`plan-13117-seat-identity.md § 3.1`). Every read of a seat's room goes through one primitive,
+-- `App\Read\SeatIdentity`, which LEFT-joins `installs` and names a seat in no room `unassigned`.
+-- A seat row is created at seat-token issue time (CLI or console; D1 § 3.3), in no room, which is why the row can exist
 -- before any event arrives: a provisioned-but-silent seat renders `offline`/`no_data_yet`
 -- rather than being invisible. The token rows themselves live in the ingest's own table
 -- (card #7338, D1 § 3.3) and are never read by anything in this document.
@@ -2100,8 +2142,9 @@ CREATE TABLE feed_outbox (
                                                 -- and a row carrying it would be fanned out to every open
                                                 -- stream — the loop has no `return` on it — telling every
                                                 -- client the server ended a stream that is still running
-  install_id  VARCHAR(32) NULL,                 -- the message's install where it has one (seat.*, coord.*,
-                                                -- room.map); NULL on a fleet-wide message. § 9's filter key
+  install_id  VARCHAR(32) NULL,                 -- the message's ROOM where it has one (seat.*, coord.*,
+                                                -- room.map) — `unassigned` for a seat in no room since
+                                                -- card#13117; NULL on a fleet-wide message. § 9's filter key
   message     JSON NOT NULL CHECK (LENGTH(message) <= 8192),   -- the § 8.3 envelope, serialized ONCE by
                                                 -- the writer; § 8.3's 8 KiB bound, enforced at the write
   KEY ix_created (created_at)                   -- the purge's range scan (§ 6.7), and the MIN(id) over one
@@ -2122,9 +2165,10 @@ CREATE TABLE coord_hooks (
   hook_id       CHAR(26)     CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
                                             -- `mzh_` + 22 base64url chars: the PUBLIC selector in the
                                             -- route's path (D1 § 18.8). Never a secret, never evidence
-  scope         ENUM('install','fleet') NOT NULL,
+  scope         ENUM('room','fleet') NOT NULL,
                                             -- set by the operator at issue (COORD-STORE.md § 3.1):
-                                            -- `install` names one install below; `fleet` names none —
+                                            -- `room` names one room below (`install` until card#13117,
+                                            -- migrated in place); `fleet` names none —
                                             -- the cross-install repository whose threads span rooms.
                                             -- An ENUM by § 6.3: the issue command is the only writer
                                             -- and produces exactly these two
@@ -2418,10 +2462,12 @@ same admission `rebuild_truncated` makes.
 
 **`state_version` and the delta are a per-writer rule, not a property of this loop.** The pseudocode
 above is the fold's execution of it, but the rule is: *any* process that changes a version-bearing
-field bumps `state_version` and enqueues a delta in the same transaction. This document has three such
-writers — the fold above; the **sweeper**, whose every pass recomputes `link_state` and `render_state`
-for every seat ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)); and **the retirement act**
-([§ 4.10](#410-retirement-is-a-rendered-state)), which states its own bump and publish. The sweeper is
+field bumps `state_version` and enqueues a delta in the same transaction. This document's such
+writers are the fold above; the **sweeper**, whose every pass recomputes `link_state` and `render_state`
+for every seat ([§ 2.1](#21-processes), [§ 4.5](#45-link-states)); and the two operator acts on a seat,
+**the retirement act** and, since card#13117, **the room move**
+([§ 4.10](#410-retirement-is-a-rendered-state)), each of which states its own bump and publish — all of
+them through the one shared recompute (`App\Fold\StateRecompute`). The sweeper is
 named explicitly because its `live → stale` transition is the **only** delta a permanently quiet desk
 will ever get, and leaving that one to be inferred from a rule written inside the fold's loop would
 leave exactly the seat this document exists to make legible depending on an implementer's reading.
@@ -2457,6 +2503,15 @@ E6. That is not a concession: it is what [§ 8.3](#83-the-websocket-delta-feed)'
 already counts (all 120 subagent events among them), and the alternative — excluding `activity.*` —
 would freeze the quiet age on every connected client between deltas, which is the false-idle class this
 document exists to prevent.
+
+**`install_id` — the room the seat is drawn in — is version-bearing by the subtraction (card#13117).** It is
+a member of the [§ 8.2.1](#821-the-seat-state-object) object and not one of the ten, and until card#13117 it
+needed no statement because nothing moved it: a seat's install was fixed at its token's issue. Since the
+console places a seat in a room, one writer moves it — the room move ([§ 4.10](#410-retirement-is-a-rendered-state))
+— and a desk drawn in another room is a different rendering, so the move is a delta like any other state
+change, `changed: ["install_id"]` with the new room in `patch`. Its fingerprint value is read through the
+one seat-identity read (`App\Read\SeatIdentity`), so a seat in no room fingerprints as `unassigned`, as its
+object serializes.
 
 **`idle_nudge_after_s` is outside both sides of the split, because it is not state (card#9418).** It is
 the install's configured idle horizon, published on every seat object for a consumer that polls the
@@ -2860,7 +2915,7 @@ drain.
 
 ### 6.6 Rebuild from the log
 
-`php artisan mezzanine:rebuild --seat=<install>/<seat> [--since=<datetime>]` truncates that seat's
+`php artisan mezzanine:rebuild --seat=<seat_id> [--since=<datetime>]` truncates that seat's
 projections, resets its cursor — `fold_cursor_event_id` to `0` and `fold_cursor_received_at` to the
 `received_at` of the oldest event it is about to replay, never to `NULL`, so
 [§ 2.3](#23-a-frozen-fold-is-the-dangerous-degradation)'s lag stays computable and honest for the
@@ -3111,8 +3166,10 @@ stated rather than assumed:
 ⭐ **Operator ruling, card#9208 (2026-09-12)**, reversing the same card's ruling of 2026-09-09 —
 [§ 13](#13-decisions-taken-revisable-at-review) row 38 carries the reversal, its alternatives and its
 cost; this section is the **store** half of it and [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed) is the **read** half. What
-an operator authors in the admin console — one Tiled document per **room** (an install, card#9267) and
-one **building layout** (which rooms share a floor, each room's form, a floor's label — and, since
+an operator authors in the admin console — one Tiled document per **room** (an `installs` row, card#9267;
+⭐ created, named and retired in the console's Rooms module since card#13117, `App\Building\Rooms`) and
+one **building layout** (which rooms share a floor, each room's form, a floor's name — the slug of which is
+its web address since card#13117 — and its former addresses, and, since
 card#9292, the floor **plan**: each room's position and a floor's hallway —
 [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s document) — is served to the floor at runtime,
 and the console is the source of truth for both. The DDL is in [§ 6.4](#64-ddl)'s block, under its
@@ -3138,9 +3195,28 @@ them and says which one it does not:
 | **review** | **not recovered, and stated.** There is no approval step: every account that can reach the console is an operator (the console's own rule, card#9070; card#9415 keeps observers out of it), so no second person stands between a save and the floor. What stands in its place is weaker and is named exactly — the console **previews** a document with the floor's own renderer before it is saved ([FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)) — ⚠ a stand-in not yet built: the renderer exists ([FLOOR.md Appendix B](FLOOR.md#appendix-b--what-an-implementer-builds-from-this) rows 7 and 14) and the console does not yet preview with it, so until it does the revert below is the only thing between a bad save and every viewer, and that is said rather than implied — and the revert makes a wrong save cost one restore rather than a redeploy | **no** |
 
 **The write path, stated once.** The admin console is the only writer of all three tables — its
-**floors** module (card#9085) writes a room's map and its **building layout** module (card#9208's
-build slice 1) writes the layout, and both go through the one serialised path below — and one save is
-one transaction: validate the document — a room map by
+**floors** module (card#9085) writes a room's map, and the layout is written by its **building layout**
+module (card#9208's build slice 1) and, since card#13117, by its **Rooms** module (a room placed at its
+creation, a room taken off its floor at its retirement); all of them go through the one serialised path
+below — and one save is one transaction.
+
+⭐ **Two writes of the layout, and each decides against the document it replaces (card#13117).** A console
+ACTION — a room's placement, a retirement's removal, and the Floors module's acts (a floor's creation, rename,
+theme, forgotten alias and placed room, `plan-13117-seat-identity.md § 5.5`) — goes through **`Layouts::amend()`**,
+the one writer for them: inside the lock below it reads the CURRENT document — refusing by name, with the store
+unchanged, a stored document the reader refuses, which the textarea or a restore repairs — hands it to the
+action's edit, validates the result exactly as a
+save is validated, refuses a no-op, and writes one revision, so a decision about the document is never taken
+against the one a form was rendered from. The **textarea** replaces the whole document, so it is held to the
+same rule by a **compare-and-swap**: its form carries the `layout_version` it was opened at, and a save whose
+base is not the current version is refused by name — *the layout changed since you opened it (revision N is
+current; you edited from M): reload and re-apply* — with the store unchanged. An action and a textarea save
+can race in either order, and the loser is told. Both writes, and a **restore**, also refuse a layout that
+places a room the store holds as **retired**: a room's retirement takes it off its floor in the same
+transaction, so no stored layout places one, and the refusal is a rule of the WRITE only — no load can meet
+one.
+
+One save is one transaction: validate the document — a room map by
 `App\Floor\FloorMap`, whose refusals [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map) states, and, at
 its save and its restore, by `App\Floor\DeskSlots`: two `desks` objects whose half-open rects
 intersect, or one smaller than the furniture box, refused naming them
@@ -3316,7 +3392,12 @@ total:**
    `App\Read\RetirementFilter::live()`, the one predicate every read surface uses — so a retired seat's
    species is free from `retired_at` on, and **nothing is written to free it**: rule 5 is this read
    filter, not a writer. While this rule answers, **the layout is not read at all** (rule 2).
-2. **Else, a species no live seat on its FLOOR holds.** A seat's floor is
+2. **Else, a species no live seat on its FLOOR holds — the seat's floor, or nothing while it has none.**
+   ⭐ **Since card#13117 a new seat is created in no room, so at issue it is on no floor and this rule is
+   skipped** — rule 3 then ranks by the fleet alone (operator ruling 2026-11-10, Q6 (a); a body that
+   repeats a floor-mate's after the console places the seat is accepted, and reachable only past rule 1).
+   What follows is the rule over a seat that has a floor, which the migration below still reads for the
+   rows it backfills. A seat's floor is
    [FLOOR.md § 3.1](FLOOR.md#31-the-keys-and-why-they-are-the-only-ones)'s: the floor the current
    building layout places its `install_id` on — `BuildingLayout::floorOf($installId)` over
    `App\Building\Layouts::read()` ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)),
@@ -3359,7 +3440,12 @@ candidates a rule admits, the allocation takes the first in the seat's **prefere
 list rotated to start at the key's own draw — `draw(seatKey, SPECIES_FIELD) % SPECIES_KEYS.length`,
 the exact index `speciesOf` drew before this card — and walked cyclically. A new seat whose own draw is
 free therefore gets its own draw, which keeps new seats' bodies spread over the list rather than filling
-it from its first entry upward; what the migration keeps is stated with the migration, below, because
+it from its first entry upward. ⭐ **The key is the seat's `seat_id` alone since card#13117** — the string
+the browser's generator seeds the character from (`seed.js`'s `seatKey()`, [FLOOR.md § 10.2](FLOOR.md#102-characters-original-creatures-drawn-by-code)),
+so the first preference IS the body the browser would draw; it was `install_id/seat_id` before, and a seat's room
+is now a console fact that moves. `Tests\Feature\Fleet\ASeatsCharacterIsAllocatedOnceTest` holds an uncontended
+allocation equal to `node`'s draw for the seat id. Stored species did not move with the key (rule 4); the old
+migration's backfill keeps the pair key it ran under; what the migration keeps is stated with the migration, below, because
 one pass in creation order is not the same rule. The salt (`SPECIES_FIELD`) stays what it is and is
 **never searched again**: a repeat is prevented by the population read under the lock, not by a constant
 fitted to a roster ([FLOOR.md § 10.4](FLOOR.md#104-the-art-direction-as-a-specification)'s salt bullet,
@@ -3783,6 +3869,21 @@ no second copy of a number the wire already carries.
 | **SSE** `GET /api/fleet/stream` ([§ 8.3](#83-the-websocket-delta-feed)) | the browser only | **together** — the client JavaScript is served by the same deploy that serves the feed | carries `feed_version` for detection, but **no support window and no N/N-1 obligation**: there is never a client in the wild older than the server. A client that sees an unknown `feed_version` stops applying deltas and tells the user to reload — it does not attempt a compatibility dance it cannot win |
 | **REST** `GET /api/building/*` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | the browser only | **together** — the same deploy serves the client that fetches it | carries `api_version` for detection and takes **the stream row's posture, not the fleet REST row's**: no support window and no N/N-1 obligation, because its one consumer ships with the server. It is a REST surface because a map is fetched once and cached by version rather than streamed; it is outside `/api/fleet/*` because an authored document is not a fleet fact ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)). The property that would move it to the first row is checkable: a machine consumer of its own that upgrades on its own schedule |
 
+⭐ **card#13117 changed the first row's surface under `api_version` 1, additively, and declared the
+meaning drift to its machine consumer's owner** rather than bumping the version, because that consumer —
+the bridge's idle nudge (`agent-webhook-bridge`'s `FleetSnapshotReader`) — refuses every body whose
+`api_version` is not `1`, so a bump would turn every nudge *unmeasured* from the deploy on. What changed:
+the snapshot's `installs[].install_id` is the **room** the console placed the seat in (a key that never
+changes, on a room that can be retired, holding seats that can be moved), no longer the install the token
+was issued under; a group `unassigned` appears whenever a live seat is in no room; `seat_id` is unique
+across the site; `GET /api/fleet/seats/{seat_id}` and `…/{seat_id}/timeline` were added beside the
+two-segment routes, which are kept and ignore their `{install_id}`. **The declaration, as posted to the
+bridge's owner before the change merged**, is
+[`plan-13117-seat-identity.md § 7`](plan-13117-seat-identity.md)'s second row, and it is quoted in the
+release note's *Upgrade warnings*. **The bump to `api_version` 2 and the removal of the two-segment routes
+are gated on that owner's word that its reader has moved — a gate, not a clock** (D1 § 3.3's overlap
+rule); until then this document plans neither.
+
 **Stating the second row is the point.** Inheriting D1's wire-compatibility discipline for a channel
 whose two ends ship in one act would cost a support window, a version negotiation and a set of rules
 nobody can ever exercise — and an obligation nobody can exercise is one nobody maintains. The asymmetry
@@ -3796,9 +3897,9 @@ are `application/json; charset=utf-8` and carry `server_time`.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/fleet/snapshot` | session+MFA **or** `mzr_` token | the whole fleet: every install, every seat, current state. The snapshot half of snapshot-then-deltas, and the watchdog's entire interface |
-| `GET` | `/api/fleet/seats/{install_id}/{seat_id}?resync_from=<state_version>` | session+MFA **or** `mzr_` token | one seat: its state object plus the drill-down extras (counters, predicates, open calls, session). `resync_from` is **optional** and is the client's last applied `state_version`: when it is present and the seat's current version exceeds it by more than 1, the server increments `feed_gap_detected` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). It changes nothing about the response |
-| `GET` | `/api/fleet/seats/{install_id}/{seat_id}/timeline?limit=&before=` | session+MFA | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
+| `GET` | `/api/fleet/snapshot` | session+MFA **or** `mzr_` token | the whole fleet: every room, every seat, current state — grouped under `installs[]` by the seat's room, a seat in no room under the group `unassigned` (card#13117). The snapshot half of snapshot-then-deltas, and the watchdog's entire interface |
+| `GET` | `/api/fleet/seats/{seat_id}?resync_from=<state_version>` — and, kept for the bridge's reader until [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s gate opens, `/api/fleet/seats/{install_id}/{seat_id}`, whose `{install_id}` is ignored (card#13117) | session+MFA **or** `mzr_` token | one seat: its state object plus the drill-down extras (counters, predicates, open calls, session). `resync_from` is **optional** and is the client's last applied `state_version`: when it is present and the seat's current version exceeds it by more than 1, the server increments `feed_gap_detected` ([§ 8.5](#85-gaps-reconnect-and-why-state_version-is-not-seq)). It changes nothing about the response |
+| `GET` | `/api/fleet/seats/{seat_id}/timeline?limit=&before=` — and the kept `/api/fleet/seats/{install_id}/{seat_id}/timeline` (card#13117) | session+MFA — **both routes** ([§ 9](#9-read-side-authentication)) | the recent-activity window for D3's drill-down: the seat's renderable events, newest first, `limit` ≤ 200, default 50 |
 | `GET` | `/api/fleet/health` | session+MFA **or** `mzr_` token | fleet-level health only, no seat data: store, fold, sweep, ingest recency, counts — **plus the fleet-scoped counters**, which this endpoint alone carries ([§ 8.2.4](#824-the-fleet-health-object)) |
 **There is no fifth FLEET endpoint, and the fleet plane still serves no floor map — but a map IS
 served, on a surface of its own, and the sentence that stood here until 2026-09-12 is REVERSED.**
@@ -3961,12 +4062,21 @@ that neither end has to guess:
   owes is the **key it is computed from**. That is why declaring the binding costs this contract no wire
   member: the members already exist, and what was missing was the statement that they are load-bearing
   for something other than naming a seat.
-- **Changing either member re-identifies the desk; it is not a rename.** The pair *is* the identity, so
-  a seat whose config file changes one of them arrives as a new seat at a new desk and the old seat is
-  one that stopped reporting. That is D1's rule and D1's cost, cited rather than re-decided here.
-- **Uniqueness is per install, not global** — `UNIQUE KEY uq_seat (install_ref, seat_id)`
-  ([§ 6.4](#64-ddl)). A consumer ordering seats within a floor may rely on `seat_id` being total there
-  and nowhere else.
+- ⭐ **Since card#13117 the identity is `seat_id` alone, and `install_id` is the ROOM the seat is drawn
+  in** — a console fact, `unassigned` for a seat the console has placed in no room, and no longer
+  anything in the seat's config ([D1 § 3.3](EVENT-SCHEMA.md#33-authentication-and-the-identity-binding-rule),
+  [`plan-13117-seat-identity.md § 3.3`](plan-13117-seat-identity.md)). The wire is unchanged: both
+  members still ride every seat object and message, and `install_id` keeps its name. Until the slice
+  that re-keys the client (plan § 3.4, S2) the browser's desk key and slot hash still read the pair;
+  no act can change a seat's room before the console's move (plan § 4.2, S3), which lands after it.
+- **Changing `seat_id` re-identifies the desk; it is not a rename** — a seat that reports under another
+  id arrives as a new seat at a new desk and the old seat is one that stopped reporting. That is D1's
+  rule and D1's cost, cited rather than re-decided here.
+- **Uniqueness is site-wide among LIVE seats** — `UNIQUE KEY uq_live_seat (live_seat_id)`
+  ([§ 6.4](#64-ddl)), card#13117; until that card it was per install, `uq_seat (install_ref, seat_id)`.
+  A consumer may select a seat by `seat_id` alone. A retired id is never issued again, but two retired
+  rows of one id can exist on a store that predates the card, and no read surface resolves a retired
+  seat by id alone.
 
 **`protocol_agent_name` is the seat→agent DECLARATION, and publishing it here is the whole of what
 this plane does with it.** ⭐ **`card#7957`'s ruling *(d)*, built on the server's side on `card#9296`,
@@ -4428,7 +4538,7 @@ reconnect cadence is the client's ([FLOOR.md § 2.2](FLOOR.md#22-connect-snapsho
 
 | Message `t` | Direction | When | Payload |
 |---|---|---|---|
-| `seat.delta` | server → client | a seat's `state_version` advanced | `install_id`, `seat_id`, `state_version`, `at`, `changed[]`, `patch{}` |
+| `seat.delta` | server → client | a seat's `state_version` advanced — ⭐ a room move among them (card#13117, [§ 4.10](#410-retirement-is-a-rendered-state)): `changed[]` names `install_id`, `patch` carries the new room, and the message's own `install_id` is that room. A move is not a removal: the consumer keeps the seat under its `seat_id` and draws it in the new room ([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)) | `install_id`, `seat_id`, `state_version`, `at`, `changed[]`, `patch{}` |
 | `feed.heartbeat` | server → client | every **15 s**, one row fleet-wide, unconditionally | `server_time`, `fleet{}` (the same health object the snapshot carries) |
 | `seat.retired` | server → client | the retirement act ran, from either of its operator entry points ([§ 2.1](#21-processes), [§ 4.10](#410-retirement-is-a-rendered-state)) — one implementation, so one producer. ⭐ **This message is a REMOVAL instruction**: the consumer drops the seat ([FLOOR.md § 3.5](FLOOR.md#35-retirement-and-the-only-removal)), and it is the only message on this feed that does | `install_id`, `seat_id`, `reason`, `at` |
 | `fleet.reload` | server → client | a deploy — written by `mezzanine:feed-reload` ([§ 2.1](#21-processes)) before the deploy's opcache wait — no deploy reloads PHP-FPM, and the deploy user cannot — carrying the release's `feed_version` whether or not it changed, because the deploy is the one act that knows the code moved. ⛔ **Terminal**: the handler ends the stream after delivering it — **and writes `feed.close{reason:"reload"}` first**, so the end is a stated server decision rather than the unexplained silence [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F3 routes to the dead-feed render (the `feed.close` row below owns that member) — which is what takes an open stream off the previous release's code, since opcache revalidation reaches new requests only. ⚠ **The message is written on every deploy; the client's RELOAD BANNER is not raised by every one** — it is raised on a `feed_version` the client does not know ([§ 8.1](#81-two-surfaces-two-compatibility-postures), [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F8), which is unchanged by this row. An unchanged `feed_version` after a deploy means **the wire did not move**, and a client whose bundle is one release old is by that definition still correct on it — so it reconnects, keeps rendering, and is asked to reload only when the wire actually changes. Reading the terminal end as a reload prompt would put a banner in front of every viewer on every deploy | `feed_version`, `reason` |
@@ -4448,7 +4558,7 @@ both carry the same object, because the heartbeat is unconditional and periodic 
 health only from heartbeats would learn about a store outage up to 15 s late, on the one path where the
 client is waiting to be told why there is nothing.
 
-**Envelope** — every message: `{"feed_version":2,"t":…,"server_time":"…", …}`.
+**Envelope** — every message: `{"feed_version":3,"t":…,"server_time":"…", …}`.
 
 **`feed.heartbeat` is the property that makes the whole surface honest.** Without it, a stream that has
 silently died is indistinguishable from a fleet where nothing is happening — which is exactly the
@@ -4954,7 +5064,7 @@ so this paragraph cannot be read as the whole ledger.
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "seat.delta",
   "server_time": "2026-08-23T14:23:11.229Z",
   "install_id": "aimla",
@@ -4987,7 +5097,7 @@ bound, `"idle_nudge_after_s":86400` — 27 B more — and the worst-case snapsho
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "seat.delta",
   "server_time": "2026-08-23T14:23:09.882Z",
   "install_id": "01234567890123456789012345678901",
@@ -5091,7 +5201,7 @@ renders none of its members.
 | Field | Type | Null? | Bounds | Example |
 |---|---|---|---|---|
 | `coord_thread.thread_ref` | string | no | ≤ 256 B, `<owner>/<repo>#<n>` — the thread's identity, and the key every round carries back to it | `"synthetic-org/coordination-fixture#900742"` |
-| `coord_thread.scope` | slug | no | ≤ 16 B — `install` or `fleet`, the binding's scope ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread), card#12239). It selects which declaration a consumer joins the object's names through (rule 1 below) and whether the object has a room at all | `"install"` |
+| `coord_thread.scope` | slug | no | ≤ 16 B — `room` (`install` until card#13117) or `fleet`, the binding's scope ([D1 § 18.6](EVENT-SCHEMA.md#186-coordthread), card#12239). It selects which declaration a consumer joins the object's names through (rule 1 below) and whether the object has a room at all | `"room"` |
 | `coord_thread.install_id` | slug | **yes** | ≤ 32 B, from the **hook binding** and never from the payload's own repository claim ([D1 § 18.8](EVENT-SCHEMA.md#188-receipt-the-endpoint-its-authentication-and-its-validation-order)); it is the outbox row's filter key ([§ 8.3](#83-the-websocket-delta-feed)). `null` **iff** `scope` is `fleet` — the object belongs to no room, and the outbox row carries the `NULL` [§ 6.4](#64-ddl) reserves for a fleet-wide message | `"aimla"` |
 | `coord_thread.lifecycle` | slug | no | ≤ 32 B — `opened` · `closed` · `reopened`, the three actions D1 § 18.8 step 8 admits, verbatim. A closed thread can reopen, so a consumer must not treat `closed` as terminal | `"closed"` |
 | `coord_thread.carrier` | slug | **yes** | ≤ 16 B — the title's leading bracketed token, lowercased and slug-validated with **no set consulted** ([D1 § 18.3.1](EVENT-SCHEMA.md#1831-the-install-facts-input-declared-once)); `null` when the title leads with none, or when the token fails validation | `"announce"` |
@@ -5148,11 +5258,14 @@ argument is untouched by a join existing. A consumer resolves against the seat p
 holds; this plane asserts no endpoint for it. Three rules, and the third is the one an implementer
 gets wrong:
 
-1. **The join has two arms, and the object's `scope` selects one.** For an **`install`-scope** object
-   it is `(install_id, protocol_agent_name)` → the ONE seat of that install declaring that name, and it
-   resolves to 0 or 1 desks — never to a set. Scoped to the install because such an object carries the
-   `install_id` of its hook binding and *"a broadcast's reach equals the install's"*; a name declared in
-   another install is another install's fact. For a **`fleet`-scope** object (card#12239, operator
+1. **The join has two arms, and the object's `scope` selects one.** For a **`room`-scope** object
+   (`install` until card#13117) it is `(room, protocol_agent_name)` → the ONE live seat **currently in
+   that room** declaring that name, and it resolves to 0 or 1 desks — never to a set. Scoped to the room
+   because such an object carries the room key (`install_id`) of its hook binding and *"a broadcast's
+   reach equals the install's"*; a name declared in another room is another room's fact. ⭐ **The room
+   is a console placement since card#13117**, so which seat a team repository's post resolves to is a
+   function of where the operator placed the seats, and a seat moved between rooms moves its scope with
+   it ([`plan-13117-seat-identity.md § 4.3`](plan-13117-seat-identity.md)). For a **`fleet`-scope** object (card#12239, operator
    2026-10-23) it is `roundtable_agent_name` over **every seat of every install the client holds** → the
    ONE seat declaring that roundtable name, 0 or 1 desks, never a set: a roundtable identity is unique
    across the fleet by that repository's own construction, so the duplicate arm below spans installs for
@@ -5312,13 +5425,13 @@ receipt-internal digest, in this feed's envelope ([§ 8.3](#83-the-websocket-del
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "coord.round",
   "server_time": "2026-08-27T09:14:03.501Z",
   "coord_round": {
     "post_ref": "synthetic-org/coordination-fixture#900742",
     "thread_ref": "synthetic-org/coordination-fixture#900742",
-    "scope": "install",
+    "scope": "room",
     "install_id": "aimla",
     "from": "pm",
     "attribution": "resolved",
@@ -5338,12 +5451,12 @@ The close of that same thread, which names nobody — `opened_by` is `null` and 
 
 ```json
 {
-  "feed_version": 2,
+  "feed_version": 3,
   "t": "coord.thread",
   "server_time": "2026-08-27T16:02:11.802Z",
   "coord_thread": {
     "thread_ref": "synthetic-org/coordination-fixture#900742",
-    "scope": "install",
+    "scope": "room",
     "install_id": "aimla",
     "lifecycle": "closed",
     "carrier": "announce",
@@ -5561,7 +5674,7 @@ never inlined into fleet state, and never carried on a message.**
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| `GET` | `/api/building` | session+MFA | the **layout** — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s floors, already keyed, labelled and sorted, exactly as the page delivered them before this surface existed — and, for every room that has an authored map, its **`map_version`**. It is what a client fetches beside the snapshot on connect, and again on every `building.layout` |
+| `GET` | `/api/building` | session+MFA | the **layout** — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s floors, already keyed, named and sorted — since card#13117 each carries its `name` and its `aliases`, and its `floor` key is the slug of the name — and, for every room that has an authored map, its **`map_version`**. It is what a client fetches beside the snapshot on connect, and again on every `building.layout` |
 | `GET` | `/api/building/rooms/{install_id}/map` | session+MFA | one room's **map**: the Tiled document the floor draws that room from, with the version it is. Answered from the room's authored document where one is current and from the **shipped default** where none is — the same shape either way, with `source` saying which |
 
 Both require authentication under [§ 9](#9-read-side-authentication)'s browser-only row; both are
@@ -5582,9 +5695,9 @@ from the snapshot's row.
   "layout": {
     "layout_version": 3,
     "floors": [
-      { "floor": "aimla", "label": null,
+      { "floor": "aimla", "name": "aimla", "aliases": [],
         "rooms": [ { "install": "aimla", "form": "open" } ] },
-      { "floor": "sola", "label": "the solos",
+      { "floor": "the-solos", "name": "The Solos", "aliases": [ "sola" ],
         "rooms": [ { "install": "sola", "form": "office", "origin": { "x": 0,   "y": 160 } },
                    { "install": "zeta", "form": "office", "origin": { "x": 480, "y": 160 } } ],
         "hallway": { "type": "map", "orientation": "orthogonal", "width": 50, "height": 5,
@@ -5602,11 +5715,16 @@ from the snapshot's row.
 ```
 
 - `layout.floors` is the **placed** floors only — [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)'s
-  one client-side rule (an install the layout does not place is a floor of its own, alone, `open`) is
-  applied by the client against the snapshot's installs, as it is today; this surface does not carry
+  one client-side rule (a room the layout does not place, that the snapshot carries or that `rooms[]`
+  names, is drawn on the Unassigned floor, `open` — ⭐ card#13117; it was a floor of its own until then) is
+  applied by the client against the snapshot's installs and `rooms[]`; this surface does not carry
   `reported`, because whether a room's seats are on the wire is the snapshot's fact and not the
-  layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: today's
-  building, one floor per install.
+  layout's. `layout_version` is `0` with an empty `floors` when no layout was ever saved: every room on
+  the Unassigned floor.
+- ⭐ Each floor's **`floor`** is the slug of its **`name`** (card#13117, [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout)),
+  and **`aliases`** — always present, `[]` for none — are the keys it answered to before a rename, which the
+  floor route redirects from; the worked floor `The Solos` was renamed from `sola`. The member `label` is
+  gone, and a stored document carrying it is refused by the reader, naming `name`.
 - A floor the operator **planned** ([FLOOR.md § 4.6](FLOOR.md#46-the-building-layout), card#9292)
   carries `origin` on every room and, where one was authored, its `hallway` — the Tiled document as
   authored, whole, because it is part of the layout document and not a room's; a floor with neither
@@ -5619,10 +5737,13 @@ from the snapshot's row.
   the layout's own write bound ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions))
   and by nothing this surface adds; the hallway endpoint of its own that was declined is
   [§ 13](#13-decisions-taken-revisable-at-review) row 45's.
-- `rooms[]` lists the rooms with an **authored** map and nothing else. It is not a population
+- `rooms[]` lists the **live** rooms with an **authored** map and nothing else. It is not a population
   statement — a room absent here renders the shipped default, and a room named here whose install the
   snapshot does not list is still a room whose seats have not reported, which
-  [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) draws and labels rather than omits.
+  [FLOOR.md § 4.6](FLOOR.md#46-the-building-layout) draws and labels rather than omits. ⭐ **A retired
+  room's map is left out** (card#13117): retiring a room keeps its current map as a record, and since the
+  composers draw every authored room no floor places on the Unassigned floor, a retired room listed here
+  would be drawn there.
 
 **`GET /api/building/rooms/aimla/map`, worked** — the envelope; `map` is the Tiled document as
 authored, and what the floor reads of it is [FLOOR.md § 10.3](FLOOR.md#103-the-floor-map)'s table:
@@ -5745,6 +5866,7 @@ CSPRNG, SHA-256 at rest, a greppable prefix — and cites it rather than re-deri
 | the floor, the drill-down, the stream, and REST from a browser | **Laravel session + MFA** (Fortify + TOTP, D-04; card #7334) | `docs/PLAN.md § 3`: MFA gates the page, the feed **and** the REST snapshot — and on the stream the gate is re-applied every **15 s** for as long as it is open, below |
 | REST from a machine consumer | **`Authorization: Bearer mzr_<43 base64url chars>`** | scope `fleet_read`, read-only. **Never valid on the ingest**, and an `mzn_` ingest token is never valid here: distinct prefixes, distinct tables, and a token presented on the wrong surface is `401`, counting `token_wrong_surface`, and an operator alert |
 | the stream, from a machine consumer | **not supported** | refused by operator ruling, 2026-09-13 ([§ 14](#14-open-questions-for-the-review-loop) item 15); the reason it was first refused is gone — see below |
+| the seat timeline — **every route that serves one**: `GET /api/fleet/seats/{seat_id}/timeline` and the kept `GET /api/fleet/seats/{install_id}/{seat_id}/timeline` ([§ 8.2](#82-rest)) | **Laravel session + MFA only** | an `mzr_` token presented to either is refused `401`. ⚠ The rule is enforced **by route name** (`App\Http\Middleware\FleetReadGate::SESSION_ONLY_ROUTES`), so a timeline route under a new name is open to a machine token until it is listed — card#13117's seat-id timeline route is, and `TheSeatRoutesAddressASeatByItsIdTest` presents a token to every route whose action is the timeline, selected from the route table rather than by name. Closing routes by default — an attribute the gate reads instead of a list — is a hardening named here and not built |
 | the building surface — `GET /api/building` and `GET /api/building/rooms/{install_id}/map` ([§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)) | **Laravel session + MFA only** | browser-only, like the timeline: an `mzr_` token presented to it is refused `401` exactly as the timeline refuses one, and it is **not** `token_wrong_surface` — the token is on the read side, on a route the read side reserves for a session. The map is furniture and would be harmless in a machine's hands; what refusing buys is one fewer surface with a compatibility window, which is [§ 8.1](#81-two-surfaces-two-compatibility-postures)'s reason for its posture |
 
 **The stream re-checks its own authorization every 15 s, so revocation on an open connection is a
@@ -5920,7 +6042,11 @@ sub-second fleet state gets polling latency, and that need is what reopens item 
 install, and any `fleet_read` token does too. That is stated rather than assumed, because the moment a
 second organisation's install reports into one Mezzanine it is wrong. Every outbox row carries its
 `install_id` and the stream handler filters per subscriber ([§ 8.3](#83-the-websocket-delta-feed)), and
-the endpoint shapes are per-install, so a future ACL has somewhere to attach. Whether one is needed was
+the endpoint shapes are per-install, so a future ACL has somewhere to attach. ⭐ **Since card#13117 that
+attachment point is the ROOM**: a seat-scoped row's `install_id` is the room the seat is in at the write,
+`unassigned` for a seat in no room, and `NULL` on a fleet-wide row as before — so a seat the console moves
+carries its new room's tenancy from the delta that announces the move. Nothing is built: the filter stays
+all-or-nothing under the ruling below. Whether one is needed was
 an operator question, not a design one, and the operator ruled on 2026-09-13 that none is, for now:
 [§ 14](#14-open-questions-for-the-review-loop) item 7 records the ruling, and it reopens before a second
 organisation's install reports in.
@@ -6876,7 +7002,7 @@ cursor, one table over, with a stream as the reader. The fold closes it with the
 
 - **GREEN:** the spec holds **two** synthetic repositories, one per binding (one unrevoked binding per
   repository, card#12239 r4 MINOR-2); post one synthetic delivery from the spec's fleet repository to its
-  `fleet`-scope binding and a **distinct** body from the spec's install repository to an `install`-scope
+  `fleet`-scope binding and a **distinct** body from the spec's install repository to a `room`-scope
   binding for install `aimla`; open [§ 8.3](#83-the-websocket-delta-feed)'s stream with a session whose
   snapshot holds **no** install, read the two `coord.round` frames off it, and assert on the frames (not
   on the store): the first carries `scope: "fleet"`, `install_id: null` and `targets` equal to its `to`
@@ -7385,7 +7511,7 @@ review can reverse it deliberately rather than discover it later.
 | 47 | **Fan-in is a `feed_outbox` table polled at the stream's own 250 ms tick — transient, retained 60 s, never resumed from** ([§ 6.4](#64-ddl), [§ 6.7](#67-retention-and-purge), [§ 8.3](#83-the-websocket-delta-feed)) | Redis pub/sub between the daemons and the handlers; an in-process channel in a daemon of the feed's own; no fan-in — each handler recomputes from `seat_state` on a timer | Redis is not in this tree — no `predis`, no `ext-redis` — and the host's Redis is unknown, so a design resting on it would rest on an assumption this document refuses to make. A daemon of the feed's own is the thing this ruling removed. Recomputing from `seat_state` per stream loses the messages that are not state — `seat.retired`, the coordination objects, the building notifications. A table is the one primitive every writer here already has a transaction open on, and it makes [§ 6.5](#65-the-fold)'s *enqueues a delta in the same transaction* literally true | a write per message, retained a minute; four outbox reads per second per open stream; and one visibility lag of delivery latency, all priced in § 8.3. If Redis is ever provisioned and read into this tree, the outbox becomes the durable half of a pub/sub and the tick becomes a subscription — a migration of one read loop, not of the contract |
 | 48 | **Two host conditions — R1, the proxy must not buffer the stream; R2, the FPM pool must hold a worker per browser and release a dead one — are declared as checked deploy requirements with named observables, never assumed** ([§ 8.3](#83-the-websocket-delta-feed)) | assume them and let the first deploy find out; design around them silently — a short stream lifetime the handler ends on a timer, or a chunked-polling fallback | Neither condition can be established from this repository, and a design that assumed either would be reporting a clean that nobody measured. Designing around them silently would cost every browser a reconnect-and-snapshot on the handler's timer, to hedge a host fact an operator can check in one command. Declaring them with a check and an observable is what lets a false one be found on the day it is false, by name | a deploy that skips the checks and meets neither: R1 false renders every floor *feed down* against a healthy fleet with REST green; R2 false takes the console down with the fleet healthy. Both are named in [FLOOR.md § 9](FLOOR.md#9-failure-paths-and-their-observables) F19/F20 so the symptom is recognisable |
 | 49 | **The declared agent-name join is resolved by the CONSUMER against the seat population; this plane publishes the DECLARATION and never a desk reference** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects)) | resolve it server-side and publish `seat_id` on `coord_thread` / `coord_round`, which is where a reader first looks for it | `card#7957`'s (d) rests on **one party knowing both facts**, and that party is the SEAT. This plane knows only what the seat said, so resolving here would move a join whose weaker end is a human-typed string onto objects whose every other field is token-bound or hook-bound — and a consumer could no longer tell which kind it was reading. It would also give one fact N homes: a thread spans desks, so a desk reference per participant per message is a copy free to disagree with the seat object it was copied from, which is [§ 13](#13-decisions-taken-revisable-at-review) row 39's argument one field along | every consumer implements the same three join rules instead of reading one member. [§ 8.3.3](#833-the-coordination-objects) states them once so the implementations are the same, and a consumer that gets them wrong is wrong in its own client rather than in the store |
-| 50 | **A protocol agent name is UNIQUE per install; a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
+| 50 | **A protocol agent name is UNIQUE per room (⭐ *per install* until card#13117, when the coordination scope became the console's room, [§ 8.3.3](#833-the-coordination-objects) rule 1); a name more than one seat declares is a misconfiguration that resolves to nothing and is reported as its own reason** ([§ 8.2.1](#821-the-seat-state-object), [§ 8.3.3](#833-the-coordination-objects), [FLOOR.md § 5.7](FLOOR.md#57-the-coordination-thread-line)) | ⭐ **Operator ruling, 2026-09-12, `card#9296`.** The alternative on the table was the one three surfaces of this document had already written down: a name may resolve to **a set**, because one agent running two seats is two desks and not a collision. A second was a store `UNIQUE KEY` on the name per install, which would refuse the second seat's heartbeat or fail its fold and keep whichever seat arrived first | The set reading legalised a resolution nothing could then govern. [FLOOR.md § 6.2](FLOOR.md#62-the-animation-table--the-closed-set) A18 triggers on participants resolving to *a desk*, singular, and the client's `resolve()` returns one `seat_id` — so the map a builder was told to construct was last-writer-wins over an unordered seat population and A18 drew to whichever seat was folded last. That is the guessed desk § 5.7 clause 1 forbids, arrived at by obeying the documents. Ruling the duplicate a **misconfiguration** removes the pick instead of specifying it | **a seat cannot enforce it.** Its own check asks whether its name is in the roster, and two seats declaring one name both pass — so the invariant is declared on this plane and enforced at the consumer, which is the only party that sees both seats. [AT-D2-24](#at-d2-24-a-coordination-object-names-an-agent-and-never-a-desk)'s sixth and seventh REDs specify the refusal — the seventh for a `checked` seat beside a `disagreed` one, which counts toward the duplicate by the scope [§ 8.3.3](#833-the-coordination-objects) rule 1 states — and nothing runs them until the consumer's join is built |
 | 51 | **`longest_open_call` is published on the seat object — the oldest open call's `call_id`, `tool_name` and server-clock `started_received_at` — because `action` is the NEWEST open call and a consumer asking how long a seat's longest call has run cannot answer it from `action`** ([§ 8.2.1](#821-the-seat-state-object); card#12113, for [D3 § 4.1](FLOOR.md#41-the-lobby--the-building-summary)'s directory plaque) | let D3 read `action.started_received_at` and say so honestly as *the current call has run N*; publish the whole open-call list on the seat object; publish only a timestamp with no tool name | the first under-reports the exact case the operator asked about — a dispatch an hour old under a seconds-old intern call ([§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) E3) — and would have had the lobby's attention line miss every long dispatch; the whole list is [§ 8.2.3](#823-the-seat-detail-response)'s and is priced out of the snapshot there; a bare timestamp leaves the consumer unable to say what is running. The rows already exist in `calls`, selected by `ix_open (seat_ref, closed_at)` and carrying `opened_received_at`, so this is a second ordering of the open set the fold already reads for `action`, moving on edges that already emit a delta | the seat object grows by the bytes [§ 8.2.1](#821-the-seat-state-object)'s size table re-measures (its worst case still inside the 8 KiB bound, [D3 § 8.1](FLOOR.md#81-the-cap-stays-at-8--the-arithmetic-and-the-reason) re-derives the cap's margin from it), and `seat_state` gains one nullable reference column; if a later consumer needs the descriptor or the scope, that is one more member on this object rather than a redesign |
 | 52 | **card#12239: the coordination store is three tables — bindings, secrets, digests — written synchronously by the receipt request in one outbox transaction; no `events` row, no fold step, and since the operator's ruling of 2026-10-23 no thread or post table** ([§ 6.12](#612-the-coordination-store), [§ 6.4](#64-ddl)) | a synthetic `events` row folded by `mezzanine:fold`; a raw-delivery table drained by a daemon; or the five-table store with a thread lifecycle and a backfill that the first draft designed | the first widens the primitive every seat event depends on to admit a producer that fails all nine of [D1 § 18.9](EVENT-SCHEMA.md#189-why-this-does-not-ride-the-batch-contract)'s invariants; the second adds a daemon for a derivation that is one pure function and stores the raw body D1 § 18.10 forbids; the third held state for a render the operator ruled out — *"I only want to show the message animations"* | no rebuild from a log and no history beyond the digest; a derivation defect is fixed forward, and GitHub's 3-day Redeliver is the only replay |
 | 53 | **card#12239 r2: no backfill and no held coordination state anywhere — every coordination render is an edge on arrival** ([§ 8.3.3](#833-the-coordination-objects), [§ 8.4](#84-snapshot-then-deltas), FLOOR.md § 5.7) | the first draft's `GET /api/fleet/coord` and client-held thread state, bounded and evicted | operator ruling 2026-10-23: too many open connections to show; a held line, marker or label would have to be served to a just-loaded page and evicted on a long-lived one (r1 F1 showed the eviction losing lines for good), and none of that is wanted | a viewer who was not looking when a post arrived did not see it, by design; the client's own event log carries its record of what it drew |
@@ -7401,6 +7527,7 @@ review can reverse it deliberately rather than discover it later.
 | 63 | **card#12451 — design round 2, the seat's ruling B (2026-10-27), built 2026-10-28: the fold's per-event versioning stands, and the once-per-window rule round 1 wrote into [§ 6.5](#65-the-fold)'s designed paragraph is withdrawn** | version once per fold pass, so an undone flip inside one batch never reaches the floor | the shipped `StateRecompute` recomputes after every projected event and [§ 10](#10-worked-example-the-clear-trace-folded-end-to-end) counts ten deltas for ten events; a design that contradicts the build it amends is a defect, and per-event is also what shows the shortest subagent — it walks in and turns round, which the operator's item 5 asks for — where once-per-window hid it | a flip undone inside one batch costs the floor a fade that reverses when its two deltas reach two renders, and nothing when they reach one; nothing else |
 | 64 | **card#12447 (operator ruling 2026-10-26): the task-title merge gains tier 4, the seat's own in-progress to-do, between the board card and telemetry, as ONE slot per seat projected from a new wire kind whose life the REPORTER alone writes — the rules are [D1 § 6.16](EVENT-SCHEMA.md#616-todoprogress)'s, not this row's — guarded on `todo_event_time`, projected without resolving a session row, with no session rule, no quiescence clear and no clock of this plane's (re-derived on review round 3)** ([§ 4.9](#49-the-task-title-merge-and-what-is-not-specified-here), [§ 4.6](#46-every-open-fact-has-a-ceiling), [§ 6.4](#64-ddl)) | renumber the tiers 1-2-3; a 30-minute clock like tier 1's; a tier below telemetry; a per-session slot read through open session rows with a widened reopen rule (round 2's draft) | the number 2 is retired and never reused (card#9234); tier 1's clock bounds a poller's *knowledge*, and a to-do's input is an event whose session already has a ceiling; the operator's order is board card, else to-do, with the monitor keeping the action; a per-session slot imported every lifecycle rule of the session rows (round 3's M1, M2), and the reporter sees every boundary this plane would infer plus the resume it cannot | a dead session's title lives to the flusher's 90-minute silence close; an offline seat's slot stands unseen until its first event back |
 | 65 | **card#12447: a seat's board-user declaration is folded into two `seat_state` columns off the seat object, checked and written into `seats.board_user_id` by the board poll's link pass under a `board_user_source` column, with the operator's command as a pin (`operator`) and a refusal (`refused`) that the pass never overrides and `--clear` as the way back to automatic; two unmapped seats contending for one user in one pass map neither; a refused CHANGED declaration clears the mapping it no longer declares; the link's failure modes are per-seat counters, not members** ([§ 2.1](#21-processes), [§ 6.4](#64-ddl), [§ 6.5](#65-the-fold), [§ 7.2](#72-this-planes-own-counters-and-badges); `BOARD-TASK.md § 4.4`) | map directly from the heartbeat at the fold; publish the declaration and its check state on the seat object; keep the command as the only writer and have the installer run it over SSH | the fold is replayable and must not write a durable input; two new seat-object members would re-measure every worked block for a fact that moves single digits of times per seat-lifetime; an installer that writes the server's store needs a server credential on every seat, which is the shape D1 § 3.3 forbids | why a declaring seat is unlinked is read in the drill-down's detail counters, not on the desk; a conflict is counted on every refused seat and resolved by a human; the one state the pass cannot see — a seat declaring a person's or a shared account, which no field of the members response marks (`account_type` does not: agent logins measure `human`, so the pass reads no account type) — is the operator's precondition at `BOARD-TASK.md § 14` item 12 |
+| 66 | **card#13117 (slice S3, plan `plan-13117-seat-identity.md` § 4.1–§ 4.2): a ROOM is a record the console creates, names and retires, and a seat's room is a console act — the room move — rather than its token's issue; the authored store's "a room (an install)" ([§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions), row 38's store) now names an `installs` row the Rooms module wrote** ([§ 4.10](#410-retirement-is-a-rendered-state), [§ 6.5](#65-the-fold), [§ 6.11](#611-the-authored-building-store--room-maps-the-layout-and-their-revisions)) | rooms minted at token issue (card#9267's derivation, which card#13117's S1 already retired); a seat's room carried in its key, so that a move re-identifies the desk | the operator's direction on card#13117: *the mapping of seat-id to a floor should take place in the admin console*; a move keyed into the identity would be a retirement plus a stranger's arrival on every connected floor, where it is one delta | a room move changes which `pm` a team repository's post resolves to (§ 8.3.3 rule 1's room arm), and the console's two warnings are the whole defence; a room is never deleted, and its key never reused |
 
 ---
 
@@ -7508,8 +7635,9 @@ operator ruling.
    ([§ 8.3](#83-the-websocket-delta-feed)) keeps admitting everything and no ACL is built.
    **Reopens:** before a second organisation's install reports in. The price of the ACL that reopening
    would buy stays here so it is not re-derived, as three edits. First, the handler's one
-   per-subscriber filter becomes a predicate over `feed_outbox.install_id` (card#9287 moved the
-   attachment point there from a channel per install), and that predicate is also the filter
+   per-subscriber filter becomes a predicate over `feed_outbox.install_id` — the **room** key since
+   card#13117, `unassigned` for a roomless seat's rows (card#9287 moved the attachment point there from
+   a channel per install), and that predicate is also the filter
    [§ 8.7](#87-the-building-surface--the-layout-the-room-maps-and-the-message-that-says-one-changed)'s
    `room.map` needs, because it carries another install's `install_id`. Second, a product answer for
    the fleet-wide `fleet{}` that `feed.heartbeat` and `fleet.health` carry (the `NULL`-`install_id`

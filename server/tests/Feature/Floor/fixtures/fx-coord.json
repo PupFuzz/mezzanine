@@ -925,7 +925,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -1547,12 +1547,12 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -1576,13 +1576,13 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -1600,13 +1600,13 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:18.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R2",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "helper",
               "attribution": "resolved",
@@ -1624,13 +1624,13 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:19.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R3",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "coder",
               "attribution": "resolved",
@@ -1652,13 +1652,13 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:20.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R4",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -1676,12 +1676,12 @@
         {
           "at_ms": 1400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:26.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "closed",
               "subject": "the coordination-event producer",
@@ -2189,7 +2189,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -2805,12 +2805,12 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -2834,13 +2834,13 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -2858,13 +2858,13 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:18.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R2",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "helper",
               "attribution": "resolved",
@@ -2882,13 +2882,13 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:19.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R3",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "coder",
               "attribution": "resolved",
@@ -2910,13 +2910,13 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:20.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R4",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -2934,12 +2934,12 @@
         {
           "at_ms": 1400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:26.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "closed",
               "subject": "the coordination-event producer",
@@ -3437,7 +3437,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -4053,12 +4053,12 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
               "thread_ref": "T1",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "lifecycle": "opened",
               "subject": "the coordination-event producer",
@@ -4082,13 +4082,13 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
               "thread_ref": "T1",
               "post_ref": "R5",
-              "scope": "install",
+              "scope": "room",
               "install_id": "aimla",
               "from": "pm",
               "attribution": "resolved",
@@ -4585,7 +4585,7 @@
             "body": {
               "layout": {
                 "layout_version": 0,
-                "floors": []
+                "floors": [{"floor": "aimla", "name": "aimla", "aliases": [], "rooms": [{"install": "aimla", "form": "open"}]}, {"floor": "win", "name": "win", "aliases": [], "rooms": [{"install": "win", "form": "open"}]}]
               },
               "rooms": []
             }
@@ -5207,7 +5207,7 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
@@ -5233,7 +5233,7 @@
         {
           "at_ms": 900,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:18.000Z",
             "coord_round": {
@@ -5259,7 +5259,7 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:19.000Z",
             "coord_round": {
@@ -5285,7 +5285,7 @@
         {
           "at_ms": 1400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:20.000Z",
             "coord_round": {
@@ -5311,7 +5311,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:21.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5320,7 +5320,7 @@
         {
           "at_ms": 2800,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:22.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5329,7 +5329,7 @@
         {
           "at_ms": 3600,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:23.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5338,7 +5338,7 @@
         {
           "at_ms": 4400,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:24.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5347,7 +5347,7 @@
         {
           "at_ms": 5200,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:25.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5356,7 +5356,7 @@
         {
           "at_ms": 6000,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:26.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5365,7 +5365,7 @@
         {
           "at_ms": 6800,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:27.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5374,7 +5374,7 @@
         {
           "at_ms": 7600,
           "envelope": {
-            "feed_version": 2,
+            "feed_version": 3,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:28.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }

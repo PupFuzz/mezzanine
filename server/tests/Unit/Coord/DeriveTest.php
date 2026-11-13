@@ -26,14 +26,15 @@ class DeriveTest extends TestCase
         return CoordSpec::spec();
     }
 
-    private function binding(string $scope = 'install'): HookBinding
+    private function binding(string $scope = 'room'): HookBinding
     {
-        return new HookBinding(1, 'mzh_'.str_repeat('A', 22), $scope, $scope === 'install' ? 'one' : null,
-            $this->spec()->repository($scope), true, []);
+        return new HookBinding(1, 'mzh_'.str_repeat('A', 22), $scope, $scope === 'room' ? 'one' : null,
+            // The spec keys its room-scope repository `install`, the scope's name until card#13117.
+            $this->spec()->repository($scope === 'room' ? 'install' : $scope), true, []);
     }
 
     /** @return array{rounds: list<array<string, mixed>>, counts: array<string, int>} */
-    private function derive(string $key, ?string $bytes = null, string $scope = 'install'): array
+    private function derive(string $key, ?string $bytes = null, string $scope = 'room'): array
     {
         $payload = json_decode($bytes ?? $this->spec()->delivery($key), true, 512, JSON_THROW_ON_ERROR);
         $event = isset($payload['comment']) ? 'issue_comment' : 'issues';
@@ -62,7 +63,7 @@ class DeriveTest extends TestCase
             'carrier', 'declares_close', 'posted_at', 'received_at'], array_keys($r));
         $this->assertSame("{$repo}#900000", $r['thread_ref']);
         $this->assertSame("{$repo}#900000-c9000000000001", $r['post_ref']);
-        $this->assertSame(['install', 'one'], [$r['scope'], $r['install_id']]);
+        $this->assertSame(['room', 'one'], [$r['scope'], $r['install_id']]);
         $this->assertSame(['coder', 'resolved'], [$r['from'], $r['attribution']]);
         $this->assertSame(['pm'], $r['to']);
         $this->assertSame(['pm'], $r['targets']);

@@ -215,7 +215,7 @@ abstract class BoardTaskTestCase extends SweepTestCase
     protected function map(int $user = self::USER, ?string $seatId = null): void
     {
         $this->artisan('mezzanine:seat-board-user', [
-            '--seat' => self::INSTALL.'/'.($seatId ?? self::SEAT), '--board-user' => (string) $user,
+            '--seat' => ($seatId ?? self::SEAT), '--board-user' => (string) $user,
         ])->assertSuccessful();
     }
 

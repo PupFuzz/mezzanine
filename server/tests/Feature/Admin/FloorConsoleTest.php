@@ -106,7 +106,7 @@ class FloorConsoleTest extends TestCase
      */
     private function composeTheBuilding(array $floors): void
     {
-        Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), 'ops@example.com');
+        Layouts::save((string) json_encode(['floors' => $floors], JSON_PRETTY_PRINT), 'ops@example.com', Layouts::version());
     }
 
     private function author(string $installId, string $map, ?User $as = null): TestResponse
@@ -434,7 +434,7 @@ class FloorConsoleTest extends TestCase
         $this->provisionSeat('sola-solo', 'sola');
         $this->provisionSeat('zeta-solo', 'zeta');
 
-        $this->composeTheBuilding([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
+        $this->composeTheBuilding([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 
@@ -452,21 +452,21 @@ class FloorConsoleTest extends TestCase
     }
 
     /**
-     * § 4.6: an install the layout does not place "is drawn on a floor of its own, alone, in the
-     * `open` form" — so provisioning one needs no deploy to be visible, and the console says
-     * where it sits rather than leaving the column blank.
+     * § 4.6: a room the layout does not place is drawn on the Unassigned floor, in the `open` form
+     * (card#13117) — so provisioning one needs no deploy to be visible, and the console says where it
+     * sits rather than leaving the column blank.
      */
-    public function test_an_install_the_layout_does_not_place_is_shown_on_a_floor_of_its_own(): void
+    public function test_an_install_the_layout_does_not_place_is_shown_on_the_unassigned_floor(): void
     {
         $this->provisionSeat('aimla-pm');
 
-        // Nothing composed at all — the store holds no layout, which § 8.7 calls today's
-        // building: one floor per install. It is the state a deployment starts in, so it is
-        // asserted by NOT writing one rather than by writing an empty document.
+        // Nothing composed at all — the store holds no layout, which § 8.7 calls every room on the
+        // Unassigned floor (card#13117). It is the state a deployment starts in, so it is asserted by NOT
+        // writing one rather than by writing an empty document.
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 
-        $this->assertSame(self::INSTALL, $rows[self::INSTALL]['floor']);
+        $this->assertSame('unassigned', $rows[self::INSTALL]['floor']);
         $this->assertSame('open', $rows[self::INSTALL]['form']);
     }
 
@@ -481,7 +481,7 @@ class FloorConsoleTest extends TestCase
     {
         $this->provisionSeat('sola-solo', 'sola');
 
-        $this->composeTheBuilding([['rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
+        $this->composeTheBuilding([['name' => 'sola', 'rooms' => ['sola' => ['form' => 'office'], 'zeta' => ['form' => 'office']]]]);
 
         $rows = collect(FloorInventory::rows())->keyBy('install_id');
 
@@ -702,7 +702,7 @@ class FloorConsoleTest extends TestCase
         $this->author('sola', FloorMapFixture::sized(15, FloorMapFixture::boxRows()))->assertSessionHasNoErrors();
         $this->author('zeta', FloorMapFixture::sized(15, FloorMapFixture::boxRows()))->assertSessionHasNoErrors();
 
-        $this->composeTheBuilding([['rooms' => [
+        $this->composeTheBuilding([['name' => 'sola', 'rooms' => [
             'sola' => ['form' => 'office', 'origin' => ['x' => 0, 'y' => 0]],
             'zeta' => ['form' => 'office', 'origin' => ['x' => 480, 'y' => 0]],
         ]]]);

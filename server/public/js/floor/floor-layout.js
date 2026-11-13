@@ -6,7 +6,7 @@
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SLOT FUNCTION RUNS PER ROOM AND IS A PURE FUNCTION OF THE RENDERED SEAT SET (§ 3.2). Two
  * browsers, two reloads and two server restarts agree without a stored position and without a
- * server field. A seat's slot is a function of `(install_id, seat_id)` and that ROOM's own `S`, so
+ * server field. A seat's slot is a function of its `seat_id` and that ROOM's own `S`, so
  * rearranging the building moves no desk inside any room — this module reads the layout's `origin`
  * to place a room's GRID and never to place a seat.
  *
@@ -51,6 +51,8 @@
  * the value and the band, never the schedule.
  */
 
+import { keyOf } from '../wire/seat-key.js';
+
 /** § 12's *Gap between rooms on a floor with no plan*, in pixels. A planned floor has no gap rule. */
 export const ROOM_GAP_PX = 64;
 
@@ -79,11 +81,11 @@ export function fnv1a32(text) {
 }
 
 /**
- * § 3.2's `h(seat)` — FNV-1a-32 over `install_id + "/" + seat_id`. Both ids are ASCII by D1 § 3.1's
- * slug patterns.
+ * § 3.2's `h(seat)` — FNV-1a-32 over the seat's `keyOf()` key, its `seat_id`, ASCII by D1 § 3.1's slug
+ * pattern. The room is not hashed: a seat the console moves keeps its seed.
  */
-export function hashSeat(installId, seatId) {
-    return fnv1a32(`${installId}/${seatId}`);
+export function hashSeat(seat) {
+    return fnv1a32(keyOf(seat));
 }
 
 /**
@@ -104,7 +106,7 @@ export function hashSeat(installId, seatId) {
  * landing on a held desk does, so the ring stays `S` desks wide and every other seat's hash is
  * unchanged by the reservation.
  *
- * @param {Iterable<{install_id: string, seat_id: string, protocol_agent_role?: string|null}>} seats this room's rendered seat set
+ * @param {Iterable<{seat_id: string, protocol_agent_role?: string|null}>} seats this room's rendered seat set
  * @param {number} slotCount the room's `S` — the count of its map's `desks` objects (§ 10.3)
  * @param {{index: number, id: number|null, role: string}|null} [reservation] the room's reserved desk (`mapReservation()`), or `null`
  * @returns {{slots: Map<string, number>, probes: Map<string, number|null>, order: list<string>, overflow: list<string>, reserved: object|null, holder: string|null, eligible: list<string>}}
@@ -117,12 +119,12 @@ export function assignSlots(seats, slotCount, reservation = null) {
 
     const order = [...seats]
         .map((seat) => ({
-            key: `${seat.install_id}/${seat.seat_id}`,
+            key: keyOf(seat),
             seat_id: seat.seat_id,
             role: seat.protocol_agent_role,
-            h: hashSeat(seat.install_id, seat.seat_id),
+            h: hashSeat(seat),
         }))
-        // § 3.2: ascending by `(h, seat_id)` — total, because `seat_id` is unique within an install.
+        // § 3.2: ascending by `(h, seat_id)` — total, because a live `seat_id` is unique site-wide.
         .sort((a, b) => a.h - b.h || (a.seat_id < b.seat_id ? -1 : a.seat_id > b.seat_id ? 1 : 0));
 
     const eligible = reservation === null
@@ -235,7 +237,7 @@ export function mapGrid(map) {
  * every group above it are `visible` — so a reader decides which of those apply to it rather than
  * re-walking the tree.
  *
- * ⛔ THE ONE WALK OF A MAP'S LAYER TREE ON THIS CLIENT. The tiles (`floor/scene.js`'s `mapTiles()`)
+ * ⛔ THE ONE WALK OF A MAP'S LAYER TREE ON THIS CLIENT. The tiles (`floor/map-tiles.js`'s `mapTiles()`)
  * and the desk slots (`mapDesks()` below) both read it; a reader that looked at `map.layers` itself
  * would see the top level only, which is how a map the console accepted with its `desks` inside a
  * group was drawn with `S = 0` and every seat in the overflow row (card#11187).
@@ -462,6 +464,34 @@ export function backWallBand(extent) {
         y: extent.y,
         width: extent.width,
     });
+}
+
+/**
+ * The back-wall band's height (§ 4.2) — "its height is a drawing layer's" (`backWallBand()` above): a wall
+ * about 2.2 m tall at the floor's scale (card#11045, the operator's 2026-10-01 ruling: tall office
+ * windows, not a jail's). FLOOR.md § 12's *Back-wall band height* row is its other home, and
+ * `Tests\Feature\Floor\TheFloorDrawsItsFrameTest` holds the two equal.
+ */
+export const BAND_H = 160;
+
+/**
+ * THE TWO-DOOR ELEVATOR's PLACE ON THE BAND (§ 4.2), in px: its leaves `dx` in from the band's left edge, `w` wide
+ * and `h` tall, standing on the band's foot; its frame `frame` px each side and `header` px over them. The band's
+ * drawing (`scene.js`'s `backWall()`) hangs it here, and the threshold below is its seam at its foot.
+ */
+export const ELEVATOR = Object.freeze({ dx: 32, w: 84, h: 144, frame: 6, header: 14 });
+
+/**
+ * THE THRESHOLD OF A BAND STANDING OVER `extent` (§ 6.2's walk note item 3): the elevator leaves' seam, at their
+ * foot — the point `(extent.x + ELEVATOR.dx + ELEVATOR.w / 2, extent.y)`, whatever the floor's maps. The one
+ * formula: `backWall()`'s `seam` reads it, so the band's drawing and every reader of the threshold from an extent
+ * alone agree on where the doors are.
+ *
+ * @param {{x: number, y: number}} extent the floor's extent (or the band's span, which shares its left and top)
+ * @returns {{x: number, y: number}}
+ */
+export function thresholdOf(extent) {
+    return Object.freeze({ x: extent.x + ELEVATOR.dx + ELEVATOR.w / 2, y: extent.y });
 }
 
 /**

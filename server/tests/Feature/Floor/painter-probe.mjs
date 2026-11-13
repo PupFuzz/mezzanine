@@ -61,7 +61,11 @@
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
  * row, through the real `placeDesk()` / `placeBubbles()`.
  *
- * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, fade, defects: [ … ] }`
+ * ⛔ THE PAINTER's `host` AND `omit` (card#13033): one staffed desk painted by the default painter and by one given a host
+ * of its own and `omit = {'nameplate'}` — the second draws no `.plate` rect and no `text.role-name`, and every other node
+ * of the desk, the chip's two among them, exactly as the first does, in its own host. `omit` carries the readings.
+ *
+ * argv: `--js <tree>` (default: the shipped tree). stdout: `{ desks, painted, interns, fade, omit, defects: [ … ] }`
  * — `interns` counts each form painted, so a leg that painted nothing reads as such.
  */
 
@@ -133,21 +137,21 @@ const body = (species) => {
     return String(species);
 };
 const characters = {
-    walkFrames(installId, seatId, species) { asked.walk.push(`${installId}/${seatId}`); const sp = body(species); return [0, 1, 2].map((p) => doc(`${installId}/${seatId}@${sp}#${p}`)); },
+    walkFrames(seatId, species) { asked.walk.push(seatId); const sp = body(species); return [0, 1, 2].map((p) => doc(`${seatId}@${sp}#${p}`)); },
     // A desk's frames for its pose — the tree → painter interface, `{ frames, loopFrom }` (§ 10.4's frame contract
     // item 4): the stub names the pose, the desk's top edge and the clear rects it was asked for in every frame, so a
     // painter that asks for another pose, or drops the edge or the clear rects, draws a frame no element owes. The
     // sleeper's is FIVE documents with `loopFrom` 1 — a still, then a loop of four — and every other pose's FOUR with
     // `loopFrom` 0: so a loop stepping three, a loop stepped from document 0, or an offset drawn over the list's length
     // rather than the loop's, reds the held-loop leg.
-    poseFrames(installId, seatId, at) {
-        asked.pose.push(`${installId}/${seatId}`);
+    poseFrames(seatId, at) {
+        asked.pose.push(seatId);
         const sp = body(at.species);
         const loopFrom = at.pose === 'asleep' ? 1 : 0;
-        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${installId}/${seatId}@${sp}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
+        return { frames: Array.from({ length: loopFrom + 4 }, (_, i) => doc(`${seatId}@${sp}#${at.pose}@${at.deskTop}~${JSON.stringify(at.clear ?? null)}#${i}`)), loopFrom };
     },
-    loopOffset(installId, seatId, length) {
-        asked.offset.push([`${installId}/${seatId}`, length]);
+    loopOffset(seatId, length) {
+        asked.offset.push([seatId, length]);
         return STUB_OFFSET % length;
     },
     // An intern's frames (card#12448, § 10.4's frame contract item 3): FIVE documents with `loopFrom` 1 — its laptop
@@ -155,17 +159,17 @@ const characters = {
     // Each names the body the intern is kept off, its seat's delivered species (card#12443). The plain `chibiFrame()` —
     // an IDLE intern's drawing, no laptop (card#12451) — is stubbed beside it under its own name, so a working intern
     // drawn at it reds below.
-    internFrames(installId, key, seatSpecies) {
-        asked.chibi.push(`${installId}/${key}`);
+    internFrames(key, seatSpecies) {
+        asked.chibi.push(key);
         if (key === throwFor) throw new Error('a planted generator defect for one key');
-        return { frames: Array.from({ length: 5 }, (_, i) => doc(`${installId}/${key}!${body(seatSpecies)}#intern#${i}`)), loopFrom: 1 };
+        return { frames: Array.from({ length: 5 }, (_, i) => doc(`${key}!${body(seatSpecies)}#intern#${i}`)), loopFrom: 1 };
     },
-    chibiFrame(installId, key, seatSpecies) {
-        asked.chibi.push(`${installId}/${key}`);
-        return doc(`${installId}/${key}!${body(seatSpecies)}#chibi`);
+    chibiFrame(key, seatSpecies) {
+        asked.chibi.push(key);
+        return doc(`${key}!${body(seatSpecies)}#chibi`);
     },
 };
-const internFrame = (installId, seatId, callId, seatSpecies, i = 0) => uri(doc(`${installId}/${seatId}~${callId}!${seatSpecies}#intern#${i}`));
+const internFrame = (seatId, callId, seatSpecies, i = 0) => uri(doc(`${seatId}~${callId}!${seatSpecies}#intern#${i}`));
 /**
  * The document an intern is first painted at, from the published rule (§ 6.2 A23, card#12451) written out here and never
  * read off the model's own `interns_held` — reading the model's answer would hold the painter to whatever the model says,
@@ -181,14 +185,14 @@ const internForms = { typing: 0, still: 0 };
 /**
  * The floor's theme, stubbed (FLOOR.md § 10.6, card#11046 row 22): every document names the function and the
  * inputs it was drawn for. What each art element owes is written here from the published rule — the
- * element's kind to the API function, the desk's key `(install_id, seat_id)` and the side table's seat
+ * element's kind to the API function, the desk's key, its `seat_id`, and the side table's seat
  * count — never imported from the module under test.
  */
 const theme = Object.fromEntries(['chair', 'desk', 'monitorFrame', 'deskProps', 'sideTable', 'band', 'windowSurround', 'elevatorSurround', 'clockCase', 'plane', 'scenery']
     .map((fn) => [fn, (input) => doc(`theme ${fn} ${JSON.stringify(input)}`)]));
 const FURNITURE = { chair: 'chair', 'desk-sprite': 'desk', 'monitor-frame': 'monitorFrame', 'desk-props': 'deskProps', 'side-table': 'sideTable' };
 const furnitureFrame = (seat, e) => uri(doc(`theme ${FURNITURE[e.kind]} ${JSON.stringify(e.kind === 'side-table'
-    ? { install_id: seat.install_id, seat_id: seat.seat_id, seats: e.seats } : { install_id: seat.install_id, seat_id: seat.seat_id })}`));
+    ? { seat_id: seat.seat_id, seats: e.seats } : { seat_id: seat.seat_id })}`));
 const { deskAgeReadout } = await mod('wire/age-readout.js');
 const { harnessMeasurer } = await import('../Support/harness-measurer.mjs');
 
@@ -211,29 +215,29 @@ const seats = PLANTED.seats.map((s) => s.seat);
  */
 const failing = (seat, parity) => new Set(parity === null ? [] : seat.subagents
     .filter((_, i) => i % 2 === parity)
-    .map((s) => `intern:${seat.install_id}/${seat.seat_id}~${s.call_id}`));
+    .map((s) => `intern:${seat.seat_id}~${s.call_id}`));
 const failedOf = new Map();
 // Each placed desk's model, which `internStart()` reads the treatment facts off.
 const modelOf = new Map();
 
 for (const seat of seats) {
     for (const v of [{ missing: false, placeholder: false, fails: null }, { missing: true, placeholder: false, fails: 1 }, { missing: false, placeholder: true, fails: 0 }]) {
-        const model = deskModel(seat, deskAgeReadout(seat, NOW_MS), { missing: v.missing, derivation_stamp: '2026-08-23T14:23:14.400Z' }, {});
+        // One seat id per placed desk: the bubble pass, the asset ids and the tree's seed all key a desk by its
+        // `seat_id`, and the variants of one seat would otherwise share them.
+        const variant = { ...seat, seat_id: `${seat.seat_id}-v${desks.length}` };
+        const key = variant.seat_id;
+        const model = deskModel(variant, deskAgeReadout(variant, NOW_MS), { missing: v.missing, derivation_stamp: '2026-08-23T14:23:14.400Z' }, {});
 
         if (model === null) {
             continue;
         }
 
-        // One room id per placed desk: the bubble pass keys desks by `(install_id, seat_id)`, and the
-        // variants of one seat would otherwise share a bubble.
-        const room = `room-${desks.length}`;
-        const key = `${room}/${seat.seat_id}`;
-        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, headClear, theme: 'studio', placeholder: v.placeholder, failed: failing(seat, v.fails) };
+        const ctx = { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, headClear, theme: 'studio', placeholder: v.placeholder, failed: failing(variant, v.fails) };
 
-        seatOf.set(key, seat);
+        seatOf.set(key, variant);
         modelOf.set(key, model);
         failedOf.set(key, ctx.failed);
-        desks.push(placeDesk(model, key, room, null, { x: desks.length * BOX.width, y: 0 }, ctx, { overflow: false, slot: null, object_id: null }));
+        desks.push(placeDesk(model, key, seat.install_id, null, { x: desks.length * BOX.width, y: 0 }, ctx, { overflow: false, slot: null, object_id: null }));
     }
 }
 
@@ -459,7 +463,7 @@ function owed(e, seat, failed, key) {
         case 'stool': {
             // § 9 F14: an intern whose art failed — by this probe's own report, never the layout's word
             // for it — is the glyph inside its rect, that stool alone.
-            if (failed.has(`intern:${seat.install_id}/${seat.seat_id}~${e.call_id}`)) {
+            if (failed.has(`intern:${seat.seat_id}~${e.call_id}`)) {
                 const glyph = { x: e.x + (e.w - STOOL_GLYPH) / 2, y: e.y + e.h - STOOL_GLYPH, w: STOOL_GLYPH, h: STOOL_GLYPH };
 
                 return [['rect', glyph, classIs(e.untitled ? ['stool', 'untitled'] : ['stool'])]];
@@ -470,7 +474,7 @@ function owed(e, seat, failed, key) {
             // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
             const start = internStart(modelOf.get(key));
-            const want = internFrame(seat.install_id, seat.seat_id, e.call_id, seat.character.species, start);
+            const want = internFrame(seat.seat_id, e.call_id, seat.character.species, start);
 
             internForms[start === 0 ? 'still' : 'typing']++;
             const port = internPort(e);
@@ -697,7 +701,7 @@ for (const g of layer?.children ?? []) {
         const at = head === null ? null : { pose: head.pose, glyph: head.glyph, species: head.species, clear: head.clear };
         const crestY = head === null ? null : head.y + (() => {
             try {
-                return crestTop(desk.install_id, desk.seat_id, at) / FRAME_UNITS_PER_PX;
+                return crestTop(desk.seat_id, at) / FRAME_UNITS_PER_PX;
             } catch {
                 return 0;
             }
@@ -706,7 +710,7 @@ for (const g of layer?.children ?? []) {
         // with no face (asleep) or no tree answer, the drawn head
         const clear = head === null ? null : (() => {
             try {
-                return headClear(desk.install_id, desk.seat_id, at);
+                return headClear(desk.seat_id, at);
             } catch {
                 return null;
             }
@@ -818,7 +822,7 @@ if (layer === undefined) {
 {
     const drawn = new Set(desks.flatMap((d) => d.elements
         .filter((e) => e.kind === 'stool' && !failedOf.get(d.key).has(e.asset))
-        .map((e) => `${e.install_id}/${e.key}`)));
+        .map((e) => e.key)));
 
     painter.paint({ ...scene, desks: [] }, { bounds: null });
     asked.walk.length = 0;
@@ -1046,8 +1050,8 @@ function heldLoop(desk, withIntern, internTypes = false) {
 
         if (withIntern) {
             // the stool whose intern the leg read — the first painted, whose key its document names
-            const stool = moving.elements.find((e) => e.kind === 'stool' && decodeURIComponent(internBefore).includes(`${e.install_id}/${e.key}!`));
-            const iframe = (i) => internFrame(stool.install_id, ...stool.key.split('~'), stool.seat_species, i);
+            const stool = moving.elements.find((e) => e.kind === 'stool' && decodeURIComponent(internBefore).includes(`${e.key}!`));
+            const iframe = (i) => internFrame(...stool.key.split('~'), stool.seat_species, i);
             const owedIntern = internTypes ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => 1 + ((i + STUB_OFFSET) % 4)) : [0, 0, 0, 0, 0, 0, 0, 0];
             const firstIntern = internTypes ? 1 + (STUB_OFFSET % 4) : 0;
 
@@ -1120,7 +1124,7 @@ function walkOf(n) {
     const imageIn = (n) => (n === undefined ? undefined : walkOf(n).find((m) => m.name === 'image' && classes(m).includes('character')));
     const floorImage = imageIn(floorEl);
     const cabImage = imageIn(cabEl);
-    const phase = (i) => uri(doc(`walk-room/walker@otter#${i}`));
+    const phase = (i) => uri(doc(`walker@otter#${i}`));
     const frameOf = (h) => decodeURIComponent(String(h)).match(/#(\d+)<\/title>/)?.[1] ?? '?';
 
     walker_.painted = floorEl !== undefined;
@@ -1365,7 +1369,7 @@ function walkOf(n) {
 // apart), the painter's cache to the species, and an unheld species to § 9 F14 ──
 const body_ = { apart: 0, recached: false, unheld: false };
 {
-    const same = seats.filter((s) => s.character.species === speciesOf(`${s.install_id}/${s.seat_id}`));
+    const same = seats.filter((s) => s.character.species === speciesOf(s.seat_id));
 
     body_.apart = seats.length - same.length;
 
@@ -1406,4 +1410,66 @@ const body_ = { apart: 0, recached: false, unheld: false };
     }
 }
 
-console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, intern_forms: internForms, fade, poses: [...poses].sort(), walker: walker_, body: body_, defects }));
+// ── the painter's `host` and `omit` (card#13033): a staffed desk painted into a host of the caller's, its nameplate member
+// left out — the plate's rect and the name's text gone, and every other node of the desk painted as the default painter
+// paints it, in the same order at the same attributes ───────────────────────────────────────────────────────────────
+const omit_ = { desk: null, plate: 0, name: 0, omitted_plate: 0, omitted_name: 0, chip: 0, omitted_chip: 0, nodes: 0, omitted_nodes: 0, own_host: false };
+{
+    const desk = desks.find((d) => d.elements.some((e) => e.member === 'nameplate' && e.kind === 'nameplate') && d.elements.some((e) => e.kind === 'chip')) ?? null;
+
+    if (desk === null) {
+        defects.push('omit: no planted desk carries both a nameplate and a chip — the omit leg reads nothing');
+    } else {
+        const deskGroup = (root) => walkOf(root).find((n) => n.name === 'g' && n.getAttribute('data-key') === desk.key) ?? null;
+        const signature = (n) => `${n.name} ${JSON.stringify(n.attrs)} «${n.textContent}»`;
+        const isPlate = (n) => n.name === 'rect' && classes(n).includes('plate');
+        const isName = (n) => n.name === 'text' && classes(n).includes('role-name');
+        const isChip = (n) => classes(n).includes('chip') || classes(n).includes('t-chip');
+        const own = new Node('div');
+
+        createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
+        const shipped = walkOf(deskGroup(host) ?? new Node('none')).slice(1);
+        createPainter({ host: own, omit: new Set(['nameplate']), characters, themes: { studio: theme }, failed() {}, select() {} }).paint({ ...scene, desks: [desk] }, { bounds: null });
+        const omitted = walkOf(deskGroup(own) ?? new Node('none')).slice(1);
+
+        Object.assign(omit_, {
+            desk: desk.key,
+            plate: shipped.filter(isPlate).length,
+            name: shipped.filter(isName).length,
+            omitted_plate: omitted.filter(isPlate).length,
+            omitted_name: omitted.filter(isName).length,
+            chip: shipped.filter(isChip).length,
+            omitted_chip: omitted.filter(isChip).length,
+            nodes: shipped.length,
+            omitted_nodes: omitted.length,
+            own_host: deskGroup(own) !== null,
+        });
+
+        if (omit_.plate === 0 || omit_.name === 0) {
+            defects.push(`omit: the default painter drew ${omit_.plate} plate rect(s) and ${omit_.name} name text(s) for ${desk.key} — the control reads nothing`);
+        }
+
+        if (omit_.omitted_plate !== 0 || omit_.omitted_name !== 0) {
+            defects.push(`omit: with the nameplate omitted, ${desk.key} still drew ${omit_.omitted_plate} plate rect(s) and ${omit_.omitted_name} name text(s)`);
+        }
+
+        if (omit_.chip === 0 || omit_.omitted_chip !== omit_.chip) {
+            defects.push(`omit: ${desk.key}'s chip drew ${omit_.chip} node(s) by default and ${omit_.omitted_chip} with the nameplate omitted`);
+        }
+
+        const kept = shipped.filter((n) => !isPlate(n) && !isName(n)).map(signature);
+        const got = omitted.map(signature);
+
+        if (JSON.stringify(kept) !== JSON.stringify(got)) {
+            const at = kept.findIndex((sig, i) => sig !== got[i]);
+
+            defects.push(`omit: with the nameplate omitted, ${desk.key} painted ${got.length} other node(s) where the default painted ${kept.length}; first difference at ${at}: «${got[at] ?? 'nothing'}» for «${kept[at] ?? 'nothing'}»`);
+        }
+
+        if (!omit_.own_host) {
+            defects.push('omit: the painter given a host did not paint the desk into it');
+        }
+    }
+}
+
+console.log(JSON.stringify({ desks: desks.length, painted, bubbles, interns, intern_forms: internForms, fade, poses: [...poses].sort(), walker: walker_, body: body_, omit: omit_, defects }));

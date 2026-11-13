@@ -34,7 +34,7 @@
  * reorders it; with no ride they are the walks' (`leafAnimation()`), as before. The cab's interior is
  * `paintCab()`'s (`floor/cab-paint.js` since card#12113, which both pages draw the cab with), into the cab dialog's own element: the room in depth `drawCabInterior()` draws (card#12051), and on
  * its back wall the door in the house theme's elevator palette, a plain dial, the view of the stop the doors open on
- * seen through it — the ride's `beyond`: the office (`drawOfficeView()`, card#12052) or the lobby (`drawLobbyView()`,
+ * seen through it — the ride's `beyond`: the stop's own floor (`drawFloorView()`, card#12987) or the lobby (`drawLobbyView()`,
  * card#12113) — the two leaves in the building's door colours, and no text — the cab's words are
  * the page's (`floor/cab-panel.js`); beside the door, a decorative call plate that names, lights and does nothing
  * (card#12071). The band's leaves open onto the same room, seen from the landing, drawn behind them (card#12052).
@@ -51,12 +51,13 @@ import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, char
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR, leafLevel } from './scene.js';
 import { cabStep, floorStackOrder, pointAt } from './route.js';
-import { BIRD_LIFT, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
+import { BIRD_LIFT, HOP_SCALE, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
-import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, themeModule } from './cab-paint.js';
+import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
+import { keyOf } from '../wire/seat-key.js';
 
 // The cab's drawing is `cab-paint.js`'s since card#12113 (both pages draw it); its names stay readable from here.
-export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawLobbyView, drawOfficeView, paintCab, rideLeaves, themeModule } from './cab-paint.js';
+export { CAB, CAB_STYLE, LANDING, LOBBY_VIEW, OFFICE, THEME_REGISTRY, cabLeaves, cabTheme, drawCabInterior, drawFloorView, drawLobbyView, drawOfficeView, paintCab, rideLeaves, svgUri, themeInputs, themeModule } from './cab-paint.js';
 
 /** The furniture box — `resources/floor/furniture-box.js`, by the asset route. */
 export const FURNITURE_MODULE = '/art/floor/furniture-box.js';
@@ -69,20 +70,6 @@ const MEET = 'xMidYMax meet';
 
 /** A text's type role when its element names none — `fit()`'s own default (`desk-layout.js`). */
 const FACT = 'fact';
-
-/**
- * A character frame's URI: the character tree hands back a standalone SVG DOCUMENT and the painter alone
- * makes it a URI — `data:image/svg+xml;charset=utf-8,` over `encodeURIComponent` (§ 10.2), so no file in
- * the asset tree carries one (§ 10.1 clause 2).
- */
-export const svgUri = (doc) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(doc)}`;
-
-/**
- * card#12445: how small the portal bird is drawn as it vanishes into the birdhouse's hole, at the end of its hop in
- * (and the start of its hop out) — drawing only: the sheet's `hop` keyframes scale to it, and the hop's path ends
- * where, at this size, the bird's body is centred on the hole.
- */
-const HOP_SCALE = 0.35;
 
 /**
  * The drawing's own stylesheet — which palette token each class paints with, and the § 6.2 forms'
@@ -179,23 +166,6 @@ export async function loadArt() {
 }
 
 /**
- * The scene's `themes` input (FLOOR.md § 10.6 items 5 and 8) from what `loadArt()` held: the registry's
- * asset id — what § 9 F14's strip names when its import was rejected — the registry's names, house theme and
- * kinds, or `null`, and each named theme's module, a rejected one `null`. The page and the harness build it
- * through this one function.
- *
- * @param {object|null} registry the registry module, or `null`
- * @param {Object<string, object|null>} modules the theme modules by name
- */
-export function themeInputs(registry, modules) {
-    return Object.freeze({
-        asset: THEME_REGISTRY,
-        registry: registry === null ? null : Object.freeze({ names: registry.THEMES, house: registry.HOUSE_THEME, kinds: registry.KINDS }),
-        modules: Object.freeze({ ...modules }),
-    });
-}
-
-/**
  * The page's own text measurer — § 5.1 rule 4's measured box — answering in the TYPE ROLE it is asked
  * for (`desk-layout.js`'s `TYPE_ROLES`: the fact role, and the nameplate's name role, Q2), one canvas
  * font per role. A role the table does not declare is refused: a width measured in a guessed font is
@@ -254,27 +224,28 @@ function effectKey(fx) {
     }
 
     if (isWalk(fx)) {
-        return `${fx.animation_id} ${fx.install_id}/${fx.seat_id} ${fx.cause}`;
+        return `${fx.animation_id} ${keyOf(fx)} ${fx.cause}`;
     }
 
     return `${fx.animation_id} ${fx.install_id} ${fx.cause} ${fx.leg ?? ''} ${fx.from.x},${fx.from.y}>${fx.to.x},${fx.to.y}`;
 }
 
 /**
- * The painter, over the floor view's own drawing element — `#floor-drawing`, which
+ * The painter, over a drawing element — by default the floor view's own, `#floor-drawing`, which
  * `FloorPageWiringTest` holds to the view in both directions.
  *
- * @param {{characters: object|null, themes: Object<string, object|null>, failed: function(list<string>): void,
- *          select: function(string, string): void, ride: function(): void, house: string|null,
- *          clock: {now: function(): number}}} options `themes` the theme modules `loadArt()` held, by name; `ride`
- *          the elevator's press (§ 4.5); `house` the house theme's name, whose elevator palette the cab is drawn in;
- *          `clock` the page's clock, the one a bird's or a walker's `started_at` was read from (`pinEffects()`)
+ * @param {{host?: Element|null, omit?: Set<string>, characters: object|null, themes: Object<string, object|null>,
+ *          failed: function(list<string>): void, select: function(string, string): void, ride: function(): void,
+ *          house: string|null, clock: {now: function(): number}}} options `host` the element the drawing is painted
+ *          into (the building view paints each floor into a hidden one, card#13033); `omit` the `DRAWN_MEMBERS` members
+ *          (`desk-layout.js`) whose elements a desk is painted without — the building view's `nameplate`, whose name it
+ *          carries as a label instead — empty on the floor page; `themes` the theme modules `loadArt()` held, by name;
+ *          `ride` the elevator's press (§ 4.5); `house` the house theme's name, whose elevator palette the cab is drawn
+ *          in; `clock` the page's clock, the one a bird's or a walker's `started_at` was read from (`pinEffects()`)
  */
-export function createPainter({ characters, themes = {}, failed, select, ride = () => {}, house = null, clock = { now: () => Date.now() } }) {
-    const host = document.getElementById('floor-drawing');
-
+export function createPainter({ host = document.getElementById('floor-drawing'), omit = new Set(), characters, themes = {}, failed, select, ride = () => {}, house = null, clock = { now: () => Date.now() } }) {
     if (host === null) {
-        throw new Error('the floor page has no #floor-drawing');
+        throw new Error('the painter has no host to paint into — on the floor page, #floor-drawing');
     }
 
     const reported = new Set();
@@ -388,7 +359,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      *        `null`
      * @returns {{uris: string[], loopFrom: number}|null}
      */
-    const characterFrames = (installId, seatId, asset, species, at = null, intern = null) => {
+    const characterFrames = (seatId, asset, species, at = null, intern = null) => {
         if (characters === null || typeof species !== 'string') {
             report(asset);
 
@@ -405,10 +376,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             try {
                 // § 10.4's frame contract item 3 (card#12448): an intern's frames are the tree's `internFrames()` — the
                 // still with its laptop, then the typing sway's loop — in `poseFrames()`'s shape.
-                const drawn = intern === 'chibi' ? { frames: [characters.chibiFrame(installId, seatId, species)], loopFrom: 0 }
-                    : intern !== null ? characters.internFrames(installId, seatId, species)
-                    : at === null ? { frames: characters.walkFrames(installId, seatId, species), loopFrom: 0 }
-                        : characters.poseFrames(installId, seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species });
+                const drawn = intern === 'chibi' ? { frames: [characters.chibiFrame(seatId, species)], loopFrom: 0 }
+                    : intern !== null ? characters.internFrames(seatId, species)
+                    : at === null ? { frames: characters.walkFrames(seatId, species), loopFrom: 0 }
+                        : characters.poseFrames(seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species });
 
                 frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });
             } catch {
@@ -448,15 +419,15 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
      * One HELD character's art — a desk's character, or an intern (§ 6.2 A23, card#12448) — from its frames and its
      * element's `animation`, `overdraw` and `asset`. § 6.2's per-seat loop phase (card#12187): a held render that MOVES
      * starts at its own offset into its LOOP — `uris[loopFrom ..]`, whose length is the loop's, never the list's — the
-     * tree's `loopOffset()` over `(installId, key)`, the seat's or the intern key, so two characters in one state never
+     * tree's `loopOffset()` over `key`, the seat's or the intern key, so two characters in one state never
      * step in lockstep, and is pushed to step; one that does not move is `uris[0]`, the still, the canonical
      * reduced-motion form, whatever its offset. § 10.4's frame contract (card#12187, card#12259): the art viewport is
      * the element's overdraw, past its rect — never the rect itself.
      */
-    const heldArt = (g, drawn, e, cls, installId, key) => {
+    const heldArt = (g, drawn, e, cls, key) => {
         const { uris, loopFrom } = drawn;
         const moves = e.animation?.motion === true && e.animation.frame_interval_ms !== null;
-        const offset = moves ? characters.loopOffset(installId, key, uris.length - loopFrom) : 0;
+        const offset = moves ? characters.loopOffset(key, uris.length - loopFrom) : 0;
         const el = art(g, moves ? uris[loopFrom + offset] : uris[0], e.overdraw, e.asset, cls);
 
         if (moves) {
@@ -513,12 +484,12 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             'aria-label': desk.seat_id,
         }, layer);
 
-        group.addEventListener('click', () => select(desk.install_id, desk.seat_id));
+        group.addEventListener('click', () => select(desk.seat_id));
         // A `role="button"` activates on Enter and on Space; Space's default would scroll the page.
         group.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                select(desk.install_id, desk.seat_id);
+                select(desk.seat_id);
             }
         });
 
@@ -533,6 +504,11 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         let faded = null;
 
         desk.elements.forEach((e, i) => {
+            // A member the caller omits is not painted: every element it draws by, and nothing else.
+            if (omit.has(e.member)) {
+                return;
+            }
+
             const id = `${desk.key}:${i}`;
 
             if (e.opacity === undefined) {
@@ -555,12 +531,12 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
 
             switch (e.kind) {
                 case 'character': {
-                    const drawn = characterFrames(desk.install_id, desk.seat_id, e.asset, e.species, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });
+                    const drawn = characterFrames(desk.seat_id, e.asset, e.species, { pose: e.pose, glyph: e.glyph, desk_top: e.desk_top, clear: e.clear });
 
                     if (drawn !== null) {
                         // A sleeper's z's stand above and beside its head, and a standing or walking body's tilted parts
                         // reach past the rect's side, so its viewport is its overdraw (`heldArt()`).
-                        heldArt(g, drawn, e, 'character', desk.install_id, desk.seat_id);
+                        heldArt(g, drawn, e, 'character', desk.seat_id);
                     }
 
                     break;
@@ -597,11 +573,11 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                         // intern is drawn dashed (§ 8): its sprite with a dashed edge at its own stool rect —
                         // rx 3, no fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph
                         // below is dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
-                        const drawn = characterFrames(e.install_id, e.key, e.asset, e.seat_species, null, 'laptop');
+                        const drawn = characterFrames(e.key, e.asset, e.seat_species, null, 'laptop');
                         // card#12451: an idle intern sits in its chibi frame with no laptop, still; a laptop fade in
                         // flight draws the chibi under the laptop's still at the fade's opacity (A24).
-                        const fade = laptopFades.get(`${e.install_id}/${e.key}`) ?? null;
-                        const chibi = e.activity === 'idle' || fade !== null ? characterFrames(e.install_id, e.key, e.asset, e.seat_species, null, 'chibi') : null;
+                        const fade = laptopFades.get(e.key) ?? null;
+                        const chibi = e.activity === 'idle' || fade !== null ? characterFrames(e.key, e.asset, e.seat_species, null, 'chibi') : null;
 
                         if (drawn !== null) {
                             interns.add(e.asset);
@@ -618,7 +594,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
                                 // rendering draws motion, from the intern's own offset (§ 6.2's per-seat loop phase, over
                                 // the intern key), so a row's interns do not all sway as one; where it draws none, the
                                 // still, which is the row's reduced-motion form.
-                                heldArt(g, drawn, e, cls, e.install_id, e.key);
+                                heldArt(g, drawn, e, cls, e.key);
                             }
 
                             if (e.untitled) {
@@ -1035,10 +1011,10 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
         const occupant = door === null ? null : node('g', { transform: `translate(${stood.x} ${stood.y})` }, door);
         const animated = [shown, ...segments.map((sg) => sg.glide), ...(door === null ? [] : [door])];
         const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? animated : [...animated, cab, ...(step === null ? [] : [inner])] });
-        const asset = intern ? `intern:${fx.install_id}/${fx.intern_seat_key}` : characterAsset({ install_id: fx.install_id, seat_id: fx.seat_id });
+        const asset = intern ? `intern:${fx.intern_seat_key}` : characterAsset(fx);
         // card#12450: an intern walks at its chibi frame and glides (the tree hands no walk frames for an intern key),
         // with its laptop drawn over it through its `seat` legs.
-        const drawn = intern ? characterFrames(fx.install_id, fx.intern_seat_key, asset, fx.seat_species, null, 'chibi') : characterFrames(fx.install_id, fx.seat_id, asset, fx.species);
+        const drawn = intern ? characterFrames(fx.intern_seat_key, asset, fx.seat_species, null, 'chibi') : characterFrames(fx.seat_id, asset, fx.species);
 
         if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
@@ -1068,7 +1044,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             // `seat` leg is at the slot, so its laptop is the segment's that stands there: the first on a departure, the
             // last on an arrival.
             const seatLeg = intern ? fx.legs.find((l) => l.kind === 'seat') ?? null : null;
-            const laptop = seatLeg === null ? null : characterFrames(fx.install_id, fx.intern_seat_key, asset, fx.seat_species, null, 'laptop');
+            const laptop = seatLeg === null ? null : characterFrames(fx.intern_seat_key, asset, fx.seat_species, null, 'laptop');
 
             if (seatLeg !== null && laptop !== null) {
                 const to = fx.leg_kind === 'arrive' ? (fx.held_activity === 'idle' ? 0 : seatLeg.laptop_to) : seatLeg.laptop_to;
@@ -1109,7 +1085,7 @@ export function createPainter({ characters, themes = {}, failed, select, ride = 
             }
         }
 
-        return { key: intern ? fx.intern_key : `${fx.install_id}/${fx.seat_id}`, fx, entry, node: shown, cab, cab_y: standing?.at.y ?? null };
+        return { key: intern ? fx.intern_key : keyOf(fx), fx, entry, node: shown, cab, cab_y: standing?.at.y ?? null };
     }
 
     /**

@@ -25,11 +25,12 @@ final class BatchValidator
 
         // ── step 7 ───────────────────────────────────────────────────────────────────────────
         //
-        // The claimed pair is compared and then DISCARDED. D1 § 3.3: the batch's claimed identity
+        // The claimed seat is compared and then DISCARDED. D1 § 3.3: the batch's claimed identity
         // is "validated for *equality* with the binding and never used to route, create, or
-        // attribute a record". Everything downstream takes `$binding->seatRef`.
-        if (! $binding->matches(Wire::field($batch, 'install_id'), Wire::field($batch, 'seat_id'))) {
-            return Refusal::identityMismatch($binding->installId, $binding->seatId);
+        // attribute a record". Everything downstream takes `$binding->seatRef`. The envelope's
+        // `install_id` is accepted and not read — present, absent or anything (card#13117, D1 § 4.2).
+        if (! $binding->matches(Wire::field($batch, 'seat_id'))) {
+            return Refusal::identityMismatch($binding->seatId);
         }
 
         // ── step 8 ───────────────────────────────────────────────────────────────────────────

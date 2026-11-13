@@ -3,12 +3,15 @@
 // row 23). Node, no dependencies — but real navigations in the Playwright-cached headless Chromium: the served floor,
 // lobby, sign-in and console pages (`render-floor-view.php`, each rendered through the real layout, whose head script
 // and inline style ARE what is measured here), the shipped `server/public` modules and stylesheet, the asset route's
-// art, and one checked-in fixture run (`floor_rides`, `fx-camera.json`) answering every page's `/api/…` requests.
+// art, and one checked-in fixture run (`floor_rides`, `fx-camera.json`) answering every page's `/api/…` requests. Its
+// rides leave `aimla` for `the-annex`: the floor named *the annex*, at its name's slug (§ 4.4) — `zeta` is the room on it.
 //
 //   node tools/design/floor-ride.browser.mjs              every row, each once
 //   node tools/design/floor-ride.browser.mjs --row <id>   one row (`--row starts --selftest` is what CI runs, card#12326)
 //   node tools/design/floor-ride.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
-//                                                         which must red (the bookmark row documents a residual and plants nothing)
+//                                                         which must red (the bookmark row documents a residual and plants nothing);
+//                                                         a row red with no plant runs none (UNMEASURED), and a plant whose
+//                                                         anchor is gone from what it edits FAILs as NOT PLANTED
 //   node tools/design/floor-ride.browser.mjs --shots <dir>  also save the cab rows' windows, and the doors held open, as PNGs under <dir>
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
@@ -35,18 +38,15 @@
 // headed Chrome, a back-forward-cache restore (this headless shell never restores — `BackForwardCacheDisabledForDelegate`),
 // a screen reader's reading of the cab, or a real network's round trip. Timings here are a loopback host's.
 
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { dirname, extname, join, normalize } from 'node:path';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { browser, findChrome } from './headless-chromium.mjs';
+import { StaleAnchor, VIEWS, fixtureRun, serve } from './served-pages.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
-const FIXTURES = join(REPO, 'server', 'tests', 'Feature', 'Floor', 'fixtures');
 const FLOOR_MD = join(REPO, 'docs', 'design', 'FLOOR.md');
-const RUN = 'floor_rides';
 
 const argv = process.argv.slice(2);
 const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
@@ -71,203 +71,6 @@ const FADE_MS = 1000 / Number(/^export const LOOP_FPS = (\d+);$/m.exec(readFileS
 /** A phase that fades and then moves its doors: `entering`, `chosen`, `staying`, `arriving`. */
 const DOOR_PHASE_MS = FADE_MS + RIDE_DOOR_MS;
 
-/** The run, from whichever fixture file holds it, with the rig's `@json:` / `@text:` references resolved. */
-function fixtureRun(name) {
-  const holders = readdirSync(FIXTURES).filter((f) => f.endsWith('.json'))
-    .map((f) => JSON.parse(readFileSync(join(FIXTURES, f), 'utf8'))).filter((body) => Object.hasOwn(body.runs ?? {}, name));
-  if (holders.length !== 1) throw new Error(`the run ${name} is held by ${holders.length} fixture files, not one`);
-  const resolve = (node) => {
-    if (typeof node === 'string') {
-      if (node.startsWith('@json:')) return JSON.parse(readFileSync(join(REPO, node.slice(6)), 'utf8'));
-      if (node.startsWith('@text:')) return readFileSync(join(REPO, node.slice(6)), 'utf8');
-      return node;
-    }
-    if (Array.isArray(node)) return node.map(resolve);
-    if (node !== null && typeof node === 'object') return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, resolve(v)]));
-    return node;
-  };
-  return resolve(holders[0].runs[name]);
-}
-
-/** Each view the layout serves here, rendered once, its absolute origins made local. */
-const VIEWS = Object.fromEntries(['floor', 'dashboard', 'login', 'console'].map((v) => [v,
-  execFileSync('php', [join(HERE, 'render-floor-view.php'), v], { encoding: 'utf8' }).replace(/https?:\/\/[a-z0-9.-]+(:\d+)?(\/|(?=["']))/gi, '/')]));
-
-for (const [v, html] of Object.entries(VIEWS)) {
-  if (!html.includes('<script>') || !html.includes('<link rel="stylesheet"')) throw new Error(`the ${v} view rendered no head script or no stylesheet link`);
-}
-
-/**
- * The page's own scripted world and the tool's instruments, installed right after the layout's head script and
- * style — so the reader stays the first script on the page — and before the stylesheet link and every module.
- */
-const STAGE = (run, apiDelay, layoutStatus, streamDelay = 0, busy = 0) => `<script>
-(() => {
-  const RUN = ${JSON.stringify(run).replace(/</g, '\\u003c')};
-  const API_DELAY = ${JSON.stringify(apiDelay)};
-  const LAYOUT_STATUS = ${JSON.stringify(layoutStatus)};
-  const STREAM_DELAY = ${JSON.stringify(streamDelay)};
-  const BUSY = ${JSON.stringify(busy)};
-  const html = document.documentElement;
-  const T = () => Math.round(performance.now());
-  // The instruments: every class change on <html>, every pagereveal, the first drawn scene and the chrome's changes,
-  // and when each stream message was delivered (\`delivered\`, unrounded on \`performance.now()\`).
-  const R = window.__ride = { classes: [], reveals: [], errors: [], scene: null, chrome: [], requests: [], streams: [], delivered: [] };
-  new MutationObserver(() => R.classes.push([T(), html.className, location.hash])).observe(html, { attributes: true, attributeFilter: ['class'] });
-  addEventListener('pagereveal', (e) => {
-    const rec = { at: T(), vt: e.viewTransition !== null, finished: null };
-    R.reveals.push(rec);
-    e.viewTransition?.finished.then(() => { rec.finished = T(); }, () => { rec.finished = T(); });
-  });
-  addEventListener('error', (e) => R.errors.push(String(e.message)));
-  addEventListener('unhandledrejection', (e) => R.errors.push(String(e.reason?.message ?? e.reason)));
-  document.addEventListener('DOMContentLoaded', () => {
-    const chrome = () => {
-      const s = document.getElementById('floor-layout-statement');
-      const r = document.getElementById('floor-rooms');
-      const n = document.getElementById('floor-name');
-      return { stmt: s === null ? null : (s.hidden ? null : s.textContent), rooms: r?.children.length ?? null, name: n?.textContent ?? null };
-    };
-    R.chrome.push({ at: T(), cls: html.className, ...chrome(), initial: true });
-    new MutationObserver(() => {
-      const c = chrome();
-      const last = R.chrome[R.chrome.length - 1];
-      if (last.stmt !== c.stmt || last.rooms !== c.rooms || last.name !== c.name) R.chrome.push({ at: T(), cls: html.className, ...c });
-      // The first drawn scene: the floor's drawing, or the lobby's room (card#12113) — with the leaves as drawn there.
-      if (R.scene === null && document.querySelector('#floor-drawing svg, #lobby-room[data-drawn]') !== null) {
-        R.scene = { at: T(), cls: html.className, leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf, #lobby-room .elevator-leaf')].map((l) => l.getAttribute('style')) };
-      }
-    }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true });
-  });
-  // The departing page's cab, beaconed whenever it opens or closes: once its navigation is pending the page cannot
-  // be read over the DevTools protocol, so what it shows at the bound is read from here.
-  document.addEventListener('DOMContentLoaded', () => {
-    const cab = document.querySelector('dialog.floor-cab');
-    if (cab === null) return;
-    new MutationObserver(() => navigator.sendBeacon('/beacon', JSON.stringify({ kind: 'cab', at: T(), open: cab.open, path: location.pathname,
-      leaves: [...document.querySelectorAll('#floor-drawing .elevator-leaf')].map((l) => l.getAttribute('style')),
-      disabled: document.querySelector('#floor-drawing [data-key="elevator"]')?.getAttribute('aria-disabled') ?? null }))).observe(cab, { attributes: true, attributeFilter: ['open'] });
-  });
-  // The departing page's facts at pageswap, beaconed — registered after the page's own listener (on load).
-  addEventListener('load', () => addEventListener('pageswap', (e) => {
-    const cab = document.querySelector('dialog.floor-cab');
-    navigator.sendBeacon('/beacon', JSON.stringify({ at: T(), vt: e.viewTransition !== null, dialog: cab?.open ?? null, path: location.pathname }));
-  }));
-  // The run's world: the API from the run's own answers, the stream on the page's clock, a continuous viewer clock.
-  const T0 = Date.UTC(2026, 7, 23, RUN.floor?.local_hours ?? 9, RUN.floor?.local_minutes ?? 0);
-  const start = performance.now();
-  const RealDate = Date;
-  class RunDate extends RealDate { constructor(...a) { if (a.length === 0) { super(T0 + performance.now() - start); } else { super(...a); } } static now() { return T0 + performance.now() - start; } }
-  window.Date = RunDate;
-  const queues = {};
-  for (const [path, list] of Object.entries(RUN.http ?? {})) queues[path] = list.map((entry) => ({ entry, left: entry.times ?? 1 }));
-  const realFetch = window.fetch.bind(window);
-  window.fetch = (input, init) => {
-    const url = new URL(typeof input === 'string' ? input : input.url, location.href);
-    if (!url.pathname.startsWith('/api/')) return realFetch(input, init);
-    R.requests.push([T(), url.pathname]);
-    const queue = queues[url.pathname] ?? [];
-    const head = queue[0];
-    if (head === undefined) return Promise.reject(new TypeError('unscripted request: ' + url.pathname));
-    if (--head.left <= 0 && queue.length > 1) queue.shift();
-    const next = head.entry;
-    const status = url.pathname === '/api/building' && LAYOUT_STATUS[location.pathname] !== undefined ? LAYOUT_STATUS[location.pathname] : next.status;
-    const text = status !== next.status ? JSON.stringify({ error: 'planted' }) : (next.text !== undefined ? next.text : JSON.stringify(next.body ?? null));
-    const delay = (next.delay_ms ?? 0) + (API_DELAY[url.pathname] ?? 0);
-    return new Promise((resolve) => setTimeout(() => resolve(new Response(text, { status, headers: { 'content-type': 'application/json' } })), delay));
-  };
-  class RunEventSource {
-    constructor(url) {
-      this.url = url; this.readyState = 0; this.listeners = {};
-      R.streams.push([T(), String(url)]);
-      const opened = performance.now() - start;
-      setTimeout(() => { this.readyState = 1; this.fire('open', {}); }, 0);
-      for (const m of (RUN.messages ?? []).map((x) => ({ ...x, at_ms: x.at_ms + STREAM_DELAY }))) {
-        if (m.at_ms < opened) continue;
-        setTimeout(() => {
-          if (this.readyState === 2) return;
-          if (m.end === true) { this.readyState = 2; this.fire('error', {}); return; }
-          for (const until = performance.now() + BUSY; performance.now() < until;);
-          R.delivered.push(performance.now());
-          this.fire('mezzanine', { data: JSON.stringify(m.envelope) });
-        }, m.at_ms - (performance.now() - start));
-      }
-    }
-    addEventListener(type, cb) { (this.listeners[type] ??= []).push(cb); }
-    removeEventListener(type, cb) { this.listeners[type] = (this.listeners[type] ?? []).filter((c) => c !== cb); }
-    fire(type, event) { for (const cb of this.listeners[type] ?? []) cb({ type, ...event }); }
-    close() { this.readyState = 2; }
-  }
-  window.EventSource = RunEventSource;
-})();
-</script>`;
-
-const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png',
-  '.json': 'application/json', '.tmj': 'application/json', '.tsx': 'application/xml', '.svg': 'image/svg+xml' };
-
-/**
- * One row's server. `c` — the row's page conditions: `run` (the fixture run, `floor_rides` by default), `delay` (ms
- * on every static `/js` and `/css` answer), `doc` (`path → ms` before a document is answered, or `'gate'` to hold it
- * until `/release`), `redirect` (`path → target`), `api` (`path → ms` added to the run's answer), `layout`
- * (`document path → status` for that page's `/api/building`), `media` (emulated), `missing` (paths answered 404 — an
- * asset that failed to load), `stream` (ms added to every message's `at_ms`, so a run's messages land after the page
- * has settled on a slow host), `busy` (ms the page spends in one long task as each message lands, before it is
- * handled — the next frame's time is then taken before the message's paint runs, as on a busy live floor); and
- * `plant` — `[{ file, from, to }]` edits to what is served, `file` a path under `server/public` or `page` (every
- * rendered page).
- */
-function serve(c = {}) {
-  const run = fixtureRun(c.run ?? RUN);
-  const plants = c.plant ?? [];
-  const edit = (file, text) => plants.filter((p) => p.file === file).reduce((t, p) => {
-    if (!t.includes(p.from)) throw new Error(`the plant's anchor is not in ${file}: ${p.from.slice(0, 60)}`);
-    return t.split(p.from).join(p.to);
-  }, text);
-  const pageOf = (view, key, seat = '') => {
-    let html = VIEWS[view];
-    if (view === 'floor') html = html.replace(/data-floor="[^"]*"/, `data-floor="${key}"`).replace(/data-seat="[^"]*"/, `data-seat="${seat}"`);
-    const at = html.indexOf('<link rel="stylesheet"');
-    return edit('page', edit(`page:${view}`, html.slice(0, at) + STAGE(run, c.api ?? {}, c.layout ?? {}, c.stream ?? 0, c.busy ?? 0) + html.slice(at)));
-  };
-  const beacons = [];
-  let release = null;
-  const roots = [['/art/floor/', join(REPO, 'resources', 'floor')], ['/art/characters/', join(REPO, 'resources', 'characters')], ['/', join(REPO, 'server', 'public')]];
-  const server = createServer((req, res) => {
-    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    const doc = (body) => { res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' }); res.end(body); };
-    if (path === '/beacon' && req.method === 'POST') {
-      let b = ''; req.on('data', (d) => { b += d; }); req.on('end', () => { beacons.push(JSON.parse(b)); res.writeHead(204); res.end(); });
-      return;
-    }
-    if (path === '/release') { release?.(); release = null; res.end('ok'); return; }
-    const documents = { '/dashboard': () => pageOf('dashboard'), '/login': () => pageOf('login'), '/admin': () => pageOf('console'), '/admin/other': () => pageOf('console') };
-    const floor = /^\/floor\/([^/]+)(?:\/([^/]+))?$/.exec(path);
-    if (floor !== null || Object.hasOwn(documents, path)) {
-      if (c.redirect?.[path] !== undefined) { res.writeHead(302, { location: c.redirect[path] }); res.end(); return; }
-      const body = () => doc(floor !== null ? pageOf('floor', floor[1], floor[2] ?? '') : documents[path]());
-      const wait = c.doc?.[path];
-      if (wait === 'gate') { release = body; return; }
-      setTimeout(body, wait ?? 0);
-      return;
-    }
-    if ((c.missing ?? []).includes(path)) { res.writeHead(404); res.end(); return; }
-    for (const [prefix, root] of roots) {
-      if (!path.startsWith(prefix)) continue;
-      const file = normalize(join(root, path.slice(prefix.length)));
-      if (file.startsWith(root) && existsSync(file)) {
-        const rel = file.slice(join(REPO, 'server', 'public').length + 1);
-        const body = edit(rel, readFileSync(file, 'utf8'));
-        const late = (path.startsWith('/js/') || path.startsWith('/css/')) ? (c.delay ?? 0) : 0;
-        setTimeout(() => { res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' }); res.end(body); }, late);
-        return;
-      }
-    }
-    res.writeHead(404); res.end();
-  });
-  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve({
-    base: `http://127.0.0.1:${server.address().port}`, beacons, released: () => release === null, close: () => server.close(),
-  })));
-}
 
 /** A browser on one row's server: the page, its clicks and keys, its instruments. */
 async function session(chrome, srv, c = {}) {
@@ -437,7 +240,8 @@ const cabContrast = (s) => s.ev(`(() => {
  * Each row: `run(chrome, c)` answers `{ defects, facts }`; `base` its own page conditions; `plant` what must red it — or a
  * list of plants, each run on its own and each required to red, where one row reads two surfaces with a defect each.
  */
-const MAIN = 'js/floor/main.js';
+/** The floor page's wiring, hoisted out of `floor/main.js` (card#13033 stage 2 slice 2): where the page's plants land. */
+const MAIN = 'js/floor/floor-page.js';
 const SCREEN = 'js/floor/floor-screen.js';
 const PANEL = 'js/floor/cab-panel.js';
 const RULE = 'js/wire/ride-arrival.js';
@@ -465,9 +269,10 @@ const NO_MIX = [
 /**
  * card#12194's walker sampler, installed before the page's first script and run on every animation frame for the first
  * `ms`: each `.fx-walker` (the gliding group) — its path, its point and feet `y` from its computed `offset-distance`, whether
- * its shown group draws it, its node (a rebuild is a new one) and its place among the floor stack's children (a move is a
- * new place for the same node), its glide's timing function, duration and start on the timeline, read off the `glide`
- * animation itself (card#12705: a walker with two walk legs runs a second, `walker-shown`, on each glide) — and, per frame, the floor stack:
+ * it is drawn (its shown group's opacity and its own: a leg's glide is drawn only through its own `walker-shown` run), its
+ * node (a rebuild is a new one) and its place among the floor stack's children (a move is a new place for the same node),
+ * its glide's timing function, duration and start on the timeline, read off the `glide` animation itself (card#12705: a
+ * walker with two walk legs runs a second, `walker-shown`, on each glide) — and, per frame, the floor stack:
  * each desk's key, place and foot line (its desk sprite's viewport `y + height`), each walker's place, which element has
  * focus, any walker element outside the stack, a walker shown in the cab outside the band's cab or after its leaves, and any
  * point under a shown walker that is a walker element.
@@ -495,7 +300,7 @@ const WALKER_SAMPLER = (ms) => `(window.__walkers = { samples: [], frames: [] },
       const at = p.getPointAtLength(len * pct / 100);
       const glide = el.getAnimations().find((a) => a.animationName === 'glide');
       const origin = glide === undefined || glide.startTime === null ? null : glide.startTime + glide.effect.getTiming().delay - t0;
-      const shown = Number(getComputedStyle(shownEl).opacity) > 0;
+      const shown = Number(getComputedStyle(shownEl).opacity) > 0 && Number(cs.opacity) > 0;
       const index = kids.indexOf(shownEl);
       if (index === -1) frame.loose.push('walker in ' + (shownEl.parentNode?.getAttribute('class') ?? '?'));
       frame.walkers.push({ y: at.y, index, shown });
@@ -935,9 +740,10 @@ const ROWS = {
   // and before each deeper one, walkers among themselves by feet `y`, a pair inside one loop frame of travel (24 px) of a
   // crossing excused as § 6.2 item 9's stated lag (H16); the desks' relative order and `document.activeElement` unchanged
   // (H18); every walker element a child of the floor stack, and a walker shown in the cab inside the band's cab clip group
-  // before the leaves (H8); and that the point under each shown walker is never a walker element (H19). Then, with
-  // `aimla-review` standing in its wait at its spot beside the doors (card#12793): its image draws one frame on two ticks
-  // (H21), and a click where its drawn body covers the right leaf — under the waiting walker — opens the cab (H19). Two MEASUREMENTS are reported as facts: whether
+  // before the leaves (H8); and that the point under each shown walker is never a walker element (H19). Then, on a second
+  // page of the run, with `aimla-review` standing in its wait at its spot beside the doors (card#12793): its image draws one
+  // frame on two ticks (H21), and a click where its drawn body covers the right leaf — under the waiting walker — opens the
+  // cab (H19). Two MEASUREMENTS are reported as facts: whether
   // `insertBefore` of a walker's node restarts its running animations (`reinsert`), and whether a re-inserted walker's
   // `<image>` is missing from the next composited frame (`flicker`, the walker's clip compared before and after).
   // The PLANTs: no `pin()` after a move (H20), the walker drawn in the effects layer (H16), every stack child re-appended
@@ -956,75 +762,86 @@ const ROWS = {
       { plant: [{ file: 'js/floor/painter.js', from: 'if (window !== null && !strides(window, now)) {', to: 'if (false) {' }] },
       { plant: [{ file: 'js/floor/painter.js', from: '{ stack: desks, cab: cabLayer }', to: '{ stack: desks, cab: effectsLayer }' }] },
     ],
-    (chrome, c) => within(chrome, c, async (s) => {
-      const SAMPLE_MS = 15500;
-      await s.page('Page.addScriptToEvaluateOnNewDocument', { source: WALKER_SAMPLER(SAMPLE_MS) });
-      await s.open('/floor/aimla');
-      await s.ev(`(() => { const d = document.querySelector('#floor-drawing [data-key="aimla/aimla-impl-1"]'); d.focus(); window.__walkers.focusAt = performance.now() - window.__walkers.t0; return true; })()`);
-      await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 8000, 'the page never reached the end of the sample');
-      const all = await s.ev('window.__walkers.samples');
-      const focusAt = await s.ev('window.__walkers.focusAt');
-      const frames = await s.ev('window.__walkers.frames');
+    async (chrome, c) => {
       const d = [];
-      const facts = { walks: [], moves: 0, frames: frames.length };
-      const walks = byPath(all);
-      if (walks.size < 2) d.push(`${walks.size} walker(s) drawn — the crossing measured nothing`);
-      for (const [path, xs] of walks) {
-        const f = glideDefects(path, xs, d);
-        facts.walks.push(f);
-        facts.moves += f.moves;
-      }
-      if (facts.moves === 0) d.push('no walker\'s node moved in the floor stack inside its walk — continuity across a move was not measured');
-      // H16, H18, H8, H19 on every frame.
-      const LAG = 24 + 3;
-      let deskOrder = null;
-      for (const fr of frames) {
-        if (fr.loose.length > 0) { d.push(`at ${Math.round(fr.t)} ms a walker element is outside the floor stack: ${fr.loose.join(', ')}`); break; }
-        if (fr.cabBad) { d.push(`at ${Math.round(fr.t)} ms a walker shown in the cab is not inside the band's cab before the leaves`); break; }
-        if (fr.hit.length > 0) { d.push(`at ${Math.round(fr.t)} ms the point under a shown walker is a walker element: ${fr.hit[0]}`); break; }
-        // The desks' order is read once the page has settled (focus placed), and must never change after it.
-        if (deskOrder === null && fr.t > focusAt) deskOrder = fr.desks.map((x) => x.key).join(' ');
-        if (deskOrder !== null && fr.desks.map((x) => x.key).join(' ') !== deskOrder) { d.push(`at ${Math.round(fr.t)} ms the desks were re-ordered: ${fr.desks.map((x) => x.key).join(' ')}`); break; }
-        if (fr.t > focusAt + 20 && fr.focus !== 'aimla/aimla-impl-1') { d.push(`at ${Math.round(fr.t)} ms focus is on ${fr.focus}, not the desk it was placed on`); break; }
-        const bad = [];
-        for (const w of fr.walkers.filter((x) => x.shown)) {
-          for (const desk of fr.desks) {
-            if (desk.depth === null || Math.abs(w.y - desk.depth) <= LAG) continue;
-            if ((w.y >= desk.depth) !== (w.index > desk.index)) bad.push(`walker at y ${w.y.toFixed(1)} is ${w.index > desk.index ? 'after' : 'before'} ${desk.key} (foot line ${desk.depth})`);
-          }
-          for (const v of fr.walkers.filter((x) => x.shown && x !== w && x.y - w.y > LAG)) {
-            if (v.index < w.index) bad.push(`the nearer walker (y ${v.y.toFixed(1)}) is behind the farther (y ${w.y.toFixed(1)})`);
-          }
+      const facts = { walks: [], moves: 0 };
+      await within(chrome, c, async (s) => {
+        const SAMPLE_MS = 15500;
+        await s.page('Page.addScriptToEvaluateOnNewDocument', { source: WALKER_SAMPLER(SAMPLE_MS) });
+        await s.open('/floor/aimla');
+        await s.ev(`(() => { const d = document.querySelector('#floor-drawing [data-key="aimla-impl-1"]'); d.focus(); window.__walkers.focusAt = performance.now() - window.__walkers.t0; return true; })()`);
+        await until(() => s.ev(`performance.now() > ${SAMPLE_MS + 100}`), SAMPLE_MS + 8000, 'the page never reached the end of the sample');
+        const all = await s.ev('window.__walkers.samples');
+        const focusAt = await s.ev('window.__walkers.focusAt');
+        const frames = await s.ev('window.__walkers.frames');
+        facts.frames = frames.length;
+        const walks = byPath(all);
+        if (walks.size < 2) d.push(`${walks.size} walker(s) drawn — the crossing measured nothing`);
+        for (const [path, xs] of walks) {
+          const f = glideDefects(path, xs, d);
+          facts.walks.push(f);
+          facts.moves += f.moves;
         }
-        if (bad.length > 0) { d.push(`at ${Math.round(fr.t)} ms: ${bad[0]}`); break; }
-      }
-      // H21: the waiting walker stands at one frame; then measure, then H19: the press under it.
-      const review = await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href').length ?? null; })()`);
-      const hrefs = [];
-      for (let i = 0; i < 3; i++) {
-        hrefs.push(await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); return w === undefined ? null : w.querySelector('image')?.getAttribute('href') ?? null; })()`));
-        await sleep(300);
-      }
-      if (review === null || hrefs.some((h) => h === null)) d.push('no walker stood at its spot in its wait to read');
-      else if (new Set(hrefs).size !== 1) d.push(`the waiting walker drew ${new Set(hrefs).size} different frames on three ticks — it walks in place`);
-      facts.reinsert = await s.ev(REINSERT);
-      facts.flicker = await flicker(s);
-      // card#12793: nobody waits on the threshold any more — the first waiter stands beside the doors, outside the lane,
-      // its drawn body still reaching over the right leaf — so the press is made where that body covers a leaf: the centre
-      // of its image's rect and the right leaf's, overlapping. A waiter that covers no leaf measures nothing, and says so.
-      const under = await s.ev(`(() => { const w = [...document.querySelectorAll('#floor-drawing .fx-walker')].find((g) => getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'); const l = document.querySelector('#floor-drawing .elevator-leaf.right'); if (w === undefined || l === null) return null; const a = w.querySelector('image').getBoundingClientRect(); const b = l.getBoundingClientRect(); const x0 = Math.max(a.left, b.left); const x1 = Math.min(a.right, b.right); const y0 = Math.max(a.top, b.top); const y1 = Math.min(a.bottom, b.bottom); return x1 > x0 && y1 > y0 ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; })()`);
-      if (under === null) {
-        d.push('no waiting walker\'s body covers a leaf — the press under a waiting walker measured nothing');
-        return { defects: d.slice(0, 6), facts };
-      }
-      for (const type of ['mousePressed', 'mouseReleased']) await s.page('Input.dispatchMouseEvent', { type, x: under.x, y: under.y, button: 'left', clickCount: 1 });
-      const leaf = await s.ev(`(() => { const e = document.elementFromPoint(${under.x}, ${under.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
-      const opened = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'never').then(() => true, () => false);
-      const cab = await s.cab();
-      facts.press = { under: leaf, cab: cab.open, opened };
-      if (!cab.open) d.push(`a press on the leaves under the waiting walker did not open the cab (the point is ${leaf})`);
+        if (facts.moves === 0) d.push('no walker\'s node moved in the floor stack inside its walk — continuity across a move was not measured');
+        // H16, H18, H8, H19 on every frame.
+        const LAG = 24 + 3;
+        let deskOrder = null;
+        for (const fr of frames) {
+          if (fr.loose.length > 0) { d.push(`at ${Math.round(fr.t)} ms a walker element is outside the floor stack: ${fr.loose.join(', ')}`); break; }
+          if (fr.cabBad) { d.push(`at ${Math.round(fr.t)} ms a walker shown in the cab is not inside the band's cab before the leaves`); break; }
+          if (fr.hit.length > 0) { d.push(`at ${Math.round(fr.t)} ms the point under a shown walker is a walker element: ${fr.hit[0]}`); break; }
+          // The desks' order is read once the page has settled (focus placed), and must never change after it.
+          if (deskOrder === null && fr.t > focusAt) deskOrder = fr.desks.map((x) => x.key).join(' ');
+          if (deskOrder !== null && fr.desks.map((x) => x.key).join(' ') !== deskOrder) { d.push(`at ${Math.round(fr.t)} ms the desks were re-ordered: ${fr.desks.map((x) => x.key).join(' ')}`); break; }
+          if (fr.t > focusAt + 20 && fr.focus !== 'aimla-impl-1') { d.push(`at ${Math.round(fr.t)} ms focus is on ${fr.focus}, not the desk it was placed on`); break; }
+          const bad = [];
+          for (const w of fr.walkers.filter((x) => x.shown)) {
+            for (const desk of fr.desks) {
+              if (desk.depth === null || Math.abs(w.y - desk.depth) <= LAG) continue;
+              if ((w.y >= desk.depth) !== (w.index > desk.index)) bad.push(`walker at y ${w.y.toFixed(1)} is ${w.index > desk.index ? 'after' : 'before'} ${desk.key} (foot line ${desk.depth})`);
+            }
+            for (const v of fr.walkers.filter((x) => x.shown && x !== w && x.y - w.y > LAG)) {
+              if (v.index < w.index) bad.push(`the nearer walker (y ${v.y.toFixed(1)}) is behind the farther (y ${w.y.toFixed(1)})`);
+            }
+          }
+          if (bad.length > 0) { d.push(`at ${Math.round(fr.t)} ms: ${bad[0]}`); break; }
+        }
+      });
+      // H21 and H19's press, on a second page of the run: `aimla-review` standing at its spot in its wait — the stand
+      // before its boarding walk, its last leg but one at its end and drawn — found when it begins rather than at a fixed
+      // instant, since the wait's place on the run's clock follows the desk slots and the host's pace (card#13117). Its
+      // image draws one frame on two ticks; then the press under it; then the two measurements, on whichever walker is
+      // still shown (null when none is).
+      await within(chrome, c, async (s) => {
+        const WAITER = `[...document.querySelectorAll('#floor-drawing .fx-walker-leg')].find((g) => { const legs = [...g.parentNode.children].filter((n) => n.classList.contains('fx-walker-leg')); return legs.indexOf(g) === legs.length - 2 && getComputedStyle(g.parentNode).opacity !== '0' && getComputedStyle(g).opacity !== '0' && getComputedStyle(g).offsetDistance === '100%'; })`;
+        await s.open('/floor/aimla');
+        const waiting = await until(() => s.ev(`${WAITER} !== undefined`), 30000, 'never').then(() => true, () => false);
+        const hrefs = [];
+        for (let i = 0; waiting && i < 3; i++) {
+          hrefs.push(await s.ev(`${WAITER}?.querySelector('image')?.getAttribute('href') ?? null`));
+          if (i < 2) await sleep(300);
+        }
+        if (!waiting || hrefs.some((h) => h === null)) d.push('no walker stood at its spot in its wait to read');
+        else if (new Set(hrefs).size !== 1) d.push(`the waiting walker drew ${new Set(hrefs).size} different frames on three ticks — it walks in place`);
+        // card#12793: nobody waits on the threshold any more — the first waiter stands beside the doors, outside the lane,
+        // its drawn body still reaching over the right leaf — so the press is made where that body covers a leaf: the centre
+        // of its image's rect and the right leaf's, overlapping. A waiter that covers no leaf measures nothing, and says so.
+        const under = await s.ev(`(() => { const w = ${WAITER}; const l = document.querySelector('#floor-drawing .elevator-leaf.right'); if (w === undefined || l === null) return null; const a = w.querySelector('image').getBoundingClientRect(); const b = l.getBoundingClientRect(); const x0 = Math.max(a.left, b.left); const x1 = Math.min(a.right, b.right); const y0 = Math.max(a.top, b.top); const y1 = Math.min(a.bottom, b.bottom); return x1 > x0 && y1 > y0 ? { x: (x0 + x1) / 2, y: (y0 + y1) / 2 } : null; })()`);
+        if (under === null) {
+          d.push('no waiting walker\'s body covers a leaf — the press under a waiting walker measured nothing');
+          return;
+        }
+        for (const type of ['mousePressed', 'mouseReleased']) await s.page('Input.dispatchMouseEvent', { type, x: under.x, y: under.y, button: 'left', clickCount: 1 });
+        const leaf = await s.ev(`(() => { const e = document.elementFromPoint(${under.x}, ${under.y}); return e === null ? null : e.tagName + '.' + (e.getAttribute('class') ?? ''); })()`);
+        const opened = await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'never').then(() => true, () => false);
+        const cab = await s.cab();
+        facts.press = { under: leaf, cab: cab.open, opened };
+        if (!cab.open) d.push(`a press on the leaves under the waiting walker did not open the cab (the point is ${leaf})`);
+        facts.reinsert = await s.ev(REINSERT);
+        facts.flicker = await flicker(s);
+      });
       return { defects: d.slice(0, 6), facts };
-    })),
+    }),
 
   focus: row('inside, focus is on the current floor\'s button, and stays there across a render', {}, { plant: [{ file: PANEL, from: '            const held = new Map([...list.children].map((li) => [li.dataset.stop, li]));', to: "            [...list.children].forEach((li) => li.remove());\n            const held = new Map();" }] },
     (chrome, c) => within(chrome, c, async (s) => {
@@ -1032,10 +849,15 @@ const ROWS = {
       await intoTheCab(s);
       await sleep(50);
       const first = (await s.cab()).focus;
-      // The run's next heartbeat renders the page; the panel is reconciled on that paint.
-      await until(async () => (await s.ev('performance.now()')) > 5600, 8000, 'the clock stood still');
+      // The run's next heartbeat AFTER that read renders the page, and the panel is reconciled on that paint; a read
+      // taken after the run's last heartbeat has no render to measure, and says so.
+      const delivered = await s.ev('window.__ride.delivered.length');
+      const rendered = await until(() => s.ev(`window.__ride.delivered.length > ${delivered}`), 8000, 'none').then(() => true, () => false);
+      await s.ev('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))');
       const later = (await s.cab()).focus;
-      return { defects: [first, later].every((f) => f === 'aimla') ? [] : [`focus: ${first} inside, ${later} after a render`], facts: { first, later } };
+      const d = rendered ? [] : ['no heartbeat landed after focus was read inside — the render was not measured'];
+      if (![first, later].every((f) => f === 'aimla')) d.push(`focus: ${first} inside, ${later} after a render`);
+      return { defects: d, facts: { first, later, rendered } };
     })),
 
   // card#12039: the operator's *I want to see the top of the elevator door (currently the door is too tall and stretches
@@ -1085,7 +907,7 @@ const ROWS = {
   // floor's call button the elevator's lamp — each read from the theme module and the sheet the page loads, and the
   // cab's drawn frame and lamp the same two palette colours.
   'cab-palette': row('the button popup is drawn in the house theme\'s elevator palette — its body the frame\'s colour, a stop in the door\'s colours, the current floor lit by the lamp — as the cab\'s drawing is, its walls, ceiling and floor following the frame\'s colour', {},
-    { plant: [{ file: MAIN, from: '    painter.cabTheme(cab.dialog);\n', to: '' }] },
+    { plant: [{ file: MAIN, from: '    drawing.cabTheme(cab.dialog);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
@@ -1183,13 +1005,13 @@ const ROWS = {
   // HALF OPEN by pausing its own leaf motion at its midpoint — the band's in `opening`, the cab's in `chosen`, each the
   // ride's real motion — and measured as drawn: between the two leaves' inner edges is the open doorway, and through it
   // the layer behind the leaves shows — the cab's room on the band (`.band-cab .cab-back`), the office in the cab
-  // (`.cab-beyond .office-back`) — and NOTHING drawn over the leaves' layer crosses it: no seam line left standing in the
+  // (`.cab-beyond .dv-back`) — and NOTHING drawn over the leaves' layer crosses it: no seam line left standing in the
   // doorway (the seam is the leaves' own edges). At a desktop and a phone window, and with the house theme failed.
   // With `--shots`, each held door is saved: the cab half and fully open, the floor's elevator zoomed, half open.
-  'through-doors': row('through the open doors the office shows from inside the cab and the cab from the floor, each door held half open, and nothing — no seam line — is drawn across the open doorway', {},
+  'through-doors': row('through the open doors the floor shows from inside the cab and the cab from the floor, each door held half open, and nothing — no seam line — is drawn across the open doorway', {},
     { plant: [
-      { file: 'js/floor/painter.js', from: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n",
-        to: "            node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n" },
+      { file: 'js/floor/painter.js', from: "            const right = node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n",
+        to: "            const right = node('rect', { x: e.seam + 1, y: e.y, width: e.x + e.w - e.seam - 1, height: e.h, rx: 3, class: 'elevator-leaf right', style: leaves }, control);\n            node('line', { x1: e.seam, y1: e.y, x2: e.seam, y2: e.y + e.h, class: 'elevator-seam' }, control);\n" },
       { file: 'js/floor/cab-paint.js', from: "    node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n",
         to: "    node('rect', { x: seam + f, y: L.y, width: L.w / 2 - f, height: L.h, rx: 3 * f, class: 'elevator-leaf right', style }, cab);\n    node('line', { x1: seam, y1: L.y, x2: seam, y2: L.y + L.h, class: 'elevator-seam' }, cab);\n" },
     ] },
@@ -1226,12 +1048,12 @@ const ROWS = {
           await until(async () => (await s.cab()).open, RIDE_DOOR_MS + 1500, 'the elevator opened no cab');
           await until(() => s.ev("!document.getElementById('floor-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the cab never reached inside');
           await buttonsIn(s);
-          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
           await until(() => s.ev("document.querySelector('#floor-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the cab\'s leaves never moved');
-          const cab = await hold(s, '#floor-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 0.5);
+          const cab = await hold(s, '#floor-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 0.5);
           if (c.plant.length === 0) await s.shot(`cab-half-open-${tag}`);
           judge(`${tag} cab`, cab);
-          if (c.plant.length === 0) { await hold(s, '#floor-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 1); await s.shot(`cab-open-${tag}`); }
+          if (c.plant.length === 0) { await hold(s, '#floor-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 1); await s.shot(`cab-open-${tag}`); }
           facts[tag] = { band: { open: band.open, over: band.over }, cab: { open: cab.open, over: cab.over } };
         });
       }
@@ -1245,7 +1067,7 @@ const ROWS = {
   // floor's plate and every call button are filled, every stop's button keeps its shadow, the body its rim, and every
   // text holds WCAG AA on what it sits on. Two plants, one per surface: the painter's fallback removed, and the call
   // buttons' plain fill removed from the sheet, leaving only their mix.
-  'cab-no-mix': row('with color-mix() unavailable, the cab, the office through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour, and the button popup keeps its fills, shadows, rim and WCAG AA text with the theme and without it', { plant: NO_MIX },
+  'cab-no-mix': row('with color-mix() unavailable, the cab, the floor through its doors and the cab behind the floor\'s leaves are each still painted, every surface in a theme colour, and the button popup keeps its fills, shadows, rim and WCAG AA text with the theme and without it', { plant: NO_MIX },
     [
       { plant: [{ file: 'js/floor/cab-paint.js', from: '${unmixed(MIXED)}@supports', to: '@supports' }] },
       { plant: [{ file: 'css/mezzanine.css', from: '    background: var(--door);\n    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}', to: '    box-shadow: inset 0 2px 2px rgb(255 255 255 / 0.6);\n}' }] },
@@ -1266,7 +1088,7 @@ const ROWS = {
             const panel = document.getElementById('floor-cab-panel');
             return {
               fills: Object.fromEntries(['#floor-cab-doors .cab-back', '#floor-cab-doors .cab-side', '#floor-cab-doors .cab-ceiling', '#floor-cab-doors .cab-floor', '#floor-cab-doors .cab-plate-body',
-                '#floor-cab-doors .office-floor', '#floor-cab-doors .office-wall', '#floor-cab-doors .office-back', '#floor-cab-doors .office-ceiling', '#floor-cab-doors .office-desk-top',
+                '#floor-cab-doors .dv-floor', '#floor-cab-doors .dv-wall', '#floor-cab-doors .dv-back', '#floor-cab-doors .dv-ceiling', '#floor-cab-doors .dv-desk',
                 '#floor-drawing .band-cab .cab-back', '#floor-drawing .band-cab .cab-side', '#floor-drawing .band-cab .cab-floor'].map((sel) => [sel, fill(sel)])),
               popup: {
                 plates: [...document.querySelectorAll('#floor-cab-stops li > button')].map((b) => ({ current: b.parentElement.classList.contains('current'), background: cs(b).backgroundColor, shadow: cs(b).boxShadow })),
@@ -1340,7 +1162,7 @@ const ROWS = {
     })),
 
   'two-escapes-committed': row('two Escapes in chosen, and in leaving, with the destination 1 200 ms late: the destination is a cut with its own doors, never A\'s floor held over it (M5-1)',
-    { doc: { '/floor/zeta': 1200 } }, { plant: [{ file: RULE, from: "    if (ride?.phase === 'leaving' && ride.cab === 'open') {", to: "    if (ride?.phase === 'leaving') {" }] },
+    { doc: { '/floor/the-annex': 1200 } }, { plant: [{ file: RULE, from: "    if (ride?.phase === 'leaving' && ride.cab === 'open') {", to: "    if (ride?.phase === 'leaving') {" }] },
     async (chrome, c) => {
       const d = [];
       const facts = {};
@@ -1348,12 +1170,12 @@ const ROWS = {
         await within(chrome, c, async (s) => {
           await s.open('/floor/aimla');
           await intoTheCab(s);
-          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
           await sleep(wait);
           await s.escape();
           await sleep(30);
           await s.escape();
-          await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+          await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
           const r = await arrivedRecord(s);
           facts[label] = { reveals: r.reveals, classes: r.classes, leaves: r.scene?.leaves };
           d.push(...cut(r, label));
@@ -1364,7 +1186,7 @@ const ROWS = {
     }),
 
   race: row('a second Escape within a frame or so of the commit, either side: the destination is still a cut (m6-1); with no second Escape the cab is held',
-    { doc: { '/floor/zeta': 'gate' } }, { plant: [{ file: PERFORMER, from: '        outbound = skipUnlessCabLeaving(outbound, lastRide());\n', to: '' }] },
+    { doc: { '/floor/the-annex': 'gate' } }, { plant: [{ file: PERFORMER, from: '        outbound = skipUnlessCabLeaving(outbound, lastRide());\n', to: '' }] },
     async (chrome, c) => {
       const d = [];
       const facts = [];
@@ -1372,14 +1194,14 @@ const ROWS = {
         await within(chrome, c, async (s, srv) => {
           await s.open('/floor/aimla');
           await intoTheCab(s);
-          await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+          await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
           await sleep(DOOR_PHASE_MS + 150);                      // leaving: the navigation pending, held by the server
           await s.escape();
           await sleep(40);
           const release = () => fetch(`${srv.base}/release`);
           if (off === null) await release();
           else if (off >= 0) { await release(); if (off > 0) await sleep(off); await s.escape(); } else { await s.escape(); await sleep(-off); await release(); }
-          await until(async () => (await s.ev('location.pathname')) === '/floor/zeta' && (await s.record()).reveals.length > 0, 8000, 'the ride never committed');
+          await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex' && (await s.record()).reveals.length > 0, 8000, 'the ride never committed');
           await sleep(100);
           const r = await s.record();
           const held = r.classes.some(([, k]) => k.includes('ride-holding'));
@@ -1425,9 +1247,9 @@ const ROWS = {
     })),
 
   'pre-layout': row('the pre-layout frame under the hold: at the first chrome change the cab is still held, nothing is stated, no room is listed', { api: { '/api/building': 600 } },
-    { plant: [{ file: MAIN, from: '    if (frame.scene !== null) {\n        revealed(html);', to: '    if (frame.scene !== null || frame.statement !== null || frame.floor === null) {\n        revealed(html);' }] },
+    { plant: [{ file: MAIN, from: '        if (frame.scene !== null) {\n            revealed(html);', to: '        if (frame.scene !== null || frame.statement !== null || frame.floor === null) {\n            revealed(html);' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const change = r.chrome.find((x) => !x.initial) ?? null;
       const d = [];
@@ -1439,13 +1261,13 @@ const ROWS = {
       return { defects: d, facts: { change, scene: r.scene?.at } };
     })),
 
-  'layout-fails': row('a layout that fails (503): its statement drawn under the hold, the cab fading into it at the bound, no elevator, no door motion', { layout: { '/floor/zeta': 503 } },
-    { plant: [{ file: MAIN, from: '    if (frame.scene !== null) {\n        revealed(html);', to: '    if (frame.scene !== null || frame.statement !== null) {\n        revealed(html);' }] },
+  'layout-fails': row('a layout that fails (503): its statement drawn under the hold, the cab fading into it at the bound, no elevator, no door motion', { layout: { '/floor/the-annex': 503 } },
+    { plant: [{ file: MAIN, from: '        if (frame.scene !== null) {\n            revealed(html);', to: '        if (frame.scene !== null || frame.statement !== null) {\n            revealed(html);' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
-      await s.click('#floor-cab-stops li[data-stop="zeta"] button');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+      await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
       await sleep(CAB_HOLD_MS + 600);
       const r = await s.record();
       const t0 = Number(r.arrivalAt);
@@ -1462,7 +1284,7 @@ const ROWS = {
   pending: row('a layout pending past the bound (2 200 ms): the cab fades into the waiting chrome at the bound, and the room drawn later has its leaves at rest',
     { api: { '/api/building': 2200 } }, { plant: [{ file: RIDE, from: ' && !this.#endsRide(frame) && now <= expiresAt) {', to: ' && !this.#endsRide(frame)) {' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await until(async () => (await s.record()).scene !== null, 8000, 'the destination never drew');
       await sleep(200);
       const r = await s.record();
@@ -1484,7 +1306,7 @@ const ROWS = {
       { file: 'page', from: "addEventListener('pagereveal', function (event) {", to: 'window.__rideReveal = (function (event) {' },
       { file: MAIN, from: "const root = el('floor');\n", to: "addEventListener('pagereveal', window.__rideReveal);\nconst root = el('floor');\n" }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await until(async () => (await s.record()).scene !== null, 10000, 'the destination never drew');
       const r = await s.record();
       const held = r.classes.find(([, k]) => k.includes('ride-holding'))?.[0] ?? null;
@@ -1497,10 +1319,10 @@ const ROWS = {
     })),
 
   'late-commit': row('the destination\'s document 2 500 ms late: A tears down at the bound, and the late commit is a cut on B with its own doors (M4-1)',
-    { doc: { '/floor/zeta': 2500 } }, { plant: [{ file: PERFORMER, from: "    window.addEventListener('pageswap', (event) => {\n        outbound = skipUnlessCabLeaving(event.viewTransition, lastRide());\n    });", to: '' }] },
+    { doc: { '/floor/the-annex': 2500 } }, { plant: [{ file: PERFORMER, from: "    window.addEventListener('pageswap', (event) => {\n        outbound = skipUnlessCabLeaving(event.viewTransition, lastRide());\n    });", to: '' }] },
     (chrome, c) => within(chrome, c, async (s, srv) => {
-      const pressed = await pressStop(s, 'zeta');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+      const pressed = await pressStop(s, 'the-annex');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
       const r = await arrivedRecord(s);
       const d = [...cut(r, 'the late commit'), ...tornDown(srv, pressed)];
       if (!(r.scene?.leaves ?? []).some((l) => String(l).includes('leaf-close'))) d.push(`B's leaves did not close on its first scene: ${JSON.stringify(r.scene?.leaves)}`);
@@ -1518,7 +1340,7 @@ const ROWS = {
   'arrival-doors': row('on the destination the leaves are drawn open, close after the fade, and the ride is over one fade and one ride door motion after the arrival', {},
     { plant: [{ file: MAIN, from: '    screen.arriveByRide(rideArrival);\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const arrived = r.classes.find(([, k]) => k.includes('ride-arrived'))?.[0] ?? null;
       const leaf = await s.ev("(async () => { const a = document.querySelector('#floor-drawing .elevator-leaf')?.getAnimations()[0]; if (a === undefined) return null; await a.ready; return { name: a.animationName, start: a.startTime + a.effect.getTiming().delay }; })()");
@@ -1563,8 +1385,8 @@ const ROWS = {
       await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 1000, 'the lobby\'s cab never reached inside');
       const stops = await s.ev("[...document.querySelectorAll('#lobby-cab-stops li')].map((li) => [li.dataset.stop, li.classList.contains('current')])");
       await buttonsIn(s, 'lobby');
-      await s.click('#lobby-cab-stops li[data-stop="zeta"] button');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 15000, 'the ride never reached /floor/zeta');
+      await s.click('#lobby-cab-stops li[data-stop="the-annex"] button');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 15000, 'the ride never reached /floor/the-annex');
       const r = await arrivedRecord(s);
       const d = [];
       if (stops.at(-1)?.[0] !== '' || stops.at(-1)?.[1] !== true || stops.filter(([, cur]) => cur).length !== 1) d.push(`the lobby's cab does not end on *Lobby*, current alone: ${JSON.stringify(stops)}`);
@@ -1577,7 +1399,7 @@ const ROWS = {
   // card#12113 (AT-D3-28): the doors held half open on each page show the view the stop owes — on the lobby, its room's
   // leaves open on the cab behind them, the cab's doors closing in `entering` on the lobby (the page's own stop) and
   // opening in `chosen` on the office (a floor's); on a floor, the cab's doors opening on *Lobby* show the lobby.
-  'lobby-doors': row('the doors held half open on each page show the view the stop owes: on the lobby, the cab behind the room\'s leaves, the lobby in entering and the office for a floor; on a floor, the lobby for *Lobby*', {},
+  'lobby-doors': row('the doors held half open on each page show the view the stop owes: on the lobby, the cab behind the room\'s leaves, the lobby in entering and the floor for a floor; on a floor, the lobby for *Lobby*', {},
     { plant: [{ file: RIDE, from: "beyond: stop === null ? 'lobby' : 'office'", to: "beyond: stop === null ? 'office' : 'lobby'" }] },
     async (chrome, c) => {
       const d = [];
@@ -1610,10 +1432,10 @@ const ROWS = {
           shows(`${tag} the lobby's cab in entering`, entering);
           await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 2000, 'the lobby\'s cab never reached inside');
           await buttonsIn(s, 'lobby');
-          // A floor chosen: the cab's doors open on the office.
-          await s.click('#lobby-cab-stops li[data-stop="zeta"] button');
+          // A floor chosen: the cab's doors open on that floor.
+          await s.click('#lobby-cab-stops li[data-stop="the-annex"] button');
           await until(() => s.ev("document.querySelector('#lobby-cab-doors .elevator-leaf')?.getAnimations().length > 0"), 2000, 'the lobby\'s cab never opened its doors');
-          const chosen = await hold(s, '#lobby-cab-doors', '.cab-beyond .office-back', '.cab-beyond', 0.5);
+          const chosen = await hold(s, '#lobby-cab-doors', '.cab-beyond .dv-back', '.cab-beyond', 0.5);
           if (c.plant.length === 0) await s.shot(`lobby-cab-chosen-half-open-${tag}`);
           shows(`${tag} the lobby's cab opening on a floor`, chosen);
           facts[`${tag} lobby`] = { room: room.open, entering: entering.open, chosen: chosen.open };
@@ -1634,15 +1456,63 @@ const ROWS = {
       return { defects: d, facts };
     }),
 
+  // card#12987: the operator's *"I want to see the actual floor layout and theme as someone would see it for each specific
+  // floor"*. From the lobby and from a floor, a floor chosen in the cab, its doors held HALF OPEN and then fully open: what
+  // shows in the open doorway is THAT floor's view — its root carrying the stop's theme carriers, its walls, desks and standing
+  // pieces drawn (the run's floors are the shipped default map, the plan's § 3.5 *sola* table) — never the bare room. With
+  // `--shots`, each held door is saved, for the reading neither end can verify locally: the operator's, against the plan's
+  // § 3.5 tables, on the sandbox. One plant: the floor view's model ignored (the bare room for every floor).
+  'door-view': row('through the cab\'s doors held half open, a chosen floor shows its own layout and theme — walls, desks and standing pieces in the floor\'s theme — from the lobby and from a floor', {},
+    { plant: [{ file: 'js/floor/cab-paint.js', from: "`cab-${ride.beyond}`, ride.view);", to: "`cab-${ride.beyond}`, null);" }] },
+    async (chrome, c) => {
+      const d = [];
+      const facts = {};
+      const viewOf = (s, root) => s.ev(`(() => { const v = document.querySelector('${root} .cab-beyond .floor-view'); if (v === null) return null;
+        const n = (cls) => v.querySelectorAll('.' + cls).length;
+        return { style: v.getAttribute('style'), walls: n('dv-wall') + n('dv-partition'), desks: n('dv-desk'), pieces: n('dv-piece'), bare: v.querySelector('.dv-room') !== null }; })()`);
+      const judge = (where, held, v) => {
+        if (held.error !== undefined) { d.push(`${where}: ${held.error}`); return; }
+        if (!(held.open > 2)) d.push(`${where}: the doors held half open leave no gap (${held.open} px)`);
+        if (!held.shows) d.push(`${where}: the floor does not show in the open doorway: ${JSON.stringify(held.seen)} vs ${JSON.stringify(held.gap)}`);
+        if (v === null || v.bare || v.style === null || v.desks === 0 || v.pieces === 0 || v.walls < 3) d.push(`${where}: the doorway shows no floor of its own: ${JSON.stringify(v)}`);
+      };
+      for (const [name, viewport] of [['desktop', CAB_WINDOWS.desktop], ['phone', CAB_WINDOWS.phone]]) {
+        const tag = `${name}-${viewport.w}x${viewport.h}`;
+        for (const [from, prefix] of [['/dashboard', 'lobby'], ['/floor/aimla', 'floor']]) {
+          await within(chrome, { ...c, viewport }, async (s) => {
+            await s.open(from);
+            if (prefix === 'lobby') {
+              await s.click('#lobby-room [data-key="elevator"]');
+              await until(() => s.ev("document.getElementById('lobby-cab').open"), RIDE_DOOR_MS + 1500, 'the lobby\'s elevator opened no cab');
+              await until(() => s.ev("!document.getElementById('lobby-cab-panel').inert"), RIDE_DOOR_MS + DOOR_PHASE_MS + 2000, 'the lobby\'s cab never reached inside');
+              await buttonsIn(s, 'lobby');
+            } else {
+              await intoTheCab(s);
+              await buttonsIn(s);
+            }
+            await s.click(`#${prefix}-cab-stops li[data-stop="the-annex"] button`);
+            await until(() => s.ev(`document.querySelector('#${prefix}-cab-doors .elevator-leaf')?.getAnimations().length > 0`), 2000, 'the cab never opened its doors');
+            const half = await hold(s, `#${prefix}-cab-doors`, '.cab-beyond .dv-back', '.cab-beyond', 0.5);
+            if (c.plant.length === 0) await s.shot(`door-view-${prefix}-half-open-${tag}`);
+            const v = await viewOf(s, `#${prefix}-cab-doors`);
+            judge(`${tag} ${prefix}: the-annex half open`, half, v);
+            if (c.plant.length === 0) { await hold(s, `#${prefix}-cab-doors`, '.cab-beyond .dv-back', '.cab-beyond', 1); await s.shot(`door-view-${prefix}-open-${tag}`); }
+            facts[`${tag} ${prefix}`] = { open: half.open, view: v };
+          });
+        }
+      }
+      return { defects: d, facts };
+    }),
+
   links: row('a plaque link into a floor, and a console link: a cut — the transition skipped, no ride-* class, the leaves at rest', {},
     { plant: [{ file: 'page', from: '                event.viewTransition.skipTransition();\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       const d = [];
       await s.open('/dashboard');
       // The plaque may sit past the directory's fold: the list is scrolled to it, as the keyboard's focus would.
-      await s.ev(`document.querySelector('#lobby-floors li[data-floor="zeta"] a').scrollIntoView({ block: 'nearest' })`);
-      await s.click('#lobby-floors li[data-floor="zeta"] a');
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the plaque link never arrived');
+      await s.ev(`document.querySelector('#lobby-floors li[data-floor="the-annex"] a').scrollIntoView({ block: 'nearest' })`);
+      await s.click('#lobby-floors li[data-floor="the-annex"] a');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the plaque link never arrived');
       const plate = await arrivedRecord(s);
       // card#12113: the lobby is a ride's departing page now, so its own `pageswap` rule skips a plaque link's outbound
       // transition before the floor sees one (as a floor's own links are skipped); the destination's skip is measured on
@@ -1668,7 +1538,7 @@ const ROWS = {
   strip: row('the fragment is stripped by the time the cab is held: the hold is reached and the hash is already gone at its first read', {},
     { plant: [{ file: 'page', from: "                history.replaceState(null, '', location.pathname + location.search);\n", to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const held = r.classes.find(([, k]) => k.includes('ride-holding')) ?? null;
       return { defects: held === null ? ['the destination never held'] : (held[2] !== '' ? [`the hash at the first hold was ${held[2]}`] : []), facts: { held } };
@@ -1679,7 +1549,7 @@ const ROWS = {
     async (chrome, c) => {
       const held = [];
       for (let i = 0; i < 3; i++) {
-        held.push(await within(chrome, c, async (s) => { await rideTo(s, 'zeta'); return (await arrivedRecord(s)).classes.some(([, k]) => k.includes('ride-holding')); }));
+        held.push(await within(chrome, c, async (s) => { await rideTo(s, 'the-annex'); return (await arrivedRecord(s)).classes.some(([, k]) => k.includes('ride-holding')); }));
       }
       return { defects: held.every(Boolean) ? [] : [`held in ${held.filter(Boolean).length} of 3 rides`], facts: held };
     }),
@@ -1689,7 +1559,7 @@ const ROWS = {
     // or a traversal could read it, so the gate is reached only once the strip has failed too — which is this plant.
     { plant: [{ file: 'page', from: " && entry !== undefined && entry.type === 'navigate';", to: ';' }, { file: 'page', from: "                history.replaceState(null, '', location.pathname + location.search);\n", to: '' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await arrivedRecord(s);
       await s.page('Page.reload', {});
       await until(async () => (await s.ev("document.readyState === 'complete' && window.__ride.scene !== null")), 8000, 'the reload never drew');
@@ -1705,9 +1575,9 @@ const ROWS = {
       return { defects: d, facts: { reload: [reloaded.nav, reloaded.reveals], back: [back.nav, back.reveals] } };
     })),
 
-  bookmark: row('a bookmark-style open of /floor/zeta#ride: the named residual — the leaves open then close, the hash stripped, no hold', {}, null,
+  bookmark: row('a bookmark-style open of /floor/the-annex#ride: the named residual — the leaves open then close, the hash stripped, no hold', {}, null,
     (chrome, c) => within(chrome, c, async (s) => {
-      await s.open('/floor/zeta#ride');
+      await s.open('/floor/the-annex#ride');
       const r = await s.record();
       const d = [];
       if (r.hash !== '') d.push(`the hash was not stripped: ${r.hash}`);
@@ -1715,12 +1585,12 @@ const ROWS = {
       return { defects: d, facts: { reveals: r.reveals, leaves: r.scene?.leaves } };
     })),
 
-  'to-login': row('the destination answering a 302 to /login: the sign-in page cuts, the hash stripped', { redirect: { '/floor/zeta': '/login' } },
+  'to-login': row('the destination answering a 302 to /login: the sign-in page cuts, the hash stripped', { redirect: { '/floor/the-annex': '/login' } },
     { plant: [{ file: 'page', from: '            if (!(arriving && reveals) || reduce) {', to: '            if (!arriving || reduce) {' }] },
     (chrome, c) => within(chrome, c, async (s) => {
       await s.open('/floor/aimla');
       await intoTheCab(s);
-      await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+      await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
       await until(async () => (await s.ev('location.pathname')) === '/login', 8000, 'the redirect never arrived');
       await sleep(500);
       const r = await s.record();
@@ -1729,14 +1599,14 @@ const ROWS = {
       return { defects: d, facts: { reveals: r.reveals, classes: r.classes } };
     })),
 
-  'never-commits': row('a destination that does not answer within the bound: the cab closes and A\'s floor is back, its leaves at rest; a late answer is a cut', { doc: { '/floor/zeta': 'gate' } },
+  'never-commits': row('a destination that does not answer within the bound: the cab closes and A\'s floor is back, its leaves at rest; a late answer is a cut', { doc: { '/floor/the-annex': 'gate' } },
     { plant: [{ file: PERFORMER, from: '            after(ride.ms, () => screen().abandoned());\n', to: '' }] },
     (chrome, c) => within(chrome, c, async (s, srv) => {
-      const pressed = await pressStop(s, 'zeta');
+      const pressed = await pressStop(s, 'the-annex');
       await sleep(DOOR_PHASE_MS + CAB_HOLD_MS + 500);
       const d = tornDown(srv, pressed);
       await fetch(`${srv.base}/release`);
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the late answer never arrived');
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the late answer never arrived');
       const r = await arrivedRecord(s);
       d.push(...cut(r, 'the late answer'));
       return { defects: d, facts: { beacons: srv.beacons } };
@@ -1759,7 +1629,7 @@ const ROWS = {
   reduce: row('under prefers-reduced-motion: the ride arrives as a cut — the transition skipped, no hold, no leaf motion', { media: [{ name: 'prefers-reduced-motion', value: 'reduce' }] },
     { plant: [{ file: 'page', from: '            if (!(arriving && reveals) || reduce) {', to: '            if (!(arriving && reveals)) {' }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       const r = await arrivedRecord(s);
       const d = [...cut(r, 'reduced motion')];
       if ((r.scene?.leaves ?? []).some((l) => String(l).includes('animation'))) d.push(`the leaves moved: ${JSON.stringify(r.scene?.leaves)}`);
@@ -1797,10 +1667,10 @@ const ROWS = {
   starts: row('the lobby and a floor each start: the stream asked for, the first scene drawn, and no uncaught exception on either page', {},
     [
       { plant: [{ file: 'js/lobby/main.js', from: "    const drawn = layer.hasAttribute('data-drawn');", to: '    const drawn = true;' }] },
-      { plant: [{ file: MAIN, from: '    surface: surface(),\n    lobby_href: lobbyHref,', to: '    surface: { width: 0, height: 0 },\n    lobby_href: lobbyHref,' }] },
+      { plant: [{ file: MAIN, from: '        surface: surface(),\n        lobby_href: lobbyHref,', to: '        surface: { width: 0, height: 0 },\n        lobby_href: lobbyHref,' }] },
       { plant: [{ file: 'js/wire/fleet-client.js', from: "    start() {\n        this.#phase = 'connecting';\n        this.#open();\n", to: "    start() {\n        this.#phase = 'connecting';\n" }] },
-      { plant: [{ file: MAIN, from: 'if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\n', to: "if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\nsetTimeout(() => { throw new Error('planted after the start'); }, 0);\n" }] },
-      { plant: [{ file: MAIN, from: 'if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\n', to: "if (rideArrival !== null) {\n    screen.arriveByRide(rideArrival);\n}\nPromise.reject(new Error('planted rejection'));\n" }] },
+      { plant: [{ file: MAIN, from: '    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n', to: "    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n    setTimeout(() => { throw new Error('planted after the start'); }, 0);\n" }] },
+      { plant: [{ file: MAIN, from: '    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n', to: "    if (rideArrival !== null) {\n        screen.arriveByRide(rideArrival);\n    }\n    Promise.reject(new Error('planted rejection'));\n" }] },
       { plant: [{ file: 'page', from: 'var CAB_HOLD_MS = ', to: 'null.planted; var CAB_HOLD_MS = ' }] },
     ],
     (chrome, c) => within(chrome, c, async (s, srv) => {
@@ -1832,15 +1702,15 @@ const ROWS = {
       await s.click('#floor-drawing [data-key="elevator"]');
       await sleep(RIDE_DOOR_MS + DOOR_PHASE_MS + FADE_MS + 100);   // inside, its buttons faded in
       const a = (await s.record()).errors;
-      await s.click('#floor-cab-stops li[data-stop="zeta"] button').catch(() => {});
-      await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, '').catch(() => {});
+      await s.click('#floor-cab-stops li[data-stop="the-annex"] button').catch(() => {});
+      await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, '').catch(() => {});
       const b = (await s.record().catch(() => ({ errors: [] }))).errors;
       return { defects: [...a, ...b].length === 0 ? [] : [`errors: ${JSON.stringify([...a, ...b])}`], facts: { a, b } };
     })),
 
   'held-enter': row('an Enter held on the elevator rides once and chooses no floor (m9)', {},
     { plant: [{ file: PANEL, from: "        if (!event.repeat) {\n            armed = true;\n        }", to: '        armed = true;' }] },
-    (chrome, c) => within(chrome, c, async (s) => {
+    (chrome, c) => within(chrome, c, async (s, srv) => {
       await s.open('/floor/aimla');
       await s.ev("document.querySelector('#floor-drawing [data-key=\"elevator\"]').focus()");
       const enter = (autoRepeat) => s.page('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r', autoRepeat });
@@ -1853,15 +1723,20 @@ const ROWS = {
       // Still `inside`: the cab open on this page and the band's leaves held open behind it — a stay chosen late in the
       // hold is still fading the cab out, but its leaves are already closing.
       const inside = cab.open && cab.path === '/floor/aimla' && cab.leaves.every((l) => l === 'transform:scaleX(.12)');
-      return { defects: inside ? [] : [`the held Enter chose: ${JSON.stringify(cab)}`], facts: cab };
+      // And the cab opened once and never closed: a stay chosen under the hold closes it, focus goes back to the elevator,
+      // and the Enter still held there rides again — ending in a cab that reads as `inside` (card#13117).
+      const opens = srv.beacons.filter((b) => b.kind === 'cab').map((b) => b.open);
+      const d = inside ? [] : [`the held Enter chose: ${JSON.stringify(cab)}`];
+      if (opens.length !== 1 || opens[0] !== true) d.push(`the cab opened and closed as ${JSON.stringify(opens)} under the held Enter, not once and open`);
+      return { defects: d, facts: { ...cab, opens } };
     })),
 
   ride: row('press a floor: the destination is navigated to by a ride, held, and revealed at its first scene (no blank)',
     // The layout answering 600 ms late, so the destination paints its waiting chrome well before its first scene.
     { api: { '/api/building': 600 } },
-    { plant: [{ file: MAIN, from: "    if (frame.scene !== null) {\n        revealed(html);\n    }\n", to: "    revealed(html);\n" }] },
+    { plant: [{ file: MAIN, from: "        if (frame.scene !== null) {\n            revealed(html);\n        }\n", to: "        revealed(html);\n" }] },
     (chrome, c) => within(chrome, c, async (s) => {
-      await rideTo(s, 'zeta');
+      await rideTo(s, 'the-annex');
       await until(async () => { const r = await s.record(); return r.scene !== null && r.classes.some(([, k]) => k.includes('ride-arrived')); }, 6000, 'the destination never arrived and drew');
       const r = await s.record();
       const d = [];
@@ -1904,9 +1779,9 @@ async function holdPixels(chrome, c) {
   return within(chrome, c, async (s) => {
     await s.open('/floor/aimla');
     const { floor } = await references(s);
-    await s.click('#floor-cab-stops li[data-stop="zeta"] button');
+    await s.click('#floor-cab-stops li[data-stop="the-annex"] button');
     const cabRef = await cabOpenPixel(s);
-    await until(async () => (await s.ev('location.pathname')) === '/floor/zeta', 8000, 'the ride never committed');
+    await until(async () => (await s.ev('location.pathname')) === '/floor/the-annex', 8000, 'the ride never committed');
     await until(async () => (await s.record()).classes.some(([, k]) => k.includes('ride-holding')), 3000, 'the destination never held');
     const held = (await s.record()).classes.find(([, k]) => k.includes('ride-holding'))[0];
     const now = await s.ev('performance.now()');
@@ -1947,15 +1822,19 @@ for (const [id, row] of rows) {
   console.log(`${ok ? 'PASS' : 'FAIL'} ${id} — ${row.what}${ok ? '' : `\n  ${result.defects.join('\n  ')}`}\n  facts: ${JSON.stringify(result.facts)}`);
   if (argv.includes('--selftest') && row.plant === null) {
     console.log(`PASS ${id} PLANT — none: the row documents a named residual, and no defect of it is planted`);
+  } else if (argv.includes('--selftest') && !ok) {
+    console.log(`UNMEASURED ${id} PLANT — the row is red with no plant, so its red under one is no evidence`);
   } else if (argv.includes('--selftest')) {
     const plants = Array.isArray(row.plant) ? row.plant : [row.plant];
     for (const [i, plant] of plants.entries()) {
       let planted;
-      try { planted = await row.run(chrome, conditions(row, plant)); } catch (e) { planted = { defects: [`(raised) ${e.message}`] }; }
-      const bit = planted.defects.length > 0;
+      let stale = null;
+      try { planted = await row.run(chrome, conditions(row, plant)); } catch (e) { if (e instanceof StaleAnchor) stale = e; planted = { defects: [`(raised) ${e.message}`] }; }
+      const bit = stale === null && planted.defects.length > 0;
       failed += bit ? 0 : 1;
       const tag = plants.length === 1 ? 'PLANT' : `PLANT ${i + 1}/${plants.length}`;
-      console.log(`${bit ? "PASS" : "FAIL"} ${id} ${tag} — ${bit ? `red: ${planted.defects[0]}` : `NOT CAUGHT — facts: ${JSON.stringify(planted.facts ?? null)}`}`);
+      const why = stale !== null ? `NOT PLANTED — ${stale.message}` : `NOT CAUGHT — facts: ${JSON.stringify(planted.facts ?? null)}`;
+      console.log(`${bit ? "PASS" : "FAIL"} ${id} ${tag} — ${bit ? `red: ${planted.defects[0]}` : why}`);
     }
   }
 }

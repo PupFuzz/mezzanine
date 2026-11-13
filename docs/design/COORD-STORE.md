@@ -110,7 +110,7 @@ as placeholders because each equals a live roundtable identity:
 Both seats **declare** a name and both declarations are `checked` — card#9296's server half and
 card#9375's reporter half are live on this fleet. The sandbox's building layout (`building_layout.document`,
 read-only) composes **one** floor, *Mezzanine*, holding the `mezzanine` room alone; the `kanban` room is
-on no authored floor and takes a floor of its own (D3 § 4.6). So on the sandbox as laid out today the
+on no authored floor and was drawn on a floor of its own (D3 § 4.6 — the Unassigned floor since card#13117). So on the sandbox as laid out then the
 two seats are on **different floors**, which is the portal case of [§ 6.1](#61-what-the-floor-renders-and-what-it-no-longer-does)
 once both declare, and the desk-to-desk bird is one admin-console act away ([§ 10](#10-operator-questions) NQ3).
 
@@ -240,16 +240,20 @@ family of `mzn_` / `mzr_`, **not a secret**, and nothing authenticates on it: an
 inside D1 § 18.8 step 3, counted `coord_signature_invalid`, in the same per-`(route, source IP)` bucket.
 (Three reviews verified the selector, the bucket and AT-23.)
 
-**The binding's `scope` — `install` or `fleet`** is set at issue, never inferred from a payload, and
-decides:
+**The binding's `scope` — `room` or `fleet`** is set at issue, never inferred from a payload, and
+decides. ⭐ **`room` was `install` until card#13117**, which made the room a console record — the
+`installs` row is the room, its `install_id` the room key — and renamed the value in the store
+(`coord_hooks.scope`, migrated in place) and on the wire in one deploy
+([`plan-13117-seat-identity.md § 4.3`](plan-13117-seat-identity.md)). A seat the console moves between
+rooms moves its coordination scope with it.
 
-| | `scope: install` | `scope: fleet` |
+| | `scope: room` | `scope: fleet` |
 |---|---|---|
-| the binding names | one `install_id` and one repository | one repository and **no** install |
-| the object carries | `scope: "install"`, `install_id: "<the binding's>"` | `scope: "fleet"`, `install_id: null` — riding `feed_outbox`'s `NULL` for a fleet-wide message |
+| the binding names | one room key (`install_id`) and one repository | one repository and **no** room |
+| the object carries | `scope: "room"`, `install_id: "<the binding's room>"` | `scope: "fleet"`, `install_id: null` — riding `feed_outbox`'s `NULL` for a fleet-wide message |
 | the install-facts input (D1 § 18.3.1) | `shared_identity` — **no roster**: the roster member is specified and not provisioned, since its one consumer, the `all` expansion, is not derived (r4 MAJOR-2, fix (a)) | `shared_identity`, likewise — no copy of the roundtable's identity set is held |
 | `targets` for `to: all` | `null` — the expansion is **specified, not derived** (D1 § 18.7): a broadcast is the ring and enumerates no destination | `null`, the same rule |
-| the floor joins a name through | `protocol_agent_name`, within the install (D2 § 8.3.3 rule 1) | `roundtable_agent_name`, across every install ([§ 3.4](#34-the-roundtable-name-declaration-q2)) |
+| the floor joins a name through | `protocol_agent_name`, among the seats currently in the room (D2 § 8.3.3 rule 1) | `roundtable_agent_name`, across every install ([§ 3.4](#34-the-roundtable-name-declaration-q2)) |
 | the render | A19/A20 in the one room (D3 § 5.7 property 3) | A19/A20 where the ends resolve on one floor; A22 through the viewed floor's portal where both ends resolve to desks of this building on different floors; nothing for an end that resolves to no desk ([§ 6.1](#61-what-the-floor-renders-and-what-it-no-longer-does)) |
 
 D2 § 9's per-subscriber filter admits everything today; what a future per-install ACL does with a
@@ -266,11 +270,11 @@ terminal:
 ```
 php artisan mezzanine:coord-hook:issue <repository> --scope=fleet   --shared-identity=<true|false> \
     --by=<who> --secret-out <path> --hook-request-out <path>
-php artisan mezzanine:coord-hook:issue <repository> --scope=install --install=<install_id> …   (same options)
+php artisan mezzanine:coord-hook:issue <repository> --scope=room --room=<room key> …   (same options)
 gh api repos/<owner>/<repo>/hooks --input <hook-request path>          # the operator's admin credential
 ```
 
-`issue` creates, in one transaction, the binding row (`coord_hooks`: scope, install or none, repository,
+`issue` creates, in one transaction, the binding row (`coord_hooks`: scope, room or none, repository,
 `shared_identity` — and no roster, r4 MAJOR-2) and one secret row (`coord_hook_secrets`, ciphertext at rest under the application key — an HMAC key
 must be recoverable; **seat ruling on Q4, reversible**). It prints **the URL and nothing secret**. The
 secret goes to `--secret-out`, mode 0600, and the complete GitHub hook-creation body — URL, content

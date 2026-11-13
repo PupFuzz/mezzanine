@@ -20,7 +20,7 @@ use Tests\TestCase;
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ EVERY EXPECTATION IS RE-DERIVED, NEVER TRANSCRIBED: the stops from the fixture's own layout through § 4.6's
- * rule (`label ?? key`, `/floor/{key}`, key order), every phase's length from § 12's *Ride door motion*, *Loop
+ * rule (the name, `/floor/{key}`, key order), every phase's length from § 12's *Ride door motion*, *Loop
  * frame rate* and *Cab hold* rows, and the guard table below from § 4.5's phase table — so a method accepted out
  * of phase, a length that drifted from § 12, or a stop list captured at the press reds here.
  *
@@ -145,20 +145,19 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $placed = [];
 
         foreach ($layout as $floor) {
-            $floors[$floor['floor']] = $floor['label'] ?? $floor['floor'];
+            $floors[$floor['floor']] = $floor['name'];
 
             foreach ($floor['rooms'] as $room) {
                 $placed[] = $room['install'];
             }
         }
 
-        foreach ($snapshot['installs'] as $install) {
-            if (! in_array($install['install_id'], $placed, true)) {
-                $floors[$install['install_id']] = $install['install_id'];
-            }
-        }
-
         ksort($floors, SORT_STRING);
+
+        // card#13117: every reported room no floor places is on the one Unassigned floor, after the named ones.
+        if (array_diff(array_column($snapshot['installs'], 'install_id'), $placed) !== []) {
+            $floors['unassigned'] = 'Unassigned';
+        }
         $stops = [];
 
         foreach ($floors as $key => $name) {
@@ -239,7 +238,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $frames = $this->rideFrames($result);
 
         $this->assertNotSame([], $frames, 'no frame carried a ride');
-        $this->assertSame(['aimla', 'kappa', 'zeta', null], array_column($expected, 'key'), 'the fixture no longer composes the three floors this test was written over');
+        $this->assertSame(['aimla', 'kappa', 'the-annex', null], array_column($expected, 'key'), 'the fixture no longer composes the three floors this test was written over');
 
         foreach ($frames as $render) {
             $ride = $render['frame']['ride'];
@@ -310,6 +309,108 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertSame([], $this->beyondDefects($this->floorRun(self::RIDES)));
     }
 
+    /**
+     * `scene.ride.stop` (card#12987, § 4.5's *Through the open doors at a FLOOR is that floor*): the key of the stop the
+     * doors open on — the floor's own until the choice, the chosen stop's from `chosen` on, `null` for the lobby — so the
+     * screen resolves the floor behind the doors from the ride, never from the page. Read on every frame of the run that
+     * drew a scene under a ride.
+     */
+    public function test_green_the_stop_behind_the_doors_is_the_stop_they_open_on(): void
+    {
+        $this->assertSame([], $this->stopDefects($this->floorRun(self::RIDES)));
+    }
+
+    /**
+     * THE PRESS FETCHES EACH STOP'S ROOM, AND NO LAYOUT (card#12987; the plan's § 4, cut 2): against the same run with no
+     * ride, the rides add exactly the other stops' room maps — `kappa`'s and `zeta`'s, each once, held by version so no later
+     * press asks again — and no `GET /api/building`, whose failure both screens state as a fact. And every frame drawn under a
+     * ride carries the view of the stop its doors open on: the floor's model for that stop at a floor's stop, none at the
+     * lobby's.
+     */
+    public function test_green_the_press_fetches_each_stops_room_and_no_layout(): void
+    {
+        [$with, $without] = $this->withAndWithoutRide(self::RIDES);
+
+        $this->assertSame([], $this->pressFetchDefects($with, $without));
+        $this->assertSame([], $this->viewDefects($with));
+    }
+
+    /** @return list<string> the requests the rides add to the run, against what the press owes */
+    private function pressFetchDefects(array $with, array $without): array
+    {
+        $count = static fn (array $requests): array => array_count_values($requests);
+        $added = $count($with['final']['requests']);
+
+        foreach ($count($without['final']['requests']) as $path => $n) {
+            $added[$path] = ($added[$path] ?? 0) - $n;
+        }
+
+        $added = array_filter($added, static fn (int $n): bool => $n !== 0);
+        ksort($added);
+        $owed = ['/api/building/rooms/kappa/map' => 1, '/api/building/rooms/zeta/map' => 1];
+
+        return $added === $owed ? [] : ['the rides added the requests '.json_encode($added).' — each other stop\'s room once and nothing else is owed: '.json_encode($owed)];
+    }
+
+    /** @return list<string> every frame drawn under a ride whose view is not the stop its doors open on */
+    private function viewDefects(array $result): array
+    {
+        $defects = [];
+        $floors = 0;
+
+        foreach ($this->rideFrames($result) as $render) {
+            $scene = $render['frame']['scene']['ride'] ?? null;
+
+            if ($scene === null) {
+                continue;
+            }
+
+            $view = array_key_exists('view', $scene) ? $scene['view'] : '(absent)';
+
+            if ($scene['beyond'] === 'lobby' ? $view !== null : ($view['stop'] ?? null) !== $scene['stop']) {
+                $defects[] = "[{$render['at']} {$render['frame']['ride']['phase']}] the view behind the doors is ".json_encode($view).' where the doors open on '.json_encode($scene['stop']);
+            }
+
+            $floors += $scene['beyond'] === 'office' ? 1 : 0;
+        }
+
+        return $floors === 0 ? ['the run drew no frame whose doors open on a floor — the view was never read'] : $defects;
+    }
+
+    /** @return list<string> every frame whose `scene.ride.stop` is not the key of the stop its doors open on */
+    private function stopDefects(array $result): array
+    {
+        $defects = [];
+        $seen = [];
+
+        foreach ($this->rideFrames($result) as $render) {
+            $ride = $render['frame']['ride'];
+            $scene = $render['frame']['scene']['ride'] ?? null;
+
+            if ($scene === null) {
+                continue;
+            }
+
+            $chosen = in_array($ride['phase'], ['chosen', 'leaving', 'staying'], true);
+            $expected = $chosen ? $ride['chosen']['key'] : $ride['current'];
+            $seen[$ride['phase'].':'.($expected === $ride['current'] ? 'own' : 'other')] = true;
+
+            if (! array_key_exists('stop', $scene) || $scene['stop'] !== $expected) {
+                $defects[] = "[{$render['at']} {$ride['phase']}] stop is ".json_encode($scene['stop'] ?? '(absent)').' where the doors open on '.json_encode($expected);
+            }
+        }
+
+        // The run must meet the page's own stop before the choice and another stop after it, or a `stop` that never
+        // followed the choice would read clean.
+        foreach (['entering:own', 'chosen:other', 'leaving:other', 'staying:own'] as $case) {
+            if (! isset($seen[$case])) {
+                $defects[] = "the run drew no {$case} frame — the stop behind the doors was never read there";
+            }
+        }
+
+        return $defects;
+    }
+
     /** @return list<string> every frame whose `scene.ride.beyond` is not the view of the stop its doors open on */
     private function beyondDefects(array $result): array
     {
@@ -357,7 +458,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $opened = array_values(array_filter($this->acts($this->floorRun(self::RIDES)), static fn ($a) => $a['act']['act'] === 'opened'));
 
         $this->assertSame([
-            ['phase' => 'leaving', 'route' => '/floor/zeta#ride'],
+            ['phase' => 'leaving', 'route' => '/floor/the-annex#ride'],
             ['phase' => 'leaving', 'route' => '/floor/kappa#ride'],
             ['phase' => 'staying', 'route' => null],
             ['phase' => 'leaving', 'route' => self::LOBBY_HREF.'#ride'],
@@ -373,7 +474,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
     {
         $user = User::factory()->twoFactorConfirmed()->create();
 
-        foreach (['/floor/zeta', '/floor/kappa', '/floor/aimla'] as $route) {
+        foreach (['/floor/the-annex', '/floor/kappa', '/floor/aimla'] as $route) {
             $this->actingAs($user)->get($route)->assertOk()->assertSee('data-floor="'.substr($route, 7).'"', false);
         }
     }
@@ -457,7 +558,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertNotSame([], $before);
         $this->assertNotSame([], $after, 'no frame carried the ride after the layout moved');
         $this->assertContains('kappa', $keys($before[0]));
-        $this->assertSame(['aimla', 'zeta', null], $keys($after[count($after) - 1]), 'a floor the layout removed is still a stop');
+        $this->assertSame(['aimla', 'the-annex', null], $keys($after[count($after) - 1]), 'a floor the layout removed is still a stop');
 
         $redirect = array_values(array_filter($result['floor_renders'], static fn ($r) => ($r['frame']['redirect'] ?? null) !== null));
 
@@ -612,15 +713,27 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertNotSame($this->doorsByRender($without), $this->doorsByRender($with), 'RED 1 (ride leaves in `scene.doors`) did not bite');
 
         // RED 2 — the ride writing a row through the animation set.
-        $dir = $this->mutatedModules([$screen, '        return this.#ride.press(last);', "        this.#set.displaced(last.floor.key, 'ride', 'ride', 0);\n        return this.#ride.press(last);"]);
+        $dir = $this->mutatedModules([$screen, '        const answer = this.#ride.press(last);', "        this.#set.displaced(last.floor.key, 'ride', 'ride', 0);\n        const answer = this.#ride.press(last);"]);
         [$with, $without] = $this->withAndWithoutRide(self::RIDES, $dir);
         $this->assertNotSame($without['animation_log'], $with['animation_log'], 'RED 2 (a row through animation-set.js) did not bite');
+
+        // card#12987's — the press fetching nothing for the view behind the doors; the press refetching the layout; the view
+        // attached for the page's own floor at every stop.
+        $dir = $this->mutatedModules([$screen, "        if (answer !== null) {\n            this.#doorViews.prefetch();\n        }\n", '']);
+        $this->assertNotSame([], $this->pressFetchDefects(...$this->withAndWithoutRide(self::RIDES, $dir)), 'RED (the press fetching nothing) did not bite');
+        $dir = $this->mutatedModules(['../floor/floor-data.js', "    prefetch() {\n        const steps", "    prefetch() {\n        this.#building.fetchLayout();\n        const steps"]);
+        // The refetch is a request the run scripts no answer for, so this control's runs admit an unscripted one.
+        $floor = $this->fixture(self::RIDES)['floor'];
+        $this->assertNotSame([], $this->pressFetchDefects($this->replay(self::RIDES, $dir, [], true), $this->replay(self::RIDES, $dir, ['floor' => ['ride' => []] + $floor], true)),
+            'RED (the press refetching the layout) did not bite');
+        $dir = $this->mutatedModules(['../floor/door-views.js', "view: ride.beyond === 'lobby' ? null : this.#view(ride.stop) });", "view: ride.beyond === 'lobby' ? null : this.#view(this.#rows()?.[0]?.floor) });"]);
+        $this->assertNotSame([], $this->viewDefects($this->floorRun(self::RIDES, $dir)), 'RED (the view of the page\'s own floor at every stop) did not bite');
 
         // RED 3 — the route built from the stop's name.
         $dir = $this->mutatedModules([$ride, 'chosen: { key: stop.key, name: stop.name, href: stop.href } };',
             'chosen: { key: stop.key, name: stop.name, href: `/floor/${encodeURIComponent(stop.name)}` } };']);
         $routes = array_column(array_column(array_filter($this->acts($this->floorRun(self::RIDES, $dir)), static fn ($a) => $a['act']['act'] === 'opened'), 'answer'), 'route');
-        $this->assertNotContains('/floor/zeta#ride', $routes, 'RED 3 (route from the name) did not bite');
+        $this->assertNotContains('/floor/the-annex#ride', $routes, 'RED 3 (route from the name) did not bite');
 
         // RED 4 — the stops captured at the press.
         $dir = $this->mutatedModules([$ride, '            stops: this.#stops(),', '            stops: (ride.stops ??= this.#stops()),']);
@@ -668,7 +781,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $this->assertRedBy(fn () => $this->test_green_a_stay_ends_with_no_ride_and_leaves_the_drill_down_alone_in($dir), 'RED 11 (a stay that closes the drill-down)');
 
         // RED 12 — `scene.ride` attached in `draw()` only: the walk's end and the tick lose it.
-        $dir = $this->mutatedModules([$screen, "            ride: this.#ride.sceneRide(now),\n        });\n    }\n\n    /** One timer at a time",
+        $dir = $this->mutatedModules([$screen, "            ride: this.#doorViews.attach(this.#ride.sceneRide(now)),\n        });\n    }\n\n    /** One timer at a time",
             "        });\n    }\n\n    /** One timer at a time"]);
         $this->assertRedBy(fn () => $this->test_green_scene_ride_is_on_every_scene_producer_in($dir), 'RED 12 (scene.ride from one producer)');
 
@@ -710,6 +823,11 @@ class TheFloorsRideIsNavigationTest extends TestCase
         ] as $what => [$from, $to]) {
             $this->assertNotSame([], $this->beyondDefects($this->floorRun(self::RIDES, $this->mutatedModules([$ride, $from, $to]))), "{$what} did not bite");
         }
+
+        // RED 28 — `stop` read off the page's own stop rather than the stop the doors open on (card#12987): the page's own
+        // floor behind the opening doors on every ride.
+        $dir = $this->mutatedModules([$ride, "'office', stop });", "'office', stop: ride.current });"]);
+        $this->assertNotSame([], $this->stopDefects($this->floorRun(self::RIDES, $dir)), 'RED 28 (stop from the page, not the chosen stop) did not bite');
     }
 
     // ── The GREENs over a planted tree ───────────────────────────────────────────────────────────
@@ -719,7 +837,7 @@ class TheFloorsRideIsNavigationTest extends TestCase
         $result = $this->floorRun(self::REMOVED, $dir);
         $after = array_values(array_filter($this->rideFrames($result), static fn ($r) => $r['at'] >= 1500 && $r['at'] < 3000));
 
-        $this->assertSame(['aimla', 'zeta', null], array_column($after[count($after) - 1]['frame']['ride']['stops'], 'key'));
+        $this->assertSame(['aimla', 'the-annex', null], array_column($after[count($after) - 1]['frame']['ride']['stops'], 'key'));
     }
 
     private function test_green_a_stay_ends_with_no_ride_and_leaves_the_drill_down_alone_in(string $dir): void

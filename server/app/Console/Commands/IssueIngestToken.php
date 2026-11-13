@@ -21,9 +21,9 @@ use Illuminate\Console\Command;
  * console; D1 § 3.3), which is why the row can exist before any event arrives: a provisioned-but-silent
  * seat renders `offline`/`no_data_yet` rather than being invisible."
  *
- * So the act creates four things in one transaction — the install, the seat, the seat's
- * `seat_state` row in exactly the state that sentence describes, and the token — because a seat
- * with a token and no state row, or a state row with no token, is a half-provisioned desk and
+ * So the act creates three things in one transaction — the seat (in no room since card#13117), the
+ * seat's `seat_state` row in exactly the state that sentence describes, and the token — because a
+ * seat with a token and no state row, or a state row with no token, is a half-provisioned desk and
  * there is no reason for either to exist.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -48,16 +48,14 @@ use Illuminate\Console\Command;
 class IssueIngestToken extends Command
 {
     protected $signature = 'mezzanine:ingest-token:issue
-                            {install_id : the install slug, e.g. aimla}
-                            {seat_id : the seat slug, e.g. aimla-pm}
+                            {seat_id : the seat slug, e.g. aimla-pm — one namespace for the whole site}
                             {--by= : who issued it; defaults to the OS user}';
 
-    protected $description = 'Issue a seat ingest token, creating the install and seat if they are new';
+    protected $description = 'Issue a seat ingest token, creating the seat (in no room) if it is new';
 
     public function handle(): int
     {
         $result = SeatTokens::issue(
-            (string) $this->argument('install_id'),
             (string) $this->argument('seat_id'),
             (string) ($this->option('by') ?: (get_current_user() ?: 'unknown')),
         );
@@ -69,7 +67,13 @@ class IssueIngestToken extends Command
         }
 
         $this->newLine();
-        $this->line(sprintf('  seat        %s / %s  (seat_ref %d)', $result->installId, $result->seatId, $result->seatRef));
+        $this->line(sprintf('  seat        %s  (seat_ref %d)', $result->seatId, $result->seatRef));
+        // card#13117: a seat id is one namespace, so issuing a live id is a re-issue for THAT seat —
+        // said with its room and last receipt, so a typo that rotates a stranger's token is seen.
+        $this->line($result->reissue
+            ? sprintf('  re-issue    for the existing seat in room %s, %s', $result->installId,
+                $result->lastReceiptAt === null ? 'never reported' : 'last receipt '.$result->lastReceiptAt.' UTC')
+            : sprintf('  new seat    in no room (%s) until the console places it', $result->installId));
         $this->line(sprintf('  prefix      %s', $result->prefix));
         $this->newLine();
         // The one printer of a credential in this application — see `App\Console\SecretLine`.

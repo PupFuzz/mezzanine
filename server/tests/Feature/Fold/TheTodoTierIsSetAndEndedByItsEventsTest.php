@@ -161,7 +161,7 @@ class TheTodoTierIsSetAndEndedByItsEventsTest extends BoardTaskTestCase
         $this->assertSame('Ordering the paint', $folded['todo_title']);
 
         $this->advanceServerClock(5);
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT])->assertSuccessful();
         $this->assertSame($folded, (array) DB::table('seat_state')->where('seat_ref', $this->seatRef)->first($cols));
 
         // And the slot is RE-DERIVED from the log, not carried through: a live slot the log does not support —
@@ -170,7 +170,7 @@ class TheTodoTierIsSetAndEndedByItsEventsTest extends BoardTaskTestCase
         DB::table('seat_state')->where('seat_ref', $this->seatRef)->update([
             'todo_title' => 'a title no event carries', 'todo_event_time' => '2099-01-01 00:00:00.000',
         ]);
-        $this->artisan('mezzanine:rebuild', ['--seat' => self::INSTALL.'/'.self::SEAT])->assertSuccessful();
+        $this->artisan('mezzanine:rebuild', ['--seat' => self::SEAT])->assertSuccessful();
         $this->assertSame('Ordering the paint', DB::table('seat_state')->where('seat_ref', $this->seatRef)->value('todo_title'),
             'the rebuild carried a slot the replay never re-derived: reset() left the triple');
     }

@@ -60,15 +60,15 @@ class TheBadgeRaiseFiresOnlyOnAGainedBadgeTest extends TestCase
         }
 
         $this->assertSame([[], ['lossy'], ['lossy']], [
-            $this->snapshotSeats(self::RUN)['aimla/aimla-impl-2']['badges'],
+            $this->snapshotSeats(self::RUN)['aimla-impl-2']['badges'],
             $deltas[0]['patch']['badges'],
             $deltas[1]['patch']['badges'],
         ], 'the first delta is not a gain over the snapshot, or the second is not a re-send of it');
         $this->assertSame([], $deltas[2]['patch']['badges'], 'the third delta is not a loss');
 
         // The client applied all three: an A11 count over deltas the client discarded measures nothing.
-        $this->assertEquals($this->fixture(self::RUN)['final']['aimla/aimla-impl-2'],
-            $this->finalSeats($this->deskRun(self::RUN))['aimla/aimla-impl-2'],
+        $this->assertEquals($this->fixture(self::RUN)['final']['aimla-impl-2'],
+            $this->finalSeats($this->deskRun(self::RUN))['aimla-impl-2'],
             'the client did not converge on the run\'s final object — the deltas were not all applied');
     }
 
