@@ -9,15 +9,21 @@
  * the wire hands them, so a wire that dropped the Shift member reds here as an act that read it wrongly would.
  */
 
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const wire = process.argv[2];
 const { cameraKeys } = await import(pathToFileURL(join(wire, 'camera-keys.js')).href);
 const { PAN_STEP_PX, ZOOM_STEP, turnOf } = await import(pathToFileURL(join(wire, 'camera.js')).href);
-const { cameraActs } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'camera-acts.js')).href);
+const { RISE_STEP, cameraActs } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'camera-acts.js')).href);
+const L = await import(pathToFileURL(join(wire, '..', 'floor3d', 'view-limits.js')).href);
+const { ROOM_H_U } = await import(pathToFileURL(join(wire, '..', 'floor', 'floor-world.js')).href);
+const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const { SCENE_W, SCENE_H } = await import(pathToFileURL(join(repo, 'resources', 'characters', 'index.js')).href);
 
 const log = [];
+/** The eye's distance from the target the stub answers — moved by the rise leg between the closest and the fit. */
+let distance = 5;
 /** A stand-in vector at (x, y, z): its `set()` recorded and applied, so an act that reads it reads what it wrote. */
 const vector = (name, x, y, z) => {
     const v = { x, y, z };
@@ -36,7 +42,7 @@ const controls = {
     dollyIn: (s) => log.push(['dollyIn', s]),
     dollyOut: (s) => log.push(['dollyOut', s]),
     update: () => log.push(['update']),
-    getDistance: () => 5,
+    getDistance: () => distance,
     target: vector('target', 0.5, 0.25, -1),
     object: { position: vector('position', 0.5, 3.25, 3), fov: 45 },
 };
@@ -118,16 +124,42 @@ for (const [what, event, target, closer] of [['+', { type: 'keydown', key: '+' }
     }
 }
 
-// Page Up / Page Down raise and lower the target and the eye by one vector, straight up — the controls' pan rate for a
-// drag of `PAN_STEP_PX` at their distance of 5 and their 45° field — and nothing turns; then the clamp. Read from the
-// stub's own pose, so the second key starts where the first left it.
-const lift = (2 * PAN_STEP_PX * 5 * Math.tan(Math.PI / 8)) / surface.height;
+// Page Up / Page Down raise and lower the target and the eye by one vector, straight up, one `RISE_STEP` a press — an
+// eighth of the room's height — and turn nothing; then the clamp. The same step at the closest distance the limits allow
+// and at the fit (the shipped default floor's on this stage): a press is a share of the room, not of the stage. Read
+// from the stub's own pose, so each key starts where the last left it.
+if (Math.abs(RISE_STEP - ROOM_H_U / 8) > 1e-12) {
+    legs.rise.push(`a key's step is ${RISE_STEP} units — not an eighth of the room's height (${ROOM_H_U / 8})`);
+}
 
-for (const [what, key, h] of [['Page Up', 'PageUp', lift], ['Page Down', 'PageDown', -lift]]) {
+const view = L.limits({ w: 17.84, d: 6.96 }, surface, { w: SCENE_W, h: SCENE_H });
+
+for (const [where, at] of [['closest', view.distance.min], ['fit', view.distance.max / L.MAX_FIT_SHARE]]) {
+    distance = at;
+
+    for (const [what, key, h] of [['Page Up', 'PageUp', ROOM_H_U / 8], ['Page Down', 'PageDown', -ROOM_H_U / 8]]) {
+        const { target: t, object: { position: p } } = controls;
+        const want = [['target.set', t.x, t.y + h, t.z], ['position.set', p.x, p.y + h, p.z], ['update'], ['clamp']];
+
+        expect('rise', `${what} at the ${where} distance (${at.toFixed(2)})`, press({ type: 'keydown', key }), want);
+    }
+}
+
+// Alt + a vertical drag (`rise(dy)`, which the renderer hands the pointer's movement): `dy` px of the scene at the
+// target's distance — the controls' pan rate at their 45° field — so it does scale with the distance.
+distance = 5;
+
+for (const dy of [PAN_STEP_PX, -PAN_STEP_PX]) {
+    const h = (2 * dy * distance * Math.tan(Math.PI / 8)) / surface.height;
     const { target: t, object: { position: p } } = controls;
-    const want = [['target.set', t.x, t.y + h, t.z], ['position.set', p.x, p.y + h, p.z], ['update'], ['clamp']];
+    const want = JSON.stringify([['target.set', t.x, t.y + h, t.z], ['position.set', p.x, p.y + h, p.z], ['update'], ['clamp']]);
 
-    expect('rise', what, press({ type: 'keydown', key }), want);
+    log.length = 0;
+    acts.rise(dy);
+
+    if (JSON.stringify(log) !== want) {
+        legs.rise.push(`a drag of ${dy} px called ${JSON.stringify(log)} — not ${want}`);
+    }
 }
 
 // *Fit the floor*: the entry pose set, the controls updated, the target clamped.

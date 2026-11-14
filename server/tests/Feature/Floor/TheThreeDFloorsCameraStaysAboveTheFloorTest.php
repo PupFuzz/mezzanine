@@ -65,11 +65,13 @@ class TheThreeDFloorsCameraStaysAboveTheFloorTest extends TestCase
             'the keys wire dropping the Shift member' => ['camera-keys.js', '            show(acts.drag(...KEY_PAN[event.key], { shift: event.shiftKey }));', '            show(acts.drag(...KEY_PAN[event.key], { shift: false }));', 'pan', 'camera-acts'],
             'a dolly by a notch of its own' => [$acts, '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = 1.1 ** -Math.abs(notches);', 'dolly', 'camera-acts'],
             'a notch in handed to the controls as the distance times the notch' => [$acts, '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);', 'toward', 'camera-acts'],
-            'Page Up lowering the eye' => ['camera-keys.js', 'const KEY_RISE = { PageUp: PAN_STEP_PX, PageDown: -PAN_STEP_PX };', 'const KEY_RISE = { PageUp: -PAN_STEP_PX, PageDown: PAN_STEP_PX };', 'rise', 'camera-acts'],
-            'the keys wire never reaching the rise' => ['camera-keys.js', '        } else if (event.key in KEY_RISE && acts.rise !== undefined) {', '        } else if (false) {', 'rise', 'camera-acts'],
-            'a rise that moves the target alone, turning the view' => [$acts, '            position.set(position.x, position.y + h, position.z);', '', 'rise', 'camera-acts'],
+            'Page Up lowering the eye' => ['camera-keys.js', 'const KEY_RISE = { PageUp: 1, PageDown: -1 };', 'const KEY_RISE = { PageUp: -1, PageDown: 1 };', 'rise', 'camera-acts'],
+            'the keys wire never reaching the rise' => ['camera-keys.js', '        } else if (event.key in KEY_RISE && acts.riseStep !== undefined) {', '        } else if (false) {', 'rise', 'camera-acts'],
+            'a key step scaled with the distance (a drag of PAN_STEP_PX)' => [$acts, '            return lift(steps * RISE_STEP);', '            return this.rise(steps * 48);', 'rise', 'camera-acts'],
+            'a key step of a quarter of the room' => [$acts, 'export const RISE_STEP = ROOM_H_U / 8;', 'export const RISE_STEP = ROOM_H_U / 4;', 'rise', 'camera-acts'],
+            'a rise that moves the target alone, turning the view' => [$acts, '        position.set(position.x, position.y + h, position.z);', '', 'rise', 'camera-acts'],
             'a rise at a rate of its own' => [$acts, 'Math.tan((controls.object.fov * Math.PI) / 360)', 'Math.tan((controls.object.fov * Math.PI) / 180)', 'rise', 'camera-acts'],
-            'a rise with no clamp' => [$acts, "position.y + h, position.z);\n            controls.update();\n\n            return settled();", "position.y + h, position.z);\n            controls.update();\n\n            return camera();", 'rise', 'camera-acts'],
+            'a rise with no clamp' => [$acts, "position.y + h, position.z);\n        controls.update();\n\n        return settled();", "position.y + h, position.z);\n        controls.update();\n\n        return camera();", 'rise', 'camera-acts'],
             'Fit with no clamp' => [$acts, "position.y, position.z);\n            controls.update();\n\n            return settled();", "position.y, position.z);\n            controls.update();\n\n            return camera();", 'fit', 'camera-acts'],
         ];
     }

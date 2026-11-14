@@ -585,16 +585,17 @@ target along the floor, **Page Up / Page Down raise and lower the eye**, `+`/`�
 pose. **The keys are wired where the 2-D page's are
 — in the hoisted page `floor/floor-page.js`, by `wire/camera-keys.js`'s `cameraKeys()` and `offerKeys()` — over the
 act set the RENDERER CONTRACT supplies (M4, § 4)**: `floor3d/camera-acts.js` is the 3-D renderer's act set — `drag(dx,
-dy, modifiers)` with `modifiers.shift` deciding pan over rotate/tilt, `zoomStep(n)`, `rise(dy)` lifting the target and
-the eye by one vector — `dy` px of the scene at the target's distance, the library's own pan rate, so the view's
-direction and distance are kept and the clamp holds the height in the box — `fit()`, `camera()` answering
+dy, modifiers)` with `modifiers.shift` deciding pan over rotate/tilt, `zoomStep(n)`, `rise(dy)` and `riseStep(n)` lifting the
+target and the eye by one vector — the drag's `dy` px of the scene at the target's distance (the library's own pan
+rate), a key's `n` steps of `RISE_STEP`, a share of the room's height (`FLOOR.md` § 12's *Floor 3-D camera*) — so the view's direction and distance are
+kept and the clamp holds the height in the box — `fit()`, `camera()` answering
 `{ bounds }` for the wire's gate — each a call on the controls' public rotate, tilt, pan and dolly methods (to
 confirm in slice 4) ending in an update and the clamp; the arrows' step is the per-pixel turn constant the building
 acts hold today, **hoisted to `wire/camera.js` beside `PAN_STEP_PX`** at its second caller. **The keys wire is
 extended by one optional argument**: `cameraKeys()` hands the key event's modifiers (`{ shift }`) as `drag()`'s third
 argument (the 2-D acts read two and ignore it, as they ignore `pan()`'s point since stage 1; L69 already lets a
-Shift-arrow through, refusing only Ctrl, Meta and Alt). Page Up and Page Down are handed to `rise()` as a drag of
-`PAN_STEP_PX` — only on a screen whose acts offer `rise`, so on the 2-D pages they stay the browser's and scroll.
+Shift-arrow through, refusing only Ctrl, Meta and Alt). Page Up and Page Down are handed to `riseStep()` as one
+step each — only on a screen whose acts offer it, so on the 2-D pages they stay the browser's and scroll.
 `offerKeys()` advertises `+ - ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp
 Shift+ArrowDown PageUp PageDown` (`floor3d/camera-acts.js`'s `SHORTCUTS`). The library's own key listener is never
 connected, so the keys have one reader.

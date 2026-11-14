@@ -18,9 +18,9 @@
  * within `limits()` — polar 0 to its maximum, distance its minimum to its maximum, both recomputed on a resize. An Alt +
  * left-drag is taken from the controls before they see it: its vertical movement raises or lowers the eye
  * (`camera-acts.js`'s `rise()`). After every update the target is clamped into the floor's box and the eye moved by the
- * same vector — the one clamp, which the keys' acts and the rise reach through the same controls. A wheel that would dolly past a limit is the page's: it scrolls the page. The
- * controls' own key listener is never connected; the keys are the house wire's, over `camera-acts.js`. Under
- * `prefers-reduced-motion` damping is off, so every move is a cut.
+ * same vector — the one clamp, which the keys' acts and the rise reach through the same controls. A wheel that would
+ * dolly past a limit is the page's: it scrolls the page. The controls' own key listener is never connected; the keys
+ * are the house wire's, over `camera-acts.js`. Under `prefers-reduced-motion` damping is off, so every move is a cut.
  *
  * ⛔ THE FRAME LOOP RUNS ONLY WHILE SOMETHING MOVES (plan § 3.5): a walker or a bird in flight, a screen cross-fading,
  * the camera settling under damping, or a cut-away lowering or rising — a frame each display refresh and never more, since one frame is pending at a time

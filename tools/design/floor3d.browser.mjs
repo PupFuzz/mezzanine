@@ -429,7 +429,7 @@ const ROWS = {
       ['screen-space panning', { plant: [P(PAINT, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
       ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
-      ['a rise that moves the target alone (the view turns)', { plant: [P('js/floor3d/camera-acts.js', '            position.set(position.x, position.y + h, position.z);', '')] }],
+      ['a rise that moves the target alone (the view turns)', { plant: [P('js/floor3d/camera-acts.js', '        position.set(position.x, position.y + h, position.z);', '')] }],
       ['the Alt press left to the controls (Alt + drag turns)', { plant: [P(PAINT, '                        event.stopImmediatePropagation();\n', '')] }],
       ['the Alt drag never reaching the rise', { plant: [P(PAINT, '                        acts.rise(event.clientY - rising.y);', '')] }],
     ],

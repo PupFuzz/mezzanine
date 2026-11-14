@@ -621,7 +621,7 @@ class TheCameraWireIsOneForEveryPageTest extends TestCase
             'a zoom key the page also scrolls or zooms on' => ['camera-keys.js', "            event.preventDefault();\n            show(acts.zoomStep(KEY_ZOOM[event.key]));", '            show(acts.zoomStep(KEY_ZOOM[event.key]));'],
             'a zoom-in button that never reaches the camera' => ['camera-keys.js', "buttons.zoomIn.addEventListener('click', () => {\n        show(acts.zoomStep(1));", "buttons.zoomIn.addEventListener('click', () => {\n        show(acts.zoomStep(0));"],
             'a zoom-out button that zooms in' => ['camera-keys.js', "buttons.zoomOut.addEventListener('click', () => {\n        show(acts.zoomStep(-1));", "buttons.zoomOut.addEventListener('click', () => {\n        show(acts.zoomStep(1));"],
-            'Page Up taken from a page whose acts do not rise' => ['camera-keys.js', '} else if (event.key in KEY_RISE && acts.rise !== undefined) {', "} else if (event.key in KEY_RISE) {\n            event.preventDefault();\n        } else if (false) {"],
+            'Page Up taken from a page whose acts do not rise' => ['camera-keys.js', '} else if (event.key in KEY_RISE && acts.riseStep !== undefined) {', "} else if (event.key in KEY_RISE) {\n            event.preventDefault();\n        } else if (false) {"],
         ];
     }
 
@@ -991,7 +991,7 @@ class TheCameraWireIsOneForEveryPageTest extends TestCase
             [$key('-', ['metaKey' => true]), [], false],
             [$key('ArrowLeft', ['altKey' => true]), [], false],
             // Every other key is untouched: a focused desk's or plate link's Enter and Space are theirs — and Page Up and
-            // Page Down, which raise the eye only where a screen's acts offer `rise()` (the 3-D floor's), scroll here.
+            // Page Down, which raise the eye only where a screen's acts offer `riseStep()` (the 3-D floor's), scroll here.
             [$key('Enter'), [], false],
             [$key(' '), [], false],
             [$key('PageUp'), [], false],
