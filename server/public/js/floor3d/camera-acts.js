@@ -10,25 +10,32 @@
  * `←`/`→` the azimuth, `↑`/`↓` the tilt, within the limits the controls hold — by the turn a drag of `PAN_STEP_PX`
  * across the stage makes (`wire/camera.js`'s `turnOf()`, the building view's rate); Shift + an arrow pans the target
  * along the floor by the same step; `+`/`−` and the zoom buttons dolly by the house notch (`ZOOM_STEP`); *Fit the floor*
- * sets the entry pose. The keys wire hands each arrow as a drag of the scene (`dx`, `dy`) with its modifiers, so the
- * view moves the way the arrow points, as on every page. Each act ends in the controls' own update (every public method
- * of theirs updates) and the renderer's target clamp, and answers the camera the wire gates on.
+ * sets the entry pose; Page Up / Page Down raise and lower the eye (`rise()`) by the same step, as Alt + a vertical drag
+ * does (`floor-paint.js` hands the drag here). The keys wire hands each arrow as a drag of the scene (`dx`, `dy`) with its
+ * modifiers, so the view moves the way the arrow points, as on every page. Each act ends in the controls' own update
+ * (every public method of theirs updates) and the renderer's target clamp, and answers the camera the wire gates on.
+ *
+ * ⛔ RISING MOVES THE TARGET AND THE EYE BY ONE VECTOR, straight up or down, so the view's direction and distance are
+ * kept; the clamp holds the target's `y` within its box (0 to `ROOM_H_U`) and moves the eye back with it, and the polar
+ * limit keeps the eye above the target. A drag of `dy` px rises `dy` px of the scene at the target's distance — the
+ * rate `OrbitControls` pans at (its `_pan()`), so the room follows the pointer when the eye looks level.
  */
 
 import { ZOOM_STEP, turnOf } from '../wire/camera.js';
 
 /** What the 3-D floor's stage names in `aria-keyshortcuts` while it is offered — every key above moves something. */
-export const SHORTCUTS = '+ - ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown';
+export const SHORTCUTS = '+ - ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown PageUp PageDown';
 
 /**
  * @param {object} controls `rotateLeft(angle)`, `rotateUp(angle)`, `pan(dx, dy)`, `dollyIn(scale)`, `dollyOut(scale)`,
- *        `target` and `object.position` (each with `set(x, y, z)`) and `update()` — `OrbitControls`'s public members
- * @param {{surface: function(): {width: number}, entry: function(): {position: object, target: object},
+ *        `getDistance()`, `target` and `object.position` (each with `x`, `y`, `z` and `set(x, y, z)`), `object.fov`
+ *        (degrees) and `update()` — `OrbitControls`'s public members and its perspective camera's
+ * @param {{surface: function(): {width: number, height: number}, entry: function(): {position: object, target: object},
  *          clamp: function(): void, bounds: function(): object|null}} view the stage's size, the entry pose
  *        (`view-limits.js`'s `limits().entry`, re-derived on a resize), the renderer's target clamp, and the box the
  *        camera frames (`null` while it frames nothing)
  * @returns {{drag: function(number, number, {shift: boolean}=): object, zoomStep: function(number): object,
- *            fit: function(): object, camera: function(): {bounds: object|null}}}
+ *            rise: function(number): object, fit: function(): object, camera: function(): {bounds: object|null}}}
  */
 export function cameraActs(controls, { surface, entry, clamp, bounds }) {
     const camera = () => Object.freeze({ bounds: bounds() });
@@ -62,6 +69,19 @@ export function cameraActs(controls, { surface, entry, clamp, bounds }) {
             } else {
                 controls.dollyOut(scale);
             }
+
+            return settled();
+        },
+
+        /** The eye and the target raised by a drag of the scene `dy` px down the stage (lowered by one up). */
+        rise(dy) {
+            const { height } = surface();
+            const h = (2 * dy * controls.getDistance() * Math.tan((controls.object.fov * Math.PI) / 360)) / height;
+            const { target, object: { position } } = controls;
+
+            target.set(target.x, target.y + h, target.z);
+            position.set(position.x, position.y + h, position.z);
+            controls.update();
 
             return settled();
         },

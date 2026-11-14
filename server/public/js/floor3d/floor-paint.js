@@ -15,9 +15,10 @@
  *
  * ⛔ THE CAMERA IS `OrbitControls`, READING THE POINTER ITSELF (the operator's Q2 answer; `FLOOR.md` § 4.5): left-drag or
  * one finger turns, right-drag or two fingers pan ALONG THE FLOOR (`screenSpacePanning` off), the wheel and a pinch dolly,
- * within `limits()` — polar 0 to its maximum, distance its minimum to its maximum, both recomputed on a resize. After every
- * update the target is clamped into the floor's box and the eye moved by the same vector — the one clamp, which the keys'
- * acts reach through the same controls. A wheel that would dolly past a limit is the page's: it scrolls the page. The
+ * within `limits()` — polar 0 to its maximum, distance its minimum to its maximum, both recomputed on a resize. An Alt +
+ * left-drag is taken from the controls before they see it: its vertical movement raises or lowers the eye
+ * (`camera-acts.js`'s `rise()`). After every update the target is clamped into the floor's box and the eye moved by the
+ * same vector — the one clamp, which the keys' acts and the rise reach through the same controls. A wheel that would dolly past a limit is the page's: it scrolls the page. The
  * controls' own key listener is never connected; the keys are the house wire's, over `camera-acts.js`. Under
  * `prefers-reduced-motion` damping is off, so every move is a cut.
  *
@@ -326,9 +327,41 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                 },
                 /**
                  * The pointer is the controls': connected to the stage, its wheel released to the page at a dolly limit.
-                 * The stage's context menu is the controls' to suppress (right-drag pans).
+                 * The stage's context menu is the controls' to suppress (right-drag pans). An Alt + left press is the
+                 * rise's: its listener is added before the controls' and stops the event there, so they neither turn
+                 * nor pan for it, and the drag's vertical movement raises or lowers the eye until it is released.
                  */
                 gestures(stage) {
+                    let rising = null;
+
+                    stage.addEventListener('pointerdown', (event) => {
+                        if (!event.altKey || event.button !== 0 || view === null) {
+                            return;
+                        }
+
+                        event.stopImmediatePropagation();
+                        event.preventDefault();
+                        stage.setPointerCapture(event.pointerId);
+                        rising = { id: event.pointerId, y: event.clientY };
+                    });
+                    stage.addEventListener('pointermove', (event) => {
+                        if (rising?.id !== event.pointerId) {
+                            return;
+                        }
+
+                        acts.rise(event.clientY - rising.y);
+                        rising.y = event.clientY;
+                        wake();
+                    });
+
+                    for (const type of ['pointerup', 'pointercancel']) {
+                        stage.addEventListener(type, (event) => {
+                            if (rising?.id === event.pointerId) {
+                                rising = null;
+                            }
+                        });
+                    }
+
                     controls.connect(stage);
                     stage.addEventListener('wheel', (event) => {
                         const d = controls.getDistance();

@@ -18,7 +18,17 @@ const { PAN_STEP_PX, ZOOM_STEP, turnOf } = await import(pathToFileURL(join(wire,
 const { cameraActs } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'camera-acts.js')).href);
 
 const log = [];
-const vector = (name) => ({ set: (x, y, z) => log.push([`${name}.set`, x, y, z]) });
+/** A stand-in vector at (x, y, z): its `set()` recorded and applied, so an act that reads it reads what it wrote. */
+const vector = (name, x, y, z) => {
+    const v = { x, y, z };
+
+    v.set = (...xyz) => {
+        log.push([`${name}.set`, ...xyz]);
+        [v.x, v.y, v.z] = xyz;
+    };
+
+    return v;
+};
 const controls = {
     rotateLeft: (angle) => log.push(['rotateLeft', angle]),
     rotateUp: (angle) => log.push(['rotateUp', angle]),
@@ -26,8 +36,9 @@ const controls = {
     dollyIn: (s) => log.push(['dollyIn', s]),
     dollyOut: (s) => log.push(['dollyOut', s]),
     update: () => log.push(['update']),
-    target: vector('target'),
-    object: { position: vector('position') },
+    getDistance: () => 5,
+    target: vector('target', 0.5, 0.25, -1),
+    object: { position: vector('position', 0.5, 3.25, 3), fov: 45 },
 };
 const surface = { width: 1280, height: 800 };
 const entry = { position: { x: 0, y: 3, z: 4 }, target: { x: 0, y: 0, z: 0 } };
@@ -61,7 +72,7 @@ const shown = [];
 cameraKeys(stage, buttons, acts, (camera) => shown.push(camera));
 
 const turn = turnOf(PAN_STEP_PX, surface.width);
-const legs = { turn: [], tilt: [], pan: [], dolly: [], toward: [], fit: [], wire: [] };
+const legs = { turn: [], tilt: [], pan: [], dolly: [], toward: [], rise: [], fit: [], wire: [] };
 const press = (event, target = stage) => {
     log.length = 0;
     shown.length = 0;
@@ -107,6 +118,18 @@ for (const [what, event, target, closer] of [['+', { type: 'keydown', key: '+' }
     }
 }
 
+// Page Up / Page Down raise and lower the target and the eye by one vector, straight up — the controls' pan rate for a
+// drag of `PAN_STEP_PX` at their distance of 5 and their 45° field — and nothing turns; then the clamp. Read from the
+// stub's own pose, so the second key starts where the first left it.
+const lift = (2 * PAN_STEP_PX * 5 * Math.tan(Math.PI / 8)) / surface.height;
+
+for (const [what, key, h] of [['Page Up', 'PageUp', lift], ['Page Down', 'PageDown', -lift]]) {
+    const { target: t, object: { position: p } } = controls;
+    const want = [['target.set', t.x, t.y + h, t.z], ['position.set', p.x, p.y + h, p.z], ['update'], ['clamp']];
+
+    expect('rise', what, press({ type: 'keydown', key }), want);
+}
+
 // *Fit the floor*: the entry pose set, the controls updated, the target clamped.
 log.length = 0;
 acts.fit();
@@ -120,6 +143,12 @@ const ctrl = press({ type: 'keydown', key: 'ArrowLeft', ctrlKey: true });
 
 if (ctrl.calls !== '[]' || ctrl.prevented) {
     legs.wire.push(`Ctrl+← reached the camera: ${ctrl.calls}`);
+}
+
+const altPage = press({ type: 'keydown', key: 'PageUp', altKey: true });
+
+if (altPage.calls !== '[]' || altPage.prevented) {
+    legs.wire.push(`Alt+Page Up reached the camera: ${altPage.calls}`);
 }
 
 if (JSON.stringify(acts.camera()) !== JSON.stringify({ bounds })) {

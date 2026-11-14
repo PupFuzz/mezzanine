@@ -159,7 +159,7 @@
         @php
             $hint = $route === '3d' ? [
                 'id' => 'floor-hint',
-                'long' => 'drag to turn · right-drag to slide · scroll or pinch to zoom · arrows turn and tilt · shift+arrows slide · + −',
+                'long' => 'drag to turn · right-drag to slide · alt+drag or PgUp/PgDn to rise · scroll or pinch to zoom · arrows turn and tilt · shift+arrows slide · + −',
                 'short' => 'drag to turn · two fingers to slide and zoom',
             ] : ['id' => 'floor-hint'];
         @endphp

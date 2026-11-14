@@ -20,6 +20,8 @@
  *  · an arrow key pans by `PAN_STEP_PX`, the view moving the way the arrow points, and hands the acts its modifiers
  *    (`{ shift }`) as `drag()`'s third argument — the 2-D screens' acts read two and ignore it; the 3-D floor's
  *    (`floor3d/camera-acts.js`) pan on Shift and turn without it (card#13033 stage 2, the plan's § 3.6);
+ *  · Page Up and Page Down raise and lower the eye by `PAN_STEP_PX` — on a screen whose acts offer `rise(dy)` (the 3-D
+ *    floor's, `floor3d/camera-acts.js`, card#13033) and on no other: there they stay the browser's, scrolling the page;
  *  · a key with a modifier is the browser's (Ctrl + is the page zoom) and passes through, and so does
  *    every other key — a focused desk's Enter and Space, a plaque link's Enter, the lobby's elevator's — untouched;
  *  · the zoom-in and zoom-out buttons are one notch each, about the centre, as the keys are;
@@ -52,9 +54,12 @@ const KEY_PAN = {
     ArrowDown: [0, -PAN_STEP_PX],
 };
 
+/** The rise keys, as a drag of the scene by `PAN_STEP_PX`: Page Up raises the eye, as dragging the scene down does. */
+const KEY_RISE = { PageUp: PAN_STEP_PX, PageDown: -PAN_STEP_PX };
+
 /**
  * The keys the drawing names in `aria-keyshortcuts` while it is offered: the zoom keys by their first
- * spelling each, and every pan key.
+ * spelling each, and every pan key. A screen whose acts rise names its own (`offerKeys()`'s `shortcuts`).
  */
 const KEY_SHORTCUTS = ['+', '-', ...Object.keys(KEY_PAN)].join(' ');
 
@@ -62,8 +67,8 @@ const KEY_SHORTCUTS = ['+', '-', ...Object.keys(KEY_PAN)].join(' ');
  * @param {EventTarget} element the focusable drawing the keys are pressed on
  * @param {{zoomIn: EventTarget, zoomOut: EventTarget}} buttons the page's zoom-in and zoom-out buttons
  * @param {{zoomStep: function(number): object, drag: function(number, number, {shift: boolean}): object,
- *         camera: function(): {bounds: object|null}}} acts the screen's camera acts, each returning the
- *        camera it leaves, and the camera as it stands
+ *         rise?: function(number): object, camera: function(): {bounds: object|null}}} acts the screen's camera
+ *        acts, each returning the camera it leaves, and the camera as it stands — `rise` only where the eye rises
  * @param {function(object): void} show puts a camera on the drawing (`camera-view.js`'s `show`)
  */
 export function cameraKeys(element, buttons, acts, show) {
@@ -83,6 +88,9 @@ export function cameraKeys(element, buttons, acts, show) {
         } else if (event.key in KEY_PAN) {
             event.preventDefault();
             show(acts.drag(...KEY_PAN[event.key], { shift: event.shiftKey }));
+        } else if (event.key in KEY_RISE && acts.rise !== undefined) {
+            event.preventDefault();
+            show(acts.rise(KEY_RISE[event.key]));
         }
     });
 

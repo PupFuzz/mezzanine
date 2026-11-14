@@ -58,13 +58,19 @@ class TheThreeDFloorsCameraStaysAboveTheFloorTest extends TestCase
             'the entry from straight above' => [$limits, 'entry: orbitCamera({ x: 0, y: 0, z: 0 }, HOME_POLAR, 0, fit),', 'entry: orbitCamera({ x: 0, y: 0, z: 0 }, 0, 0, fit),', 'limits', 'view-limits'],
             'the cut-away meeting nothing' => [$limits, '        if (t0 > t1) {', '        if (true) {', 'cutaway', 'view-limits'],
             'the cut-away counting a box the segment only touches at the target' => [$limits, '    return t0 < 1 ? t0 : null;', '    return t0;', 'cutaway', 'view-limits'],
+            'the cut-away blind to a wall\'s height' => [$limits, "for (const [axis, size] of [['x', 'w'], ['y', 'h'], ['z', 'd']])", "for (const [axis, size] of [['x', 'w'], ['z', 'd']])", 'cutaway', 'view-limits'],
             'the cut-away ignoring the band' => [$limits, "...(world.band === null ? [] : [{ id: 'band',", "...(true ? [] : [{ id: 'band',", 'cutaway', 'view-limits'],
             'ArrowUp reaching the pan' => [$acts, '            if (modifiers.shift) {', '            if (modifiers.shift || dy !== 0) {', 'tilt', 'camera-acts'],
             'a Shift-arrow reaching the turn' => [$acts, '            if (modifiers.shift) {', '            if (false) {', 'pan', 'camera-acts'],
             'the keys wire dropping the Shift member' => ['camera-keys.js', '            show(acts.drag(...KEY_PAN[event.key], { shift: event.shiftKey }));', '            show(acts.drag(...KEY_PAN[event.key], { shift: false }));', 'pan', 'camera-acts'],
             'a dolly by a notch of its own' => [$acts, '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = 1.1 ** -Math.abs(notches);', 'dolly', 'camera-acts'],
             'a notch in handed to the controls as the distance times the notch' => [$acts, '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);', 'toward', 'camera-acts'],
-            'Fit with no clamp' => [$acts, "            controls.update();\n\n            return settled();", "            controls.update();\n\n            return camera();", 'fit', 'camera-acts'],
+            'Page Up lowering the eye' => ['camera-keys.js', 'const KEY_RISE = { PageUp: PAN_STEP_PX, PageDown: -PAN_STEP_PX };', 'const KEY_RISE = { PageUp: -PAN_STEP_PX, PageDown: PAN_STEP_PX };', 'rise', 'camera-acts'],
+            'the keys wire never reaching the rise' => ['camera-keys.js', '        } else if (event.key in KEY_RISE && acts.rise !== undefined) {', '        } else if (false) {', 'rise', 'camera-acts'],
+            'a rise that moves the target alone, turning the view' => [$acts, '            position.set(position.x, position.y + h, position.z);', '', 'rise', 'camera-acts'],
+            'a rise at a rate of its own' => [$acts, 'Math.tan((controls.object.fov * Math.PI) / 360)', 'Math.tan((controls.object.fov * Math.PI) / 180)', 'rise', 'camera-acts'],
+            'a rise with no clamp' => [$acts, "position.y + h, position.z);\n            controls.update();\n\n            return settled();", "position.y + h, position.z);\n            controls.update();\n\n            return camera();", 'rise', 'camera-acts'],
+            'Fit with no clamp' => [$acts, "position.y, position.z);\n            controls.update();\n\n            return settled();", "position.y, position.z);\n            controls.update();\n\n            return camera();", 'fit', 'camera-acts'],
         ];
     }
 
