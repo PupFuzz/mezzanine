@@ -17,20 +17,7 @@
 // slider's field are not the theme's (FLOOR.md § 6.7 item 2): the renderer draws them at the scene's rects, the leaf's
 // motion and the field's state the scene's (`floor3d/room-paint.js`).
 
-/** A part: a shape and its parameters, where it stands, its turn in degrees, its scale and its colour. */
-function part(shape, params, at, colour, rotate = [0, 0, 0], scale = [1, 1, 1]) {
-    return Object.freeze({ shape, params: Object.freeze(params), at: Object.freeze(at), rotate: Object.freeze(rotate), scale: Object.freeze(scale), colour });
-}
-
-/** A box `w × h × d` whose foot centre is at `(x, y, z)`. */
-function block(w, h, d, x, y, z, colour) {
-    return part('box', { size: [w, h, d] }, [x, y + h / 2, z], colour);
-}
-
-/** An upright cylinder of radius `r`, `h` tall, its foot centre at `(x, y, z)`. */
-function post(r, h, x, y, z, colour) {
-    return part('cylinder', { radius: r, height: h }, [x, y + h / 2, z], colour);
-}
+import { block, part, post, tableCloth, tilted } from '../parts-3d.js';
 
 const PIECES = Object.freeze({
     // A bottled cooler: a cabinet with a dark recess and a tap, a blue bottle upside down on top.
@@ -141,13 +128,6 @@ const PIECES = Object.freeze({
 /** The kinds this module draws. */
 export const KINDS_3D = Object.freeze(Object.keys(PIECES));
 
-/** `p` turned `deg` degrees about `x` — where a point of a tilted part's own plane stands. */
-function tilted([x, y, z], deg) {
-    const a = deg * Math.PI / 180;
-
-    return [x, y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
-}
-
 /** One donut at `c`, lying in its box tipped toward the front: a dough ring, its topping over its top half, sprinkles on one. */
 function donut(P, c, k, topping) {
     const R = 2.8 * k, t = 1.3 * k, tip = -60;
@@ -199,17 +179,7 @@ function snackDressing(P, { top, n }, { w, px }) {
     const parts = [];
 
     // the cloth: a sheet over the top, its front's hem a band hanging in scallops
-    const hem = 3 * k;
-    const front = (d + 1.2 * k) / 2 + 0.2 * k;
-    const scallops = Math.max(3, Math.round((w - 4 * k) / (8 * k)));
-    const sw = (w - 4 * k) / scallops;
-
-    parts.push(block(w + 1.2 * k, cloth, d + 1.2 * k, 0, T, 0, P.cloth));
-    parts.push(block(w + 1.2 * k, hem, 0.4 * k, 0, base - hem, front, P.cloth));
-
-    for (let i = 0; i < scallops; i++) {
-        parts.push(part('sphere', { r: 0.5 }, [-w / 2 + 2 * k + (i + 0.5) * sw, base - hem, front], P.cloth, [0, 0, 0], [sw, 5 * k, 0.4 * k]));
-    }
+    parts.push(...tableCloth({ w, d, top: T, thick: cloth, over: 1.2 * k, drop: 3 * k, span: w - 4 * k, pitch: 8 * k }, P.cloth));
 
     // the coffee maker, its left edge 5 px in from the table's
     const mx = -w / 2 + 5 * k, mw = 19 * k, mh = 31 * k, zm = -d / 2 + 7 * k;

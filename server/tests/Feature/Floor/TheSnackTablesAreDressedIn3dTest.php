@@ -8,9 +8,10 @@ use Tests\TestCase;
 /**
  * **The 3-D floor's snack tables carry what the 2-D floor draws on them** — `docs/design/FLOOR.md` § 6.6 item 2 and § 10.6
  * item 1's `dressing3d` (card#13033): each kind the kit map lists as `DRESSED` stands the kit's table at the 2-D
- * table's top, waist-high to its visitor, and on it the house theme's dressing — the cloth, the coffee maker, the donut
- * box and the cups. `snack-dressing-probe.mjs` reads it off the floor screen's own scenes over the shipped default (both
- * tables, the seats) and the interns' cap (the interns, the low table's visitors).
+ * table's top, waist-high to its visitor, and on it the floor's own theme's dressing, in that theme's snack-table
+ * colours — the house theme's cloth, coffee maker, donut box and cups, the `cottage` theme's gingham, teapot, cake stand
+ * and teacups. `snack-dressing-probe.mjs` reads it, for every theme of the registry, off the floor screen's own scenes
+ * over the shipped default (both tables, the seats) and the interns' cap (the interns, the low table's visitors).
  *
  * ⚠ WHAT A GREEN HERE IS NOT: a drawing. `tools/design/floor3d.browser.mjs` draws the page and counts its draw calls and
  * triangles; whether the things on the table read as a coffee maker and donuts is an eye's.
@@ -62,9 +63,15 @@ class TheSnackTablesAreDressedIn3dTest extends TestCase
             'the things on the table stood on the floor, not its top' => ['theme', 'studio/pieces-3d.js',
                 '    const base = T + cloth;', '    const base = cloth;', 'rests'],
             'the cloth floating over the table' => ['theme', 'studio/pieces-3d.js',
-                'parts.push(block(w + 1.2 * k, cloth, d + 1.2 * k, 0, T, 0, P.cloth));', 'parts.push(block(w + 1.2 * k, cloth, d + 1.2 * k, 0, T + k, 0, P.cloth));', 'rests'],
+                'tableCloth({ w, d, top: T, thick: cloth,', 'tableCloth({ w, d, top: T + k, thick: cloth,', 'rests'],
             'the donut box pushed off the table\'s back' => ['theme', 'studio/pieces-3d.js',
                 'side = 0.8 * k, zb = -k;', 'side = 0.8 * k, zb = -d;', 'rests'],
+            'the cottage tea set stood on the floor, not its top' => ['theme', 'cottage/pieces-3d.js',
+                '    const base = T + thick;', '    const base = thick;', 'rests'],
+            'the cottage teapot painted in the house theme\'s coffee-maker teal' => ['theme', 'cottage/pieces-3d.js',
+                'P.teapot, [0, 0, 0], [1, 0.92, 1]', "'#6f9a9a', [0, 0, 0], [1, 0.92, 1]", 'palette'],
+            'the cottage theme with no dressing of its own (the house coffee maker on its tea table)' => ['theme', 'cottage/theme.js',
+                'export function dressing3d(kind, inputs) {', 'export function dressingOff(kind, inputs) {', 'themes'],
         ];
     }
 

@@ -11,9 +11,9 @@
 // - `MISSING` — a kind the kit has no piece for and nothing first-party draws yet, named so the gap is a list rather
 //   than an absence.
 //
-// `DRESSED` names the `FILES` kinds the house theme's optional `dressing3d` export stands things on (`FLOOR.md` § 10.6
-// item 1): the kit's piece is fitted to the height and depth the dressing gives, and the dressing drawn on it as a
-// first-party part list — the snack tables' coffee maker, donuts and cups, which the kit does not carry.
+// `DRESSED` names the `FILES` kinds each theme's `dressing3d` export stands things on (`FLOOR.md` § 10.6 item 1): the
+// kit's piece is fitted to the height and depth the dressing gives, and the dressing drawn on it as a first-party part
+// list — the snack tables' coffee maker and donuts, or the cottage's teapot and cupcakes, which the kit does not carry.
 //
 // `PAINT` is the recolour (plan § 3.4): for every `FILES` kind, each of its file's named materials → for every theme of
 // the registry, the `PALETTE` path (`row.key` or `row.key.index`) whose colour REPLACES that material on a floor in that
@@ -21,7 +21,7 @@
 // `MeshBasicMaterial`s), and the 3-D floor draws every piece in one toon material so the kit and the creatures shade alike.
 //
 // `tools/floor-models/selftest.mjs` derives that population from the registry and holds this file to it both ways,
-// holds `FILES` to the `.glb` files beside it both ways, holds `DRESSED` to `FILES` and to what the house theme dresses,
+// holds `FILES` to the `.glb` files beside it both ways, holds `DRESSED` to `FILES` and to what every theme dresses,
 // and holds `PAINT` to every material each file names and to a colour of every theme's `PALETTE`.
 
 export const FILES = Object.freeze({

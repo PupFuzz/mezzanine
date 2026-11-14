@@ -402,8 +402,9 @@ curve); one mesh per part (§ 6's budget).
   tables stood bare): the kind map lists it as `DRESSED`, and the theme's optional **`dressing3d(kind, inputs)`** — the
   house theme's where a theme exports none — answers the height and depth the kit's piece is fitted to and the part
   list standing on it, in the same frame as `piece3d`'s; `floor3d/furniture-placements.js` places both. The snack
-  tables are the dressed kinds: the kit's table at the 2-D table's top, and on it the 2-D picture's cloth, coffee
-  maker, donut box and cups.
+  tables are the dressed kinds: the kit's table at the 2-D table's top, and on it what each theme's 2-D picture
+  carries — the house theme's cloth, coffee maker, donut box and cups, the `cottage` theme's gingham, teapot, cake stand
+  and teacups — every theme dressing its own, from part builders the themes share (`themes/parts-3d.js`).
 - **Which way a desk faces, and who sits where (M4).** The operator's ruling of 2026-10-06 (card#11046 comment
   10125, `FLOOR.md` § 10.4 item 2): *"The agents are sitting behind the desk, so the drawers face the agent (we
   shouldn't see the the desk drawers - we'd be seeing the other side)"*. So the sitter is on the **band side** of the
