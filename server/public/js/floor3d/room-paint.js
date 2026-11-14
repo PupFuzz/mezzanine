@@ -9,8 +9,9 @@
  * picture from the scene, as the painter draws them, so A17's room tick is a cut — the picture drawn again.
  *
  * ⛔ WHAT MOVES IN THE ROOM IS THE SCENE's, STEPPED A FRAME AT A TIME FROM THE PAINT (plan § 3.5's A1, A2, A5, A15 and A26
- * rows): the elevator's two leaves — boxes over the doorway in front of the cab's dark interior, as wide as the walks'
- * leaf timeline says (`floorWorld()`'s `doors`, read by `leafLevel()`), narrowing toward the frame as the 2-D leaves do;
+ * rows): the elevator's two leaves — boxes over the doorway, as wide as the walks' leaf timeline says (`floorWorld()`'s
+ * `doors`, read by `leafLevel()`), narrowing toward the frame as the 2-D leaves do, in front of the cab's room, which stands
+ * behind the band's open doorway (`cabGeometry()`) and does not move;
  * each restroom door's leaf over its recess and its slider's field, vacant or occupied, at the scene's rects (§ 6.7 item
  * 2: the leaf and the field are the renderer's, never the theme's); a desk's screen cross-fading from what it showed to
  * what it shows over A5's frames (the old picture a second plane, the transient term's); and A15's replay marker sweeping
@@ -26,7 +27,10 @@
 
 import {
     BoxGeometry,
+    BufferGeometry,
     CanvasTexture,
+    Color,
+    Float32BufferAttribute,
     Group,
     InstancedMesh,
     Matrix4,
@@ -43,6 +47,7 @@ import { onTerm } from './terms.js';
 import { leafLevel } from '../floor/scene.js';
 import { SKY_PAINT } from '../floor/floor-layout.js';
 import { textureSize } from '../building/stack-model.js';
+import { CAB_SHADE, CAB_STYLE, cabTheme } from '../floor/cab-paint.js';
 
 /** A texture over a canvas, in the sheet's colour space. */
 function textureOf(canvas) {
@@ -55,8 +60,138 @@ function textureOf(canvas) {
 
 /** How narrow a leaf is fully open, a share of its shut width — the 2-D leaves' `scaleX(.12)` (`cab-paint.js`). */
 const LEAF_OPEN = 0.12;
-/** How deep the elevator's leaves and the cab's interior stand in front of the back wall's face, units. */
+/** How deep the elevator's leaves stand in front of the back wall's face, units. */
 const LEAF_DEPTH = 0.03;
+
+/** How far under the cab's ceiling its light's panel hangs, units — clear of the ceiling's own face. */
+const LIGHT_DROP = 0.002;
+
+/**
+ * Each surface of the cab's room by the `CAB_STYLE` class the 2-D cab paints it with, and how deep its shade is at the far
+ * end (`CAB_SHADE`): the side walls' and their kick plates', the floor's, and the ceiling's, which is the far wall's even
+ * shade too. The handrails and the light are unshaded, as the 2-D cab draws them.
+ */
+const CAB_SURFACES = Object.freeze({
+    back: ['cab-back', CAB_SHADE.ceiling],
+    side: ['cab-side', CAB_SHADE.side],
+    kick: ['cab-kick', CAB_SHADE.side],
+    floor: ['cab-floor', CAB_SHADE.floor],
+    ceiling: ['cab-ceiling', CAB_SHADE.ceiling],
+    rail: ['cab-rail', 0],
+    light: ['cab-light', 0],
+});
+
+/**
+ * THE CAB's COLOURS, AS THE 2-D CAB PAINTS THEM: each surface's fill under `CAB_STYLE` (`floor/cab-paint.js`, the colours'
+ * one home), with the house theme's elevator palette carried as `cabTheme()` carries it onto the cab dialog — the band
+ * cab's fallback (`.band-cab`, the sheet's door frame and lamp) answering with none — and the shade's ink
+ * (`.cab-shade-stop`). The page's own style engine computes them, in a hidden shadow tree so the rules reach nothing else
+ * on the page, and each is read back as sRGB bytes through a one-pixel canvas, whatever form the engine writes a mixed
+ * colour in. Answers `read(palette)`: `{ surface: [r, g, b] }` and `ink`.
+ */
+function cabColours(document) {
+    const host = document.createElement('div');
+    const root = host.attachShadow({ mode: 'open' });
+    const cells = Object.values(CAB_SURFACES).map(([cls]) => `<rect class="${cls}"/>`).join('');
+
+    host.hidden = true;
+    root.innerHTML = `<style>${CAB_STYLE}</style><svg><g class="band-cab">${cells}<linearGradient><stop class="cab-shade-stop"/></linearGradient></g></svg>`;
+    document.body.append(host);
+
+    const group = root.querySelector('.band-cab');
+    const pixel = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    const bytes = (colour) => {
+        pixel.clearRect(0, 0, 1, 1);
+        pixel.fillStyle = '#000';
+        pixel.fillStyle = colour;
+        pixel.fillRect(0, 0, 1, 1);
+
+        return [...pixel.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    };
+    const style = (cls) => document.defaultView.getComputedStyle(root.querySelector(`.${cls}`));
+
+    return (palette) => {
+        cabTheme(group, palette);
+
+        return {
+            surfaces: Object.fromEntries(Object.entries(CAB_SURFACES).map(([name, [cls]]) => [name, bytes(style(cls).fill)])),
+            ink: bytes(style('cab-shade-stop').stopColor),
+        };
+    };
+}
+
+/**
+ * THE CAB's ROOM AS ONE GEOMETRY (one draw call): the world's `cab` (`floorWorld()`'s band) moved by `offset` into the
+ * band's frame — the floor, the ceiling, the far wall and the two side walls, each turned to face INTO the room so it is
+ * drawn from inside and seen through from outside (the room is open above, as the floor is); the kick plates the side walls'
+ * feet; the light's panel just under the ceiling; and the handrails and their posts as boxes. Each vertex carries its
+ * surface's colour (`colours`, `cabColours()`'s) shaded toward the ink by its depth into the room, as the 2-D cab's
+ * overlays shade each surface from the open front to the far wall.
+ */
+function cabGeometry(cab, offset, colours) {
+    const { room, kick, light } = cab;
+    const [x0, x1, y1, z0, z1] = [room.x, room.x + room.w, room.h, room.z, room.z + room.d];
+    const positions = [];
+    const tints = [];
+    const linear = new Color();
+    const tint = (surface, z) => {
+        const [base, far] = [colours.surfaces[surface], CAB_SURFACES[surface][1]];
+        const k = (far * (z1 - z)) / room.d;
+        const [r, g, b] = base.map((c, i) => (c + (colours.ink[i] - c) * k) / 255);
+
+        linear.setRGB(r, g, b, SRGBColorSpace);
+
+        return [linear.r, linear.g, linear.b];
+    };
+    // A quad of `corners` turned to face along `want`, in `surface`'s colour.
+    const quad = (surface, corners, want) => {
+        const [a, b, c] = corners;
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        const turned = n[0] * want[0] + n[1] * want[1] + n[2] * want[2] < 0 ? [...corners].reverse() : corners;
+
+        for (const p of [0, 1, 2, 0, 2, 3].map((i) => turned[i])) {
+            positions.push(p[0] - offset.x, p[1], p[2] - offset.z);
+            tints.push(...tint(surface, p[2]));
+        }
+    };
+    // A box's six faces, each facing out.
+    const box = (surface, { x, y, z, w, h, d }) => {
+        const [xa, xb, ya, yb, za, zb] = [x, x + w, y, y + h, z, z + d];
+
+        quad(surface, [[xa, ya, za], [xa, ya, zb], [xa, yb, zb], [xa, yb, za]], [-1, 0, 0]);
+        quad(surface, [[xb, ya, za], [xb, ya, zb], [xb, yb, zb], [xb, yb, za]], [1, 0, 0]);
+        quad(surface, [[xa, ya, za], [xb, ya, za], [xb, ya, zb], [xa, ya, zb]], [0, -1, 0]);
+        quad(surface, [[xa, yb, za], [xb, yb, za], [xb, yb, zb], [xa, yb, zb]], [0, 1, 0]);
+        quad(surface, [[xa, ya, za], [xb, ya, za], [xb, yb, za], [xa, yb, za]], [0, 0, -1]);
+        quad(surface, [[xa, ya, zb], [xb, ya, zb], [xb, yb, zb], [xa, yb, zb]], [0, 0, 1]);
+    };
+
+    quad('floor', [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]], [0, 1, 0]);
+    quad('ceiling', [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], [0, -1, 0]);
+    quad('back', [[x0, 0, z0], [x1, 0, z0], [x1, y1, z0], [x0, y1, z0]], [0, 0, 1]);
+
+    for (const [x, into] of [[x0, 1], [x1, -1]]) {
+        quad('kick', [[x, 0, z0], [x, 0, z1], [x, kick, z1], [x, kick, z0]], [into, 0, 0]);
+        quad('side', [[x, kick, z0], [x, kick, z1], [x, y1, z1], [x, y1, z0]], [into, 0, 0]);
+    }
+
+    const ly = y1 - LIGHT_DROP;
+
+    quad('light', [[light.x, ly, light.z], [light.x + light.w, ly, light.z], [light.x + light.w, ly, light.z + light.d], [light.x, ly, light.z + light.d]], [0, -1, 0]);
+
+    for (const part of [...cab.rails, ...cab.posts]) {
+        box('rail', part);
+    }
+
+    const geometry = new BufferGeometry();
+
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(tints, 3));
+
+    return geometry;
+}
 
 /** The screen's picture, px. */
 const SCREEN = Object.freeze({ w: 256, h: 160 });
@@ -73,8 +208,9 @@ const SCREEN = Object.freeze({ w: 256, h: 160 });
  * @param {object} ctx.room the group the planes, band and screens stand in (the `fixed` term)
  * @param {object} ctx.walls the group the walls stand in
  * @param {function(): object} ctx.art the art modules, once the page has them
+ * @param {function(): ({frame: string, lamp: string}|null)} ctx.cabPalette the house theme's elevator palette, or `null`
  */
-export function floorRoom({ document, renderer, cssColour, reduce, wake, room, walls: wallGroup, art }) {
+export function floorRoom({ document, renderer, cssColour, reduce, wake, room, walls: wallGroup, art, cabPalette }) {
     let world = null;
     let paintedAt = 0;
     /** the scene's loop rate, frames a second — the rate every frame count this file reads is in */
@@ -288,6 +424,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
                 }
 
                 await put(doc(1 + b.windows.length));
+
+                // The doorway through the elevator's surround is open: the cab's room stands behind it (`alphaTest`).
+                const e = at(b.elevator);
+
+                g.clearRect(e.x * k, e.y * k, e.w * k, e.h * k);
                 await put(doc(2 + b.windows.length));
 
                 const cl = b.clock;
@@ -314,6 +455,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
                     }
                 }
             });
+            band.material.alphaTest = 0.5;
             band.position.set(world.band.x, 0, world.band.z);
             band.scale.y = bandH;
             // The doorway's cab and leaves stand on the band, so the cut-away lowers them with it.
@@ -326,14 +468,30 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
     // ── the elevator's leaves and the cab behind them ─────────────────────────────────────────
     const doorBox = new BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5);
     const leafMaterial = new MeshToonMaterial({ color: cssColour('--door') || '#dbe5ee' });
-    const cabMaterial = new MeshBasicMaterial({ color: cssColour('--scene-ink') || '#3b2f2a' });
+    // The cab is lit by its own light, not the floor's: unlit, as the 2-D cab's flat fills and overlays are.
+    const cab = onTerm(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ vertexColors: true })), 'fixed');
     const doorway = new Group();
-    const cab = onTerm(new Mesh(doorBox, cabMaterial), 'fixed');
     const leaves = [onTerm(new Mesh(doorBox, leafMaterial), 'fixed'), onTerm(new Mesh(doorBox, leafMaterial), 'fixed')];
+    const readCab = cabColours(document);
+    let cabKey = null;
 
     doorway.add(cab, ...leaves);
 
-    /** The doorway's boxes at frame `f` of the walks' leaf timeline: the cab's interior, and each leaf as wide as it is shut. */
+    /** The cab's room for the world's band in the elevator palette, built again when either changes. */
+    const standCab = () => {
+        const palette = cabPalette();
+        const key = JSON.stringify([world.band.cab, world.band.x, world.band.z, palette]);
+
+        if (key === cabKey) {
+            return;
+        }
+
+        cabKey = key;
+        cab.geometry.dispose();
+        cab.geometry = cabGeometry(world.band.cab, world.band, readCab(palette));
+    };
+
+    /** The doorway's leaves at frame `f` of the walks' leaf timeline, each as wide as it is shut. */
     const placeDoorway = (f) => {
         const at = (r, z, depth) => [r.x - world.band.x, r.y, z, r.w, r.h, depth];
         const set = (mesh, [x, y, z, w, h, d]) => {
@@ -343,8 +501,6 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         const shut = 1 - (1 - LEAF_OPEN) * leafLevel(world.doors, f);
         const [left, right] = world.band.leaves;
 
-        // the cab's dark interior fills the doorway the two leaves close
-        set(cab, at({ x: left.x, y: left.y, w: right.x + right.w - left.x, h: left.h }, 0.002, LEAF_DEPTH * 0.5));
         // the left leaf narrows toward the frame's left, the right toward its right (`.elevator-leaf`'s transform origins)
         set(leaves[0], at({ ...left, w: left.w * shut }, LEAF_DEPTH * 0.5, LEAF_DEPTH));
         set(leaves[1], at({ ...right, x: right.x + right.w * (1 - shut), w: right.w * shut }, LEAF_DEPTH * 0.5, LEAF_DEPTH));
@@ -561,6 +717,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             }
 
             standRoom(sceneIn);
+
+            if (world.band !== null) {
+                standCab();
+            }
+
             standRestroom();
             standScreens();
         },
