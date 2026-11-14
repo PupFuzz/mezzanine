@@ -127,14 +127,15 @@ const cmU = (cm) => cm / SCALE / UNIT;
 /**
  * THE CAB BEHIND THE BAND's DOORWAY, IN UNITS — § 12's *Cab interior* room (`cab-paint.js`'s `CAB`, `CAB_FITTINGS`), the
  * 2-D cab's room in the floor's own scale: its open front on the band's face, centred across on the leaves' seam
- * (`seam`, units) and running back from the band's face (`z`) its depth. `room` is its box (min corner and size, as a
+ * (`seam`, units) and running back from the band's face (`z`) its depth. ⛔ ITS HEIGHT IS CLIPPED TO THE ROOM's
+ * (`ROOM_H_U`): the cab is open-topped as the room is, so a cab taller than the band would stand its walls over it. `room` is its box (min corner and size, as a
  * wall's), `kick` the kick plates' height up each side wall, `rails` and `posts` the handrails' bars and the posts they
  * stand off their walls on (boxes; the bar square in section at its height), and `light` the ceiling light's panel
  * (`x`, `z` its min corner, `w`, `d`) on the ceiling. Every rider's cab spot lies on its floor (`floor-world-probe.mjs`'s
  * `cab` leg).
  */
 function cabRoom(seam, z) {
-    const [w, d, h] = [cmU(CAB.w), cmU(CAB.d), cmU(CAB.h)];
+    const [w, d, h] = [cmU(CAB.w), cmU(CAB.d), Math.min(cmU(CAB.h), ROOM_H_U)];
     const { kick, rail, light } = CAB_FITTINGS;
     const room = Object.freeze({ x: seam - w / 2, y: 0, z: z - d, w, h, d });
     const box = (x, y, bz, bw, bh, bd) => Object.freeze({ x, y, z: bz, w: bw, h: bh, d: bd });

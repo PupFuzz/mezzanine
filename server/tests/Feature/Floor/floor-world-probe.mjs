@@ -35,7 +35,8 @@
  * height over the front edge's distance from the foot allows for the plan distance between them.
  *
  * ⛔ THE CAB IS § 12's *CAB INTERIOR* BEHIND THE DOORWAY, AND EVERY RIDER STANDS IN IT (the `cab` leg): the band's cab
- * room is `CAB`'s centimetres at the door view's `SCALE`, centred on the leaves' seam with its open front on the band's
+ * room is `CAB`'s centimetres at the door view's `SCALE`, its top at or below the band's (its height clipped to the
+ * room's), centred on the leaves' seam with its open front on the band's
  * face and as wide as the doorway at least; its kick plates, handrails, posts and light are `CAB_FITTINGS`' inside it.
  * Every walker sampled along its whole walk stands, in a cab leg, on the cab's floor in front of its far wall, and
  * everywhere else in front of the band's face — so none is drawn behind the cab's far wall or behind the band outside it.
@@ -478,8 +479,12 @@ for (const { run, i, scene } of scenes) {
         const within = (b, o) => b.x > o.x - EPS && b.x + b.w < o.x + o.w + EPS && b.y > o.y - EPS && b.y + b.h < o.y + o.h + EPS && b.z > o.z - EPS && b.z + b.d < o.z + o.d + EPS;
         const leaves = world.band.leaves;
 
-        if (!near(r.w, cm(CAB.w)) || !near(r.d, cm(CAB.d)) || !near(r.h, cm(CAB.h)) || !near(r.y, 0)) {
-            legs.cab.push(`${at} the cab's room is ${r.w} × ${r.d} × ${r.h} units at y ${r.y} — not § 12's ${CAB.w} × ${CAB.d} × ${CAB.h} cm at the door view's scale, on the floor`);
+        if (!near(r.w, cm(CAB.w)) || !near(r.d, cm(CAB.d)) || !near(r.h, Math.min(cm(CAB.h), W.ROOM_H_U)) || !near(r.y, 0)) {
+            legs.cab.push(`${at} the cab's room is ${r.w} × ${r.d} × ${r.h} units at y ${r.y} — not § 12's ${CAB.w} × ${CAB.d} cm at the door view's scale, ${CAB.h} cm clipped to the room's height, on the floor`);
+        }
+
+        if (r.y + r.h > world.band.h + EPS) {
+            legs.cab.push(`${at} the cab's top stands at ${r.y + r.h} units, over the band's ${world.band.h}`);
         }
 
         if (!near(r.x + r.w / 2, seam) || !near(r.z + r.d, front)) {
