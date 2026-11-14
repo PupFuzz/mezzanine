@@ -250,8 +250,9 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     });
 
     /**
-     * The furniture in the floor's theme — its `PALETTE`, and its `piece3d()` or else the house theme's (`FLOOR.md` § 10.6
-     * item 1) — made once the kind map has answered and a world is drawn, and made again if the floor's theme changes.
+     * The furniture in the floor's theme — its `PALETTE`, and its `piece3d()` and `dressing3d()`, each or else the house
+     * theme's (`FLOOR.md` § 10.6 item 1) — made once the kind map has answered and a world is drawn, and made again if
+     * the floor's theme changes.
      */
     const standFurniture = () => {
         if (kitMap === null || world === null) {
@@ -276,6 +277,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                 theme: world.theme,
                 palette: (own ?? house).PALETTE,
                 piece3d: typeof own?.piece3d === 'function' ? own.piece3d : typeof house?.piece3d === 'function' ? house.piece3d : null,
+                dressing3d: typeof own?.dressing3d === 'function' ? own.dressing3d : typeof house?.dressing3d === 'function' ? house.dressing3d : null,
                 ready: () => {
                     onTerm(furnitureGroup, 'furniture');
                     wake();

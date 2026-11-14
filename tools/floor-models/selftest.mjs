@@ -16,6 +16,9 @@
 // - every `FILES` value is a `.glb` beside the map, and every `.glb` beside it is a `FILES` value;
 // - a non-empty `PIECE3D` has the house theme exporting `piece3d`, which draws every kind it lists (a part list, each
 //   part coloured);
+// - every `DRESSED` kind is a `FILES` kind, and the house theme exports `dressing3d`, which dresses each at its tile's
+//   size: a table top above the floor and under the tile's top, a depth, and a part list of coloured parts standing in
+//   the tile's height;
 // - `PAINT` names, for every `FILES` kind, exactly the materials its file carries (read off the `.glb`'s own JSON
 //   chunk), each mapped for every theme of the registry to a `PALETTE` path holding a colour in that theme.
 //
@@ -33,6 +36,10 @@ const load = (...parts) => import(pathToFileURL(join(REPO, ...parts)).href);
 
 // The theme API members that are NOT furniture a 3-D desk stands: the room's architecture (first-party by the
 // operator's answer Q1 A), the scenery dispatcher (its kinds are `KINDS`, counted there), and the two data exports.
+/** A tile the dressing leg asks the house theme to dress: the tall snack table's, 72 × 96 picture px, in world units. */
+const { UNIT } = await load('server', 'public', 'js', 'floor', 'floor-world.js');
+const TILE = Object.freeze({ w: 72 / UNIT, h: 96 / UNIT, px: 1 / UNIT });
+
 const NOT_FURNITURE = Object.freeze(['band', 'windowSurround', 'elevatorSurround', 'clockCase', 'plane', 'scenery', 'PALETTE', 'surfaces']);
 
 let failures = 0;
@@ -60,6 +67,10 @@ async function reading() {
         houseHasPiece3d: typeof house.piece3d === 'function',
         // what the house theme's `piece3d` answers for each kind PIECE3D lists, at a tile's size
         drawn: Object.fromEntries(map.PIECE3D.map((k) => [k, typeof house.piece3d === 'function' ? house.piece3d(k, { w: 0.6, h: 1 }) : null])),
+        houseHasDressing: typeof house.dressing3d === 'function',
+        // what the house theme's `dressing3d` answers for each kind DRESSED lists, at a tall snack table's tile (72 × 96 px)
+        dressed: Object.fromEntries(map.DRESSED.map((k) => [k, typeof house.dressing3d === 'function' ? house.dressing3d(k, TILE) : null])),
+        dressedKinds: [...map.DRESSED],
         materials: Object.fromEntries(Object.entries(map.FILES).map(([k, f]) => [k, (glb(f).materials ?? []).map((m) => m.name)])),
         paint: structuredClone(map.PAINT),
         palettes: themes,
@@ -133,6 +144,27 @@ function piece3dDefects(r) {
         .map((k) => `PIECE3D lists \`${k}\` and the house theme's \`piece3d\` draws it as ${JSON.stringify(r.drawn[k])?.slice(0, 60)} — not a part list of coloured parts`);
 }
 
+function dressingDefects(r) {
+    const defects = r.dressedKinds.filter((k) => !Object.hasOwn(r.files, k)).map((k) => `DRESSED lists \`${k}\`, which FILES does not map to a kit piece to dress`);
+
+    if (r.dressedKinds.length > 0 && !r.houseHasDressing) {
+        return [...defects, `DRESSED lists ${r.dressedKinds.join(', ')} and the house theme exports no \`dressing3d\` to dress them`];
+    }
+
+    for (const k of r.dressedKinds) {
+        const a = r.dressed[k];
+        const parts = a?.parts;
+
+        if (!(a?.top > 0 && a.top < TILE.h) || !(a.d > 0)) {
+            defects.push(`DRESSED lists \`${k}\` and the house theme's \`dressing3d\` answers top ${a?.top} and depth ${a?.d} — not a table top inside the tile's height, nor a depth`);
+        } else if (!Array.isArray(parts) || parts.length === 0 || !parts.every((p) => /^#[0-9a-f]{6}$/i.test(p.colour) && p.at[1] >= 0 && p.at[1] <= TILE.h)) {
+            defects.push(`DRESSED lists \`${k}\` and the house theme's \`dressing3d\` dresses it with ${JSON.stringify(parts)?.slice(0, 60)} — not a part list of coloured parts inside the tile's height`);
+        }
+    }
+
+    return defects;
+}
+
 /** A `PALETTE` path's colour — `row.key` or `row.key.index` — or `undefined`. */
 const colourAt = (palette, path) => path.split('.').reduce((v, step) => (v === undefined || v === null ? undefined : v[step]), palette);
 
@@ -169,7 +201,7 @@ function paintDefects(r) {
     return defects;
 }
 
-const LEGS = { totality: totalityDefects, files: fileDefects, piece3d: piece3dDefects, paint: paintDefects };
+const LEGS = { totality: totalityDefects, files: fileDefects, piece3d: piece3dDefects, dressing: dressingDefects, paint: paintDefects };
 
 const shipped = await reading();
 const { standing, parts } = population(shipped);
@@ -181,7 +213,7 @@ for (const [leg, defects] of Object.entries(LEGS)) {
 
     check(found.length === 0, `${leg}: clean${found.length ? ` — ${found.join('; ')}` : ''}`);
 }
-console.log(`  MEASURED FILES ${Object.keys(shipped.files).length} · PIECE3D ${shipped.piece3d.length} · MISSING ${shipped.missing.length} (${shipped.missing.join(', ')}) — a MISSING kind is one nothing draws in 3-D`);
+console.log(`  MEASURED FILES ${Object.keys(shipped.files).length} · PIECE3D ${shipped.piece3d.length} · MISSING ${shipped.missing.length} (${shipped.missing.join(', ')}) · DRESSED ${shipped.dressedKinds.length} — a MISSING kind is one nothing draws in 3-D`);
 
 // ── the plants: each perturbs ONE input and its leg must red, naming the defect ─────────────────────────────
 const plant = (patch) => ({ ...structuredClone(shipped), ...patch(structuredClone(shipped)) });
@@ -197,6 +229,10 @@ const PLANTS = [
     ['files', 'a .glb shipped that no kind is mapped to', (r) => ({ beside: [...r.beside, 'bathtub.glb'] }), 'no kind is mapped to it'],
     ['piece3d', 'PIECE3D naming kinds while the house theme exports no piece3d', () => ({ houseHasPiece3d: false }), 'exports no `piece3d`'],
     ['piece3d', 'a PIECE3D kind the house theme\'s piece3d does not draw', (r) => ({ drawn: { ...r.drawn, globe: null } }), '`globe` and the house theme'],
+    ['dressing', 'a DRESSED kind with no kit piece to dress', (r) => ({ dressedKinds: [...r.dressedKinds, 'globe'] }), '`globe`, which FILES does not map'],
+    ['dressing', 'DRESSED naming kinds while the house theme exports no dressing3d', () => ({ houseHasDressing: false }), 'exports no `dressing3d`'],
+    ['dressing', 'a dressing whose table top is the tile\'s whole height', (r) => ({ dressed: { ...r.dressed, 'snack-table': { ...r.dressed['snack-table'], top: TILE.h } } }), 'not a table top inside'],
+    ['dressing', 'a dressing with no parts', (r) => ({ dressed: { ...r.dressed, 'snack-table': { ...r.dressed['snack-table'], parts: [] } } }), 'not a part list'],
     ['paint', 'a material of a file PAINT does not recolour', (r) => ({ paint: { ...r.paint, desk: { wood: r.paint.desk.wood } } }), 'carries the material `metal`'],
     ['paint', 'a recolour naming no colour of a theme', (r) => ({ paint: { ...r.paint, desk: { ...r.paint.desk, wood: { ...r.paint.desk.wood, cottage: 'desk.wood' } } } }), 'in cottage to "desk.wood"'],
     ['paint', 'a theme added to the registry with no recolour', (r) => ({ palettes: { ...r.palettes, attic: r.palettes.studio } }), 'in attic to undefined'],

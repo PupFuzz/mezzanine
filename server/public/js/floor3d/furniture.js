@@ -1,15 +1,18 @@
 /**
  * THE 3-D FLOOR's FURNITURE — every standing piece and every desk's furniture set the floor world places
  * (`floor/floor-world.js`'s `pieces` and each desk's `slab` and `parts`), drawn from Kenney's Furniture Kit where the kind
- * map gives a file and from the theme's `piece3d()` part lists where it lists the kind as first-party.
+ * map gives a file and from the theme's `piece3d()` part lists where it lists the kind as first-party, and a kit piece the
+ * map lists as `DRESSED` carrying the theme's `dressing3d()` part list on its top (the snack tables' coffee maker, donuts
+ * and cups). Where each placement stands is `floor3d/furniture-placements.js`'s.
  * `docs/design/plan-13033-stage2-3d-floor.md` § 3.4 and § 6 (card#13033 stage 2 slice 4).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ ONE INSTANCED MESH PER (PRIMITIVE, MATERIAL) PAIR — § 6's furniture term: a kit file is loaded once and each of its
- * primitives is one `InstancedMesh` holding every placement of its kind on the floor; a first-party piece is one merged
- * geometry of its parts per kind and drawn size, instanced the same way; the side table's couch is its file lengthened
- * once per couch length, instanced the same way (`shapesOf()`). So the floor's furniture costs a draw call per primitive
- * of each kind it places — the couch's per length it stands — whatever the number of placements.
+ * primitives is one `InstancedMesh` holding every placement of its kind on the floor; a first-party piece, and a
+ * dressing, is one merged geometry of its parts per kind and drawn size, instanced the same way; the side table's couch
+ * is its file lengthened once per couch length, instanced the same way (`shapesOf()`). So the floor's furniture costs a draw call per primitive
+ * of each kind it places — the couch's per length it stands, a dressed kind's one more for its dressing — whatever the
+ * number of placements.
  *
  * ⛔ THE KIT IS RECOLOURED BY REPLACING ITS MATERIALS, NEVER BY TINTING THEM. Its files declare `KHR_materials_unlit`,
  * so `GLTFLoader` builds a `MeshBasicMaterial` for each — unshaded. Every primitive is drawn in a `MeshToonMaterial` of
@@ -21,7 +24,8 @@
  * front toward `+z` — the side the 2-D floor draws; a desk is fitted to its slab, its drawers toward its sitter; a monitor
  * faces its sitter (plan § 3.4, the operator's Q4 answer); a couch is fitted to the box the world lays it in, at one
  * scale up and across, as deep as that box (its row's footprint), lengthened between its arms (`lengthened()`), so its
- * seat is where the world seats its interns.
+ * seat is where the world seats its interns; a dressed piece is fitted to its dressing's top and depth, and the dressing
+ * stands on it at the piece's foot.
  *
  * ⛔ IT DECIDES NOTHING ABOUT WHAT STANDS WHERE: `rebuild(world)` places what the world carries, and a file that has not
  * answered yet draws nothing until it does — `ready()` is called then, so the page draws the floor again (plan § 3.5's
@@ -41,7 +45,8 @@ import {
 } from '../vendor/three/three.module.js';
 import { mergeGeometries } from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
-import { partGeometry } from './part-geometry.js';
+import { DETAIL, partGeometry } from './part-geometry.js';
+import { dressingOf, inputsOf, placementsOf } from './furniture-placements.js';
 import { COUCH } from '../floor/floor-world.js';
 
 /** Where the kit's files are served — the asset route (`FloorAssets::SERVED`'s `.glb`). */
@@ -134,10 +139,10 @@ function lengthened(model, stretch) {
     return { primitives, box };
 }
 
-/** A part list merged into one geometry, each part's colour on its vertices. */
-function mergedParts(parts) {
+/** A part list merged into one geometry at `detail`'s facets, each part's colour on its vertices. */
+function mergedParts(parts, detail) {
     return mergeGeometries(parts.map((part) => {
-        const geo = partGeometry(part);
+        const geo = partGeometry(part, detail);
         const n = geo.getAttribute('position').count;
         const c = new Color(part.colour);
         const colours = new Float32Array(n * 3);
@@ -162,13 +167,14 @@ function mergedParts(parts) {
  * The furniture over a scene graph `group`.
  *
  * @param {object} group the `Group` every mesh is added to
- * @param {{map: object, theme: string, palette: object, piece3d: function|null, ready: function(): void,
- *          fetch?: function(string): Promise<ArrayBuffer>}} options the kind map module (`FILES`, `PIECE3D`, `PAINT`),
- *        the floor's theme and its `PALETTE`, the `piece3d()` that draws the first-party kinds (the theme's, or the house
- *        theme's), what is called when a kit file has answered, and how a file's bytes are fetched
+ * @param {{map: object, theme: string, palette: object, piece3d: function|null, dressing3d: function|null,
+ *          ready: function(): void, fetch?: function(string): Promise<ArrayBuffer>}} options the kind map module (`FILES`,
+ *        `PIECE3D`, `DRESSED`, `PAINT`), the floor's theme and its `PALETTE`, the `piece3d()` that draws the first-party
+ *        kinds and the `dressing3d()` that dresses the `DRESSED` ones (each the theme's, or the house theme's), what is
+ *        called when a kit file has answered, and how a file's bytes are fetched
  * @returns {{rebuild: function(object): void, requested: function(): list<string>, dispose: function(): void}}
  */
-export function createFurniture(group, { map, theme, palette, piece3d, ready, fetch = (url) => window.fetch(url).then((r) => r.arrayBuffer()) }) {
+export function createFurniture(group, { map, theme, palette, piece3d, dressing3d, ready, fetch = (url) => window.fetch(url).then((r) => r.arrayBuffer()) }) {
     const loader = new GLTFLoader();
     /** file → `{ primitives, box }` once parsed */
     const models = new Map();
@@ -176,6 +182,8 @@ export function createFurniture(group, { map, theme, palette, piece3d, ready, fe
     const requests = new Map();
     /** `kind/material` → its toon material in the floor's theme */
     const materials = new Map();
+    /** a dressing's placement key → the kind it dresses (placed only where `dressing3d` is given) */
+    const dressings = new Map(map.DRESSED.map((kind) => [dressingOf(kind), kind]));
     const vertexColoured = new MeshToonMaterial({ vertexColors: true });
     const placeholder = new MeshToonMaterial({ color: new Color(PLACEHOLDER) });
     const slabGeometry = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
@@ -225,51 +233,6 @@ export function createFurniture(group, { map, theme, palette, piece3d, ready, fe
         meshes.push(mesh);
     };
 
-    /** What the world places: kind → `[{ at, w, h, d?, turn? }]`. */
-    const placementsOf = (world) => {
-        const by = new Map();
-        const add = (kind, p) => by.set(kind, [...(by.get(kind) ?? []), p]);
-
-        for (const piece of world.pieces) {
-            add(piece.kind, { at: piece.at, w: piece.w, h: piece.h });
-        }
-
-        for (const desk of world.desks) {
-            const { slab, parts } = desk;
-            const centre = { x: (slab.left + slab.right) / 2, y: 0, z: (slab.back + slab.front) / 2 };
-            const depth = slab.front - slab.back;
-
-            if (desk.placeholder) {
-                add('placeholder', { at: centre, w: slab.right - slab.left, h: slab.top, d: depth });
-                continue;
-            }
-
-            // The drawers toward the sitter: the kit's desk is turned to face the band.
-            add('desk', { at: centre, w: slab.right - slab.left, h: slab.top, d: depth, turn: Math.PI });
-
-            if (parts.chair !== null) {
-                // The chair behind its sitter, its seat under it.
-                add('chair', { at: { ...parts.chair.at, z: parts.chair.at.z - parts.chair.w * 0.25 }, w: parts.chair.w * 0.8, h: parts.chair.h * 0.8 });
-            }
-
-            if (parts.monitor !== null) {
-                // The monitor facing its sitter (the operator's Q4 answer).
-                add('monitorFrame', { at: { ...parts.monitor.at, y: slab.top }, w: parts.monitor.w, h: parts.monitor.h * 0.6, turn: Math.PI });
-            }
-
-            if (parts.props !== null) {
-                add('deskProps', { at: { ...parts.props.at, x: slab.left + parts.props.w * 0.35, y: slab.top }, w: parts.props.w * 0.4, h: parts.props.h * 0.8 });
-            }
-
-            // A couch a row of the side table's seats, each as long as the world lays it.
-            for (const couch of parts.sideTable ?? []) {
-                add('sideTable', { at: couch.at, w: couch.w, h: couch.h, d: couch.d });
-            }
-        }
-
-        return by;
-    };
-
     /**
      * The model each placement of a kind is fitted from, with the placements it serves: the file as loaded, or — the side
      * table's couch — the file lengthened to each couch's length at its scale (`h` over the file's height), one shape a
@@ -313,8 +276,33 @@ export function createFurniture(group, { map, theme, palette, piece3d, ready, fe
         built = [];
     };
 
+    /**
+     * A first-party part list over `placements`: one merged geometry per drawn size, its parts already in units, only
+     * moved into place — `partsOf(inputs)` the list, or `null` for none.
+     */
+    const firstParty = (placements, partsOf, detail) => {
+        const sizes = new Map();
+
+        for (const p of placements) {
+            const size = `${p.w}×${p.h}`;
+
+            sizes.set(size, [...(sizes.get(size) ?? []), p]);
+        }
+
+        for (const same of sizes.values()) {
+            const parts = partsOf(inputsOf(same[0]));
+
+            if (parts !== null) {
+                const geometry = mergedParts(parts, detail);
+
+                built.push(geometry);
+                instanced(geometry, vertexColoured, same.map((p) => new Matrix4().makeTranslation(p.at.x, p.at.y, p.at.z)));
+            }
+        }
+    };
+
     const stand = (world) => {
-        const placed = placementsOf(world);
+        const placed = placementsOf(world, map.DRESSED, dressing3d);
         const signature = `${models.size}|${JSON.stringify([...placed])}`;
 
         if (signature === stood) {
@@ -341,25 +329,10 @@ export function createFurniture(group, { map, theme, palette, piece3d, ready, fe
                     }
                 }
             } else if (map.PIECE3D.includes(kind) && piece3d !== null) {
-                // One merged geometry per kind and drawn size, its parts already in units: only moved into place.
-                const sizes = new Map();
-
-                for (const p of placements) {
-                    const size = `${p.w}×${p.h}`;
-
-                    sizes.set(size, [...(sizes.get(size) ?? []), p]);
-                }
-
-                for (const same of sizes.values()) {
-                    const parts = piece3d(kind, { w: same[0].w, h: same[0].h });
-
-                    if (parts !== null) {
-                        const geometry = mergedParts(parts);
-
-                        built.push(geometry);
-                        instanced(geometry, vertexColoured, same.map((p) => new Matrix4().makeTranslation(p.at.x, p.at.y, p.at.z)));
-                    }
-                }
+                firstParty(placements, (size) => piece3d(kind, size), DETAIL.seat);
+            } else if (dressings.has(kind)) {
+                // What a theme stands on a kit piece: small things, drawn at an intern's facets.
+                firstParty(placements, (size) => dressing3d(dressings.get(kind), size)?.parts ?? null, DETAIL.chibi);
             }
         }
     };

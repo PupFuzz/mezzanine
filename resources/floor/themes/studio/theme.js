@@ -28,7 +28,7 @@
 // the drawing primitives are the themes' shared ones (`../paint.js`, card#12845), handed this theme's paint rules.
 
 import { brushes, doc, draw, f, finite, leafPath, mix, pick, rr, stream, wallRuns } from '../paint.js';
-import { pieces3d } from './pieces-3d.js';
+import { dressings3d, pieces3d } from './pieces-3d.js';
 
 /** The paint rules (§ 10.6, the creatures' own): the shade, the highlight and the line colour. */
 export const RULES = Object.freeze({ shade: '#3d2b3c', highlight: '#fff6e6', line: '#3a2420' });
@@ -1498,4 +1498,13 @@ export function sideTable({ seat_id: seatId, seats }) {
  */
 export function piece3d(kind, inputs) {
     return pieces3d(PALETTE, kind, inputs);
+}
+
+/**
+ * § 10.6 item 1's optional `dressing3d` (card#13033): what this theme stands on a kit piece of `kind` in 3-D — the snack
+ * tables' cloth, coffee maker, donut box and cups, laid out as `snackTable()` draws them from the same `SNACK` and
+ * `PALETTE` — with the height and depth the kit's table is fitted to, or `null` for a kind it does not dress.
+ */
+export function dressing3d(kind, inputs) {
+    return dressings3d(PALETTE, SNACK, kind, inputs);
 }
