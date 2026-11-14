@@ -5,8 +5,9 @@ namespace Tests\Feature\Floor;
 /**
  * card#12442 and card#12513's walker-body property, shared by `AWalkerKeepsClearOfWallsAndFurnitureTest` (the shipped
  * default and the cubicles) and `TheLoungeFloorRoutesEveryWalkTest` (card#12846's second room layout): § 12's *Walker
- * clearance* read out of the document, and the two polyline samplers — a body over a wall, a standing tile or another
- * desk, and a seat's feet on its own couch. Hoisted at its second caller; the property is stated where it is used.
+ * clearance* read out of the document, and the polyline samplers — a body over a wall, a standing tile or another desk,
+ * a seat's feet on its own couch, and an intern's feet on any couch but by its own seat's step from the front
+ * (card#13033). Hoisted at its second caller; the property is stated where it is used.
  *
  * The host provides `floorMd()` (`DrivesTheFleetClientModule`).
  */
@@ -126,5 +127,58 @@ trait ChecksAWalkersBody
         }
 
         return [];
+    }
+
+    /**
+     * card#13033 — AN INTERN GETS ON AND OFF ITS COUCH FROM THE FRONT: one intern walk's polyline, sampled every pixel,
+     * never has its feet inside any couch footprint (`$couches`, every desk's, scene coordinates) but on its own seat's
+     * step — straight in front of its stool's foot (`$foot`), inside its own row's footprint; and where the walk starts or
+     * ends at the foot, its first or last segment IS that step, out to a point in front of the footprint's front edge.
+     *
+     * @param  array{x: float|int, y: float|int}  $foot
+     * @param  list<array{x: float|int, y: float|int, w: float|int, h: float|int}>  $couches
+     * @return list<string> the first defect of each kind, or none
+     */
+    protected function couchStepDefects(string $what, array $points, array $foot, array $couches): array
+    {
+        $eps = 1e-6;
+        $at = static fn (array $p, array $q): bool => abs($p['x'] - $q['x']) < $eps && abs($p['y'] - $q['y']) < $eps;
+        $inside = static fn (array $p, array $r): bool => $r['x'] + $eps < $p['x'] && $p['x'] < $r['x'] + $r['w'] - $eps
+            && $r['y'] + $eps < $p['y'] && $p['y'] < $r['y'] + $r['h'] - $eps;
+        $own = array_values(array_filter($couches, static fn (array $r): bool => $r['x'] < $foot['x'] && $foot['x'] < $r['x'] + $r['w']
+            && $r['y'] < $foot['y'] && $foot['y'] < $r['y'] + $r['h']));
+        $defects = [];
+
+        if (count($own) !== 1) {
+            return ["{$what}: its stool's foot ".json_encode($foot).' stands on '.count($own).' couch footprints, not on its own row\'s'];
+        }
+
+        $front = $own[0]['y'] + $own[0]['h'];
+
+        foreach ([[0, 1], [count($points) - 1, count($points) - 2]] as [$end, $next]) {
+            if ($at($points[$end], $foot) && !(abs($points[$next]['x'] - $foot['x']) < $eps && $points[$next]['y'] >= $front)) {
+                $defects[] = "{$what}: it ".($end === 0 ? 'leaves' : 'reaches').' its seat by '.json_encode($points[$next]).', not straight off its front, past the couch\'s front edge at '.$front;
+            }
+        }
+
+        for ($i = 1; $i < count($points); $i++) {
+            [$a, $b] = [$points[$i - 1], $points[$i]];
+            $n = max(1, (int) ceil(hypot($b['x'] - $a['x'], $b['y'] - $a['y'])));
+
+            for ($k = 0; $k <= $n; $k++) {
+                $p = ['x' => $a['x'] + ($b['x'] - $a['x']) * $k / $n, 'y' => $a['y'] + ($b['y'] - $a['y']) * $k / $n];
+                $step = abs($p['x'] - $foot['x']) < $eps && $inside($p, $own[0]);
+
+                foreach ($couches as $r) {
+                    if (!$step && $inside($p, $r)) {
+                        $defects[] = "{$what}: feet at ".json_encode($p).' stand on a couch footprint '.json_encode([$r['x'], $r['y'], $r['w'], $r['h']]).' off its own seat\'s step';
+
+                        return $defects;
+                    }
+                }
+            }
+        }
+
+        return $defects;
     }
 }

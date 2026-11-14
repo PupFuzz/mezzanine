@@ -21,6 +21,19 @@
  * effects, both ways, each bird flying between its two ends lifted (a desk's top, or the birdhouse's picture row as a
  * height) and above the chord between them at its flight's middle, gone after its last part.
  *
+ * ⛔ AN INTERN SITS ON ITS COUCH, BETWEEN ITS ARMS (the `seating` leg): the kit's sofa is measured here off the file the kind
+ * map names — its box, its seat (the up-facing level of most area), the arms standing above the seat at both its ends, and
+ * no vertex between the arms' thicknesses, so lengthening it moves an arm and stretches nothing else — and the world's
+ * record of it (`COUCH`) must be that measure. Each couch's seat and arms are then where the file's stand at the couch's
+ * box (one scale up and across, the arms their thickness at it; as deep as its row's footprint, `couchFootprint()`, and
+ * inside it), and every intern's foot is on a seat at its height, its frame (`internOverdraw()`, which holds every chibi's
+ * ink) `COUCH_MARGIN` inside the arms, and no couch in its desk.
+ *
+ * ⛔ AN INTERN RISES ONTO ITS SEAT AS IT STEPS BACK, AND COMES DOWN AS IT STEPS OFF (the `steps` leg, card#13033): along every
+ * walk leg that starts or ends at an intern's stool foot, sampled finely, the world's height is the floor's in front of its
+ * couch's front edge, its seat's at the foot, and never moves the wrong way or by more between two samples than the seat's
+ * height over the front edge's distance from the foot allows for the plan distance between them.
+ *
  * ⚠ WHAT IT DOES NOT SEE: whether every `wall` cell of a map has a body (the walls are read off the scene, whose
  * `walls` the door view's classification answers; that classification's own coverage is `door-view.selftest.mjs`'s),
  * and whether a route avoids other desks' slots (the scene's walk tests own the route; this probe holds that the world
@@ -28,8 +41,8 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const wire = process.argv[2];
 const floor = join(wire, '..', 'floor');
@@ -39,15 +52,115 @@ const { deskSlab } = await import(pathToFileURL(join(floor, 'desk-geometry.js'))
 const { ELEVATOR_DOOR, leafLevel } = await import(pathToFileURL(join(floor, 'scene.js')).href);
 const { BIRD_LIFT } = await import(pathToFileURL(join(floor, 'bird.js')).href);
 const { keyOf } = await import(pathToFileURL(join(wire, 'seat-key.js')).href);
+const { COUCH_FOOTPRINT, STOOL_CAP, STOOL_FRAME, couchFootprint } = await import(pathToFileURL(join(floor, 'desk-layout.js')).href);
+const KIT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'resources', 'floor', 'models', 'kenney-furniture-kit');
+const { FILES } = await import(pathToFileURL(join(KIT, 'map.js')).href);
 
 const { scenes } = JSON.parse(readFileSync(0, 'utf8'));
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
-const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], pieces: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [] };
-const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0 };
+const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [] };
+const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0 };
 const WORLD_MEMBERS = ['band', 'desks', 'doors', 'effects', 'extent', 'labels', 'pieces', 'planes', 'restroom_doors', 'slab', 'walkers', 'walls'];
 const LABEL_ORDER = ['name', 'status', 'chip', 'facts', 'bubble'];
 const FACT_KINDS = ['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age'];
+
+/**
+ * The kit's couch measured off its file, in the file's units: its box, and its seat — the up-facing level of most area,
+ * its top `y` and its extent across (`left`, `right`, the arms' inner faces) and in depth (`back`, `front`, `+z` the
+ * front) — or the defects that keep it from being a couch the world can seat interns on and lengthen.
+ */
+function measureCouch(file) {
+    const b = readFileSync(join(KIT, file));
+    const jsonLength = b.readUInt32LE(12);
+    const gltf = JSON.parse(b.subarray(20, 20 + jsonLength).toString('utf8'));
+    const bin = 20 + jsonLength + 8;
+    const defects = [];
+    const read = (index) => {
+        const a = gltf.accessors[index];
+        const view = gltf.bufferViews[a.bufferView];
+        const [bytes, get] = { 5126: [4, 'readFloatLE'], 5123: [2, 'readUInt16LE'], 5125: [4, 'readUInt32LE'] }[a.componentType];
+        const n = { VEC3: 3, SCALAR: 1 }[a.type];
+        const stride = view.byteStride ?? bytes * n;
+        const start = bin + (view.byteOffset ?? 0) + (a.byteOffset ?? 0);
+
+        return Array.from({ length: a.count }, (_, i) => Array.from({ length: n }, (__, k) => b[get](start + i * stride + k * bytes)));
+    };
+    const identity = (node) => (node.matrix === undefined) && [0, 0, 0].every((v, k) => (node.translation?.[k] ?? 0) === v)
+        && [0, 0, 0, 1].every((v, k) => (node.rotation?.[k] ?? v) === v) && [1, 1, 1].every((v, k) => (node.scale?.[k] ?? 1) === v);
+
+    if (!gltf.nodes.every(identity)) {
+        defects.push(`${file} places a mesh by a transform this measure does not read`);
+    }
+
+    const points = [];
+    const ups = new Map();
+
+    for (const mesh of gltf.meshes) {
+        for (const p of mesh.primitives) {
+            const P = read(p.attributes.POSITION);
+            const I = read(p.indices).map(([v]) => v);
+
+            points.push(...P);
+
+            for (let t = 0; t < I.length; t += 3) {
+                const [a, c, e] = [P[I[t]], P[I[t + 1]], P[I[t + 2]]];
+                const u = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+                const v = [e[0] - a[0], e[1] - a[1], e[2] - a[2]];
+                const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+                const area = Math.hypot(...n);
+
+                if (area > 0 && n[1] / area > 1 - EPS) {
+                    const level = ups.get(a[1].toFixed(6)) ?? { y: a[1], area: 0, tris: [] };
+
+                    level.area += area / 2;
+                    level.tris.push([a, c, e]);
+                    ups.set(a[1].toFixed(6), level);
+                }
+            }
+        }
+    }
+
+    const span = (k) => [Math.min(...points.map((q) => q[k])), Math.max(...points.map((q) => q[k]))];
+    const [x, y, z] = [span(0), span(1), span(2)];
+    const top = [...ups.values()].sort((a, c) => c.area - a.area)[0];
+    const at = (k, f) => f(...top.tris.flat().map((q) => q[k]));
+    const seat = { y: top.y, left: at(0, Math.min), right: at(0, Math.max), back: at(2, Math.min), front: at(2, Math.max) };
+    const armL = seat.left - x[0];
+    const armR = x[1] - seat.right;
+    const higher = [...ups.values()].filter((l) => l.y > seat.y).flatMap((l) => l.tris.flat());
+
+    if (!(higher.some((q) => q[0] <= seat.left + EPS) && higher.some((q) => q[0] >= seat.right - EPS)) || !(armL > 0 && armR > 0)) {
+        defects.push(`${file} has no arm standing above its seat at each end`);
+    }
+
+    if (points.some((q) => q[0] > seat.left + armL + EPS && q[0] < seat.right - armR - EPS)) {
+        defects.push(`${file} has a vertex between its arms' thicknesses, so lengthening it between its arms would stretch it`);
+    }
+
+    return { box: { x, y, z }, seat, defects };
+}
+
+const SOFA = measureCouch(FILES.sideTable);
+
+legs.seating.push(...SOFA.defects);
+
+// The world's record of the couch is the file's measure (float32 in the file, decimals in the record: within EPS).
+{
+    const { box, seat } = SOFA;
+    const want = { w: box.x[1] - box.x[0], h: box.y[1] - box.y[0], d: box.z[1] - box.z[0], y: seat.y - box.y[0], left: seat.left - box.x[0], right: seat.right - box.x[0], back: seat.front - seat.back };
+    const got = { w: W.COUCH.w, h: W.COUCH.h, d: W.COUCH.d, y: W.COUCH.seat.y, left: W.COUCH.seat.left, right: W.COUCH.seat.right, back: W.COUCH.seat.back };
+
+    for (const k of Object.keys(want)) {
+        if (!near(got[k], want[k])) {
+            legs.seating.push(`the world's COUCH records ${k} ${got[k]}, ${FILES.sideTable} measures ${want[k]}`);
+        }
+    }
+
+    if (!(seat.front === box.z[1])) {
+        legs.seating.push(`${FILES.sideTable}'s seat does not reach its front (+z), so its depth is not measured back from it`);
+    }
+}
 
 for (const { run, i, scene } of scenes) {
     const at = `[${run} #${i}]`;
@@ -107,8 +220,8 @@ for (const { run, i, scene } of scenes) {
 
         // The desk's furniture (plan § 3.1's `parts`): each present exactly where the scene draws its art element, at
         // that element's centre across — the chair behind the slab where its sitter sits, the monitor and the props over
-        // the slab, the side table at its element's foot.
-        const PARTS = { chair: 'chair', monitor: 'monitor-frame', props: 'desk-props', sideTable: 'side-table' };
+        // the slab (the side table's couches are the seating's, below).
+        const PARTS = { chair: 'chair', monitor: 'monitor-frame', props: 'desk-props' };
 
         for (const [name, kind] of Object.entries(PARTS)) {
             const [e] = d.elements.filter((x) => x.kind === kind);
@@ -124,7 +237,7 @@ for (const { run, i, scene } of scenes) {
             }
 
             printed.parts++;
-            const depth = { chair: Z(plan.y - plan.h / 2), monitor: Z(plan.y + plan.h / 2), props: Z(plan.y + plan.h / 2), sideTable: Z(e.y + e.h) }[name];
+            const depth = { chair: Z(plan.y - plan.h / 2), monitor: Z(plan.y + plan.h / 2), props: Z(plan.y + plan.h / 2) }[name];
 
             if (!same(p.at, X(e.x + e.w / 2), depth) || !near(p.w, e.w / W.UNIT) || !near(p.h, e.h / W.UNIT)) {
                 legs.parts.push(`${at} ${d.key}'s ${name} stands at ${JSON.stringify(p.at)} ${p.w} × ${p.h}, not where and as its ${kind} is drawn`);
@@ -132,6 +245,80 @@ for (const { run, i, scene } of scenes) {
 
             if (name === 'chair' && w.sitter !== null && (!near(p.at.z, w.sitter.at.z) || !near(w.sitter.h, d.elements.find((x) => x.kind === 'character').h / W.UNIT))) {
                 legs.parts.push(`${at} ${d.key}'s chair is at z ${p.at.z}, its sitter at ${w.sitter.at.z} and ${w.sitter.h} tall — not its character's height`);
+            }
+        }
+
+        // ── the seating: a couch a row of the side table's seats, every intern on a seat between its arms ──
+        const [table] = d.elements.filter((x) => x.kind === 'side-table');
+        const couches = (w.parts.sideTable ?? []).map((c) => {
+            const s = c.h / (SOFA.box.y[1] - SOFA.box.y[0]);
+            const depth = c.d / (SOFA.box.z[1] - SOFA.box.z[0]);
+            const front = c.at.z + c.d / 2;
+
+            return {
+                c,
+                s,
+                y: c.at.y + s * (SOFA.seat.y - SOFA.box.y[0]),
+                left: c.at.x - c.w / 2 + s * (SOFA.seat.left - SOFA.box.x[0]),
+                right: c.at.x + c.w / 2 - s * (SOFA.box.x[1] - SOFA.seat.right),
+                back: front - depth * (SOFA.seat.front - SOFA.seat.back),
+                front,
+            };
+        });
+        // Each row's footprint, from the side table's seats (a row's foot line is a seat's foot), lifted into the world.
+        const footprints = table === undefined ? [] : [...new Set(table.seat_at.map((x) => x.dy))].map((dy) => {
+            const foot = table.y + dy + table.seat.h;
+            const r = couchFootprint(table.seat_at.filter((x) => x.dy === dy).map((x) => ({ x: table.x + x.dx, w: table.seat.w, foot })));
+
+            return { left: X(r.x), right: X(r.x + r.w), back: Z(r.y), front: Z(r.y + r.h) };
+        });
+
+        if ((w.parts.sideTable === null) !== (table === undefined)) {
+            legs.parts.push(`${at} ${d.key} has ${w.parts.sideTable === null ? 'no' : 'a'} couch where the scene draws ${table === undefined ? 'no' : 'a'} side table`);
+        } else if (table !== undefined && couches.length !== new Set(table.seat_at.map((x) => x.dy)).size) {
+            legs.seating.push(`${at} ${d.key} stands ${couches.length} couches over its side table's ${new Set(table.seat_at.map((x) => x.dy)).size} rows of seats`);
+        }
+
+        for (const k of couches) {
+            printed.couches++;
+
+            const x = [k.c.at.x - k.c.w / 2, k.c.at.x + k.c.w / 2];
+            const z = [k.c.at.z - k.c.d / 2, k.c.at.z + k.c.d / 2];
+            const plan = footprints.find((f) => near(f.front, z[1]));
+
+            if (!near(k.c.at.y, 0) || !near(k.c.d, COUCH_FOOTPRINT.depth / W.UNIT)) {
+                legs.seating.push(`${at} ${d.key}'s couch at ${JSON.stringify(k.c.at)} is ${k.c.w} × ${k.c.h} × ${k.c.d} — not on the floor, as deep as the layout's footprint`);
+            } else if (plan === undefined || !near(plan.back, z[0]) || x[0] < plan.left - EPS || x[1] > plan.right + EPS) {
+                legs.seating.push(`${at} ${d.key}'s couch (x ${x[0]}…${x[1]}, z ${z[0]}…${z[1]}) is not its row's footprint in depth, or reaches past it across: ${JSON.stringify(plan ?? null)}`);
+            }
+
+            if (x[0] < w.slab.right - EPS && x[1] > w.slab.left + EPS && z[0] < w.slab.front - EPS && z[1] > w.slab.back + EPS) {
+                legs.seating.push(`${at} ${d.key}'s couch (x ${x[0]}…${x[1]}, z ${z[0]}…${z[1]}) stands in its desk (x ${w.slab.left}…${w.slab.right}, z ${w.slab.back}…${w.slab.front})`);
+            }
+        }
+
+        printed.seated[w.interns.length] = (printed.seated[w.interns.length] ?? 0) + 1;
+
+        for (const n of w.interns) {
+            // the intern's frame is `STOOL_FRAME` across, centred on its stool (`internOverdraw()`)
+            const half = STOOL_FRAME / 2 / W.UNIT;
+
+            if (table === undefined) {
+                if (!near(n.at.y, 0)) {
+                    legs.seating.push(`${at} ${n.key} stands ${n.at.y} up at a desk with no couch, not on the floor`);
+                }
+
+                continue;
+            }
+
+            const k = couches.find((c) => n.at.z >= c.back - EPS && n.at.z <= c.front + EPS && n.at.x >= c.left - EPS && n.at.x <= c.right + EPS);
+
+            if (k === undefined) {
+                legs.seating.push(`${at} ${n.key}'s foot (${n.at.x}, ${n.at.z}) is on no couch's seat`);
+            } else if (Math.abs(n.at.y - k.y) > EPS) {
+                legs.seating.push(`${at} ${n.key} stands ${n.at.y} up, its couch's seat is ${k.y} — it is drawn ${n.at.y < k.y ? 'inside' : 'over'} the couch`);
+            } else if (n.at.x - half - k.left < W.COUCH_MARGIN - EPS || k.right - (n.at.x + half) < W.COUCH_MARGIN - EPS) {
+                legs.seating.push(`${at} ${n.key}'s frame (${n.at.x - half}…${n.at.x + half}) is not ${W.COUCH_MARGIN} inside its couch's arms (${k.left}…${k.right})`);
             }
         }
 
@@ -147,7 +334,7 @@ for (const { run, i, scene } of scenes) {
 
             printed.interns++;
 
-            if (intern !== undefined && (!intern.chibi || !same(intern.at, X(s.x + s.w / 2), Z(s.y + s.h)) || !near(intern.h, s.h / W.UNIT) || intern.laptop !== (s.activity === 'working'))) {
+            if (intern !== undefined && (!intern.chibi || !same(intern.at, X(s.x + s.w / 2), Z(s.y + s.h), intern.at.y) || !near(intern.h, s.h / W.UNIT) || intern.laptop !== (s.activity === 'working'))) {
                 legs.interns.push(`${at} ${s.key} is not a chibi at its stool's foot, its stool's height, with its laptop as its activity says`);
             }
         });
@@ -300,7 +487,7 @@ for (const { run, i, scene } of scenes) {
 
             printed.sampled++;
 
-            if (!same(got, X(p.x), Z(p.y))) {
+            if (!same(got, X(p.x), Z(p.y), got.step ? got.y : 0)) {
                 legs.walkers.push(`${at} ${w.key} at ${Math.round(t)} ms stands at ${JSON.stringify(got)}, not the route's point ${p.x},${p.y} lifted`);
             } else if (Math.abs(got.x) > Wd / 2 + EPS || Math.abs(got.z) > D / 2 + EPS) {
                 legs.walkers.push(`${at} ${w.key} at ${Math.round(t)} ms stands outside the floor`);
@@ -310,6 +497,52 @@ for (const { run, i, scene } of scenes) {
 
             if (cell !== undefined) {
                 legs.lattice.push(`${at} ${w.key} (${w.animation_id}) at ${Math.round(t)} ms stands at ${p.x},${p.y}, inside ${cell.what}'s cell at ${cell.x},${cell.y}`);
+            }
+        }
+
+        // ── the steps: an intern rises onto its seat as it steps back and comes down as it steps off ──
+        const desk = scene.desks.find((x) => x.key === keyOf(w.effect));
+        const foot = w.chibi ? scene.slot_feet?.[keyOf(w.effect)]?.[w.effect.slot] ?? null : null;
+
+        if (foot === null || desk === undefined) {
+            return;
+        }
+
+        const seatY = desk.elements.some((e) => e.kind === 'side-table') ? W.COUCH_SEAT_Y : 0;
+        const atFoot = (q) => near(q.x, foot.x) && near(q.y, foot.y);
+        const I = w.effect.frame_interval_ms;
+
+        for (const leg of w.effect.legs.filter((l) => l.kind === 'walk' && (atFoot(l.points[0]) || atFoot(l.points[l.points.length - 1])))) {
+            const SAMPLES = 2000;
+            const samples = Array.from({ length: SAMPLES + 1 }, (_, k) => {
+                const t = (leg.start + (leg.frames * k) / SAMPLES) * I;
+
+                return { p: pointAt(w.effect, t), got: W.walkerAt(world.slab, w, t) };
+            });
+            // Ordered from the far end toward the foot, so the height may only rise.
+            const toward = atFoot(leg.points[0]) ? samples.reverse() : samples;
+            const far = toward[0];
+            const end = toward[toward.length - 1];
+
+            printed.steps++;
+            printed.stepSamples += toward.length;
+
+            if (!near(far.got.y, 0)) {
+                legs.steps.push(`${at} ${w.key}'s walk at its far end (${far.p.x},${far.p.y}) stands ${far.got.y} up, not on the floor`);
+            }
+
+            if (!atFoot(end.p) || !near(end.got.y, seatY)) {
+                legs.steps.push(`${at} ${w.key} at its stool's foot stands ${end.got.y} up — its seat is ${seatY} — so it pops onto or off its couch`);
+            }
+
+            for (let k = 1; k < toward.length; k++) {
+                const dy = toward[k].got.y - toward[k - 1].got.y;
+                const plan = Math.hypot(toward[k].p.x - toward[k - 1].p.x, toward[k].p.y - toward[k - 1].p.y);
+
+                if (dy < -EPS || dy > (seatY * plan) / COUCH_FOOTPRINT.front + EPS) {
+                    legs.steps.push(`${at} ${w.key}'s height moves ${dy} over ${plan} px of its step toward its seat (at ${toward[k].p.x},${toward[k].p.y}) — more than the seat's ${seatY} over the couch's front ${COUCH_FOOTPRINT.front} px allows, or the wrong way`);
+                    break;
+                }
             }
         }
     });
@@ -451,6 +684,11 @@ if (printed.desks === 0 || printed.parts === 0 || printed.interns === 0 || print
 
 if (printed.doorSpans === 0 || printed.restroomDoors === 0 || printed.birds === 0 || printed.rings === 0 || printed.deskRows === 0) {
     legs.frame.push(`CONTROL: the scenes hold no door span, restroom door, bird, ring or desk row to read — ${JSON.stringify(printed)}`);
+}
+
+// The seating read at the fewest and the most interns a desk seats: one, and the cap.
+if (printed.couches === 0 || !(printed.seated[1] > 0) || !(printed.seated[STOOL_CAP] > 0)) {
+    legs.seating.push(`CONTROL: the scenes hold no couch, or no desk of one intern, or none at the cap of ${STOOL_CAP} — ${JSON.stringify(printed.seated)}`);
 }
 
 // Every walking run handed walkers in flight: a run whose scenes carried none measured no walk.

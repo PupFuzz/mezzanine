@@ -7,8 +7,9 @@
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ ONE INSTANCED MESH PER (PRIMITIVE, MATERIAL) PAIR — § 6's furniture term: a kit file is loaded once and each of its
  * primitives is one `InstancedMesh` holding every placement of its kind on the floor; a first-party piece is one merged
- * geometry of its parts per kind and drawn size, instanced the same way. So the floor's furniture costs a draw call per
- * primitive of each kind it places, whatever the number of placements.
+ * geometry of its parts per kind and drawn size, instanced the same way; the side table's couch is its file lengthened
+ * once per couch length, instanced the same way (`shapesOf()`). So the floor's furniture costs a draw call per primitive
+ * of each kind it places — the couch's per length it stands — whatever the number of placements.
  *
  * ⛔ THE KIT IS RECOLOURED BY REPLACING ITS MATERIALS, NEVER BY TINTING THEM. Its files declare `KHR_materials_unlit`,
  * so `GLTFLoader` builds a `MeshBasicMaterial` for each — unshaded. Every primitive is drawn in a `MeshToonMaterial` of
@@ -18,7 +19,9 @@
  * ⛔ EACH PIECE STANDS WHERE THE WORLD PUTS IT AND AS BIG AS ITS 2-D PICTURE: a kit model is fitted to the drawn width
  * across and the drawn height up (its depth follows its width, so it keeps its plan), its foot on the floor and its
  * front toward `+z` — the side the 2-D floor draws; a desk is fitted to its slab, its drawers toward its sitter; a monitor
- * faces its sitter (plan § 3.4, the operator's Q4 answer).
+ * faces its sitter (plan § 3.4, the operator's Q4 answer); a couch is fitted to the box the world lays it in, at one
+ * scale up and across, as deep as that box (its row's footprint), lengthened between its arms (`lengthened()`), so its
+ * seat is where the world seats its interns.
  *
  * ⛔ IT DECIDES NOTHING ABOUT WHAT STANDS WHERE: `rebuild(world)` places what the world carries, and a file that has not
  * answered yet draws nothing until it does — `ready()` is called then, so the page draws the floor again (plan § 3.5's
@@ -39,6 +42,7 @@ import {
 import { mergeGeometries } from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { partGeometry } from './part-geometry.js';
+import { COUCH } from '../floor/floor-world.js';
 
 /** Where the kit's files are served — the asset route (`FloorAssets::SERVED`'s `.glb`). */
 export const KIT = '/art/floor/models/kenney-furniture-kit/';
@@ -102,6 +106,32 @@ function fitted(box, { at, w, h, d = null, turn = 0 }) {
     const place = new Matrix4().compose(new Vector3(at.x, at.y, at.z), new Quaternion().setFromAxisAngle(Y, turn), new Vector3(sx, h / size.y, sz));
 
     return place.multiply(centre);
+}
+
+/**
+ * The couch's file lengthened by `stretch` file units between its arms: every vertex right of the middle of its seat
+ * moves out by that much — the whole right arm, and the seat's and the back's right ends — so the arms keep their
+ * thickness at every length (every vertex stands at one arm or the other: `COUCH`, re-measured by the world probe).
+ */
+function lengthened(model, stretch) {
+    const middle = model.box.min.x + (COUCH.seat.left + COUCH.seat.right) / 2;
+    const primitives = model.primitives.map(({ geometry, material }) => {
+        const out = geometry.clone();
+        const position = out.getAttribute('position');
+
+        for (let i = 0; i < position.count; i++) {
+            if (position.getX(i) > middle) {
+                position.setX(i, position.getX(i) + stretch);
+            }
+        }
+
+        return { geometry: out, material };
+    });
+    const box = model.box.clone();
+
+    box.max.x += stretch;
+
+    return { primitives, box };
 }
 
 /** A part list merged into one geometry, each part's colour on its vertices. */
@@ -231,12 +261,42 @@ export function createFurniture(group, { map, theme, palette, piece3d, ready, fe
                 add('deskProps', { at: { ...parts.props.at, x: slab.left + parts.props.w * 0.35, y: slab.top }, w: parts.props.w * 0.4, h: parts.props.h * 0.8 });
             }
 
-            if (parts.sideTable !== null) {
-                add('sideTable', { at: parts.sideTable.at, w: parts.sideTable.w, h: parts.sideTable.h * 0.6, d: parts.sideTable.h * 0.5 });
+            // A couch a row of the side table's seats, each as long as the world lays it.
+            for (const couch of parts.sideTable ?? []) {
+                add('sideTable', { at: couch.at, w: couch.w, h: couch.h, d: couch.d });
             }
         }
 
         return by;
+    };
+
+    /**
+     * The model each placement of a kind is fitted from, with the placements it serves: the file as loaded, or — the side
+     * table's couch — the file lengthened to each couch's length at its scale (`h` over the file's height), one shape a
+     * length, its geometries disposed with the rebuild's.
+     */
+    const shapesOf = (kind, model, placements) => {
+        if (kind !== 'sideTable') {
+            return [[model, placements]];
+        }
+
+        const size = model.box.getSize(new Vector3());
+        const lengths = new Map();
+
+        for (const q of placements) {
+            const stretch = q.w / (q.h / size.y) - size.x;
+            const key = stretch.toFixed(6);
+
+            lengths.set(key, { stretch, same: [...(lengths.get(key)?.same ?? []), q] });
+        }
+
+        return [...lengths.values()].map(({ stretch, same }) => {
+            const shape = lengthened(model, stretch);
+
+            built.push(...shape.primitives.map((p) => p.geometry));
+
+            return [shape, same];
+        });
     };
 
     const clear = () => {
@@ -274,8 +334,10 @@ export function createFurniture(group, { map, theme, palette, piece3d, ready, fe
                 const model = models.get(file);
 
                 if (model !== undefined) {
-                    for (const p of model.primitives) {
-                        instanced(p.geometry, materialOf(kind, p.material), placements.map((q) => fitted(model.box, q)));
+                    for (const [shape, same] of shapesOf(kind, model, placements)) {
+                        for (const p of shape.primitives) {
+                            instanced(p.geometry, materialOf(kind, p.material), same.map((q) => fitted(shape.box, q)));
+                        }
                     }
                 }
             } else if (map.PIECE3D.includes(kind) && piece3d !== null) {

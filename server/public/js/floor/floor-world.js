@@ -35,7 +35,7 @@
  * `tests/Feature/Floor/floor-world-probe.mjs` drives it over the harness's scenes (`TheFloorIsTheScenesThirdRendererTest`).
  */
 
-import { LINE, union } from './desk-layout.js';
+import { COUCH_FOOTPRINT, LINE, STOOL_H, STOOL_PITCH, STOOL_W, couchFootprint, internOverdraw, union } from './desk-layout.js';
 import { deskSlab, monitorFrame } from './desk-geometry.js';
 import { DESK_H, MONITOR_TOP, PARTITION_H, ROOM_H, SCALE } from './door-view.js';
 import { pointAt } from './route.js';
@@ -51,6 +51,74 @@ export const ROOM_H_U = ROOM_H / SCALE / UNIT;
 export const PARTITION_H_U = PARTITION_H / SCALE / UNIT;
 export const DESK_H_U = DESK_H / SCALE / UNIT;
 export const MONITOR_TOP_U = MONITOR_TOP / SCALE / UNIT;
+
+/**
+ * THE COUCH, AS MEASURED OFF ITS FILE — the kit's sofa (the kind map's `sideTable` file), in the file's own units: its
+ * box across (`w`), up (`h`) and deep (`d`), its seat cushion's top (`seat.y`), the cushion's extent across from its
+ * left (`seat.left`, `seat.right` — at the arms' inner faces, inside their bevel) and its depth back from its front
+ * (`seat.back`; the front is `+z`).
+ * `floor-world-probe.mjs` re-measures each off the file the kind map names and reds when one drifts from this record.
+ * Every vertex of the file stands at one arm or the other, so the couch lengthens by moving its right arm out with the
+ * arm keeping its thickness (`floor3d/furniture.js`), and its seat spans the arms' inner faces at every length. Its depth
+ * is not the file's: the couch is as deep as the layout's footprint (`desk-layout.js`'s `COUCH_FOOTPRINT`), so an aisle
+ * is left in front of each row (card#13033).
+ */
+export const COUCH = Object.freeze({ w: 0.98, h: 0.46, d: 0.41, seat: Object.freeze({ y: 0.23, left: 0.0901714, right: 0.8898285, back: 0.3198286 }) });
+
+/**
+ * The couch's scale, units per file unit, up and across: its back rises half an intern above its seat — to under its
+ * interns' chins, as decision 86's couch does (`FLOOR.md` § 10.6), an intern's head being at least the top half of its
+ * height (plan § 3.3's chibi) — so the seat's height and the arms' thickness follow from it. Its depth is the footprint's.
+ */
+export const COUCH_SCALE = (STOOL_H / UNIT / 2) / (COUCH.h - COUCH.seat.y);
+
+/** An intern's seat height on its couch, in units: the file's seat at the couch's scale. */
+export const COUCH_SEAT_Y = COUCH_SCALE * COUCH.seat.y;
+
+/**
+ * How far each arm's inner face stands off the nearest intern's frame (`internOverdraw()`, which holds every chibi's
+ * ink), in units: half the gap the 2-D floor leaves between two neighbouring seats.
+ */
+export const COUCH_MARGIN = (STOOL_PITCH - STOOL_W) / 2 / UNIT;
+
+/**
+ * A desk's couches (decision 86: a couch a row of its side table's seats, as long as that row's places), each as the
+ * box the furniture fits the file's lengthened box to — `at` its foot's centre, `w`, `h`, `d`, in world units. The seats
+ * are the side table's own (`seat_at`, offsets inside the table; a row's foot line is a seat's foot), each row's arms'
+ * inner faces (`left`, `right`) `COUCH_MARGIN` outside its first and last interns' frames, and its depth and front edge
+ * the row's footprint's (`couchFootprint()`), so each intern's foot is on its seat and the aisle in front stays clear.
+ *
+ * @param {object} e the desk's `side-table` element
+ * @param {function(object): object} at the scene-px-to-world map of the floor's slab
+ */
+function couchesOf(e, at) {
+    const rows = new Map();
+
+    for (const s of e.seat_at) {
+        const foot = e.y + s.dy + e.seat.h;
+
+        rows.set(foot, [...(rows.get(foot) ?? []), e.x + s.dx]);
+    }
+
+    return [...rows].map(([foot, xs]) => {
+        const first = internOverdraw({ x: Math.min(...xs), y: 0, w: e.seat.w, h: 0 });
+        const last = internOverdraw({ x: Math.max(...xs), y: 0, w: e.seat.w, h: 0 });
+        const plan = couchFootprint(xs.map((x) => ({ x, w: e.seat.w, foot })));
+        const p = at({ x: first.x, y: foot });
+        const left = p.x - COUCH_MARGIN;
+        const right = p.x + (last.x + last.w - first.x) / UNIT + COUCH_MARGIN;
+        const front = at({ x: first.x, y: plan.y + plan.h }).z;
+        const boxLeft = left - COUCH_SCALE * COUCH.seat.left;
+        const boxRight = right + COUCH_SCALE * (COUCH.w - COUCH.seat.right);
+
+        return Object.freeze({
+            at: Object.freeze({ x: (boxLeft + boxRight) / 2, y: p.y, z: front - plan.h / UNIT / 2 }),
+            w: boxRight - boxLeft,
+            h: COUCH_SCALE * COUCH.h,
+            d: plan.h / UNIT,
+        });
+    });
+}
 
 /** How far in front of the back wall's face a bird at the birdhouse stands, in units — clear of the band's picture. */
 const BIRD_DEPTH = 0.08;
@@ -117,13 +185,27 @@ export function anchorPoint(slab, anchor) {
 }
 
 /**
- * Where a walker is `tMs` into its effect — `route.js`'s `pointAt()` lifted onto the slab — with where it is drawn
- * (`floor`, `cab` or `inside`), or `null` for an effect with no legs.
+ * WHERE A WALKER IS `tMs` into its effect — `route.js`'s `pointAt()` lifted onto the slab — with where it is drawn
+ * (`floor`, `cab` or `inside`), or `null` for an effect with no legs. An intern on its seat's STEP (card#13033: the
+ * router's straight step between its stool's foot and its front cell, `route()`) is `step` — it faces the front as it
+ * gets on or off — and is lifted as it crosses its couch: from the floor at the footprint's front edge to its seat's
+ * height at its foot, in proportion to the way between, so it rises onto the cushion as it steps back and comes down
+ * as it steps off, and stands at the seat's height where it is then drawn seated.
  */
 export function walkerAt(slab, walker, tMs) {
     const p = pointAt(walker.effect, tMs);
 
-    return p === null ? null : Object.freeze({ ...worldOf(slab, p), where: p.where });
+    if (p === null) {
+        return null;
+    }
+
+    const w = worldOf(slab, p);
+    const seat = walker.seat;
+    // The step runs from the foot to its front cell's centre, under a lattice cell past the couch's front edge.
+    const step = seat !== null && Math.abs(p.x - seat.foot.x) < 1e-6 && p.y > seat.foot.y - 1e-6 && p.y <= seat.front + COUCH_FOOTPRINT.depth;
+    const lift = step ? seat.lift * Math.min(1, Math.max(0, (seat.front - p.y) / (seat.front - seat.foot.y))) : 0;
+
+    return Object.freeze({ ...w, y: w.y + lift, where: p.where, step });
 }
 
 /** The key a walker is drawn under: an intern's (A10), a break's walker's (A25, A26), or its seat's (A1, A2). */
@@ -220,6 +302,8 @@ export function floorWorld(scene) {
 
     const desks = [];
     const labels = [];
+    // Each desk's interns' seat height, by the desk's key — what an intern's step lifts it to (`walkerAt()`).
+    const lifts = new Map();
 
     for (const d of scene.desks) {
         const plan = deskSlab({ x: d.box.x, y: d.box.y + d.box.h });
@@ -238,6 +322,12 @@ export function floorWorld(scene) {
 
             return e === undefined ? null : Object.freeze({ at: at({ x: e.x + e.w / 2, y: y(e) }), w: e.w / UNIT, h: e.h / UNIT });
         };
+        const [sideTable] = of('side-table');
+        // An intern sits on its couch's seat; at a desk the scene draws without a side table (a placeholder's, § 9 F14)
+        // it stands on the floor, as the 2-D floor draws it.
+        const internLift = sideTable === undefined ? 0 : COUCH_SEAT_Y;
+
+        lifts.set(d.key, internLift);
 
         desks.push(Object.freeze({
             key: d.key,
@@ -248,12 +338,13 @@ export function floorWorld(scene) {
             lighting: d.lighting,
             slab: Object.freeze({ left: back.x, right: front.x, back: back.z, front: front.z, top: DESK_H_U, drawers: 'sitter' }),
             // The furniture the theme draws for the desk (plan § 3.1's `parts`), each where its 2-D element stands: the
-            // chair where its sitter sits, the monitor and the props on the slab, the side table at its foot.
+            // chair where its sitter sits, the monitor and the props on the slab; the side table a couch a row of its
+            // seats (`couchesOf()`).
             parts: Object.freeze({
                 chair: part('chair', () => sitterZ),
                 monitor: part('monitor-frame', () => plan.y + plan.h / 2),
                 props: part('desk-props', () => plan.y + plan.h / 2),
-                sideTable: part('side-table', (e) => e.y + e.h),
+                sideTable: sideTable === undefined ? null : Object.freeze(couchesOf(sideTable, at)),
             }),
             sitter: character === undefined ? null : Object.freeze({
                 key: d.key,
@@ -274,7 +365,7 @@ export function floorWorld(scene) {
                 laptop: e.activity === 'working',
                 lid: 'intern',
                 animation: e.animation,
-                at: at({ x: e.x + e.w / 2, y: e.y + e.h }),
+                at: Object.freeze({ ...at({ x: e.x + e.w / 2, y: e.y + e.h }), y: topOf(slab) + internLift }),
                 h: e.h / UNIT,
             }))),
             screen: monitor === undefined ? null : Object.freeze({
@@ -371,11 +462,18 @@ export function floorWorld(scene) {
         });
     });
 
+    // An intern walker's seat: its stool's foot, the plan depth of its couch's front edge, and the height it sits at.
+    const seatOf = (fx) => {
+        const foot = typeof fx.intern_key === 'string' ? scene.slot_feet[keyOf(fx)]?.[fx.slot] ?? null : null;
+
+        return foot === null ? null : Object.freeze({ foot, front: foot.y + COUCH_FOOTPRINT.front, lift: lifts.get(keyOf(fx)) });
+    };
     const walkers = scene.effects.filter((fx) => (fx.legs?.length ?? 0) > 0).map((fx) => Object.freeze({
         key: walkerKey(fx),
         animation_id: fx.animation_id,
         chibi: typeof fx.intern_key === 'string',
         species: fx.species ?? null,
+        seat: seatOf(fx),
         effect: fx,
     }));
 

@@ -35,7 +35,7 @@ import { floorTheme } from './floor-theme.js';
 import { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles, sceneryInput } from './map-tiles.js';
 import { deskSlabs, floorCell, wallBodies } from './floor-walls.js';
 import { tilesetUrl } from './tileset.js';
-import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, deskRects, fit, furnitureAsset, internKey, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
+import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, couchFootprints, deskRects, fit, furnitureAsset, internKey, internSolid, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
 import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, pointAt, polylineLength, route, spotsNear } from './route.js';
 import { perchPoint } from './bird.js';
@@ -1047,13 +1047,10 @@ function walkEffect(base, id, anchor, door, call, motion, character, box, walkin
  * ends, or `null` where no route exists. One reader for a seat's walk (`walkEffect()`) and its turn-round (`seatTurn()`).
  */
 function seatRoutes(walking, key, anchor) {
-    // A route's cell centres, bracketed by the walk's two ends.
-    const pointsOf = ({ cells }, a, b) => Object.freeze([a, ...cells.map((c) => walking.centre(c)), b].map((p) => Object.freeze({ x: p.x, y: p.y })));
-
     return (a, b) => {
         const r = walking.route(key, anchor, a, b);
 
-        return r === null ? null : { points: pointsOf(r, a, b), tier: r.tier };
+        return r === null ? null : { points: r.points, tier: r.tier };
     };
 }
 
@@ -1199,7 +1196,7 @@ function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {
                 extent,
                 cell,
                 obstacles,
-                desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character) })),
+                desks: desks.map((d) => ({ key: d.key, rects: [d.slot_rect, d.box].filter((r) => r !== null), seat: seatOf(d, character), interns: internsOf(d, character) })),
                 // The body the route keeps clear: the walker's drawn rect, the one its effect is drawn at (card#12442).
                 body,
             }));
@@ -1207,18 +1204,13 @@ function walkRouting({ key, extent, cell, obstacles, desks, draw, character }) {
 
         return grids.get(id);
     };
-    let last = null;
-
     return {
         key,
         route: (seat, anchor, from, to, body = walkerSize(character)) => {
             const g = built(body);
 
-            last = g;
-
             return g === null ? null : route(g, from, to, { key: seat, anchor });
         },
-        centre: (c) => cellCentre(last, c),
         inRoom: (seat) => (desksByKey.get(seat)?.slot_rect ?? null) !== null,
         // § 5.1 of card#12194's design: a deterministic per-event draw over the character's own key — the character
         // tree's ONE seeded draw (`resources/characters/seed.js`'s `draw()`, § 10.4) — uniform over `0 … WAIT_MAX_FRAMES`.
@@ -1811,7 +1803,7 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 return null;
             }
 
-            return { points: Object.freeze([from, ...r.cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y }))), tier: r.tier };
+            return { points: r.points, tier: r.tier };
         };
         let best = null;
 
@@ -2010,7 +2002,7 @@ function restroomDoor(doors, snack, walking, input, box) {
         const routed = (a, b) => {
             const r = walking.route(w.seat_key, w.anchor, a, b, body);
 
-            return r === null ? null : { points: Object.freeze([a, ...r.cells.map((c) => walking.centre(c)), b].map((q) => Object.freeze({ x: q.x, y: q.y }))), tier: r.tier };
+            return r === null ? null : { points: r.points, tier: r.tier };
         };
         let best = null;
 
@@ -2699,6 +2691,26 @@ function seatOf(desk, character) {
     });
 }
 
+/**
+ * A desk's INTERNS as the lattice reads them (walk note item 3, card#13033): each stool's foot — the anchor its intern's
+ * walks are routed to and from (`slotFoot()`) — with its row's couch footprint (`couchFootprints()`), and the furniture an
+ * intern keeps its feet off (`internSolid()`), in scene coordinates.
+ */
+export function internsOf(desk, character) {
+    const at = desk.box;
+    const box = { width: at.w, height: at.h };
+    const placed = (r) => Object.freeze({ x: at.x + r.x, y: at.y + r.y, w: r.w, h: r.h });
+    const couches = couchFootprints(box, character).map(placed);
+
+    return Object.freeze({
+        solid: Object.freeze(internSolid(box, character).map(placed)),
+        seats: Object.freeze(stoolSlots(box, character).map((s) => Object.freeze({
+            anchor: Object.freeze({ x: at.x + s.x + s.w / 2, y: at.y + s.y + s.h }),
+            couch: couches[s.row],
+        }))),
+    });
+}
+
 /** § 6.2's form for one row — its class, whether it loops, and § 6.4's rendering. */
 function form(animationId, reduce) {
     const row = ANIMATION_SET[animationId];
@@ -2823,9 +2835,7 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
             return null;
         }
 
-        const points = Object.freeze([from, ...r.cells.map((c) => walking.centre(c)), to].map((p) => Object.freeze({ x: p.x, y: p.y })));
-
-        return { points, length: polylineLength(points), tier: r.tier };
+        return { points: r.points, length: polylineLength(r.points), tier: r.tier };
     };
     const walk = (start, r) => walkLeg(start, r.points);
     const leg = (kind, start, frames, at, why = null) => Object.freeze({ kind, start, frames, at, ...(why === null ? {} : { why }) });

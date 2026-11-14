@@ -783,6 +783,70 @@ export function seatSolid(box, character) {
 }
 
 /**
+ * THE COUCH's FOOTPRINT ON THE FLOOR (§ 6.2's walk note item 3, card#13033) — the plan rect a row's couch stands on,
+ * which the router keeps every walker off and the 3-D floor fits its couch to (`floor-world.js`'s `couchesOf()`); the
+ * 2-D theme's couch is a picture standing on the same row's foot line (`stoolSlots()`). In px:
+ * - `depth`, the couch's depth in plan, chosen as the house theme's drawn couch is deep: it leaves an AISLE of
+ *   `STOOL_H + STOOL_ROW_GAP − depth` px between one row's couch and the next row's, which a back-row intern walks;
+ * - `front`, how far in front of its row's foot line the couch's front edge stands: the 3-D seat's depth at this depth
+ *   is the file's seat share of it, and an intern's foot (its stool's foot, the row's foot line) stands at about the
+ *   middle of it — `floor-world-probe.mjs`'s `seating` leg holds every foot on its seat;
+ * - `arm`, how far the couch reaches past its row's first and last stool rects: the 3-D couch's arms' outer faces —
+ *   `COUCH_MARGIN` outside the intern's frame (`internOverdraw()`), then the file's arm thickness at the couch's scale —
+ *   stand inside it, which the same leg holds.
+ */
+export const COUCH_FOOTPRINT = Object.freeze({ depth: 24, front: 9, arm: 18 });
+
+/**
+ * One row's couch footprint (`COUCH_FOOTPRINT`) from the stool rects of its places, in their frame: `{x, y, w, h}`, its
+ * front edge `y + h` — `COUCH_FOOTPRINT.front` in front of the row's foot line, the stools' bottom edge.
+ *
+ * @param {list<{x: number, w: number, foot: number}>} places each place's stool left edge, width and foot line
+ */
+export function couchFootprint(places) {
+    const { depth, front, arm } = COUCH_FOOTPRINT;
+    const foot = places[0].foot;
+    const left = Math.min(...places.map((p) => p.x)) - arm;
+    const right = Math.max(...places.map((p) => p.x + p.w)) + arm;
+
+    return Object.freeze({ x: left, y: foot + front - depth, w: right - left, h: depth });
+}
+
+/**
+ * EVERY COUCH's FOOTPRINT AT A DESK (card#13033) — box-relative, one a row of `stoolSlots()` at the cap, whatever the
+ * desk seats now, so a walk is routed alike whichever stools are held. Read from the layout, never from what was drawn.
+ *
+ * @returns {list<{x: number, y: number, w: number, h: number}>} front row first
+ */
+export function couchFootprints(box, character) {
+    const rows = new Map();
+
+    for (const s of stoolSlots(box, character)) {
+        rows.set(s.row, [...(rows.get(s.row) ?? []), { x: s.x, w: s.w, foot: s.y + s.h }]);
+    }
+
+    return [...rows.keys()].sort((a, b) => a - b).map((row) => couchFootprint(rows.get(row)));
+}
+
+/**
+ * WHAT A DESK's INTERN KEEPS ITS FEET OFF (§ 6.2's walk note item 3, card#13033) — box-relative: every couch's footprint
+ * (`couchFootprints()`), its own included, and the art column's pieces — the character, its chair, the desk, the monitor
+ * and the props. The rest of its desk is open to it, so it walks the aisle in front of a row of couches and reaches its
+ * seat by the router's step from its front cell (`route.js`'s `route()`).
+ *
+ * @returns {list<{x: number, y: number, w: number, h: number}>}
+ */
+export function internSolid(box, character) {
+    const R = deskRects(box, character);
+
+    return [...couchFootprints(box, character), ...['character', 'chair', 'desk-sprite', 'monitor-frame', 'desk-props'].map((k) => {
+        const { x, y, w, h } = R[k];
+
+        return Object.freeze({ x, y, w, h });
+    })];
+}
+
+/**
  * THE ONE DEFINITION OF N (§ 5.1's *the glance set*, § 12's flag row): the number of unusual items
  * whose raw form is not drawn on the desk = every line of the model's `unrecognised` list
  * (`field: value` — `render_state`, `link_state`, `activity_state`, `unknown_reason`,
