@@ -8,15 +8,16 @@
  *                registry's kinds) as the scene reads it: the lattice's cell and extent, the threshold, the walker's
  *                drawn body (`walkerSize()`), each desk's route and the clearance tier it was found at (card#12442),
  *                the furniture its seat keeps off (`solid`) and whether its route did (`furniture`, card#12513),
- *                every `wall` and standing tile's rect
- *                (resolved through `scene.js`'s `mapTiles()` and `tileset.js`'s reader — the obstacles H1 and H15 hold
- *                a path to), and EVERY `desks` object routed to the threshold (H17), with the cost of the lattice and
+ *                the walkable model's obstacles — `map-tiles.js`'s `obstaclesOf()`, every `wall` and standing tile's
+ *                rect but a door set into a side wall's (card#13033), resolved through `scene.js`'s `mapTiles()` and
+ *                `tileset.js`'s reader — the obstacles H1 and H15 hold a path to — and EVERY `desks` object routed to the threshold (H17), with the cost of the lattice and
  *                every route together, measured `repeat` times (H9). `walls` paints extra `wall` tiles into a COPY of
  *                the map first (`[[col, row], …]`, H17's plant).
  *   `walks`    — card#12846: every walk a map routes, both ways, each on its walker's own body's lattice — every seat's
  *                to the elevator's threshold, the tall snack table's spot 0 and the restroom door's threshold, and every
  *                intern stool's to the threshold, the low table's spot 0 and the door's — with its tier, a seat's
- *                `furniture` and its drawn polyline; the map at `map`, `walls` as `shipped`'s.
+ *                `furniture` and its drawn polyline, and the door's `facing`; the map at `map`, mirrored in x where `mirror`
+ *                is set (card#13033), `walls` as `shipped`'s.
  *   `points`   — `pointAt(effect, t)` for each `{ effect, times }` (H8, H15, H20).
  *   `stack`    — `floorStackOrder(desks, walkers)` for each `{ desks, walkers }` (H11, H16, H18).
  *   `draw`     — `resources/characters/seed.js`'s `draw(key, field)` for each `[key, field]` — the seeded draw H4 re-derives
@@ -25,7 +26,10 @@
  *                days and over the window a page at each given instant reads (AT-D3-32).
  *   `restroom` / `restroom-chain` — card#12786: the restroom's constants and the waiting spots from a given threshold
  *                (card#12841: none in a given `lane`, as the scene calls it); each key's restroom chain and snack chain
- *                over whole days (AT-D3-33, AT-D3-35).
+ *                over whole days (AT-D3-33, AT-D3-35). card#13033: each door placed, with its geometry (`facing`, `face`,
+ *                `draw`) and its threshold by the test's restatement of § 12's rule, and the obstacle list's length — the
+ *                map at `map` (a repo path), mirrored in x where `mirror` is set, the door's tile carrying
+ *                `door_properties` where given.
  *   `spots`    — card#12793: the elevator lane and the elevator queue's spots on the shipped default with the slots
  *                `open` names left open, with the lane and without it, and the lattice they were searched on (AT-D3-34).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
@@ -51,7 +55,8 @@ const mod = async (p) => import(pathToFileURL(join(dir, '..', p)).href);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const input = JSON.parse(readFileSync(0, 'utf8'));
 
-const { floorStackOrder, lattice, pointAt, route, cellCentre, polylineLength } = await mod('floor/route.js');
+const routeModule = await mod('floor/route.js');
+const { floorStackOrder, lattice, pointAt, route, cellCentre, polylineLength } = routeModule;
 
 /** The answer, written whole: `process.exit()` straight after a write to a pipe can cut a long answer short. */
 const answer = (value) => {
@@ -81,14 +86,140 @@ const { FURNITURE_BOX } = await import(pathToFileURL(join(REPO, 'resources', 'fl
 const characters = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
 const CHARACTER = { w: characters.SCENE_W, h: characters.SCENE_H };
 const TSX = readFileSync(join(REPO, 'resources', 'floor', 'tiles', 'floor-plane.tsx'), 'utf8');
+const { obstaclesOf } = await mod('floor/map-tiles.js');
+const { deskSlabs, floorCell, restroomDoorGeometry, wallBodies } = await mod('floor/floor-walls.js');
+const STANDING = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
+
+/**
+ * card#13033 — a map document mirrored in x, every tile and every `desks` object, each at its own drawn width: the lounge
+ * floor turned so its restroom door is set into the LEFT wall, which no committed map has (`mirror: true`). A tile whose
+ * mirrored cell would leave the cell grid is refused rather than moved.
+ */
+const mirrored = (map) => {
+    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
+    const T = map.tilewidth;
+    const width = map.width * T;
+    const out = JSON.parse(JSON.stringify(map));
+
+    for (const l of out.layers) {
+        if (l.type === 'tilelayer') {
+            const data = new Array(l.data.length).fill(0);
+
+            l.data.forEach((gid, i) => {
+                if (gid === 0) {
+                    return;
+                }
+
+                const w = tileset.tile(gid - map.tilesets[0].firstgid)?.sw ?? T;
+                const x = width - (i % map.width) * T - w;
+
+                if (x % T !== 0) {
+                    throw new Error(`gid ${gid} mirrors off the cell grid`);
+                }
+
+                data[Math.floor(i / map.width) * map.width + x / T] = gid;
+            });
+            l.data = data;
+        } else {
+            for (const o of l.objects ?? []) {
+                o.x = width - o.x - o.width;
+            }
+        }
+    }
+
+    return out;
+};
+
+/** A map document at a repo-relative or absolute path, the shipped default where none is named, mirrored on request. */
+const loadMap = (path, mirror = false) => {
+    const map = JSON.parse(readFileSync(path === undefined || path === null ? join(REPO, 'resources', 'floor', 'default.tmj') : path.startsWith('/') ? path : join(REPO, path), 'utf8'));
+
+    return mirror ? mirrored(map) : map;
+};
+
+/**
+ * card#13033 — a map read as the scene reads it: its cells, its walls as BODIES (`floor-walls.js`'s `wallBodies()` over the
+ * map as one room at the origin), each restroom door's geometry from them (`restroomDoorGeometry()`) and the walkable
+ * model's obstacles (`map-tiles.js`'s `obstaclesOf()` — the rule itself, never a copy of it).
+ */
+const read = (map) => {
+    const grid = mapGrid(map);
+    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
+    const cells = mapTiles(map, { x: 0, y: 0 }, (url) => (url === tilesetUrl(map.tilesets[0].source) ? tileset : null), null);
+    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const g = { map, origin: { x: 0, y: 0 }, footprint: extent, room: true, seed: null };
+    const T = floorCell([g]);
+    const walls = wallBodies([g], () => cells, T, deskSlabs([g], T));
+    const geometryOf = (c) => restroomDoorGeometry(c, g, walls, T);
+
+    return { grid, extent, cells, geometryOf, obstacles: obstaclesOf(cells, STANDING, geometryOf) };
+};
+
+/**
+ * § 12's *Restroom threshold*, the TEST's restatement over the seat's lattice `g` (`open(c)`: the cell is open at `clear`
+ * for nobody's walk). A `back` door: under its centre, *Walker clearance*'s depth plus 1 px below its foot, snapped; else
+ * the nearest cell on that row open at `clear`, its centre within the door's width, ties to the left. A side door
+ * (card#13033): *Walker clearance*'s depth plus 1 px into the room from the wall face on the doorway's centre line, snapped;
+ * else the next cell on that row into the room, no deeper than one drawn body's height from the face, the search stopping
+ * at the first blocked cell whose centre lies farther than half the body plus the side margin from the face.
+ */
+const thresholdOn = (g, d, geometry, open) => {
+    const { CLEARANCE, cellAt } = routeModule;
+    const body = walkerSize(CHARACTER);
+
+    if (geometry.facing !== 'back') {
+        const inward = geometry.facing === 'right' ? -1 : 1;
+        const start = cellAt(g, { x: geometry.face + inward * (CLEARANCE.depth + 1), y: d.y + d.h - d.w / 2 });
+
+        for (let col = start?.[0]; start !== null && col >= 0 && col < g.cols; col += inward) {
+            const centre = cellCentre(g, [col, start[1]]);
+            const from = Math.abs(centre.x - geometry.face);
+
+            if (from > body.h) {
+                break;
+            }
+
+            if (open([col, start[1]])) {
+                return centre;
+            }
+
+            if (from > body.w / 2 + CLEARANCE.margin) {
+                break;
+            }
+        }
+
+        return null;
+    }
+
+    const under = cellAt(g, { x: d.x + d.w / 2, y: d.y + d.h + CLEARANCE.depth + 1 });
+
+    if (under === null) {
+        return null;
+    }
+
+    const mid = d.x + d.w / 2;
+    const row = [];
+
+    for (let col = 0; col < g.cols; col++) {
+        const centre = cellCentre(g, [col, under[1]]);
+
+        if (centre.x >= d.x && centre.x < d.x + d.w) {
+            row.push({ c: [col, under[1]], centre });
+        }
+    }
+
+    row.sort((a, b) => Math.abs(a.centre.x - mid) - Math.abs(b.centre.x - mid) || a.centre.x - b.centre.x);
+
+    return open(under) ? cellCentre(g, under) : row.find((r) => open(r.c))?.centre ?? null;
+};
 
 /**
  * A floor as the scene reads it — the map at `path` (the shipped default when absent), its tileset and the registry's
  * kinds, `walls` painted into a COPY of it first — for the `shipped` and `walks` modes: the grid, the threshold, every
  * `desks` object placed as the scene places it, every `wall` and standing tile's rect, and the lattice for one body.
  */
-const floorOf = (path, extraWalls = []) => {
-    const map = JSON.parse(readFileSync(path ?? join(REPO, 'resources', 'floor', 'default.tmj'), 'utf8'));
+const floorOf = (path, extraWalls = [], mirror = false) => {
+    const map = loadMap(path, mirror);
     const grid = mapGrid(map);
 
     if (extraWalls.length > 0) {
@@ -99,9 +230,8 @@ const floorOf = (path, extraWalls = []) => {
         }
     }
 
-    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
-    const standing = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
-    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const seen = read(map);
+    const extent = seen.extent;
     const door = threshold(backWall(backWallBand(extent), null));
     const box = FURNITURE_BOX;
     const desks = mapDesks(map).map((o) => {
@@ -119,10 +249,8 @@ const floorOf = (path, extraWalls = []) => {
             solid: seatSolid(box, CHARACTER).map((r) => ({ x: at.x + r.x, y: at.y + r.y, w: r.w, h: r.h })),
         };
     });
-    const tiles = () => mapTiles(map, { x: 0, y: 0 }, (url) => (url === tilesetUrl(map.tilesets[0].source) ? tileset : null), null);
-    const obstacles = () => tiles()
-        .filter((c) => c.kind === 'wall' || standing.includes(c.kind))
-        .map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h, kind: c.kind }));
+    const tiles = () => seen.cells;
+    const obstacles = () => seen.obstacles;
     const latticeFor = (body) => lattice({
         extent,
         cell: Math.min(grid.tilewidth, grid.tileheight),
@@ -131,7 +259,7 @@ const floorOf = (path, extraWalls = []) => {
         body,
     });
 
-    return { map, extent, door, box, desks, tiles, obstacles, latticeFor };
+    return { map, extent, door, box, desks, tiles, obstacles, latticeFor, geometryOf: seen.geometryOf };
 };
 
 if (input.mode === 'shipped') {
@@ -179,9 +307,9 @@ if (input.mode === 'shipped') {
 // polyline. `walls` as the `shipped` mode's.
 if (input.mode === 'walks') {
     const scene = await mod('floor/scene.js');
-    const { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt } = await mod('floor/route.js');
+    const { CLEARANCE_TIERS, blockedFor, cellAt } = await mod('floor/route.js');
     const { stoolSlots } = await mod('floor/desk-layout.js');
-    const f = floorOf(input.map, input.walls ?? []);
+    const f = floorOf(input.map, input.walls ?? [], input.mirror === true);
     const bodies = { seat: walkerSize(CHARACTER), intern: scene.INTERN_SIZE };
     const grids = { seat: f.latticeFor(bodies.seat), intern: f.latticeFor(bodies.intern) };
     const pieces = f.tiles();
@@ -211,27 +339,8 @@ if (input.mode === 'walks') {
     const doorThreshold = () => {
         const d = pieces.find((c) => c.kind === scene.RESTROOM_DOOR.kind) ?? null;
         const g = grids.seat;
-        const under = d === null ? null : cellAt(g, { x: d.x + d.w / 2, y: d.y + d.h + CLEARANCE.depth + 1 });
 
-        if (under === null) {
-            return null;
-        }
-
-        const clearAt = (c) => blockedFor(g, { key: null, anchor: cellCentre(g, c) }, CLEARANCE_TIERS[0])[c[1] * g.cols + c[0]] === 0;
-        const mid = d.x + d.w / 2;
-        const row = [];
-
-        for (let col = 0; col < g.cols; col++) {
-            const centre = cellCentre(g, [col, under[1]]);
-
-            if (centre.x >= d.x && centre.x < d.x + d.w) {
-                row.push({ c: [col, under[1]], centre });
-            }
-        }
-
-        row.sort((a, b) => Math.abs(a.centre.x - mid) - Math.abs(b.centre.x - mid) || a.centre.x - b.centre.x);
-
-        return clearAt(under) ? cellCentre(g, under) : row.find((r) => clearAt(r.c))?.centre ?? null;
+        return d === null ? null : thresholdOn(g, d, f.geometryOf(d), (c) => blockedFor(g, { key: null, anchor: cellCentre(g, c) }, CLEARANCE_TIERS[0])[c[1] * g.cols + c[0]] === 0);
     };
     const spots = { 'snack-table': spot0('snack-table'), 'snack-table-low': spot0('snack-table-low'), 'restroom-door': doorThreshold() };
     const walks = [];
@@ -267,7 +376,9 @@ if (input.mode === 'walks') {
     // card#13033: each desk's couch footprints, one a row (`couchFootprints()`, as the lattice reads them), for the couch-step guard
     const desks = f.desks.map((d) => ({ ...d, couches: [...new Map(internsOf(d, CHARACTER).seats.map((s) => [JSON.stringify(s.couch), s.couch])).values()] }));
 
-    answer({ cell: grids.seat.cell, extent: f.extent, threshold: f.door, bodies, obstacles: f.obstacles(), desks, spots, walks });
+    const door = pieces.find((c) => c.kind === scene.RESTROOM_DOOR.kind) ?? null;
+
+    answer({ cell: grids.seat.cell, extent: f.extent, threshold: f.door, bodies, obstacles: f.obstacles(), desks, spots, facing: door === null ? null : f.geometryOf(door).facing, walks });
 }
 
 if (input.mode === 'lattice') {
@@ -415,11 +526,8 @@ if (input.mode === 'turn-blind') {
 if (input.mode === 'snack') {
     const scene = await mod('floor/scene.js');
     const { CLEARANCE, spotsNear } = await mod('floor/route.js');
-    const map = JSON.parse(readFileSync(join(REPO, input.map ?? join('resources', 'floor', 'default.tmj')), 'utf8'));
-    const grid = mapGrid(map);
-    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
-    const standing = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
-    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const map = loadMap(input.map);
+    const { grid, extent, cells, obstacles } = read(map);
     const box = FURNITURE_BOX;
     // The desks the scene drew (`input.desks`, each `{key, rects}`) — a slot nobody holds is open floor — else every slot.
     const desks = input.desks ?? mapDesks(map).map((o) => {
@@ -428,8 +536,6 @@ if (input.mode === 'snack') {
 
         return { key: `desk-${o.id}`, rects: [slot, { x: at.x, y: at.y, w: box.width, h: box.height }] };
     });
-    const cells = mapTiles(map, { x: 0, y: 0 }, () => tileset, null);
-    const obstacles = cells.filter((c) => c.kind === 'wall' || standing.includes(c.kind)).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
     const bodies = { seat: walkerSize(CHARACTER), intern: scene.INTERN_SIZE };
 
     const { SNACK_LINES } = await mod('floor/snack-lines.js');
@@ -477,21 +583,18 @@ if (input.mode === 'snack-chain') {
 if (input.mode === 'restroom') {
     const scene = await mod('floor/scene.js');
     const { CLEARANCE, spotsNear, cellAt, blockedFor } = await mod('floor/route.js');
-    const map = JSON.parse(readFileSync(join(REPO, input.map ?? join('resources', 'floor', 'default.tmj')), 'utf8'));
-    const grid = mapGrid(map);
-    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
-    const standing = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
-    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const map = loadMap(input.map, input.mirror === true);
+    const { grid, extent, cells, geometryOf, obstacles } = read(map);
     const desks = input.desks ?? mapDesks(map).map((o) => {
         const slot = { x: o.x, y: o.y, w: o.width, h: o.height };
         const at = slotOrigin(slot, FURNITURE_BOX);
 
         return { key: `desk-${o.id}`, rects: [slot, { x: at.x, y: at.y, w: FURNITURE_BOX.width, h: FURNITURE_BOX.height }] };
     });
-    const cells = mapTiles(map, { x: 0, y: 0 }, () => tileset, null);
-    const obstacles = cells.filter((c) => c.kind === 'wall' || standing.includes(c.kind)).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
     const seat = walkerSize(CHARACTER);
     const { ELEVATOR_DOOR } = scene;
+    const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body: seat });
+    const openAt = (c) => blockedFor(g, { key: null, anchor: cellCentre(g, c) }, 'clear')[c[1] * g.cols + c[0]] === 0;
 
     answer({
         gap_s: scene.RESTROOM_GAP_S,
@@ -504,9 +607,16 @@ if (input.mode === 'restroom') {
         queue_spacing: scene.queueSpacing(CHARACTER),
         clearance: CLEARANCE,
         seat,
-        placed: cells.filter((c) => c.kind === scene.RESTROOM_DOOR.kind).map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h })),
+        obstacles: obstacles.length,
+        // card#13033: each door, its geometry (the scene's primitive) and its threshold by the TEST's restatement of § 12's
+        // rule over the lattice above (`thresholdOn()`)
+        placed: cells.filter((c) => c.kind === scene.RESTROOM_DOOR.kind).map((c) => {
+            // `door_properties`: tile properties laid over the door's cell first — the facing is the wall's, never a property
+            const geometry = geometryOf(input.door_properties === undefined ? c : Object.freeze({ ...c, properties: { ...c.properties, ...input.door_properties } }));
+
+            return { x: c.x, y: c.y, w: c.w, h: c.h, facing: geometry.facing, face: geometry.face, draw: geometry.draw, threshold: thresholdOn(g, c, geometry, openAt) };
+        }),
         spots: input.from === undefined ? null : (() => {
-            const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body: seat });
             const lane = input.lane ?? null;
 
             if (lane === null) {
@@ -521,7 +631,6 @@ if (input.mode === 'restroom') {
         })(),
         // whether each point's cell is open at `clear` for the seat's body, as nobody's walk (the threshold's test)
         open: (input.open ?? []).map((p) => {
-            const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body: seat });
             const c = cellAt(g, p);
 
             return c !== null && blockedFor(g, { key: null, anchor: p }, 'clear')[c[1] * g.cols + c[0]] === 0;
@@ -551,11 +660,8 @@ if (input.mode === 'restroom-chain') {
 if (input.mode === 'spots') {
     const scene = await mod('floor/scene.js');
     const { CLEARANCE, CLEARANCE_TIERS, spotsNear, cellAt, blockedFor } = await mod('floor/route.js');
-    const map = JSON.parse(readFileSync(join(REPO, 'resources', 'floor', 'default.tmj'), 'utf8'));
-    const grid = mapGrid(map);
-    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
-    const standing = registry.KINDS.filter((k) => !PLANE_KINDS.includes(k));
-    const extent = { x: 0, y: 0, width: grid.width * grid.tilewidth, height: grid.height * grid.tileheight };
+    const map = loadMap(null);
+    const { grid, extent, obstacles } = read(map);
     const box = FURNITURE_BOX;
     const open = input.open ?? [];
     const desks = mapDesks(map).filter((_, slot) => !open.includes(slot)).map((o) => {
@@ -571,8 +677,6 @@ if (input.mode === 'spots') {
             },
         };
     });
-    const obstacles = mapTiles(map, { x: 0, y: 0 }, () => tileset, null).filter((c) => c.kind === 'wall' || standing.includes(c.kind))
-        .map((c) => ({ x: c.x, y: c.y, w: c.w, h: c.h }));
     const body = walkerSize(CHARACTER);
     const g = lattice({ extent, cell: Math.min(grid.tilewidth, grid.tileheight), obstacles, desks, body });
     const band = backWall(backWallBand(extent), null);

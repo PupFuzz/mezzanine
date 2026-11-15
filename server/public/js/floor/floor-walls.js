@@ -25,7 +25,7 @@
  */
 
 import { mapDesks, mapGrid } from './floor-layout.js';
-import { mapTiles } from './map-tiles.js';
+import { RESTROOM_PLATES, SIDE_DOOR_BOX, mapTiles } from './map-tiles.js';
 import { deskSlab } from './desk-geometry.js';
 
 /**
@@ -121,4 +121,49 @@ export function wallBodies(grids, cellsOf, T, slabs) {
     }
 
     return walls;
+}
+
+/**
+ * card#13033 — A RESTROOM DOOR's GEOMETRY, from the wall it is set into (FLOOR.md § 6.7 item 2; § 12's *Restroom door*):
+ * computed once per door from the floor's wall BODIES — exactly what the 3-D floor and the cab's door view stand — and
+ * read by every consumer. The tile spans the rows from its top, `cellOf().y + T − cell.h` (`cellOf()` answers the painted
+ * FOOT cell), to its foot; where the distinct rows of wall bodies in the column against its right edge number every cell
+ * row of its height the door faces `right`, its left edge likewise `left`, both `right`, neither `back`. A door touching
+ * the footprint's top row cannot count that row, since `wallBodies()` leaves it out (the band stands there), and so
+ * reads `back`.
+ *
+ * `back` answers today's face-on door: `{ facing, face: null, doorway: null, draw: null, plates }`, `plates` the tile's
+ * (`RESTROOM_PLATES.back`). A side door, in scene px for `right` (`left` mirrors in x): the wall FACE `x_w`, the tile's
+ * right edge; the DOORWAY, the wall strip over the span from the tile's foot back by the tile's width (`{x, y, w: T, h}`);
+ * the 2-D drawing box (`SIDE_DOOR_BOX`) and the `side` plates in its px, mirrored as `box.w − x − w` for `left`.
+ *
+ * @param {object} cell a `restroom-door` cell of `g` (`mapTiles()`)
+ * @param {object} g its grid
+ * @param {list<{x: number, y: number}>} walls the floor's `wallBodies()`
+ * @param {number} T the floor's cell (`floorCell()`)
+ */
+export function restroomDoorGeometry(cell, g, walls, T) {
+    const at = cellOf(cell, g, T);
+    const top = at.y + T - cell.h;
+    const rows = (x) => new Set(walls.filter((w) => w.x === x && w.y >= top && w.y < top + cell.h).map((w) => w.y)).size;
+    const full = cell.h / T;
+    const facing = rows(at.x + cell.w) === full ? 'right' : rows(at.x - T) === full ? 'left' : 'back';
+
+    if (facing === 'back') {
+        return Object.freeze({ facing, face: null, doorway: null, draw: null, plates: RESTROOM_PLATES.back });
+    }
+
+    const right = facing === 'right';
+    const face = right ? cell.x + cell.w : cell.x;
+    const foot = cell.y + cell.h;
+    const B = SIDE_DOOR_BOX;
+    const mirror = (r) => Object.freeze(right ? r : { ...r, x: B.w - r.x - r.w });
+
+    return Object.freeze({
+        facing,
+        face,
+        doorway: Object.freeze({ x: right ? face : face - T, y: foot - cell.w, w: T, h: cell.w }),
+        draw: Object.freeze({ x: right ? face - B.face : face - (B.w - B.face), y: foot - B.rise, w: B.w, h: B.h }),
+        plates: Object.freeze(Object.fromEntries(Object.entries(RESTROOM_PLATES.side).map(([k, r]) => [k, mirror(r)]))),
+    });
 }

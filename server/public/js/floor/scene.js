@@ -32,8 +32,8 @@
 import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';
 import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf } from './floor-layout.js';
 import { floorTheme } from './floor-theme.js';
-import { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles, sceneryInput } from './map-tiles.js';
-import { deskSlabs, floorCell, wallBodies } from './floor-walls.js';
+import { PLANE_KINDS, RESTROOM_DOOR, mapTiles, obstaclesOf, sceneryInput } from './map-tiles.js';
+import { deskSlabs, floorCell, restroomDoorGeometry, wallBodies } from './floor-walls.js';
 import { tilesetUrl } from './tileset.js';
 import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, couchFootprints, deskRects, fit, furnitureAsset, internKey, internSolid, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
@@ -732,18 +732,28 @@ export function queueSpacing(character) {
  * door that no waiting walker's feet stand in, and no incoming walker's feet enter while an outgoing one's are in it. As
  * wide as the doorway — `span`, or a seat's drawn body plus both *Walker clearance* side margins where that is wider, so a
  * narrower door widens it rather than shrinks it — centred on `foot`, the doorway's centre on its floor line, and from that
- * line down one drawn body's height (`walkerSize()`), so a walker standing outside it is drawn wholly below the doorway's
- * foot. One lane, sized to the seat, for seats and interns alike. A rect `{x, y, w, h}` in scene px.
+ * line into the room `depth`: one drawn body's height (`walkerSize()`) for a door in the back of the room, so a walker
+ * standing outside it is drawn wholly below the doorway's foot. One lane, sized to the seat, for seats and interns alike.
+ * A rect `{x, y, w, h}` in scene px.
+ *
+ * card#13033: a door set into a SIDE wall (`facing` `right` or `left`) turns the rule with it — `foot` the doorway's centre
+ * on the wall face, the span along the wall, the depth from the face into the room (`restroomLane()` hands it).
  *
  * @param {{x: number, y: number}} foot
  * @param {number} span the doorway's width, px
  * @param {{w: number, h: number}} character the seat character's rect
+ * @param {'back'|'right'|'left'} facing the wall the doorway is in
+ * @param {number} depth how far into the room the lane runs from the doorway's line, px
  */
-export function doorLane(foot, span, character) {
+export function doorLane(foot, span, character, facing = 'back', depth = walkerSize(character).h) {
     const body = walkerSize(character);
     const w = Math.max(span, body.w + 2 * CLEARANCE.margin);
 
-    return Object.freeze({ x: foot.x - w / 2, y: foot.y, w, h: body.h });
+    if (facing === 'back') {
+        return Object.freeze({ x: foot.x - w / 2, y: foot.y, w, h: depth });
+    }
+
+    return Object.freeze({ x: facing === 'right' ? foot.x - depth : foot.x, y: foot.y - w / 2, w: depth, h: w });
 }
 
 /**
@@ -763,14 +773,30 @@ export function elevatorLane(band, character) {
 /**
  * card#12841 — § 12's *RESTROOM LANE* (§ 6.7 item 3 rule 2; the operator's answer to § 14 item 47 Q3, 2026-11-04: the same
  * etiquette at the restroom door): `doorLane()` in front of a restroom door's leaf — its span the leaf's, the recess it
- * fills (`RESTROOM_RECESS`), centred on the leaf at the tile's foot. The door's threshold lies inside it: its centre is
- * within the door's width and at most one lattice cell below the foot, and the lane is wider than the door.
+ * fills (`RESTROOM_RECESS`), centred on the leaf at the tile's foot, one body's height deep. The door's threshold lies
+ * inside it: its centre is within the door's width and at most one lattice cell below the foot, and the lane is wider than
+ * the door.
  *
- * @param {{x: number, y: number, w: number, h: number}} door the door's tile rect, scene px
+ * card#13033 — a door set into a SIDE wall: its span the doorway's, centred on the doorway's centre line along the wall,
+ * from the wall face into the room to one body's height PAST THE THRESHOLD's line (*Elevator lane*'s *from the threshold's
+ * floor line*, which at a back door is the doorway's own line and at a side door lies the wall's halo into the room). A
+ * side door with no threshold serves nobody and has no lane.
+ *
+ * @param {{x: number, y: number, w: number, h: number, facing: string, face: ?number}} door the door's tile rect, scene px,
+ *        and its geometry (`restroomDoorGeometry()`)
+ * @param {?{x: number, y: number}} threshold the door's threshold
  * @param {{w: number, h: number}} character the seat character's rect
  */
-export function restroomLane(door, character) {
-    return doorLane({ x: door.x + RESTROOM_RECESS.x + RESTROOM_RECESS.w / 2, y: door.y + door.h }, RESTROOM_RECESS.w, character);
+export function restroomLane(door, threshold, character) {
+    if (door.facing === 'back') {
+        return doorLane({ x: door.x + RESTROOM_RECESS.x + RESTROOM_RECESS.w / 2, y: door.y + door.h }, RESTROOM_RECESS.w, character);
+    }
+
+    if (threshold === null) {
+        return null;
+    }
+
+    return doorLane({ x: door.face, y: door.y + door.h - door.w / 2 }, door.w, character, door.facing, Math.abs(door.face - threshold.x) + walkerSize(character).h);
 }
 
 /**
@@ -1324,16 +1350,39 @@ export function buildScene(frame, input) {
         return grid === null || f === null ? null : { x: f.x, y: f.y, w: f.width, h: f.height, cell: { w: grid.tilewidth, h: grid.tileheight } };
     });
     const landingAt = extents.findLastIndex((e, i) => e !== null && holds(grids[i], e));
-    // The walkable model's obstacles (§ 6.2's walk note item 3): every `wall` tile and every standing kind's tile, at
-    // the rect the floor would draw it, read from the map's cells — whether or not the theme draws them.
+    // Each drawn grid's cells, in tile order — read once, for the walls, the obstacles and the scenery alike.
+    const cellsByGrid = new Map(grids.flatMap((g, i) => (extents[i] === null ? [] : [[g, mapTiles(g.map, g.origin, tilesetFor, g.install_id)]])));
+
+    // ── The standing walls (`floor-walls.js`): every `wall` cell an `edge` or a `partition` of its footprint, as the cab's
+    // door view stands them — what the 3-D floor's world lifts (`floor-world.js`), and what a restroom door's facing is read
+    // off (card#13033) before any scenery is drawn. A floor whose every room is mapless draws no room grid (F16), and so no
+    // wall.
+    const wallGridOf = new Map(grids.flatMap((g, i) => (extents[i] === null ? [] : [[g, {
+        map: g.map,
+        origin: g.origin,
+        footprint: { x: extents[i].x, y: extents[i].y, width: extents[i].w, height: extents[i].h },
+        room: g.install_id !== null,
+        seed: g.seed,
+        cells: cellsByGrid.get(g),
+    }]])));
+    const wallGrids = [...wallGridOf.values()];
+    const wallCell = wallGrids.some((g) => g.room) ? floorCell(wallGrids) : null;
+    const walls = wallCell === null ? [] : wallBodies(wallGrids, (g) => g.cells, wallCell, deskSlabs(wallGrids, wallCell));
+    // card#13033 (§ 6.7 item 2): each restroom door's geometry from the wall it is set into, once per door, read by the
+    // obstacles, the door, its scenery and the painter. A floor with no room grid stands no wall, so its doors face `back`.
+    const doorGeometry = new Map(grids.flatMap((g) => (cellsByGrid.get(g) ?? []).filter((c) => c.kind === RESTROOM_DOOR.kind).map((c) => {
+        const wg = wallGridOf.get(g);
+
+        return [c, restroomDoorGeometry(c, wg, walls, wallCell ?? mapGrid(wg.map).tileheight)];
+    })));
+    const geometryOf = (cell) => doorGeometry.get(cell);
+    // The walkable model's obstacles (§ 6.2's walk note item 3): `obstaclesOf()`'s, over every drawn grid's cells.
     const obstacles = [];
     // card#12749 (§ 6.6 items 2 and 3): the snack corner's tables, read off the map by kind like every standing tile —
     // the client never finds a place for one — whether or not the theme draws them.
     const snackTables = [];
-    // card#12786 (§ 6.7 items 2 and 3): the restroom doors, read off the map by kind the same way.
+    // card#12786 (§ 6.7 items 2 and 3): the restroom doors, read off the map by kind the same way, each with its geometry.
     const restroomDoors = [];
-    // Each drawn grid's cells, in tile order — what the walls below are read from without tiling a map twice.
-    const cellsByGrid = new Map();
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -1342,21 +1391,17 @@ export function buildScene(frame, input) {
             return;
         }
 
-        const cells = mapTiles(g.map, g.origin, tilesetFor, g.install_id);
+        const cells = cellsByGrid.get(g);
 
-        cellsByGrid.set(g, cells);
+        obstacles.push(...obstaclesOf(cells, standing, geometryOf));
 
         for (const c of cells) {
-            if (c.kind === 'wall' || standing.includes(c.kind)) {
-                obstacles.push(Object.freeze({ x: c.x, y: c.y, w: c.w, h: c.h }));
-            }
-
             if (SNACK_TABLES[c.kind] !== undefined && standing.includes(c.kind)) {
                 snackTables.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index }));
             }
 
             if (c.kind === RESTROOM_DOOR.kind && standing.includes(c.kind)) {
-                restroomDoors.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index }));
+                restroomDoors.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index, geometry: geometryOf(c) }));
             }
         }
         const of = (kind) => tileRegions(cells.filter((c) => c.kind === kind))
@@ -1390,15 +1435,19 @@ export function buildScene(frame, input) {
                 continue;
             }
 
-            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', sceneryInput(cell, g.seed));
+            const door = cell.kind === RESTROOM_DOOR.kind ? geometryOf(cell) : null;
+            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', sceneryInput(cell, g.seed, door));
 
             if (doc === null) {
                 continue;
             }
 
             const decoration = typeof cell.properties?.decoration === 'string' ? cell.properties.decoration : null;
+            // card#13033: a side door's document is drawn at its drawing box over the wall (`draw`); the cell rect stays the
+            // piece's, which the 3-D floor stands.
+            const side = door !== null && door.facing !== 'back' ? { facing: door.facing, draw: door.draw } : {};
 
-            scenery.push(Object.freeze({ room: g.install_id, kind: cell.kind, x: cell.x, y: cell.y, w: cell.w, h: cell.h, decoration, doc }));
+            scenery.push(Object.freeze({ room: g.install_id, kind: cell.kind, x: cell.x, y: cell.y, w: cell.w, h: cell.h, decoration, doc, ...side }));
 
             // § 6.3's decorative glow — a floor lamp's — the painter's, inside the tile of the piece it lights.
             if (decoration !== null) {
@@ -1418,20 +1467,6 @@ export function buildScene(frame, input) {
             }
         }
     });
-
-    // ── The standing walls (`floor-walls.js`): every `wall` cell an `edge` or a `partition` of its footprint, as the cab's
-    // door view stands them — what the 3-D floor's world lifts (`floor-world.js`), and nothing the 2-D painter reads. A
-    // floor whose every room is mapless draws no room grid (F16), and so no wall.
-    const wallGrids = grids.flatMap((g, i) => (extents[i] === null ? [] : [{
-        map: g.map,
-        origin: g.origin,
-        footprint: { x: extents[i].x, y: extents[i].y, width: extents[i].w, height: extents[i].h },
-        room: g.install_id !== null,
-        seed: g.seed,
-        cells: cellsByGrid.get(g),
-    }]));
-    const wallCell = wallGrids.some((g) => g.room) ? floorCell(wallGrids) : null;
-    const walls = wallCell === null ? [] : wallBodies(wallGrids, (g) => g.cells, wallCell, deskSlabs(wallGrids, wallCell));
 
     // ── Desks: inside their slots, the later `id` on top; F21's notices per room ──────────────
     const desks = [];
@@ -1942,8 +1977,50 @@ function restroomDoor(doors, snack, walking, input, box) {
 
         return blockedFor(grid, { key: null, anchor: centre }, CLEARANCE_TIERS[0])[c[1] * grid.cols + c[0]] === 0;
     };
+    // card#13033 — a SIDE door's: beside the doorway's centre line, *Walker clearance*'s depth plus 1 px into the room from
+    // the wall face, snapped; where that cell is not open at `clear`, the next cell on its row into the room that is, no
+    // deeper than one drawn body's height from the face — the search STOPPING at the first blocked cell past the wall's own
+    // halo (centre farther than half the body plus the side margin from the face), which is another piece's or a desk's:
+    // a visitor never stands on the far side of it. None, no threshold.
+    const sideThresholdOf = (d) => {
+        const g = d.geometry;
+        const inward = g.facing === 'right' ? -1 : 1;
+        const yc = d.y + d.h - d.w / 2;
+        const start = cellAt(grid, { x: g.face + inward * (CLEARANCE.depth + 1), y: yc });
+
+        if (start === null) {
+            return null;
+        }
+
+        for (let col = start[0]; col >= 0 && col < grid.cols; col += inward) {
+            const c = [col, start[1]];
+            const from = Math.abs(cellCentre(grid, c).x - g.face);
+
+            if (from > seat.h) {
+                return null;
+            }
+
+            if (clearAt(c)) {
+                return Object.freeze(cellCentre(grid, c));
+            }
+
+            if (from > seat.w / 2 + CLEARANCE.margin) {
+                return null;
+            }
+        }
+
+        return null;
+    };
     const thresholdOf = (d) => {
-        const under = grid === null ? null : cellAt(grid, { x: d.x + d.w / 2, y: d.y + d.h + CLEARANCE.depth + 1 });
+        if (grid === null) {
+            return null;
+        }
+
+        if (d.geometry.facing !== 'back') {
+            return sideThresholdOf(d);
+        }
+
+        const under = cellAt(grid, { x: d.x + d.w / 2, y: d.y + d.h + CLEARANCE.depth + 1 });
 
         if (under === null) {
             return null;
@@ -1967,15 +2044,26 @@ function restroomDoor(doors, snack, walking, input, box) {
         return first === null ? null : Object.freeze({ x: first.centre.x, y: first.centre.y });
     };
     const clear = snack.tables.map((t) => snack.spot(t.id, 0)?.at ?? null).filter((p) => p !== null);
-    const at = (d, r) => Object.freeze({ x: d.x + r.x, y: d.y + r.y, w: r.w, h: r.h });
-    const placed = ordered.map((d) => Object.freeze({
-        ...d,
-        threshold: thresholdOf(d),
-        sign: at(d, RESTROOM_PLATES.sign),
-        plate: at(d, RESTROOM_PLATES.plate),
-        recess: at(d, RESTROOM_RECESS),
-        lane: restroomLane(d, character),
-    }));
+    const at = (o, r) => Object.freeze({ x: o.x + r.x, y: o.y + r.y, w: r.w, h: r.h });
+    // Each door's rects in scene px: a `back` door's on its tile; a side door's on its drawing box (§ 12's *Restroom
+    // plates*), its leaf the painter's bar over the doorway. `recess` is the tile's face-on recess on every door, which
+    // the 3-D floor stands its leaf in until it turns the door into the wall (plan-13033-restroom-wall-door.md § 8 slice 2).
+    const placed = ordered.map(({ geometry, ...d }) => {
+        const p = geometry.plates;
+        const box = geometry.draw ?? d;
+        const threshold = thresholdOf({ ...d, geometry });
+
+        return Object.freeze({
+            ...d,
+            facing: geometry.facing,
+            threshold,
+            sign: at(box, p.sign),
+            plate: at(box, p.plate),
+            recess: at(d, RESTROOM_RECESS),
+            ...(geometry.facing === 'back' ? {} : { face: geometry.face, doorway: geometry.doorway, bar: at(box, p.leaf) }),
+            lane: restroomLane({ ...d, ...geometry }, threshold, character),
+        });
+    });
     const spotsOf = new Map();
     // Spot 0 is the threshold; spots 1, 2, … are `spotsNear()`'s from it — which skips the threshold, inside the lane, so
     // it is passed as a `clear` point to keep the waiting spots *Queue spacing* from the walker standing there.

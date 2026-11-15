@@ -39,6 +39,7 @@ const WALL = 3;
 const SNACK_TABLE = 14;
 const SNACK_TABLE_LOW = 15;
 const RESTROOM_DOOR = 16;
+const FLOOR_LAMP = 9;
 const cells = (cols, rows) => cols.flatMap((c) => rows.map((r) => [c, r]));
 const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 /** name → edits: { layer, cells: [[col, row]…], from: the gid each cell holds on the default, to: the gid it gets }. */
@@ -72,11 +73,13 @@ const VARIANTS = {
     'restroom-none': [
         { layer: 'furniture', cells: [[214, 81]], from: RESTROOM_DOOR, to: 0 },
     ],
-    // a wall from below the low table down to the front edge at x 1600, and along y 560 to the door: the door's forecourt
-    // is closed off, so no route reaches its threshold
+    // a wall from below the low table down to the front edge at x 1600, and along y 560 to the right wall: the door's
+    // forecourt is closed off, so no route reaches its threshold. card#13033: the run along y 560 reaches the right wall
+    // (cols 214–221) — with the door set into that wall its tile is no obstacle, and a run that stopped at the tile left
+    // the forecourt open above it, where every desk routed in at `feet`.
     'restroom-sealed': [
         { layer: 'walls', cells: cells([200], span(70, 86)), from: 0, to: WALL },
-        { layer: 'walls', cells: cells(span(201, 213), [70]), from: 0, to: WALL },
+        { layer: 'walls', cells: cells(span(201, 221), [70]), from: 0, to: WALL },
     ],
     // a pocket round the door's forecourt — x 1608 down to the front edge, y 600 along to the door — entered through an
     // 80 px gap in its top wall (x 1,624–1,704), narrower than a seat's body and the `clear` tier's margins: the floor
@@ -86,15 +89,24 @@ const VARIANTS = {
         { layer: 'walls', cells: cells([201], span(75, 86)), from: 0, to: WALL },
         { layer: 'walls', cells: cells([202, 213], [75]), from: 0, to: WALL },
     ],
-    // card#12841: the door moved up the right wall to (1,712, 496) — its tile x 1,712–1,776, y 360–504 — both snack tables
-    // lifted to make room, and a wall at x 1,664 from y 496 to 608: the door's forecourt is a corridor three lattice cells
-    // wide straight down in front of the door and inside its lane, so a walker coming out and one going in both walk the
-    // lane's whole depth, and the first spot `spotsNear()` finds with no lane is in it
+    // card#12841, re-cut by card#13033 for the door set into the right wall: the door kept at its cell (1,712, 648), the
+    // left floor lamp lifted, and walls along y 576 (x 1,600–1,640 and 1,728–1,776) and along y 664 (x 1,600–1,776) — the
+    // doorway's approach is a corridor y 584–664 straight into the room from the wall, inside the door's lane, entered from
+    // the channel through an 88 px gap (x 1,640–1,728) and open at its left end, so a walker coming out and one going in
+    // both cross the lane, and the first spot `spotsNear()` finds with no lane is on the approach's axis
     'restroom-corridor': [
+        { layer: 'furniture', cells: [[197, 82]], from: FLOOR_LAMP, to: 0 },
+        { layer: 'walls', cells: cells([...span(200, 204), ...span(216, 221)], [72]), from: 0, to: WALL },
+        { layer: 'walls', cells: cells(span(200, 221), [83]), from: 0, to: WALL },
+    ],
+    // card#13033: a door that touches no side wall — the committed corridor of card#12841 with its door five columns off
+    // the right wall, at (1,672, 496), its tile x 1,672–1,736, y 360–504 — so the face-on `back` door, its threshold under
+    // its centre, its recess clip and its plates stay exercised once every shipped map's door is set into a wall
+    'restroom-back': [
         { layer: 'furniture', cells: [[213, 51]], from: SNACK_TABLE, to: 0 },
         { layer: 'furniture', cells: [[216, 61]], from: SNACK_TABLE_LOW, to: 0 },
         { layer: 'furniture', cells: [[214, 81]], from: RESTROOM_DOOR, to: 0 },
-        { layer: 'furniture', cells: [[214, 62]], from: 0, to: RESTROOM_DOOR },
+        { layer: 'furniture', cells: [[209, 62]], from: 0, to: RESTROOM_DOOR },
         { layer: 'walls', cells: cells([208], span(62, 75)), from: 0, to: WALL },
     ],
 };
@@ -777,6 +789,8 @@ function restroomRuns() {
     notes['feed-dies-inside'] = `idle-visit (${aNote}), the stream silent from 0.5 s, so F1's verdict lands at 45.5 s, inside: the visit finishes and no other starts.`;
     runs['no-door'] = make({ at_s: A, until_ms: 40000, map: `@json:${MAPS}/restroom-none.json` });
     notes['no-door'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-none.json\`, the shipped default without the door's tile: a floor with no restroom.`;
+    runs['back-visit'] = make({ at_s: A, until_ms: aUntil, map: `@json:${MAPS}/restroom-back.json` });
+    notes['back-visit'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-back.json\`, whose door touches no side wall: the face-on \`back\` door — its threshold under its centre, its walker inside drawn in the recess clip — through the whole visit.`;
     runs['restroom-no-route'] = make({ at_s: A, until_ms: 40000, map: `@json:${MAPS}/restroom-sealed.json` });
     notes['restroom-no-route'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-sealed.json\`, the shipped default with walls closing the door's forecourt off: its threshold stands where no route reaches.`;
     runs['map-removes-door'] = make({ at_s: A, until_ms: thirtyIn + 20000,
@@ -1023,7 +1037,7 @@ function restroomRuns() {
     const ORDER = ['idle-visit', 'busy-visit', 'blocked-visit', 'intern-visit', 'two-at-the-door', 'three-at-the-door', 'queue-of-three', 'restroom-past-the-last-spot',
         'lane-two-at-the-door', 'lane-straight-in',
         'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'intern-arrives-in-its-break', 'seat-arrives-in-its-break', 'intern-leave-resync', 'snack-then-restroom', 'restroom-then-snack',
-        'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
+        'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'back-visit', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
         'map-removes-door', 'stilled-inside', ...lateNames];
 
     return {
