@@ -167,3 +167,31 @@ export function bravoMap(o, offset = null) {
 }
 
 export const charlieMap = (o, h, extra = false) => resolve(o, makeMap({ w: 60, h: h / T, tilesets: extra ? [{ firstgid: 1000, source: 'tiles/extra.tsx' }] : [] }));
+
+export const restroomDoorOf = (o) => o.gids['restroom-door'][0];
+
+/**
+ * card#13033's door-view floor (`docs/design/plan-13033-restroom-wall-door.md` § 7 Q4): a 40 × 64-cell room with a restroom
+ * door set into each kind of wall — `left` into the footprint's left edge (col 0; its foot row 40, so its doorway is
+ * y 264..328), `right` into its right edge (col 39; foot row 58, doorway y 408..472), `right` into an interior partition
+ * column (col 22, rows 30..60; foot row 50, doorway y 344..408) — and a `back` door touching no wall (cols 10..17, foot
+ * row 25). `offset` drags every tile layer, as `bravoMap()`'s does.
+ */
+export function foxtrotMap(o, offset = null) {
+    const H = 64;
+    const door = restroomDoorOf(o).gid;
+    const column = (c, from, to) => Array.from({ length: to - from + 1 }, (_, k) => [c, from + k]);
+
+    return resolve(o, makeMap({
+        w: 40,
+        h: H,
+        walls: [...column(0, 1, H - 1), ...column(39, 1, H - 1), ...column(22, 30, 60)],
+        pieces: [
+            { gid: door, col: 1, row: 40 },
+            { gid: door, col: 31, row: 58 },
+            { gid: door, col: 14, row: 50 },
+            { gid: door, col: 10, row: 25 },
+        ],
+        offset,
+    }));
+}

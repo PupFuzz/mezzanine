@@ -207,7 +207,7 @@ function documents(o) {
     }
 
     // card#13033: the restroom door set into a side wall, both facings, in each of its views — the floor page's plan in the
-    // drawing box, the door view's elevation at the tile's size and its flag plate — through the same builder, its geometry
+    // drawing box, the frame's elevation at the tile's size (which no view draws) and the door view's flag plate — through the same builder, its geometry
     // the side plates `restroomDoorGeometry()` hands (`left` mirrored in the box's width).
     const door = tiles.find((t) => t.kind === o.mapTiles.RESTROOM_DOOR.kind);
     const B = o.mapTiles.SIDE_DOOR_BOX;

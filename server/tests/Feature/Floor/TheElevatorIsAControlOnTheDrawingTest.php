@@ -388,6 +388,11 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             // card#13033: `FloorData#roomTilesets()` — one room's held map's tilesets, no room entered, the page woken.
             'one room\'s tilesets by re-entering every room' => ["        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n", "        await this.prefetch();\n", 'doorViewDefects', 'floor-data.js'],
             'one room\'s tilesets as every row\'s' => ['namedTilesets([this.#building.room(installId)?.held?.map ?? null])', 'namedTilesets((this.#rows() ?? []).flatMap((row) => row.rooms.map((room) => this.#building.room(room.install_id)?.held?.map ?? null)))', 'doorViewDefects', 'floor-data.js'],
+            // card#13033 slice 3: a side restroom door drawn in its wall — billboarded face-on again, its lintels' undersides
+            // not drawn, or its recess in the wall's colour.
+            'the side door billboarded face-on' => ["            } else if (door !== null && door.facing !== 'back') {", '            } else if (false) {', 'doorViewDefects', 'door-view.js'],
+            'a lintel\'s underside not drawn' => ['    if (b.z2 > b.z1 && b.x2 > b.x1 && b.y1 > CAB.eye) {', '    if (false) {', 'doorViewDefects'],
+            'the recess in the wall\'s colour' => ["    doorway: Object.freeze({ face: 'dv-recess', top: 'dv-recess' }),", "    doorway: Object.freeze({ face: 'dv-wall', top: 'dv-wall' }),", 'doorViewDefects'],
             'one room\'s tilesets with no wake' => ["        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n        this.#wake();\n", "        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n", 'doorViewDefects', 'floor-data.js'],
         ] as $what => $control) {
             [$from, $to, $check] = $control;
@@ -865,7 +870,7 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         // Every surface class is painted by STYLE, and each face's class strokes its own fill (the plan's § 7: no hairline).
         $plain = $this->withoutColourMixBlocks($run['style']);
 
-        foreach (['dv-floor', 'dv-ceiling', 'dv-accent', 'dv-wall', 'dv-back', 'dv-partition', 'dv-partition-cap', 'dv-desk', 'dv-desk-edge', 'dv-monitor', 'dv-skirting'] as $part) {
+        foreach (['dv-floor', 'dv-ceiling', 'dv-accent', 'dv-wall', 'dv-back', 'dv-partition', 'dv-partition-cap', 'dv-desk', 'dv-desk-edge', 'dv-monitor', 'dv-skirting', 'dv-recess'] as $part) {
             if (preg_match('/\.'.preg_quote($part, '/').'\{fill:([^;}]+);stroke:([^;}]+);stroke-width:[\d.]+/', $plain, $m) !== 1 || $m[1] !== $m[2]) {
                 $defects[] = "STYLE does not paint .{$part} a fill stroked by itself";
             }
@@ -1098,6 +1103,29 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 
         if ($s9['wakes'] !== 2) {
             $defects[] = "S9: two calls of roomTilesets() woke the page {$s9['wakes']} time(s), not 2";
+        }
+
+        // S10 (card#13033): a restroom door set into a side wall is drawn IN that wall — its doorway's recess at the wall
+        // column's outer face in the theme's recess colour, the side strips behind it and the column's cells cut to a lintel
+        // whose underside shows, and the flag facing the eye at its plate's place — never its tile billboarded face-on.
+        foreach ($v['s10'] as $theme => $s) {
+            if (! $s['found'] || ($s['palette']['--dv-recess'] ?? null) !== $s['recess_owed']) {
+                $defects[] = "S10 ({$theme}): the door view does not carry {$theme}'s recess colour: ".json_encode($s['palette']);
+            }
+
+            if ($s['face_on']) {
+                $defects[] = "S10 ({$theme}): the side door is billboarded face-on at its tile";
+            }
+
+            if ($s['recess'] !== 8 || $s['strips_cut'] !== 8 || $s['undersides'] !== 8) {
+                $defects[] = "S10 ({$theme}): the doorway is not cut through its wall — of its 8 rows, {$s['recess']} recess strips, {$s['strips_cut']} side strips cut to the lintel, {$s['undersides']} lintel undersides drawn";
+            }
+
+            if ($s['flag'] !== $s['flag_owed']) {
+                $defects[] = "S10 ({$theme}): the door's flag is not its theme's flag document at ".json_encode($s['flag_owed']).': '.json_encode($s['flag']);
+            }
+
+            array_push($defects, ...$this->doorViewCensusDefects("S10 ({$theme})", $s));
         }
 
         return $defects;

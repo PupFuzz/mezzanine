@@ -15,7 +15,9 @@
  *   S6 `charlie`'s two rooms, and again with a tileset the loader lacks · S7 a stop the stops do not offer ·
  *   S8 the press with `/api/building` answering 503, and again 401 ·
  *   S9 `floor/floor-data.js`'s `roomTilesets()` (card#13033): one room's held map's tilesets loaded, no room entered —
- *   with another room's last request failed, which any re-entry would fetch again.
+ *   with another room's last request failed, which any re-entry would fetch again ·
+ *   S10 `foxtrot`'s restroom doors set into its side walls (card#13033), in each theme: the left-edge door's recess, its
+ *   lintels' undersides and the side strips cut behind it, and its flag, each where the probe projects them.
  *
  * `globalThis.location` names the floor page's own path throughout, so a painter that read it would read `alpha`.
  */
@@ -47,7 +49,7 @@ export async function doorViewLeg(JS, census, clipOf) {
     const { FloorData } = await import(js('floor', 'floor-data.js'));
     const { SCALE, ROOM_H: MODEL_ROOM_H, PARTITION_H } = await import(js('floor', 'door-view.js'));
     const { BAND_H, ELEVATOR } = await import(js('floor', 'floor-layout.js'));
-    const { mapTiles, sceneryInput } = await import(js('floor', 'map-tiles.js'));
+    const { RESTROOM_PLATES, mapTiles, sceneryInput } = await import(js('floor', 'map-tiles.js'));
     const tileset = await import(js('floor', 'tileset.js'));
     const { Building } = await import(js('wire', 'building.js'));
     const { Ride } = await import(js('wire', 'ride.js'));
@@ -62,7 +64,7 @@ export async function doorViewLeg(JS, census, clipOf) {
     globalThis.location = { pathname: '/floor/alpha' };
 
     // ── the building: three floors, and a stop's map whose answer the probe releases ─────────────────────────────────
-    const maps = { alpha: fx.alphaMap(o), bravo: fx.bravoMap(o), charlie: fx.charlieMap(o, 296), 'charlie-2': fx.charlieMap(o, 496) };
+    const maps = { alpha: fx.alphaMap(o), bravo: fx.bravoMap(o), charlie: fx.charlieMap(o, 296), 'charlie-2': fx.charlieMap(o, 496), foxtrot: fx.foxtrotMap(o) };
     const plate = (key, ids, theme = null) => ({ ...fx.stopRow(key, ids, theme), href: `/floor/${key}` });
     const ROWS = [plate('alpha', ['alpha']), plate('bravo', ['bravo'], 'cottage'), plate('charlie', ['charlie', 'charlie-2'])];
 
@@ -195,10 +197,17 @@ export async function doorViewLeg(JS, census, clipOf) {
         parts: Object.fromEntries(['dv-floor', 'dv-ceiling', 'dv-wall', 'dv-back', 'dv-light', 'dv-partition', 'dv-partition-cap', 'dv-desk', 'dv-desk-edge', 'dv-monitor', 'dv-accent', 'dv-piece']
             .map((cls) => [cls, d.of(cls).length])),
     });
-    /** Every standing piece's document a floor's map yields, recomputed here: the hrefs a view of it may show. */
+    /**
+     * Every standing piece's document a floor's map yields, recomputed here: the hrefs a view of it may show — and for a
+     * restroom door, the flag a door set into either side wall stands in its place (`sceneryInput()`'s `flag` view).
+     */
     const hrefsOf = (id, theme) => mapTiles(maps[id], { x: 0, y: 0 }, () => o.read, id)
         .filter((c) => c.kind !== null && !['wall', 'accent'].includes(c.kind))
-        .map((c) => svgUri(modules[theme].scenery(sceneryInput(c, id))));
+        .flatMap((c) => [
+            sceneryInput(c, id),
+            ...(c.kind === 'restroom-door' ? ['right', 'left'].map((facing) => sceneryInput(c, id, { facing, plates: RESTROOM_PLATES.side }, 'flag')) : []),
+        ])
+        .map((input) => svgUri(modules[theme].scenery(input)));
     const carriers = (theme) => Object.fromEntries([
         ['--dv-floor', modules[theme].PALETTE.floor.boards],
         ['--dv-wall-top', modules[theme].PALETTE.wall.top],
@@ -447,6 +456,50 @@ export async function doorViewLeg(JS, census, clipOf) {
             charlie2_requests: [...requests],
             owed: { alpha: [o.url], charlie2: [o.tilesetUrl('tiles/extra.tsx')] },
             wakes,
+        };
+    }
+
+    // ── S10: foxtrot's restroom doors set into its side walls, in each theme — read at its left-edge door, the one inside the
+    // doorway's frustum: wall column x 0..8, doorway y 264..328, the flag at x 10..46 px, 112..144 px over the foot line ──
+    out.s10 = {};
+    for (const theme of ['studio', 'cottage']) {
+        const p = await page({ rows: () => [...ROWS, plate('foxtrot', ['foxtrot'], theme === 'studio' ? null : theme)] });
+        const { settled } = p.press();
+
+        await settled;
+        p.ride.entered();
+        p.ride.shut();
+        p.ride.choose('foxtrot');
+        p.perform();
+
+        const d = drawn(p);
+        const lintel = 144 * SCALE;
+        const rows = Array.from({ length: 8 }, (_, k) => 264 + k * T);
+        // A zero-width strip at x 0 over row `y`, from `y1` to `y2` cm — as `drawBody()` draws a body's end.
+        const end = (y, y1, y2) => d.index(d.pts(d.at(X(0), y2, Z(y)), d.at(X(0), y2, Z(y + T)), d.at(X(0), y1, Z(y + T)), d.at(X(0), y1, Z(y))));
+        const under = (y) => d.index(d.pts(d.at(X(8), lintel, Z(y)), d.at(X(0), lintel, Z(y)), d.at(X(0), lintel, Z(y + T)), d.at(X(8), lintel, Z(y + T))));
+        const cell = mapTiles(maps.foxtrot, { x: 0, y: 0 }, () => o.read, 'foxtrot').find((c) => c.kind === 'restroom-door' && c.col === 1);
+        const flagHref = svgUri(modules[theme].scenery(sceneryInput(cell, 'foxtrot', { facing: 'left', plates: RESTROOM_PLATES.side }, 'flag')));
+        const images = d.order.filter((n) => n.name === 'image');
+        const [left, head] = d.at(X(46), 144 * SCALE, Z(328));
+        const [right, foot] = d.at(X(10), 112 * SCALE, Z(328));
+        // Every side door's flag is one document, so the left-edge door's is the one at its own place.
+        const flag = images.find((n) => n.getAttribute('href') === flagHref && Math.abs(num(n, 'x') - +left.toFixed(2)) < 0.02) ?? null;
+        const [tileLeft] = d.at(X(72), lintel, Z(328));
+        const recess = rows.map((y) => end(y, 0, lintel));
+
+        out.s10[theme] = {
+            ...sceneryOf(d),
+            hrefs: hrefsOf('foxtrot', theme),
+            palette: styleOf(d.root?.getAttribute('style')),
+            recess_owed: modules[theme].PALETTE['restroom-door'].recess,
+            recess: recess.filter((i) => i >= 0 && classes(d.order[i]).includes('dv-recess')).length,
+            strips_cut: rows.filter((y) => end(y, lintel, ROOM_H) >= 0 && end(y, 0, ROOM_H) < 0).length,
+            undersides: rows.filter((y) => under(y) >= 0 && classes(d.order[under(y)]).includes('dv-wall')).length,
+            flags: images.filter((n) => n.getAttribute('href') === flagHref).length,
+            flag: flag === null ? null : ['x', 'y', 'width', 'height'].map((k) => num(flag, k)),
+            flag_owed: [left, head, right - left, foot - head].map((v) => +v.toFixed(2)),
+            face_on: images.some((n) => Math.abs(num(n, 'x') - +tileLeft.toFixed(2)) < 0.02),
         };
     }
 
