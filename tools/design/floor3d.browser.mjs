@@ -11,7 +11,7 @@
 //                                                      which must red
 //   node tools/design/floor3d.browser.mjs --out <dir>  also save the operator's reading pictures: the entry pose, a turned
 //                                                      pose, a close view, a view with the band cut away, the cap floor,
-//                                                      the leaves open, a walker, the marks, a bird and reduced motion
+//                                                      the leaves open, the cab through them, a walker, the marks, a bird and reduced motion
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -45,6 +45,7 @@ const { HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-mo
 const { LOOP_FPS } = await import(pathToFileURL(join(JS, 'wire', 'animation-set.js')).href);
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);
 const CLOCK = await import(pathToFileURL(join(JS, 'floor3d', 'clip-clock.js')).href);
+const { CAB_SHADE } = await import(pathToFileURL(join(JS, 'floor', 'cab-paint.js')).href);
 const CHARACTERS = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
 const REDUCE = [{ name: 'prefers-reduced-motion', value: 'reduce' }];
 /** How late the kit's files answer in the loop row's restart leg, ms — after the page has drawn and settled. */
@@ -936,10 +937,11 @@ const ROWS = {
   },
 
   motion: {
-    what: 'what moves off the bodies: a walker leaving by the elevator walks with the leaves opening over the cab and shut again; a sleeper\'s z\'s and a marker light in turn; the frame loop draws them at the loop\'s rate and stops once they have ended',
+    what: 'what moves off the bodies: a walker leaving by the elevator walks with the leaves opening over the cab and shut again, and is seen in the cab until they have; a sleeper\'s z\'s and a marker light in turn; the frame loop draws them at the loop\'s rate and stops once they have ended',
     base: { run: later('leave-stale'), media: [] },
     plants: [
       ['the elevator\'s leaves never moved', { plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * (open ?? leafLevel(world.doors, f));', '        const shut = 1;')] }],
+      ['a rider hidden the moment it leaves the floor', { plant: [P(BODIES, '            c.mesh.visible = p !== null && p.shown;', "            c.mesh.visible = p !== null && p.where === 'floor';")] }],
       ['the marks lit once and never stepped', { plant: [P(CLIP, 'characters.zLevels(f % characters.SLEEP_LOOP))', 'characters.zLevels(0))'), P(CLIP, 'characters.markerLevel(f % characters.SLEEP_LOOP)]', 'characters.markerLevel(0)]')] }],
     ],
     async run(chrome, c) {
@@ -967,7 +969,7 @@ const ROWS = {
         }
         if (reads[0] === '[]') d.push('CONTROL: no sleeper or marker on the floor — the marks were not read');
         else if (f.marks === 1) d.push(`the marks read ${reads[0]} at every read across a whole pulse — they do not step`);
-        let open = false, walked = false, shot = false;
+        let open = false, walked = false, shot = false, rode = 0;
         // the pictures: near the back desk the elevator stands by, the walker walking out from it
         if (out !== null) await closeUp(p, readingOrder((await p.inspect()).desks)[0], 6);
         for (let t = 0; t < 400; t++) {
@@ -976,6 +978,12 @@ const ROWS = {
           const l = i.room.leaves;
           const walker = i.clock.find((r) => r.kind === 'walker' && r.frame !== null);
           walked ||= walker !== undefined;
+          // a boarder in the cab with its leaves not yet shut is in sight, as the 2-D floor draws it behind them
+          const rider = i.clock.find((r) => r.kind === 'walker' && r.where === 'cab' && r.frame !== null);
+          if (rider !== undefined && l !== null && l[0][0] < l[0][1] - 1e-6) {
+            rode++;
+            if (!rider.shown) { d.push(`the rider ${rider.key} at ${rider.t.toFixed(0)} ms is hidden in the cab with its leaves at ${(l[0][0] / l[0][1]).toFixed(2)} of shut`); break; }
+          }
           if (l !== null && l[0][0] < l[0][1] - 1e-6) {
             if (!open) f.leaves.push(l.map(([w, full]) => +(w / full).toFixed(2)));
             open = true;
@@ -988,10 +996,76 @@ const ROWS = {
         const i = await p.inspect();
         f.end = i.room.leaves;
         if (!walked) d.push('CONTROL: no walker was in flight — the leaves were not read against a walk');
+        else if (rode === 0 && !d.length) d.push('CONTROL: no rider was read in the cab with its leaves open — the cab was not read');
+        f.rode = rode;
         if (!open) d.push('the walker left by the elevator and its leaves never opened');
         if (i.room.leaves !== null && Math.abs(i.room.leaves[0][0] - i.room.leaves[0][1]) > 1e-6) d.push('the leaves are not shut again once the walk has ended');
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  cab: {
+    what: 'through the elevator\'s leaves, held open, the cab\'s room is seen, each of its surfaces in a colour of its own as the page resolves the 2-D cab\'s, and nothing of it outside the doorway — from the close view and from an eye raised over the band',
+    // The leaves are SERVED held open, so the cab is looked at as long as the view takes on a loaded host — the `motion`
+    // row holds that they open over a walk; this one is about what they open onto.
+    base: { run: fixtureRun('leave-stale'), media: [], plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * (open ?? leafLevel(world.doors, f));', '        const shut = LEAF_OPEN;')] },
+    plants: [
+      ['the cab never clipped to its doorway', { plant: [P(ROOM, 'new MeshBasicMaterial({ vertexColors: true, clippingPlanes: cabClip })', 'new MeshBasicMaterial({ vertexColors: true })')] }],
+      ['every cab surface given the back wall\'s colour', { plant: [P(ROOM, "surfaces: Object.fromEntries(Object.entries(CAB_SURFACES).map(([name, [cls]]) => [name, bytes(style(cls).fill)])),", "surfaces: Object.fromEntries(Object.entries(CAB_SURFACES).map(([name]) => [name, bytes(style('cab-back').fill)])),")] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c, { kit: false });
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const out = argOf('--out') !== null && c.plant.length === 1 ? argOf('--out') : null;
+        // the view the operator reads: close to the back desk the elevator stands by, slid along to the elevator before it
+        await closeUp(p, readingOrder((await p.inspect()).desks)[0], 8);
+        for (let k = 0; k < 3; k++) await p.key('ArrowLeft', 'ArrowLeft', true);
+        const i = await p.settle(2500);
+        const l = i.room.leaves;
+        if (l === null || l[0][0] / l[0][1] > 0.2) return { defects: [`CONTROL: the leaves are not held open (${JSON.stringify(l)}) — the cab was not seen`], facts: {} };
+        if (out !== null) writeFileSync(join(out, 'floor3d-cab-open.png'), await p.shot());
+        const colours = i.room.cab;
+        if (colours === null) return { defects: ['the cab\'s colours were never resolved — no cab was built behind the doorway'], facts: {} };
+        const names = Object.keys(colours.surfaces);
+        for (const [k, a] of names.entries()) {
+          for (const b of names.slice(k + 1)) {
+            if (colours.surfaces[a].join() === colours.surfaces[b].join()) d.push(`the cab's ${a} and ${b} resolve to one colour, rgb(${colours.surfaces[a].join(', ')}) — the surfaces do not separate`);
+          }
+        }
+        // The far wall is one even tone (`CAB_SHADE.ceiling` of the ink over the back's colour), so a pixel of it inside the
+        // box's projected rect but outside the opening's is the cab seen past its doorway. Read from this view and from one
+        // raised over the band.
+        const far = colours.surfaces.back.map((v, k) => v + (colours.ink[k] - v) * CAB_SHADE.ceiling);
+        const stray = {};
+        const seenFrom = async (pose) => {
+          const at = await p.inspect();
+          const img = png(await p.shot());
+          // the rect of the opening, and of the whole box — the only place any of the cab can be drawn, so the band's own
+          // picture elsewhere, whatever its colours, is never read
+          const rect = (qs, m) => [Math.min(...qs.map((q) => q.x)) - m, Math.max(...qs.map((q) => q.x)) + m, Math.min(...qs.map((q) => q.y)) - m, Math.max(...qs.map((q) => q.y)) + m].map((v, k) => v + (k < 2 ? p.stage.x : p.stage.y));
+          const [x0, x1, y0, y1] = rect(at.cab.opening, 2);
+          const [bx0, bx1, by0, by1] = rect(at.cab.box, 0);
+          let inside = 0, outside = 0;
+          for (let y = Math.max(0, Math.floor(by0)); y < Math.min(img.height, by1); y++) {
+            for (let x = Math.max(0, Math.floor(bx0)); x < Math.min(img.width, bx1); x++) {
+              const o = (y * img.width + x) * 4;
+              if (far.every((v, k) => Math.abs(img.rgba[o + k] - v) <= 2)) (x >= x0 && x <= x1 && y >= y0 && y <= y1 ? inside++ : outside++);
+            }
+          }
+          stray[pose] = { inside, outside };
+          if (inside === 0) d.push(`CONTROL: from the ${pose}, no pixel of the cab's far wall (rgb ${far.map(Math.round).join(', ')}) shows in its doorway — the wall was not found`);
+          else if (outside > 0) d.push(`from the ${pose}, ${outside} pixels of the cab's far wall show outside its doorway's projected rect — the cab is seen past the band`);
+        };
+        await seenFrom('close view');
+        for (let k = 0; k < 8; k++) await p.key('PageUp', 'PageUp');
+        await p.settle(2500);
+        await seenFrom('raised eye');
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: { cab: colours, stray } };
       } finally { p.close(); }
     },
   },

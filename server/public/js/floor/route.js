@@ -732,6 +732,22 @@ export function cabStep(leg) {
 }
 
 /**
+ * WHEN A WALKER IS DRAWN IN THE CAB: `{from, to}`, ms after the walk's start, from its first `cab` leg's start to its
+ * last one's end — half-open, so a departure is gone the instant its leaves have shut — or `null` for a walk with no
+ * `cab` leg. The one reading of that span: the painter's cab element is drawn through it, and the 3-D floor shows a
+ * rider in its cab room through it (`floor-world.js`'s `walkerAt()`).
+ */
+export function cabSpan(effect) {
+    const I = effect.frame_interval_ms;
+    const legs = (effect.legs ?? []).filter((l) => l.kind === 'cab');
+
+    return legs.length === 0 ? null : {
+        from: Math.min(...legs.map((l) => l.start)) * I,
+        to: Math.max(...legs.map((l) => l.start + l.frames)) * I,
+    };
+}
+
+/**
  * WHERE A WALKER IS — a pure function of time (walk note item 5): the feet's point and where they are drawn
  * (`floor`, or `cab` inside the band's cab), `t_ms` after the walk's start. Inside a `walk` leg, the point at arc
  * length `length × (t − start) ÷ duration` along its polyline — uniform speed; inside a `stand` leg, its `at`; inside

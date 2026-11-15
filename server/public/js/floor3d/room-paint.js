@@ -42,10 +42,11 @@ import {
     Mesh,
     MeshBasicMaterial,
     MeshToonMaterial,
+    Plane,
     PlaneGeometry,
     SRGBColorSpace,
 } from '../vendor/three/three.module.js';
-import { CUTAWAY_H, CUTAWAY_MS, cutaway } from './view-limits.js';
+import { CUTAWAY_H, CUTAWAY_MS, cutaway, doorwayView } from './view-limits.js';
 import { rasterise } from './svg-texture.js';
 import { REPLAY_LOOP, heldAt } from './clip-clock.js';
 import { onTerm } from './terms.js';
@@ -277,6 +278,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         if (band !== null) {
             bandH = toward(bandH * world.band.h, world.band.h, cut.has('band')) / world.band.h;
             band.scale.y = bandH;
+            clipCab(eye);
         }
 
         return moving;
@@ -475,14 +477,18 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
     // ── the elevator's leaves and the cab behind them ─────────────────────────────────────────
     const doorBox = new BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5);
     const leafMaterial = new MeshToonMaterial({ color: cssColour('--door') || '#dbe5ee' });
-    // The cab is lit by its own light, not the floor's: unlit, as the 2-D cab's flat fills and overlays are.
-    const cab = onTerm(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ vertexColors: true })), 'fixed');
+    // The cab is lit by its own light, not the floor's: unlit, as the 2-D cab's flat fills and overlays are. It is clipped
+    // to what its doorway shows (`clipCab()`), so it never stands over or beside the band, which it lies behind.
+    const cabClip = [new Plane(), new Plane(), new Plane(), new Plane()];
+    const cab = onTerm(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ vertexColors: true, clippingPlanes: cabClip })), 'fixed');
     const doorway = new Group();
     const leaves = [onTerm(new Mesh(doorBox, leafMaterial), 'fixed'), onTerm(new Mesh(doorBox, leafMaterial), 'fixed')];
     // on no term's layer and never drawn: it is the pointer's
     const hit = new Mesh(new PlaneGeometry(1, 1).translate(0.5, 0.5, 0), new MeshBasicMaterial({ visible: false }));
     const readCab = cabColours(document);
     let cabKey = null;
+    /** The cab's colours as the page resolved them (`cabColours()`), for the browser leg. */
+    let cabRead = null;
 
     doorway.add(cab, ...leaves, hit);
 
@@ -502,7 +508,24 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
 
         cabKey = key;
         cab.geometry.dispose();
-        cab.geometry = cabGeometry(world.band.cab, world.band, readCab(palette));
+        cabRead = readCab(palette);
+        cab.geometry = cabGeometry(world.band.cab, world.band, cabRead);
+    };
+
+    /**
+     * THE CAB SEEN ONLY THROUGH ITS DOORWAY (`doorwayView()`), from `eye`: its open front as the band stands now — the
+     * cut-away lowers the cab with the band, so the opening is lowered with it — and nothing of it from behind the band.
+     */
+    const clipCab = (eye) => {
+        const r = world.band.cab.room;
+        const view = doorwayView(eye, { x: r.x, y: r.y, z: r.z + r.d, w: r.w, h: r.h * bandH });
+
+        cab.visible = view !== null;
+
+        for (const [k, { normal, constant }] of (view ?? []).entries()) {
+            cabClip[k].normal.set(normal.x, normal.y, normal.z);
+            cabClip[k].constant = constant;
+        }
     };
 
     /**
@@ -797,12 +820,14 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
 
         /**
          * What the browser leg reads of the room's moving parts and its at-rest members: each leaf's drawn width against
-         * its shut one, each restroom door's, the screens fading, and the members § 6's fixed term is counted from.
+         * its shut one, each restroom door's, the screens fading, the cab's resolved colours, and the members § 6's fixed
+         * term is counted from.
          */
         inspect: () => ({
             leaves: world === null || world.band === null ? null : leaves.map((l, k) => [l.scale.x, world.band.leaves[k].w]),
             restroom: [...restroom.values()].map(({ leaf, field, door }) => ({ id: door.id, leaf: [leaf.scale.x, door.recess.w], occupied: field.material === occupied })),
             fading: [...screens.values()].filter((x) => x.fade !== null).length,
+            cab: cabRead,
             members: { planes: world === null ? 0 : world.planes.length, band: band === null ? 0 : 1, screens: screens.size, restroom: restroom.size },
         }),
     };

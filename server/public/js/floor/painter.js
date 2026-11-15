@@ -50,7 +50,7 @@
 import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, walkerCharacter } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR, leafLevel } from './scene.js';
-import { cabStep, floorStackOrder, pointAt } from './route.js';
+import { cabSpan, cabStep, floorStackOrder, pointAt } from './route.js';
 import { BIRD_LIFT, HOP_SCALE, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
 import { CAB_STYLE, LANDING, THEME_REGISTRY, cabTheme, clippedTo, drawCabInterior, node, paintCab, rideLeaves, svgUri, themeModule } from './cab-paint.js';
@@ -954,7 +954,8 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
         });
         const shownStyle = (s) => `animation-duration:${sec(s.to - s.from)}s;animation-delay:${sec(s.from - elapsed)}s`;
         const floorSpan = span(onFloor);
-        const cabSpan = span(inCab);
+        // The cab element's span: the one `route.js` names, which the 3-D floor shows a rider in its cab room through too.
+        const inCabSpan = cabSpan(fx);
         // The floor element's runs: its floor legs' span, less every `inside` leg inside it (card#12786) that a recess draws.
         const runs = floorSpan === null ? [] : (faded === null ? inDoor : []).reduce((acc, l) => acc.flatMap((r) => {
             const a = l.start * I;
@@ -989,9 +990,9 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
 
             return { walk, glide };
         });
-        const cab = cabSpan === null || floor.cab === null ? null : node('g', {
+        const cab = inCabSpan === null || floor.cab === null ? null : node('g', {
             class: 'fx-walker-shown fx-walker-cab',
-            style: shownStyle(cabSpan),
+            style: shownStyle(inCabSpan),
         }, floor.cab);
         // card#12744: the rider stands at its cab leg's spot — the threshold for a lone rider — and steps between the
         // threshold and its spot inside the cab along its leg's step (`cabStep()`), glided as a walk leg is, at the

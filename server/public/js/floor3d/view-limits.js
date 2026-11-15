@@ -1,7 +1,8 @@
 /**
- * THE 3-D FLOOR's VIEW LIMITS AND ITS CUT-AWAY — what the camera's controls are configured with, and which walls stand
- * between the eye and what it looks at. Pure, no DOM and no Three: the renderer (`floor3d/floor-paint.js`, slice 4)
- * configures `OrbitControls` from `limits()` and lowers what `cutaway()` names. `docs/design/plan-13033-stage2-3d-floor.md`
+ * THE 3-D FLOOR's VIEW LIMITS AND ITS CUT-AWAY — what the camera's controls are configured with, which walls stand
+ * between the eye and what it looks at, and what of the cab its doorway lets the eye see. Pure, no DOM and no Three: the
+ * renderer (`floor3d/floor-paint.js`, slice 4) configures `OrbitControls` from `limits()`, lowers what `cutaway()` names
+ * and clips the cab to `doorwayView()`. `docs/design/plan-13033-stage2-3d-floor.md`
  * §§ 3.6–3.7 (card#13033 stage 2 slice 2); the figures are `docs/design/FLOOR.md` § 12's *Floor 3-D camera* and *Floor
  * 3-D cut-away* rows. Driven under `node` by `tests/Feature/Floor/view-limits-probe.mjs`.
  *
@@ -125,4 +126,39 @@ export function cutaway(eye, target, world) {
     ];
 
     return new Set(bodies.filter((body) => meets(eye, target, body.box) !== null).map((body) => body.id));
+}
+
+/**
+ * THE CAB SEEN ONLY THROUGH ITS DOORWAY — the 3-D cab clipped as the 2-D band cab is clipped to its doorway
+ * (`cab-paint.js`'s `clippedTo()`): a point behind the band's face is seen from `eye` only where the line of sight to it
+ * crosses the doorway's opening (`door`: its min corner `x`, `y`, its size `w`, `h`, on the face at `z`, the room toward
+ * `+z`). Answers the four planes of that pyramid — each `{normal, constant}`, `normal` of unit length, a point `p`
+ * inside every one where `normal · p + constant ≥ 0`, the sense the renderer's clipping planes keep — or `null` for an
+ * eye at or behind the face, from where no line of sight to a point behind it crosses the opening, so nothing of the cab
+ * is seen.
+ *
+ * @param {{x: number, y: number, z: number}} eye
+ * @param {{x: number, y: number, z: number, w: number, h: number}} door
+ * @returns {list<{normal: {x: number, y: number, z: number}, constant: number}>|null}
+ */
+export function doorwayView(eye, door) {
+    if (eye.z <= door.z) {
+        return null;
+    }
+
+    const corner = (x, y) => ({ x: x - eye.x, y: y - eye.y, z: door.z - eye.z });
+    const rim = [corner(door.x, door.y), corner(door.x + door.w, door.y), corner(door.x + door.w, door.y + door.h), corner(door.x, door.y + door.h)];
+    const centre = corner(door.x + door.w / 2, door.y + door.h / 2);
+
+    return rim.map((a, k) => {
+        const b = rim[(k + 1) % 4];
+        const n = { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+        // Turned so the opening's centre, inside the pyramid, is on its kept side, and of unit length — a plane's normal as
+        // Three moves it into the view (`Plane.applyMatrix4()` takes its point on the plane as `−constant · normal`).
+        const sense = n.x * centre.x + n.y * centre.y + n.z * centre.z < 0 ? -1 : 1;
+        const unit = sense / Math.hypot(n.x, n.y, n.z);
+        const normal = { x: n.x * unit, y: n.y * unit, z: n.z * unit };
+
+        return { normal, constant: -(normal.x * eye.x + normal.y * eye.y + normal.z * eye.z) };
+    });
 }

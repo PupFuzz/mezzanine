@@ -97,6 +97,8 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     const markRenderer = new CSS2DRenderer({ element: markLayer });
 
     renderer.setPixelRatio(window.devicePixelRatio);
+    // The cab's clipping planes (`room-paint.js`'s `clipCab()`): a material's own planes, which no other material carries.
+    renderer.localClippingEnabled = true;
     renderer.setClearColor(new Color(cssColour('--house-trim') || '#1f3540'));
     // Every term's layer drawn: the budget leg narrows the camera to one at a time.
     for (const layer of Object.values(TERMS)) {
@@ -534,6 +536,16 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                     // where the doorway's centre is drawn on the stage, px — what the browser leg clicks
                     const door = world?.band?.elevator ?? null;
                     const seen = door === null ? null : new Vector3(door.x + door.w / 2, door.y + door.h / 2, door.z).project(camera);
+                    // the cab's room as the band stands now, on the stage, px: its opening's corners and all eight of its box's —
+                    // what the cab row's clip check reads
+                    const r = world?.band?.cab?.room ?? null;
+                    const onStage = (u, v, w) => {
+                        const q = new Vector3(r.x + u * r.w, r.y + v * r.h * (heights.band / world.band.h), r.z + w * r.d).project(camera);
+
+                        return { x: ((q.x + 1) / 2) * surface.width, y: ((1 - q.y) / 2) * surface.height };
+                    };
+                    const corners = [[0, 0], [1, 0], [0, 1], [1, 1]];
+                    const cabSeen = r === null ? null : { opening: corners.map(([u, v]) => onStage(u, v, 1)), box: [0, 1].flatMap((w) => corners.map(([u, v]) => onStage(u, v, w))) };
 
                     return {
                         frames,
@@ -548,6 +560,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         target: controls.target.toArray(),
                         eye: camera.position.toArray(),
                         doorway: seen === null ? null : { x: ((seen.x + 1) / 2) * surface.width, y: ((1 - seen.y) / 2) * surface.height },
+                        cab: cabSeen,
                         walls: heights.walls,
                         band: heights.band,
                         calls: renderer.info.render.calls,

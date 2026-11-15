@@ -39,7 +39,7 @@ import { COUCH_FOOTPRINT, LINE, STOOL_H, STOOL_PITCH, STOOL_W, couchFootprint, i
 import { deskSlab, monitorFrame } from './desk-geometry.js';
 import { DESK_H, MONITOR_TOP, PARTITION_H, ROOM_H, SCALE } from './door-view.js';
 import { CAB, CAB_FITTINGS } from './cab-paint.js';
-import { pointAt } from './route.js';
+import { cabSpan, pointAt } from './route.js';
 import { ELEVATOR_DOOR } from './scene.js';
 import { BIRD_LIFT, HOP_SCALE, arcLift } from './bird.js';
 import { keyOf } from '../wire/seat-key.js';
@@ -125,31 +125,35 @@ function couchesOf(e, at) {
 const cmU = (cm) => cm / SCALE / UNIT;
 
 /**
- * THE CAB BEHIND THE BAND's DOORWAY, IN UNITS — § 12's *Cab interior* room (`cab-paint.js`'s `CAB`, `CAB_FITTINGS`), the
- * 2-D cab's room in the floor's own scale: its open front on the band's face, centred across on the leaves' seam
- * (`seam`, units) and running back from the band's face (`z`) its depth. ⛔ ITS HEIGHT IS CLIPPED TO THE ROOM's
- * (`ROOM_H_U`): the cab is open-topped as the room is, so a cab taller than the band would stand its walls over it. `room` is its box (min corner and size, as a
- * wall's), `kick` the kick plates' height up each side wall, `rails` and `posts` the handrails' bars and the posts they
- * stand off their walls on (boxes; the bar square in section at its height), and `light` the ceiling light's panel
- * (`x`, `z` its min corner, `w`, `d`) on the ceiling. Every rider's cab spot lies on its floor (`floor-world-probe.mjs`'s
- * `cab` leg).
+ * THE CAB BEHIND THE BAND's DOORWAY, IN UNITS — § 12's *Cab interior* room (`cab-paint.js`'s `CAB`, `CAB_FITTINGS`) as
+ * the 2-D band cab draws it: `drawCabInterior()` fits the room's cross-section to the doorway it is seen through, so
+ * here the cab's open front IS the band's doorway (`door`: its left edge `x`, its width `w` and height `h`, units) on the
+ * band's face (`z`), and it runs back `CAB.d` at the door view's scale — the depth the 2-D lens (`LANDING`) draws, as
+ * its eye's distance is that scale too. So its side walls stand on the jambs and its ceiling on the head, and every
+ * corner shows through the open doors. A fitting's measure across is fitted as the width is (`door.w` over `CAB.w`),
+ * up as the height is (`door.h` over `CAB.h`), and back at the door view's scale, as `drawCabInterior()` places it.
+ * `room` is its box (min corner and size, as a wall's), `kick` the kick plates' height up each side wall, `rails` and
+ * `posts` the handrails' bars and the posts they stand off their walls on (boxes; the bar square in section at its
+ * height), and `light` the ceiling light's panel (`x`, `z` its min corner, `w`, `d`) on the ceiling. Every rider's cab
+ * spot lies on its floor (`floor-world-probe.mjs`'s `cab` leg).
  */
-function cabRoom(seam, z) {
-    const [w, d, h] = [cmU(CAB.w), cmU(CAB.d), Math.min(cmU(CAB.h), ROOM_H_U)];
+function cabRoom(door, z) {
+    const [across, up] = [door.w / CAB.w, door.h / CAB.h];
+    const [w, d, h] = [door.w, cmU(CAB.d), door.h];
     const { kick, rail, light } = CAB_FITTINGS;
-    const room = Object.freeze({ x: seam - w / 2, y: 0, z: z - d, w, h, d });
+    const room = Object.freeze({ x: door.x, y: 0, z: z - d, w, h, d });
     const box = (x, y, bz, bw, bh, bd) => Object.freeze({ x, y, z: bz, w: bw, h: bh, d: bd });
-    const [s, off, end] = [cmU(rail.h), cmU(rail.off), cmU(rail.end)];
-    const y = cmU(rail.y) - s / 2;
+    const [s, off, end] = [rail.h * up, rail.off * across, cmU(rail.end)];
+    const y = rail.y * up - s / 2;
     // Each side wall's inner face, and the way into the room from it.
     const walls = [[room.x, 1], [room.x + w, -1]];
 
     return Object.freeze({
         room,
-        kick: cmU(kick),
+        kick: kick * up,
         rails: Object.freeze(walls.map(([wall, into]) => box(wall + into * off - s / 2, y, room.z + end, s, s, d - 2 * end))),
         posts: Object.freeze(walls.flatMap(([wall, into]) => [room.z + end, z - end].map((at) => box(Math.min(wall, wall + into * off), y, at - s / 2, off, s, s)))),
-        light: Object.freeze({ x: seam - cmU(light.w) / 2, z: room.z + (d - cmU(light.d)) / 2, w: cmU(light.w), d: cmU(light.d) }),
+        light: Object.freeze({ x: door.x + (w - light.w * across) / 2, z: room.z + (d - cmU(light.d)) / 2, w: light.w * across, d: cmU(light.d) }),
     });
 }
 
@@ -224,6 +228,12 @@ export function anchorPoint(slab, anchor) {
  * gets on or off — and is lifted as it crosses its couch: from the floor at the footprint's front edge to its seat's
  * height at its foot, in proportion to the way between, so it rises onto the cushion as it steps back and comes down
  * as it steps off, and stands at the seat's height where it is then drawn seated.
+ *
+ * ⛔ `shown` IS WHETHER THE 3-D FLOOR DRAWS IT THERE: on the floor, always (at its walk's end it stands where it stopped
+ * until the next paint seats it, its body the desk's under one key); in the cab, through the walk's cab span
+ * (`route.js`'s `cabSpan()`, the span the 2-D painter draws its cab element through) — at its spot in the cab's room,
+ * which `worldOf()` already lifts inside `cabRoom()`'s box, so the opening leaves reveal it and the closing ones cover
+ * it, and once they have shut it is gone; `inside` the restroom door, never.
  */
 export function walkerAt(slab, walker, tMs) {
     const p = pointAt(walker.effect, tMs);
@@ -238,7 +248,10 @@ export function walkerAt(slab, walker, tMs) {
     const step = seat !== null && Math.abs(p.x - seat.foot.x) < 1e-6 && p.y > seat.foot.y - 1e-6 && p.y <= seat.front + COUCH_FOOTPRINT.depth;
     const lift = step ? seat.lift * Math.min(1, Math.max(0, (seat.front - p.y) / (seat.front - seat.foot.y))) : 0;
 
-    return Object.freeze({ ...w, y: w.y + lift, where: p.where, step });
+    const ride = p.where === 'cab' ? cabSpan(walker.effect) : null;
+    const shown = p.where === 'floor' || (ride !== null && tMs >= ride.from && tMs < ride.to);
+
+    return Object.freeze({ ...w, y: w.y + lift, where: p.where, step, shown });
 }
 
 /** The key a walker is drawn under: an intern's (A10), a break's walker's (A25, A26), or its seat's (A1, A2). */
@@ -527,7 +540,8 @@ export function floorWorld(scene) {
             ]),
             clock: onBand(band.clock),
             windows: Object.freeze(band.windows.map(onBand)),
-            cab: cabRoom(at({ x: band.elevator.seam, y: top }).x, slab.box.z),
+            // The cab behind the doorway the band cuts for it: the leaves' rect, as the 2-D band cab is fitted to it.
+            cab: cabRoom({ x: at({ x: band.elevator.x, y: top }).x, w: band.elevator.w / UNIT, h: band.elevator.h / UNIT }, slab.box.z),
         }),
         walls: Object.freeze(scene.walls.map((w) => {
             const corner = at(w);
