@@ -130,6 +130,12 @@ final class Fold
      * transaction holds. Two FOLD
      * workers partitioning the claim is UNTESTED, not merely untested-here (card#7523 owns it).
      *
+     * ⛔ A SECOND FOLD WORKER RE-OPENS ONE DECISION BEFORE IT STARTS (card#13258): `InternSpecies::ensure()`
+     * allocates an intern's species with no mutex, over the population read under its window's own snapshot. That is
+     * correct only while one worker folds — its windows never overlap, so each allocation sees the one before it.
+     * Two workers' windows on two seats could allocate one free species twice (§ 6.13's card#13258 paragraph, R3 of
+     * `docs/design/plan-13258-intern-species.md`).
+     *
      * @return Collection<int, object>
      */
     private function claim(): Collection

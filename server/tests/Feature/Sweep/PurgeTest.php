@@ -164,6 +164,41 @@ class PurgeTest extends SweepTestCase
     }
 
     /**
+     * § 6.7's `intern_species` row (card#13258): purged on `allocated_at` against the event retention and on nothing
+     * else. A row older than the boundary goes whether its call row is open or gone; a younger row stays even when its
+     * `calls` row has been deleted — the shape a `--since` rebuild leaves, whose events a later full rebuild replays.
+     */
+    public function test_intern_species_rows_go_on_allocated_at_and_never_on_their_calls_row(): void
+    {
+        $dispatch = fn (string $call): array => $this->event('tool.start', [
+            'call_id' => $call, 'tool_name' => 'Agent', 'descriptor' => null, 'descriptor_truncated' => false,
+            'agent_scope' => 'main', 'parent_call_id' => null, 'harness_call_ref' => 'toolu_d', 'open_calls_before' => 0,
+        ]);
+        $end = fn (string $call): array => $this->event('tool.end', [
+            'call_id' => $call, 'tool_name' => 'Agent', 'outcome' => 'completed', 'abort_reason' => null,
+            'duration_ms' => 1000, 'duration_source' => 'harness', 'close_source' => 'post_tool_use', 'match' => 'harness_ref',
+        ]);
+        $rowOf = fn (string $call): bool => DB::table('intern_species')->where('call_id', $call)->exists();
+
+        [$openOld, $closedOld, $young] = [$this->ulid(), $this->ulid(), $this->ulid()];
+
+        $this->deliver([$dispatch($openOld), $dispatch($closedOld), $end($closedOld)]);
+        $this->fold();
+        $this->advanceServerClock(15 * 86400);
+        $this->deliver([$dispatch($young)]);
+        $this->fold();
+        DB::table('calls')->where('call_id', $young)->delete();
+
+        $this->assertTrue($rowOf($openOld) && $rowOf($closedOld) && $rowOf($young), 'the control: every call has its row');
+
+        app(Purge::class)->pass();
+
+        $this->assertFalse($rowOf($openOld), 'an expired row whose call is still in calls was kept');
+        $this->assertFalse($rowOf($closedOld), 'an expired row was kept');
+        $this->assertTrue($rowOf($young), 'a row inside the retention window went with its calls row');
+    }
+
+    /**
      * § 6.7: `feed_outbox` is retained **60 s** after `created_at` — the stall bound plus one heartbeat —
      * and folded into the same pass (card#9300). A row a stream may still deliver is kept; a row no
      * stream inside its bound can still read is deleted; and the event retention's diagnostic

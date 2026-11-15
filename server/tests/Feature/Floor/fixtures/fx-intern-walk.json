@@ -424,7 +424,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -881,7 +882,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "idle",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -1066,7 +1068,8 @@
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 1,
@@ -1523,7 +1526,8 @@
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "idle",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 1,
@@ -1980,7 +1984,8 @@
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 1,
@@ -2260,7 +2265,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "idle",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -2288,7 +2294,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -2745,7 +2752,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -3222,7 +3230,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -3699,7 +3708,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -4176,7 +4186,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -4204,7 +4215,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "idle",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -4661,14 +4673,16 @@
                   "title": "intern 2",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:02.004Z"
+                  "started_at": "2026-08-23T14:22:02.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 2
@@ -5145,14 +5159,16 @@
                   "title": "intern 2",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:02.004Z"
+                  "started_at": "2026-08-23T14:22:02.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 2
@@ -5180,7 +5196,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -5637,7 +5654,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -5665,14 +5683,16 @@
                   "title": "intern 2",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:02.004Z"
+                  "started_at": "2026-08-23T14:22:02.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 2
@@ -6129,21 +6149,24 @@
                   "title": "intern 3",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:03.004Z"
+                  "started_at": "2026-08-23T14:22:03.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J02",
                   "title": "intern 2",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:02.004Z"
+                  "started_at": "2026-08-23T14:22:02.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 3
@@ -6171,14 +6194,16 @@
                   "title": "intern 3",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:03.004Z"
+                  "started_at": "2026-08-23T14:22:03.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 2
@@ -6206,21 +6231,24 @@
                   "title": "intern 4",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:04.004Z"
+                  "started_at": "2026-08-23T14:22:04.004Z",
+                  "species": "dragonfruit"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J03",
                   "title": "intern 3",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:03.004Z"
+                  "started_at": "2026-08-23T14:22:03.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 3
@@ -6405,14 +6433,16 @@
                           "title": "intern 3",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:03.004Z"
+                          "started_at": "2026-08-23T14:22:03.004Z",
+                          "species": "duck"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 2,
@@ -7151,7 +7181,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -7336,7 +7367,8 @@
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 1,
@@ -7627,7 +7659,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -7655,7 +7688,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "idle",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "banana"
                 }
               ],
               "subagents_open": 1
@@ -7840,49 +7874,56 @@
                           "title": "intern 16",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:16.004Z"
+                          "started_at": "2026-08-23T14:22:16.004Z",
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
                           "title": "intern 15",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:15.004Z"
+                          "started_at": "2026-08-23T14:22:15.004Z",
+                          "species": "sloth"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
                           "title": "intern 14",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:14.004Z"
+                          "started_at": "2026-08-23T14:22:14.004Z",
+                          "species": "kiwi"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
                           "title": "intern 13",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:13.004Z"
+                          "started_at": "2026-08-23T14:22:13.004Z",
+                          "species": "raccoon"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
                           "title": "intern 12",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:12.004Z"
+                          "started_at": "2026-08-23T14:22:12.004Z",
+                          "species": "pig"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
                           "title": "intern 11",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:11.004Z"
+                          "started_at": "2026-08-23T14:22:11.004Z",
+                          "species": "carrot"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
                           "title": "intern 10",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:10.004Z"
+                          "started_at": "2026-08-23T14:22:10.004Z",
+                          "species": "cabbage"
                         }
                       ],
                       "subagents_open": 7,
@@ -8162,56 +8203,64 @@
                   "title": "intern 16",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:16.004Z"
+                  "started_at": "2026-08-23T14:22:16.004Z",
+                  "species": "penguin"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
                   "title": "intern 15",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:15.004Z"
+                  "started_at": "2026-08-23T14:22:15.004Z",
+                  "species": "sloth"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
                   "title": "intern 14",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:14.004Z"
+                  "started_at": "2026-08-23T14:22:14.004Z",
+                  "species": "kiwi"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
                   "title": "intern 13",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:13.004Z"
+                  "started_at": "2026-08-23T14:22:13.004Z",
+                  "species": "raccoon"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
                   "title": "intern 12",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:12.004Z"
+                  "started_at": "2026-08-23T14:22:12.004Z",
+                  "species": "pig"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
                   "title": "intern 11",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:11.004Z"
+                  "started_at": "2026-08-23T14:22:11.004Z",
+                  "species": "carrot"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
                   "title": "intern 10",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:10.004Z"
+                  "started_at": "2026-08-23T14:22:10.004Z",
+                  "species": "cabbage"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J09",
                   "title": "intern 9",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:09.004Z"
+                  "started_at": "2026-08-23T14:22:09.004Z",
+                  "species": "strawberry"
                 }
               ],
               "subagents_open": 8
@@ -8239,56 +8288,64 @@
                   "title": "intern 17",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:17.004Z"
+                  "started_at": "2026-08-23T14:22:17.004Z",
+                  "species": "hedgehog"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0G",
                   "title": "intern 16",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:16.004Z"
+                  "started_at": "2026-08-23T14:22:16.004Z",
+                  "species": "penguin"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
                   "title": "intern 15",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:15.004Z"
+                  "started_at": "2026-08-23T14:22:15.004Z",
+                  "species": "sloth"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
                   "title": "intern 14",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:14.004Z"
+                  "started_at": "2026-08-23T14:22:14.004Z",
+                  "species": "kiwi"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
                   "title": "intern 13",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:13.004Z"
+                  "started_at": "2026-08-23T14:22:13.004Z",
+                  "species": "raccoon"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
                   "title": "intern 12",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:12.004Z"
+                  "started_at": "2026-08-23T14:22:12.004Z",
+                  "species": "pig"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
                   "title": "intern 11",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:11.004Z"
+                  "started_at": "2026-08-23T14:22:11.004Z",
+                  "species": "carrot"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
                   "title": "intern 10",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:10.004Z"
+                  "started_at": "2026-08-23T14:22:10.004Z",
+                  "species": "cabbage"
                 }
               ],
               "subagents_open": 9
@@ -8473,56 +8530,64 @@
                           "title": "intern 17",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:17.004Z"
+                          "started_at": "2026-08-23T14:22:17.004Z",
+                          "species": "hedgehog"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0G",
                           "title": "intern 16",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:16.004Z"
+                          "started_at": "2026-08-23T14:22:16.004Z",
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
                           "title": "intern 15",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:15.004Z"
+                          "started_at": "2026-08-23T14:22:15.004Z",
+                          "species": "sloth"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
                           "title": "intern 14",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:14.004Z"
+                          "started_at": "2026-08-23T14:22:14.004Z",
+                          "species": "kiwi"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
                           "title": "intern 13",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:13.004Z"
+                          "started_at": "2026-08-23T14:22:13.004Z",
+                          "species": "raccoon"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
                           "title": "intern 12",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:12.004Z"
+                          "started_at": "2026-08-23T14:22:12.004Z",
+                          "species": "pig"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
                           "title": "intern 11",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:11.004Z"
+                          "started_at": "2026-08-23T14:22:11.004Z",
+                          "species": "carrot"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
                           "title": "intern 10",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:10.004Z"
+                          "started_at": "2026-08-23T14:22:10.004Z",
+                          "species": "cabbage"
                         }
                       ],
                       "subagents_open": 10,
@@ -8802,56 +8867,64 @@
                   "title": "intern 16",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:16.004Z"
+                  "started_at": "2026-08-23T14:22:16.004Z",
+                  "species": "penguin"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
                   "title": "intern 15",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:15.004Z"
+                  "started_at": "2026-08-23T14:22:15.004Z",
+                  "species": "sloth"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
                   "title": "intern 14",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:14.004Z"
+                  "started_at": "2026-08-23T14:22:14.004Z",
+                  "species": "kiwi"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
                   "title": "intern 13",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:13.004Z"
+                  "started_at": "2026-08-23T14:22:13.004Z",
+                  "species": "raccoon"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
                   "title": "intern 12",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:12.004Z"
+                  "started_at": "2026-08-23T14:22:12.004Z",
+                  "species": "pig"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
                   "title": "intern 11",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:11.004Z"
+                  "started_at": "2026-08-23T14:22:11.004Z",
+                  "species": "carrot"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
                   "title": "intern 10",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:10.004Z"
+                  "started_at": "2026-08-23T14:22:10.004Z",
+                  "species": "cabbage"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J09",
                   "title": "intern 9",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:09.004Z"
+                  "started_at": "2026-08-23T14:22:09.004Z",
+                  "species": "strawberry"
                 }
               ],
               "subagents_open": 9
@@ -9036,14 +9109,16 @@
                           "title": "intern 2",
                           "subagent_type": "coder",
                           "activity_state": "idle",
-                          "started_at": "2026-08-23T14:22:02.004Z"
+                          "started_at": "2026-08-23T14:22:02.004Z",
+                          "species": "duck"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 2,
@@ -9860,7 +9935,8 @@
                   "title": "intern 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "penguin"
                 }
               ],
               "subagents_open": 1
@@ -10070,14 +10146,16 @@
                           "title": "intern 2",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:02.004Z"
+                          "started_at": "2026-08-23T14:22:02.004Z",
+                          "species": "duck"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 2,
@@ -10515,21 +10593,24 @@
                           "title": "intern 3",
                           "subagent_type": "coder",
                           "activity_state": "idle",
-                          "started_at": "2026-08-23T14:22:03.004Z"
+                          "started_at": "2026-08-23T14:22:03.004Z",
+                          "species": "duck"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J02",
                           "title": "intern 2",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:02.004Z"
+                          "started_at": "2026-08-23T14:22:02.004Z",
+                          "species": "duck"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 3,
@@ -10872,7 +10953,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -11245,7 +11327,8 @@
                   "title": "i1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "penguin"
                 }
               ],
               "subagents_open": 1
@@ -11273,7 +11356,8 @@
                   "title": "i4",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "turtle"
                 }
               ],
               "subagents_open": 1
@@ -11321,7 +11405,8 @@
                   "title": "i10",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "otter"
                 }
               ],
               "subagents_open": 1
@@ -11349,14 +11434,16 @@
                   "title": "i10",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "otter"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J11",
                   "title": "i11",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "peach"
                 }
               ],
               "subagents_open": 2
@@ -11384,21 +11471,24 @@
                   "title": "i10",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "otter"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J13",
                   "title": "i13",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "duck"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J14",
                   "title": "i14",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:01.004Z"
+                  "started_at": "2026-08-23T14:22:01.004Z",
+                  "species": "mushroom"
                 }
               ],
               "subagents_open": 3
@@ -11583,7 +11673,8 @@
                           "title": "intern 1",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:01.004Z"
+                          "started_at": "2026-08-23T14:22:01.004Z",
+                          "species": "banana"
                         }
                       ],
                       "subagents_open": 1,

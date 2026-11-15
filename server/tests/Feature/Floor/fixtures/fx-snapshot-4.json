@@ -52,7 +52,8 @@
                 "title": "draft the D1 event schema",
                 "subagent_type": "coder",
                 "activity_state": "working",
-                "started_at": "2026-08-23T14:23:31.004Z"
+                "started_at": "2026-08-23T14:23:31.004Z",
+                "species": "pepper"
               }
             ],
             "subagents_open": 1,
@@ -429,7 +430,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -869,7 +871,8 @@
               "title": "draft the D1 event schema",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:31.004Z"
+              "started_at": "2026-08-23T14:23:31.004Z",
+              "species": "pepper"
             }
           ],
           "subagents_open": 1,
@@ -1244,7 +1247,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -1604,7 +1608,8 @@
               "title": "draft the D1 event schema",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:31.004Z"
+              "started_at": "2026-08-23T14:23:31.004Z",
+              "species": "pepper"
             }
           ],
           "subagents_open": 1,
@@ -1979,7 +1984,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -2374,7 +2380,8 @@
               "title": "draft the D1 event schema",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:31.004Z"
+              "started_at": "2026-08-23T14:23:31.004Z",
+              "species": "pepper"
             }
           ],
           "subagents_open": 1,
@@ -2736,7 +2743,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -3124,7 +3132,8 @@
               "title": "draft the D1 event schema",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:31.004Z"
+              "started_at": "2026-08-23T14:23:31.004Z",
+              "species": "pepper"
             }
           ],
           "subagents_open": 1,
@@ -3498,7 +3507,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -3878,7 +3888,8 @@
               "title": "draft the D1 event schema",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:31.004Z"
+              "started_at": "2026-08-23T14:23:31.004Z",
+              "species": "pepper"
             }
           ],
           "subagents_open": 1,
@@ -4252,7 +4263,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -4636,7 +4648,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -5023,7 +5036,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -5407,7 +5421,8 @@
                             "title": "draft the D1 event schema",
                             "subagent_type": "coder",
                             "activity_state": "working",
-                            "started_at": "2026-08-23T14:23:31.004Z"
+                            "started_at": "2026-08-23T14:23:31.004Z",
+                            "species": "pepper"
                           }
                         ],
                         "subagents_open": 1,
@@ -6668,7 +6683,8 @@
                             "title": "draft the D1 event schema",
                             "subagent_type": "coder",
                             "activity_state": "working",
-                            "started_at": "2026-08-23T14:23:31.004Z"
+                            "started_at": "2026-08-23T14:23:31.004Z",
+                            "species": "pepper"
                           }
                         ],
                         "subagents_open": 1,
@@ -7510,7 +7526,8 @@
                             "title": "draft the D1 event schema",
                             "subagent_type": "coder",
                             "activity_state": "working",
-                            "started_at": "2026-08-23T14:23:31.004Z"
+                            "started_at": "2026-08-23T14:23:31.004Z",
+                            "species": "pepper"
                           }
                         ],
                         "subagents_open": 1,
@@ -8444,7 +8461,8 @@
                             "title": "draft the D1 event schema",
                             "subagent_type": "coder",
                             "activity_state": "working",
-                            "started_at": "2026-08-23T14:23:31.004Z"
+                            "started_at": "2026-08-23T14:23:31.004Z",
+                            "species": "pepper"
                           }
                         ],
                         "subagents_open": 1,
@@ -8869,7 +8887,8 @@
                 "title": "draft the D1 event schema",
                 "subagent_type": "coder",
                 "activity_state": "working",
-                "started_at": "2026-08-23T14:23:31.004Z"
+                "started_at": "2026-08-23T14:23:31.004Z",
+                "species": "pepper"
               }
             ],
             "subagents_open": 1,
@@ -9249,7 +9268,8 @@
                             "title": "draft the D1 event schema",
                             "subagent_type": "coder",
                             "activity_state": "working",
-                            "started_at": "2026-08-23T14:23:31.004Z"
+                            "started_at": "2026-08-23T14:23:31.004Z",
+                            "species": "pepper"
                           }
                         ],
                         "subagents_open": 1,
@@ -10347,7 +10367,8 @@
                             "title": "draft the D1 event schema",
                             "subagent_type": "coder",
                             "activity_state": "working",
-                            "started_at": "2026-08-23T14:23:31.004Z"
+                            "started_at": "2026-08-23T14:23:31.004Z",
+                            "species": "pepper"
                           }
                         ],
                         "subagents_open": 1,
@@ -11512,7 +11533,8 @@
                             "title": "draft the D1 event schema",
                             "subagent_type": "coder",
                             "activity_state": "working",
-                            "started_at": "2026-08-23T14:23:31.004Z"
+                            "started_at": "2026-08-23T14:23:31.004Z",
+                            "species": "pepper"
                           }
                         ],
                         "subagents_open": 1,
@@ -11987,7 +12009,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -12421,7 +12444,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -12717,7 +12741,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -13151,7 +13176,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -13526,7 +13552,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -13881,7 +13908,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -14186,7 +14214,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -14620,7 +14649,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -14916,7 +14946,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -15350,7 +15381,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -15725,7 +15757,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
