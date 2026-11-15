@@ -1099,9 +1099,8 @@ const OFFICE = Object.freeze({
  *
  * card#13033 — a door set into a SIDE wall (`facing` `right` or `left`) is drawn by `view`: `plan`, on the floor page, in
  * the drawing box — on the wall strip over the doorway the recess over the leaf's span, a jamb block at each end and the
- * sill just inside the room, and the FLAG SIGN on a 2 px bracket from the wall face; `elevation`, the cab's door view's
- * billboard in the wall's plane — the frame alone, its head flush with the box's top, so nothing shows through above it;
- * `flag`, the door view's second billboard — the flag plate alone.
+ * sill just inside the room, and the FLAG SIGN on a 2 px bracket from the wall face; `flag`, the door view's billboard —
+ * the flag plate alone.
  */
 function restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf }) {
     const P = PALETTE['restroom-door'];
@@ -1110,7 +1109,7 @@ function restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf }
         return flagPlate(pen, plate, sign);
     }
 
-    if (facing !== 'back' && view === 'plan') {
+    if (facing !== 'back') {
         const inside = facing === 'right' ? doorway.x - 3 : doorway.x + doorway.w;
         const bracket = facing === 'right' ? plate.x + plate.w : doorway.x + doorway.w;
 
@@ -1121,21 +1120,21 @@ function restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf }
             + flagPlate(pen, plate, sign);
     }
 
-    const top = view === 'elevation' ? 0 : 22;
-    const out = view === 'elevation' ? [] : [shadow(pen, w / 2 + 2, foot, w * 0.5, 3, 0.28)];
+    const top = 22;
+    const out = [shadow(pen, w / 2 + 2, foot, w * 0.5, 3, 0.28)];
 
-    // the frame: the head and the jambs round the recess, the pediment over the head on the floor page, the sill at the foot
+    // the frame: the head and the jambs round the recess, the pediment over the head, the sill at the foot
     out.push(rimmed(`<path d="${rr(0, top, w, foot - top, 2)}" fill="${pen.face(P.frame, 0.2, 0.18)}" stroke="${line(P.frame)}" stroke-width=".9"/>`
         + `<path d="${rr(6, top + 10, w - 12, foot - top - 14, 1)}" fill="${pen.v([[0, P.recess], [1, shade(P.recess, 0.3)]])}"/>`
-        + (view === 'elevation' ? '' : `<path d="${rr(-1, top - 4, w + 2, 6, 2)}" fill="${pen.face(P.pediment, 0.15, 0.2)}" stroke="${line(P.pediment)}" stroke-width=".7"/>`)
+        + `<path d="${rr(-1, top - 4, w + 2, 6, 2)}" fill="${pen.face(P.pediment, 0.15, 0.2)}" stroke="${line(P.pediment)}" stroke-width=".7"/>`
         + `<path d="${rr(-1, foot - 4, w + 2, 4, 1)}" fill="${pen.face(P.sill, 0.2, 0.15)}" stroke="${line(P.sill)}" stroke-width=".6"/>`));
 
-    if (facing === 'back' && plate !== null) {
+    if (plate !== null) {
         out.push(rimmed(`<path d="${rr(plate.x, plate.y, plate.w, plate.h, 4)}" fill="${pen.face(P.plate, 0.12, 0.2)}" stroke="${line(P.plate)}" stroke-width=".7"/>`
             + pictogram(plate)));
     }
 
-    if (facing === 'back' && sign !== null) {
+    if (sign !== null) {
         out.push(signRim(sign));
     }
 

@@ -134,7 +134,8 @@ would have made every caller place the cell itself or closed an import cycle). `
   draws a billboard as an axis-aligned image from `at(x1, y2, z1)` to `at(x2, y1, z1)` — it can stand an image only
   FACING the eye, so an elevation with `x1 = x2` projects to nothing, and SVG cannot warp an image onto the wall's
   perspective trapezoid. Slice 1 leaves `door-view.js` as it was (a side door's tile is billboarded face-on, today's
-  picture) and builds the two documents below, which the themes' selftest draws. (1) **The elevation** —
+  picture) and builds the two documents below, which the themes' selftest draws. (1) **The elevation** (removed after
+  slice 3, which drew the doorway as polygons and left it no caller; § 7 Q4) —
   `scenery(sceneryInput(cell, seed, geometry, 'elevation'))`, a `cell.w × cell.h` (64 × 144) box: the frame as today's
   face-on picture (6 px jambs, the 10 px head with its top FLUSH with the box's top — design review round 3, item 7: the
   first drafts' 22 px under the top left a see-through slot over the head, under a lintel from the tile's height — the
@@ -163,9 +164,10 @@ would have made every caller place the cell itself or closed an import cycle). `
 - `sceneryInput(cell, seed, geometry = null, view = 'plan')` adds `facing`, the plates and `view` to a side door's input
   (`w`, `h` become the draw box's for `plan`, the tile's for `elevation`, 36 × 32 for `flag`); a `back` door's input, and
   a door handed no geometry, is today's byte for byte. The `view` is part of the contract — its JSDoc names the three
-  members (`DOOR_VIEWS`) and the door view would be the only caller of the two it adds (round 2, F6). The scene hands
+  members (`DOOR_VIEWS`; `plan` and `flag` since the `elevation` view's removal, § 7 Q4) and the door view would be the
+  only caller of the two it adds (round 2, F6). The scene hands
   the door's geometry; `door-view.js`, `door-view-leg.mjs`'s `hrefsOf()` and `door-view.selftest.mjs` hand none until Q4
-  is answered, and so draw today's `back` picture; `tools/floor-themes/selftest.mjs` draws both facings in all three views.
+  is answered, and so draw today's `back` picture; `tools/floor-themes/selftest.mjs` draws both facings in every view (`DOOR_VIEWS`).
 - **`obstaclesOf(cells, standing, geometryOf)`** — the ONE statement of the walkable model's obstacle rule (every `wall`
   cell and every standing tile's rect, less a side door's): exported here and imported by `scene.js` and by
   `walk-probe.mjs`, whose four constructions it replaced; `verify-floor.py`'s Python copy keeps a drift check (§ 6;
@@ -219,7 +221,8 @@ plan touches `route.js`.
 - **Themes** (`studio/theme.js` `restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf })`,
   `cottage/theme.js` likewise; `scenery()` reads `facing`, `view`, `doorway` and `leaf` off its input, `back` and `plan`
   their defaults): `back` draws today's picture whatever the view. A side door is drawn by `view`, the third member of
-  `sceneryInput()`'s contract (`view ∈ { 'plan', 'elevation', 'flag' }`, default `'plan'`; design review round 2, F6):
+  `sceneryInput()`'s contract (`view ∈ { 'plan', 'elevation', 'flag' }` as designed, `{ 'plan', 'flag' }` since the
+  `elevation` view's removal, § 7 Q4; default `'plan'`; design review round 2, F6):
   **`plan`** (the floor page, in the draw box's px) — the wall strip's recess (dark, over the leaf's 52 px of the
   `doorway` rect), two jamb blocks in the frame colour at the span's ends over the strip, the sill as a 3 px strip just
   inside the room across the span, and the FLAG PLATE at `plate` with a 2 px bracket to the wall face; **`elevation`**
@@ -230,7 +233,7 @@ plan touches `route.js`.
   plate alone. ONE function draws the plate for `plan` and `flag`: the pictogram (the two figures the theme already
   draws) in its upper 18 px, the slider rim at `sign` in its lower half. Nothing else — no `<text>`, no light, nothing
   that moves (AT-D3-25's form checks). The two § 10.6 table rows are amended in this commit; their palette keys are
-  unchanged (the drift leg holds table and module equal by key); `tools/floor-themes/selftest.mjs` draws all three views
+  unchanged (the drift leg holds table and module equal by key); `tools/floor-themes/selftest.mjs` draws every view
   per theme (§ 6).
 - **Painter** (`painter.js` L1318–1353): per door by facing — `back` as today; side: the leaf a `rect` at `d.bar` in a
   `restroom-leaf restroom-bar` group with `transform-origin` at the back jamb's end (the doorway's far end, its top) and
@@ -418,8 +421,8 @@ own level on every frame (§ 3.4).
   the wall bodies over the doorway and the footprint's side strips on those rows carrying the lintel `y1`; REDs: the
   billboard stood face-on at the tile (today's placement); the side strip left whole behind the cut; the flag's href
   drawn from the `plan` document. Not in slice 1.
-- **`tools/floor-themes/selftest.mjs`** — the restroom door set into the right wall and into the left, each in all three
-  views (`plan` in the drawing box, `elevation` at 64 × 144, `flag` at 36 × 32), each held textless and well-formed as
+- **`tools/floor-themes/selftest.mjs`** — the restroom door set into the right wall and into the left, each in every
+  view of `DOOR_VIEWS` (`plan` in the drawing box, `flag` at 36 × 32; `elevation` at 64 × 144 until § 7 Q4's removal), each held textless and well-formed as
   every scenery document is, through `sceneryInput()`.
 - **`gen-fx-snack.mjs`** — the `restroom-corridor` variant re-cut as § 4's last row: the door kept at `furniture` (214, 81),
   the snack tables kept, `walls` painted at row 72 over cols 200–204 and 216–221 and at row 83 over cols 200–221, the left
@@ -463,11 +466,12 @@ own level on every frame (§ 3.4).
    the cab's open doors. Option A, the doorway as POLYGONS: the cut (lintel and side strips, § 3.1 (3)), the recess a
    dark polygon in the wall's plane over the doorway's span and the jambs in the wall's colour, plus the eye-facing flag
    billboard — every surface the view draws is already a polygon in its own classes, so this is one more body kind in
-   `cab-paint.js` and no theme document (the `elevation` view would go unused). Option B, an image in the wall's plane
+   `cab-paint.js` and no theme document (the `elevation` view would go unused, and was removed once slice 3 landed). Option B, an image in the wall's plane
    approximated by an affine skew to the near jamb's height, clipped to the projected trapezoid — a new drawing primitive,
    and inexact where the wall recedes steeply, which is where the doorway sits (beside the eye's line). Option C, leave
    the door view as it is until the 3-D floor is the view the operator reads. **Recommendation: A**, as slice 3, after
-   slice 2. **Answered A; built as slice 3 (§ 8).**
+   slice 2. **Answered A; built as slice 3 (§ 8).** The `elevation` view it left without a caller is removed:
+   `DOOR_VIEWS` and the themes' `restroomDoor()` carry `plan` and `flag` alone (`FLOOR.md` Appendix B row 65).
 
 ## 8. The slice plan, for the coder
 
@@ -515,7 +519,8 @@ What this plan can say durably: the files slice 1 edits that the siblings have b
    own: the wall cell past the doorway's far end shows its near face (the jamb the eye can see; the near jamb faces away
    from it), and `cab-paint.js` draws a body's underside where it stands clear of the floor above the eye (the head).
    The recess takes each theme's `restroom-door` recess colour through a `--dv-recess` carrier. The flag carries its rim
-   and no field, the door view drawing no fact (`FLOOR.md` § 6.3). The `elevation` view has no caller.
+   and no field, the door view drawing no fact (`FLOOR.md` § 6.3). The `elevation` view, left with no caller, is
+   removed (§ 7 Q4).
 
 ## 9. What could falsify it, and what is not defended
 
@@ -597,8 +602,8 @@ Round 3 returned ten items; the build of slice 1 applied each and corrected this
 5. The step-through text deleted; Q2 and Q3 recorded as ruled (§ 7).
 6. The stop rule in `scene.js`, `walk-probe.mjs` and `verify-floor.py`; the drift check compares facing, threshold and
    count; the plant figures re-measured (§ 6).
-7. The elevation's head flush with the box's top (§ 3.1, § 3.4) — built in both themes; the view that would stand it is
-   § 7 Q4.
+7. The elevation's head flush with the box's top (§ 3.1, § 3.4) — built in both themes; the view was removed with no
+   caller after § 7 Q4 was answered (A).
 8. The back lane unchanged, foot to foot plus a body's height; the threshold-line clause a side door's alone (§ 3.2).
 9. § 2's signatures and the flag figure corrected; the door on the footprint's top row named (§ 9).
 10. `restroom-sealed` re-walled (§ 6).
