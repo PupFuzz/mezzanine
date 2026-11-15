@@ -542,8 +542,8 @@ controls are configured with, and the probe reads it):
 - **Elevation**: `minPolarAngle` = 0 (straight down), `maxPolarAngle` = **88°** from vertical (*just above the floor
   plane* — 2° keeps the floor a surface rather than a line; one constant, § 12 item 2);
 - **Never below the floor** — one guard, and the arithmetic that makes a second one dead (canon #6): the polar limit
-  keeps the camera above its TARGET's height, and the target's box (next bullet) keeps the target at or above the
-  plane — so the camera's `y` is `target.y + d · cos(polar) ≥ 0 + d · cos(88°) > 0` for every `d > 0`. **The near
+  keeps the camera above its TARGET's height, and the target's box (next bullet; as built, its height bound) keeps
+  the target at or above the plane — so the camera's `y` is `target.y + d · cos(polar) ≥ 0 + d · cos(88°) > 0` for every `d > 0`. **The near
   plane's bottom corners are above the floor too** (the review's minor): with `near` = **0.05** units the lowest
   corner of the near plane sits `near · (cos 88° + tan(fov/2) · sin 88°)` ≈ 0.022 units under the eye, and the eye is
   at least `1.2 · cos 88°` ≈ 0.042 above the plane, so the corner is ≥ 0.02 above it — `near` is 0.05 and not 0.1
@@ -557,6 +557,27 @@ controls are configured with, and the probe reads it):
   `floor-paint.js`, the box `view-limits.js`'s. Why not the library's target radius: that is a sphere about a point,
   and the floor is a box. **One clamp**: the keyboard acts (below) write the target through the same controls and
   are clamped by the same lines — there is no second clamp in `view-limits.js`;
+  ⭐ **As built (card#13033, the eye moves in — `FLOOR.md` § 4.5): the clamp holds the EYE, not the target.** The
+  box above stopped a pan with the target at the back edge and the eye still the fit's 22-odd units in front, so the
+  viewer could never enter the office; and the clamp's `update()` after it re-applied the damped pan still owed,
+  leaving the drawn target past the band's face, which the cut-away then counted as the band between — the back
+  wall's drop. Now `view-limits.js`'s `confine()` (pure) holds the eye in front of the back wall's face and inside
+  the floor's sides, each by the near plane's reach, and in front no farther out than the dolly limit; the target
+  keeps only its height. A move that would carry the eye out is resolved by what moved, taken in two parts: the
+  target's move with the previous offset slides the pair back by its overshoot (a pan stops at a wall and slides
+  along it, distance and angles kept); then the offset's change about that target brings the eye along its line to
+  the legal distance nearest the update's, `gap` to the dolly limit (a turn or a dolly out at a wall comes in; a
+  dolly toward a target past the back wall stops at the wall), or keeps the previous offset where that line has no
+  legal point. `confineControls()` writes it into the controls, drops the damped pan still owed on a slid axis,
+  turns the camera to the target and sets the controls' own last pose to the held one — the library tells a change,
+  and so the renderer's wake, from that pose, and a pointer move pushing the eye at the wall again would otherwise
+  read as no change and rest the camera where no frame drew it — and nothing updates the controls after it. `floor-paint.js`'s one `clamp()` calls
+  it after every update: the frame, every act, a label's focus. The accepted cost: at the fit a view turned off the front
+  past the angle whose sine is the floor's half-width over the eye's distance along the floor is brought in (about
+  27° on the-burrow, `asin(10.05 / 21.9)`); inside the office the orbit's centre lies past the back wall, so a
+  turn there swings the eye along the walls; and since a pan keeps the tilt and the distance, the eye at the back
+  wall looks past it — at the fit's distance and tilt the room has left the frame before the eye reaches the wall,
+  and a walk in reads as one inside the room only from a closer, lower view (zoomed in, or tilted toward level);
 - **A pan slides along the floor, never up the screen (M5)**: the library's `screenSpacePanning` is set explicitly to
   the floor-plane mode (to confirm in slice 4); the property — a vertical pan gesture leaves the target's `y`
   unchanged and moves it along the floor — is the browser leg's (§ 8 item 5);
@@ -615,6 +636,9 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
   deep inside a desk's box by a pan, and a four-rays-a-frame collision test against every desk to defend that one
   case is machinery for a state the viewer causes and reverses. Characters are never colliders for the same reason.
   With no collider the library needs no collision support, which is what let § 2.1 choose `OrbitControls`.
+  ⭐ **As built (card#13033): the eye is bounded by the office's back and side walls** (§ 3.6's as-built note) —
+  a bound on where the eye stands, applied after the library's update, not a collider: nothing is tested against a
+  wall's mesh, and the internal walls stay the cut-away's.
 - **Walls between the eye and the target are cut away.** Each render, one ray from the camera to the target over
   the wall and band meshes; every wall it meets is **lowered** to `CUTAWAY_H` = 0.15 units (its foot strip — the 2-D
   rule's *every other wall shows only its top edge*, kept as the cut-away's form) over **150** ms (a cut under
@@ -632,6 +656,12 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
   back sees OVER the band. The browser leg therefore **places the target first** — a pan to within 1 unit of the band
   — then rotates to the back and reads the band at `CUTAWAY_H`, then to the front and reads it restored (§ 8 item 5);
   a leg that rotated from the centre would pass with the cut-away deleted. Built in slice 4 with the renderer (M6).
+  ⭐ **As built (card#13033): the band is no longer a body of the cut-away.** With the eye held in front of the
+  band's face (§ 3.6's as-built note) the eye is never behind the room, so the case above has no route; and with the
+  target free past the face — where a pan into the office leaves it — the band's body would be met by every such
+  segment and drop with the eye in front of it, which is the defect the operator reported. `cutaway()` tests the
+  walls alone; the band always stands, and the browser leg's `cutaway` row reads it standing at the entry, with the
+  eye at the band's face and turned there, beside a wall lowered looking level across the floor.
 
 - **Desks and characters are never cut away**: they are the facts; a desk between the eye and the target is a
   reason to orbit, and the labels (§ 3.9) stay readable over it because they are screen-space.
@@ -867,6 +897,8 @@ recorded on the card*.
    floor's edge; `near` set to 0.1 → a corner under the plane at the limit); `cutaway()` names exactly the walls a
    segment meets (plant: a wall on the segment → in the set; moved off → not; the band from behind with a target
    1 unit from it → in; the band from behind with the target at the centre → NOT in, the B1 derivation as a control).
+   ⭐ As built (card#13033): the band's legs are gone with the band's body, a target past its face never naming it
+   in their place, and the probe drives `confine()` through the vendored controls (§ 3.6's as-built note).
    `camera-acts-probe.mjs`: each key maps to the controls call § 3.6 names (plant: `ArrowUp` reaching pan → the tilt
    leg reds; a Shift-arrow reaching rotate → the pan leg reds). **Gate 2's `.glb` clause** — `bin/asset-provenance.selftest.py`:
    **one RED per refusal** — an external buffer `uri`, an external image `uri`, an image that is not a PNG, an image
@@ -900,7 +932,9 @@ recorded on the card*.
    screen-space panning → `y` changes); a wheel at the dolly limit scrolls the page and moves no distance; **a pan to
    within 1 unit of the band, then a rotation to the back** drops the band and its leaves and clock to `CUTAWAY_H`,
    and a rotation to the front restores them (plant: the cut-away's ray cast dropped; control: the same rotation
-   from the centre must NOT drop it); **the frame loop stops**: after every clip has ended and the controls are still,
+   from the centre must NOT drop it) — ⭐ as built (card#13033), the pan legs carry the eye into the office to its
+   bound (plant: the confinement dropped) and the cut-away row lowers a wall looking level and reads the band
+   standing (§ 3.7's as-built note); **the frame loop stops**: after every clip has ended and the controls are still,
    no frame callback runs for a second (counted through the protocol; plant: the stop condition dropped → callbacks
    keep coming); **it restarts on a late resource** — a kit file answered after the first paint is drawn without a
    gesture (plant: the resource-ready restart dropped → the piece absent until a drag); **it wakes on a drag under
@@ -1072,7 +1106,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    the 3-D floor draws none either; (h) the band's picture is open at the elevator's doorway (cleared, and cut by `alphaTest`), and
    behind it stands the cab's room — `FLOOR.md` § 12's *Cab interior* fitted to the doorway as the 2-D band cab is (its open front the doorway, its depth at the door view's scale) and clipped to it as that cab is (`doorwayView()`), one vertex-coloured
    mesh (revised by card#13033's cab follow-up; it was a dark box over the doorway) — the two leaves boxes in front of
-   it narrowing toward the frame as the 2-D leaves do, all three on the band so the cut-away lowers them with it; the walks' door spans reach the world as a leaf timeline
+   it narrowing toward the frame as the 2-D leaves do, all three on the band (whose cut-away card#13033 retired, § 3.7); the walks' door spans reach the world as a leaf timeline
    (`floorWorld()`'s `doors`, `elevatorLeaf()`) read by the scene's own `leafLevel()`, so both floors read one timeline;
    (i) the house theme's `piece3d()` no longer draws the restroom door's leaf: `FLOOR.md` § 6.7 item 2 makes the leaf and
    the slider's field the renderer's at the scene's rects, which the world lifts (`restroom_doors`); the field is a
@@ -1205,7 +1239,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
   searches for a differing pair and fails as a control if none.
 - A label behind the eye leaves the tree → owned by slice 4's list-view row.
 - The band's foot strip hides a ride's leaves at the moment a viewer behind the room wants them → owned by the
-  slice-4 reading; the leg only holds that the motion continues.
+  slice-4 reading; the leg only holds that the motion continues. Retired by card#13033: the band is never lowered.
 - A z-fight at the face patch, the disc or the status surface → owned by the slice-4 sandbox read; no node test
   sees it.
 - A 3-D URL written in the 2-D form, or a seat read as `3d` → owned by slice 4's URL rows and the route test.
@@ -1290,9 +1324,10 @@ Waits for a slice, with its reason:
    before (no product impact on its own; canon #18).
 10. `three-mesh-bvh` is adopted only on its measured trigger (§ 2.1).
 11. No camera collider (§ 3.7); the cut-away lowers walls and the band to 0.15 units over 150 ms and never cuts a
-    desk or a character.
+    desk or a character. As built (card#13033): walls alone — the band is never lowered.
 12. The target's box clamp is three lines after `update()` in the renderer, the box `view-limits.js`'s — the one
-    first-party piece of camera mechanism, and the one clamp (§ 3.6).
+    first-party piece of camera mechanism, and the one clamp (§ 3.6). As built (card#13033): the one clamp holds the
+    eye in the office, `view-limits.js`'s `confine()`, with no update after it (§ 3.6's as-built note).
 
 ## 13. Operator questions — all four answered on 2026-11-11
 

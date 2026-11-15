@@ -17,8 +17,9 @@
  * one finger turns, right-drag or two fingers pan ALONG THE FLOOR (`screenSpacePanning` off), the wheel and a pinch dolly,
  * within `limits()` — polar 0 to its maximum, distance its minimum to its maximum, both recomputed on a resize. An Alt +
  * left-drag is taken from the controls before they see it: its vertical movement raises or lowers the eye
- * (`camera-acts.js`'s `rise()`). After every update the target is clamped into the floor's box and the eye moved by the
- * same vector — the one clamp, which the keys' acts and the rise reach through the same controls. A wheel that would
+ * (`camera-acts.js`'s `rise()`). After every update the camera is held in the office by `view-limits.js`'s
+ * `confineControls()` — the one clamp, which the keys' acts, the rise and a label's focus reach through the same
+ * controls, and after which nothing updates the controls before the frame is drawn. A wheel that would
  * dolly past a limit is the page's: it scrolls the page. The controls' own key listener is never connected; the keys
  * are the house wire's, over `camera-acts.js`. Under `prefers-reduced-motion` damping is off, so every move is a cut.
  *
@@ -57,7 +58,7 @@ import {
 } from '../vendor/three/three.module.js';
 import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer } from '../vendor/three/examples/jsm/renderers/CSS2DRenderer.js';
-import { limits } from './view-limits.js';
+import { confineControls, limits } from './view-limits.js';
 import { SHORTCUTS, cameraActs } from './camera-acts.js';
 import { createFurniture, loadKitMap } from './furniture.js';
 import { floorLabels } from './floor-labels.js';
@@ -121,6 +122,8 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     let screen = null;
     /** the character tree's frame (`SCENE_W` × `SCENE_H`), which the distance limit is one character's height of */
     let character = null;
+    /** the pose the clamp last held the camera at — the confinement's `prev` */
+    let pose = null;
 
     /** The world's limits over the stage, re-derived on every resize and every change of the floor's extent. */
     const reLimit = () => {
@@ -145,27 +148,14 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
             controls.target.set(target.x, target.y, target.z);
             camera.position.set(position.x, position.y, position.z);
             controls.update();
+            pose = { eye: position, target };
         }
     };
 
-    /** THE ONE CLAMP (plan § 3.6): the target into the floor's box, the eye moved by the same vector. */
+    /** THE ONE CLAMP (plan § 3.6): the camera held in the office (`confine()`'s rule). */
     const clamp = () => {
-        if (view === null) {
-            return;
-        }
-
-        const t = controls.target;
-        const was = t.clone();
-
-        t.set(
-            Math.min(view.box.max.x, Math.max(view.box.min.x, t.x)),
-            Math.min(view.box.max.y, Math.max(view.box.min.y, t.y)),
-            Math.min(view.box.max.z, Math.max(view.box.min.z, t.z)),
-        );
-
-        if (!t.equals(was)) {
-            camera.position.add(t.clone().sub(was));
-            controls.update();
+        if (view !== null) {
+            pose = confineControls(controls, view.bound, pose);
         }
     };
 
@@ -556,7 +546,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         polar: controls.getPolarAngle(),
                         azimuth: controls.getAzimuthalAngle(),
                         distance: controls.getDistance(),
-                        limits: view === null ? null : { polar: view.polar, distance: view.distance, near: view.near, far: view.far, box: view.box },
+                        limits: view === null ? null : { polar: view.polar, distance: view.distance, near: view.near, far: view.far, bound: view.bound },
                         target: controls.target.toArray(),
                         eye: camera.position.toArray(),
                         doorway: seen === null ? null : { x: ((seen.x + 1) / 2) * surface.width, y: ((1 - seen.y) / 2) * surface.height },

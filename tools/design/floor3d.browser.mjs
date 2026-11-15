@@ -10,9 +10,10 @@
 //   node tools/design/floor3d.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
 //                                                      which must red
 //   node tools/design/floor3d.browser.mjs --out <dir>  also save the operator's reading pictures: the entry pose, a turned
-//                                                      pose, a close view, a view with the band cut away, the cap floor,
-//                                                      the leaves open, the cab through them, a walker, the marks, a bird, the
-//                                                      restroom door in its side wall and reduced motion
+//                                                      pose, a close view, a view with a wall cut away, a walk into
+//                                                      the office, the cap floor, the leaves open, the cab through them,
+//                                                      a walker, the marks, a bird, the restroom door in its side wall
+//                                                      and reduced motion
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -115,6 +116,23 @@ const closeUp = async (p, key, notches) => {
   await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < ${notches}; k++) b.click(); })()`);
   // a damped dolly eases in over many frames
   await sleep(2500);
+};
+
+/**
+ * The page's inspection once its frame loop has drawn what was asked and rested: no frame drawn in `ms`. A read straight
+ * after a gesture can land between the controls' own update on a pointer move and the frame that clamps it — a pose no
+ * frame draws — and on a loaded host that frame can be hundreds of ms late. Only for a row whose run moves nothing
+ * held under motion, where the loop rests.
+ */
+const rested = async (p, ms = 400) => {
+  let i = await p.inspect();
+  for (let k = 0; k < 60; k++) {
+    await sleep(ms);
+    const next = await p.inspect();
+    if (next.frames === i.frames) return next;
+    i = next;
+  }
+  return i;
 };
 
 /** Primitives a kit file carries, read off its own JSON chunk — `k` of § 6's furniture term is the most of them. */
@@ -423,11 +441,11 @@ const ROWS = {
   },
 
   camera: {
-    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, Page Up / Page Down and Alt + a vertical drag raise and lower the eye and the target together within the box and turn nothing, Shift + a left-drag still pans along the floor, a wheel at the dolly limit scrolls the page',
+    what: 'the camera: a drag down never takes the eye below the floor, a right-drag and Shift + ArrowUp carry the eye into the office and stop it at the back wall, a pan across stops it at each side wall, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, Page Up / Page Down and Alt + a vertical drag raise and lower the eye and the target together within the room\'s height and turn nothing, Shift + a left-drag still pans along the floor, a wheel at the dolly limit scrolls the page',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['`maxPolarAngle` widened past 90°', { plant: [P('js/floor3d/view-limits.js', 'export const MAX_POLAR = (88 * Math.PI) / 180;', 'export const MAX_POLAR = (120 * Math.PI) / 180;')] }],
-      ['the target clamp dropped', { plant: [P(PAINT, '        const t = controls.target;\n        const was = t.clone();', '        return;\n        const t = controls.target;\n        const was = t.clone();')] }],
+      ['the confinement dropped (the eye free)', { plant: [P(PAINT, '            pose = confineControls(controls, view.bound, pose);', '')] }],
       ['screen-space panning', { plant: [P(PAINT, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
       ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
@@ -474,10 +492,11 @@ const ROWS = {
         if (!(i.target[1] > at.target[1] + 1e-3)) d.push(`three Page Ups took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not up`);
         kept('Page Up', at, i);
         at = i;
-        for (let k = 0; k < 400 && i.target[1] < i.limits.box.max.y - 1e-6; k++) { await p.key('PageUp', 'PageUp'); if (k % 8 === 7) i = await p.inspect(); }
+        const top = i.limits.bound.target.max.y;
+        for (let k = 0; k < 400 && i.target[1] < top - 1e-6; k++) { await p.key('PageUp', 'PageUp'); if (k % 8 === 7) i = await p.inspect(); }
         i = await p.settle(300);
         f.top = i.target[1];
-        if (Math.abs(i.target[1] - i.limits.box.max.y) > 1e-6) d.push(`Page Up held left the target at y ${i.target[1].toFixed(3)}, not the box's top ${i.limits.box.max.y}`);
+        if (Math.abs(i.target[1] - top) > 1e-6) d.push(`Page Up held left the target at y ${i.target[1].toFixed(3)}, not the room's height ${top}`);
         kept('Page Up to the top', at, i);
         at = i;
         for (let k = 0; k < 400 && i.target[1] > 1e-6; k++) { await p.key('PageDown', 'PageDown'); if (k % 8 === 7) i = await p.inspect(); }
@@ -514,12 +533,51 @@ const ROWS = {
         f.pan = [before, i.target];
         if (Math.abs(i.target[1] - before[1]) > 1e-6) d.push(`a vertical pan moved the target's y ${before[1]} → ${i.target[1]} — up the screen, not along the floor`);
         if (Math.abs(i.target[2] - before[2]) < 0.05) d.push('a vertical pan did not move the target along the floor');
-        // a pan far past the floor: the target stays in its box
-        for (let k = 0; k < 4; k++) await p.drag(3 * p.stage.w, 0, { button: 'right' });
+        // into the office: right-drags forward carry the eye in and stop it at the back wall's face; then across, to each
+        // side wall — the eye past no bound after any drag, and its distance and angles kept
+        const eyeOut = (what, at) => {
+          const { min, max } = at.limits.bound.eye;
+          if (at.eye[0] < min.x - 1e-6 || at.eye[0] > max.x + 1e-6 || at.eye[2] < min.z - 1e-6 || at.eye[2] > max.z + 1e-6) d.push(`${what} left the eye at ${at.eye.map((v) => v.toFixed(3))}, past the bound ${JSON.stringify(at.limits.bound.eye)}`);
+        };
+        const walk = async (what, dx, dy, until) => {
+          let at = await p.inspect();
+          const from = at;
+          for (let k = 0; k < 12 && !until(at); k++) { await p.drag(dx, dy, { button: 'right' }); at = await rested(p); eyeOut(what, at); }
+          if (Math.abs(at.distance - from.distance) > 1e-6 || Math.abs(at.polar - from.polar) > 1e-6) d.push(`${what} changed the distance ${from.distance.toFixed(3)} → ${at.distance.toFixed(3)} or the tilt — not a move of the viewer`);
+          return at;
+        };
+        await p.ev(`document.getElementById('floor-fit').click()`);
         i = await p.settle(600);
-        const box = i.limits.box;
-        f.far = i.target;
-        if (i.target[0] < box.min.x - 1e-6 || i.target[0] > box.max.x + 1e-6 || i.target[2] < box.min.z - 1e-6 || i.target[2] > box.max.z + 1e-6) d.push(`a pan past the floor left the target at ${i.target.map((v) => v.toFixed(2))}, outside its box`);
+        const back = i.limits.bound.eye.min.z;
+        i = await walk('a right-drag forward', 0, 300, (at) => at.eye[2] <= back + 1e-6);
+        f.inside = i.eye;
+        if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`right-drags forward left the eye at z ${i.eye[2].toFixed(3)} — not in the office at the back wall's face (${back.toFixed(3)})`);
+        if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`with the eye at the back wall the band stands ${i.band} tall — lowered`);
+        for (const [dx, side] of [[p.stage.w / 2, 'min'], [-p.stage.w / 2, 'max']]) {
+          const wall = i.limits.bound.eye[side].x;
+          i = await walk(`a right-drag across to the ${side} side`, dx, 0, (at) => Math.abs(at.eye[0] - wall) < 1e-6);
+          if (Math.abs(i.eye[0] - wall) > 1e-6 || Math.abs(i.eye[2] - back) > 1e-6) d.push(`right-drags across left the eye at ${i.eye.map((v) => v.toFixed(3))} — not in the ${side} corner (${wall.toFixed(3)}, ${back.toFixed(3)})`);
+        }
+        f.corner = i.eye;
+        // Shift + ArrowUp from the entry: the keys' pan, the same way in
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        i = await p.settle(600);
+        for (let k = 0; k < 400 && i.eye[2] > back + 1e-6; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 8 === 7) { i = await rested(p); eyeOut('Shift + ArrowUp', i); } }
+        i = await rested(p);
+        eyeOut('Shift + ArrowUp held', i);
+        f.keysIn = i.eye;
+        if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`Shift + ArrowUp held left the eye at z ${i.eye[2].toFixed(3)} — not at the back wall's face (${back.toFixed(3)})`);
+        if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`with the eye brought to the back wall by the keys the band stands ${i.band} tall — lowered`);
+        // For a picture only: zoomed in from the entry and walked into the office with the keys.
+        if (argOf('--out') !== null && !(c.plant ?? []).length) {
+          await p.ev(`document.getElementById('floor-fit').click()`);
+          await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < 9; k++) b.click(); })()`);
+          await p.ev(`document.getElementById('floor-drawing').focus()`);
+          for (let k = 0; k < 6; k++) await p.key('ArrowUp', 'ArrowUp', true);
+          await rested(p);
+          writeFileSync(join(argOf('--out'), 'floor3d-inside.png'), await p.shot());
+        }
         // a wheel out at the dolly limit: the page scrolls, the camera does not move
         await p.ev(`document.getElementById('floor-fit').click()`);
         await p.wheel(400, 30);
@@ -542,7 +600,7 @@ const ROWS = {
   },
 
   cutaway: {
-    what: 'the cut-away: with the target within a unit of the band, turned to the back, the band is lowered to its foot strip, and stays lowered with the eye and the target raised (Page Up) while the band is still between them; turned to the front, it stands again; from the floor\'s centre it never lowers',
+    what: 'the cut-away: looking level across the floor from its front, a wall between the eye and the target is lowered to its foot strip, and stands again once the eye looks down from the entry; the band is never lowered — at the entry, with the eye brought to the back wall\'s face, or turned to look along it',
     base: { run: quiet(), media: REDUCE },
     plants: [['the cut-away\'s segment test dropped', { plant: [P(ROOM, '        const cut = cutaway(eye, target, world);', '        const cut = new Set();')] }]],
     async run(chrome, c) {
@@ -551,42 +609,41 @@ const ROWS = {
       try {
         const d = [];
         const f = {};
+        const lowered = (i) => i.walls.filter(([, h]) => Math.abs(h - L.CUTAWAY_H) < 1e-3).map(([id]) => id);
+        const bandStands = (what, i) => { if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`${what}, the band stands ${i.band} tall — lowered`); };
         await p.ev(`document.getElementById('floor-drawing').focus()`);
-        const turnBack = async () => {
-          let i = await p.inspect();
-          for (let k = 0; k < 400 && Math.abs(Math.abs(i.azimuth) - Math.PI) > 0.1; k++) { await p.key('ArrowLeft', 'ArrowLeft'); if (k % 4 === 3) i = await p.inspect(); }
-          return p.settle(500);
-        };
-        const turnFront = async () => {
-          let i = await p.inspect();
-          for (let k = 0; k < 400 && Math.abs(i.azimuth) > 0.1; k++) { await p.key('ArrowRight', 'ArrowRight'); if (k % 4 === 3) i = await p.inspect(); }
-          return p.settle(500);
-        };
-        // the control: from the centre, turned to the back, the eye sees over the band
-        let i = await turnBack();
-        f.centre = { band: i.band, az: deg(i.azimuth).toFixed(1) };
-        if (i.band < i.limits.box.max.y - 1e-6) d.push(`turned to the back from the floor's centre, the band is lowered to ${i.band} — the derivation says the eye sees over it`);
-        i = await turnFront();
-        // the target slid toward the band, within a unit of it
-        for (let k = 0; k < 300 && i.target[2] > i.limits.box.min.z + 0.8; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 4 === 3) i = await p.inspect(); }
-        i = await p.settle(300);
-        f.target = i.target;
-        if (i.target[2] > i.limits.box.min.z + 1) d.push(`CONTROL: the target could not be brought within a unit of the band (z ${i.target[2].toFixed(2)})`);
-        i = await turnBack();
-        f.back = { band: i.band, az: deg(i.azimuth).toFixed(1) };
-        if (Math.abs(i.band - L.CUTAWAY_H) > 1e-3) d.push(`turned to the back with the target by the band, the band stands ${i.band} tall — not lowered to ${L.CUTAWAY_H}`);
+        let i = await rested(p);
+        f.entry = { lowered: lowered(i), band: i.band };
+        bandStands('at the entry', i);
+        // level: the eye tilted down to the polar limit, then swept across the floor (Shift + an arrow) until its line to
+        // the target runs through a wall in front of it
+        for (let k = 0; k < 120 && i.polar < i.limits.polar.max - 1e-3; k++) { await p.key('ArrowDown', 'ArrowDown'); if (k % 8 === 7) i = await p.inspect(); }
+        i = await rested(p);
+        for (const [key, presses] of [['ArrowLeft', 40], ['ArrowRight', 80]]) {
+          for (let k = 0; k < presses && lowered(i).length === 0; k++) { await p.key(key, key, true); i = await rested(p, 250); }
+        }
+        f.level = { polar: deg(i.polar).toFixed(1), target: i.target, lowered: lowered(i), walls: i.walls.length };
+        if (lowered(i).length === 0) d.push(`looking level across the floor from its front and swept across it, no wall of ${i.walls.length} was lowered — the cut-away met nothing between the eye and the target`);
         if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-cutaway.png'), await p.shot());
-        // raised: closer in (six notches), the eye and the target lifted one Page Up — still under the band's top a unit
-        // out along the home tilt's line, so the band is still between them
-        for (let k = 0; k < 6; k++) await p.key('+', 'Equal');
-        await p.key('PageUp', 'PageUp');
-        i = await p.settle(500);
-        f.raised = { band: i.band, target: i.target, distance: i.distance };
-        if (!(i.target[1] > 0.1)) d.push(`CONTROL: Page Up did not raise the target (y ${i.target[1].toFixed(3)}) — the raised cut-away was not measured`);
-        if (Math.abs(i.band - L.CUTAWAY_H) > 1e-3) d.push(`with the eye and the target raised to y ${i.target[1].toFixed(2)} behind the band, the band stands ${i.band} tall — not lowered to ${L.CUTAWAY_H}`);
-        i = await turnFront();
-        f.front = { band: i.band };
-        if (Math.abs(i.band - i.limits.box.max.y) > 1e-3) d.push(`turned to the front again, the band stands ${i.band} tall — not restored`);
+        // back to the entry: everything that was lowered stands again
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        i = await rested(p);
+        const still = i.walls.filter(([id, h]) => f.level.lowered.includes(id) && h < L.CUTAWAY_H + 1e-3);
+        if (still.length > 0) d.push(`back at the entry, ${still.map(([id]) => id).join(', ')} still stand lowered`);
+        // the eye brought to the back wall's face (Shift + ArrowUp), then turned to look along the wall each way
+        const back = i.limits.bound.eye.min.z;
+        for (let k = 0; k < 400 && i.eye[2] > back + 1e-6; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 8 === 7) i = await rested(p); }
+        i = await rested(p);
+        f.atWall = { eye: i.eye, band: i.band };
+        if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`CONTROL: Shift + ArrowUp did not bring the eye to the back wall's face (z ${i.eye[2].toFixed(3)}, the face's bound ${back.toFixed(3)})`);
+        bandStands('with the eye at the back wall\'s face', i);
+        for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowRight']) {
+          for (let k = 0; k < 30; k++) await p.key(key, key);
+          i = await rested(p);
+          bandStands(`turned with ${key} at the back wall (azimuth ${deg(i.azimuth).toFixed(1)}°)`, i);
+          if (i.eye[2] < back - 1e-6) d.push(`turned with ${key} at the back wall, the eye stands at z ${i.eye[2].toFixed(3)} — behind the face's bound ${back.toFixed(3)}`);
+        }
+        f.turned = { eye: i.eye, band: i.band, az: deg(i.azimuth).toFixed(1) };
         return { defects: d, facts: f };
       } finally { p.close(); }
     },
