@@ -262,16 +262,15 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'never disabled' => ["                'aria-disabled': riding ? 'true' : null,", '', 'controlDefects'],
             'no negative delay' => ['    return { delay: doorDelay - ride.elapsed_ms, motion: ride.ms - doorDelay };', '    return { delay: Math.max(0, doorDelay - ride.elapsed_ms), motion: ride.ms - doorDelay };', 'leafDefects'],
             'the delay without the door offset' => ['    return { delay: doorDelay - ride.elapsed_ms, motion: ride.ms - doorDelay };', '    return { delay: -ride.elapsed_ms, motion: ride.ms - doorDelay };', 'leafDefects'],
-            'the leaves closing inside' => ["            // `entering`, `inside`, `chosen`, `leaving`: the floor's leaves stand open behind the cab.\n            return 'transform:scaleX(.12)';",
-                '            return `animation:leaf-close ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;', 'leafDefects'],
+            'the leaves closing inside' => ["    }[ride.phase] ?? 'open';", "    }[ride.phase] ?? 'closes';", 'leafDefects'],
             'a walk adding to the ride' => ["            const leaves = riding\n                ? rideLeaves(scene.ride)", "            const leaves = riding && (scene.doors ?? []).length === 0\n                ? rideLeaves(scene.ride)", 'leafDefects'],
             'a word in the cab' => ["    const style = cabLeaves(ride);\n", "    const style = cabLeaves(ride);\n\n    node('text', {}, cab).textContent = 'B';\n", 'cabDefects'],
             // card#12038's RED: the ride's doors quantised again — by any step count — red the step check itself.
             'the ride doors stepped' => ["const RIDE_DOOR_EASING = 'ease-in-out';", "const RIDE_DOOR_EASING = 'steps(2)';", 'steppedDefects'],
             'the ride doors stepped, the cab alone' => ["        case 'chosen':\n".'            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING}',
                 "        case 'chosen':\n".'            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms steps(4)', 'steppedDefects'],
-            'the band doors linear' => ['            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms forwards`;',
-                '            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms linear ${delay}ms forwards`;', 'leafDefects'],
+            'the band doors linear' => ['            return `animation:leaf-open ${band.motion}ms ${RIDE_DOOR_EASING} ${band.delay}ms forwards`;',
+                '            return `animation:leaf-open ${band.motion}ms linear ${band.delay}ms forwards`;', 'leafDefects'],
             // card#12039's REDs: the cab cropped again, the palette not carried, a stale palette kept, the frame or the
             // lamp painted off the carrier.
             'the cab sliced' => ["preserveAspectRatio: 'xMidYMid meet'", "preserveAspectRatio: 'xMidYMid slice'", 'paletteDefects'],

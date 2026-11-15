@@ -285,8 +285,8 @@ const deg = (r) => (r * 180) / Math.PI;
 /** The desks in reading order — the world's own figures, sorted here by back edge, then left edge, then key. */
 const readingOrder = (desks) => [...desks].sort((a, b) => a.back - b.back || a.left - b.left || (a.key < b.key ? -1 : 1)).map((d) => d.key);
 const KINDS = ['name', 'status', 'chip', 'facts', 'bubble'];
-/** What the label layer holds, in document order: `[key, kind, display, text, width]`. */
-const LABELS = `[...document.getElementById('floor3d-labels').children].map((e) => [e.dataset.key, e.dataset.kind, e.style.display, e.textContent, e.getBoundingClientRect().width, e.tagName])`;
+/** What the label layer holds, in document order, but the elevator's control (the `ride` row's): `[key, kind, display, text, width]`. */
+const LABELS = `[...document.getElementById('floor3d-labels').children].filter((e) => e.dataset.key !== 'elevator').map((e) => [e.dataset.key, e.dataset.kind, e.style.display, e.textContent, e.getBoundingClientRect().width, e.tagName])`;
 const orderDefects = (labels, desks) => {
   const d = [];
   const want = readingOrder(desks);
@@ -317,7 +317,7 @@ const ROWS = {
     base: { run: lateDesk() },
     plants: [
       ['the entry pose not set from its spherical figures (the camera left at the origin)', { plant: [P(PAINT, '            camera.position.set(position.x, position.y, position.z);\n            controls.update();\n        }\n    };', '            controls.update();\n        }\n    };')] }],
-      ['a label appended after the render rather than inserted at its place', { plant: [P('js/floor3d/floor-labels.js', '                if (container.children[i] !== entry.element) {', '                if (false) {')] }],
+      ['a label appended after the render rather than inserted at its place', { plant: [P('js/floor3d/floor-labels.js', '                if (container.children[first + i] !== entry.element) {', '                if (false) {')] }],
       ['a kit file requested for every placement', { plant: [P('js/floor3d/furniture.js', '        if (!requests.has(file)) {', '        if (true) {')] }],
     ],
     async run(chrome, c) {
@@ -391,7 +391,7 @@ const ROWS = {
     what: 'the 3-D URL survives the first paint, a desk\'s panel and the back button, and a reload of the seat form opens that desk',
     base: { run: 'floor_rides' },
     plants: [
-      ['`routeOf()` ignoring the route kind', { plant: [P('js/floor/floor-page.js', "return `/${['floor', floor, ...kind, ...(seat === null ? [] : [seat])]", "return `/${['floor', floor, ...(seat === null ? [] : [seat])]")] }],
+      ['`routeOf()` ignoring the route kind', { plant: [P('js/floor/floor-page.js', '        return floorRoute(route, floor, seat);', "        return floorRoute('2d', floor, seat);")] }],
       ['`seatSegment()` ignoring the route kind', { plant: [P('js/floor/floor-page.js', '        const at = 2 + kind.length;', '        const at = 2;')] }],
     ],
     async run(chrome, c) {
@@ -685,7 +685,7 @@ const ROWS = {
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['the status drawn on the monitor only, with no label', { plant: [P('js/floor3d/floor-labels.js', '            const wanted = [...world.labels]', "            const wanted = [...world.labels].filter((l) => l.kind !== 'status')")] }],
-      ['a focused name leaving the target where it was', { plant: [P('js/floor3d/floor-labels.js', "            element.addEventListener('focus', () => focused(held.get(idOf(label)).desk));", '')] }],
+      ['a focused name leaving the target where it was', { plant: [P('js/floor3d/floor-labels.js', '                focused({ x: (slab.left + slab.right) / 2, z: (slab.back + slab.front) / 2 }, seat);', '')] }],
     ],
     async run(chrome, c) {
       const p = await open(chrome, c);
@@ -693,8 +693,12 @@ const ROWS = {
       try {
         const d = [];
         const f = {};
-        // Tab from the stage onto the first desk's name
+        // Tab from the stage onto the elevator's control, the layer's first, and on onto the first desk's name
         await p.ev(`document.getElementById('floor-drawing').focus()`);
+        await p.key('Tab', 'Tab');
+        await sleep(200);
+        f.first = await p.ev(`document.activeElement?.dataset?.key ?? null`);
+        if (f.first !== 'elevator') d.push(`a Tab from the stage focused ${f.first}, not the elevator's control`);
         await p.key('Tab', 'Tab');
         await sleep(400);
         const focused = await p.ev(`document.activeElement?.dataset?.key ?? null`);
@@ -935,7 +939,7 @@ const ROWS = {
     what: 'what moves off the bodies: a walker leaving by the elevator walks with the leaves opening over the cab and shut again; a sleeper\'s z\'s and a marker light in turn; the frame loop draws them at the loop\'s rate and stops once they have ended',
     base: { run: later('leave-stale'), media: [] },
     plants: [
-      ['the elevator\'s leaves never moved', { plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * leafLevel(world.doors, f);', '        const shut = 1;')] }],
+      ['the elevator\'s leaves never moved', { plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * (open ?? leafLevel(world.doors, f));', '        const shut = 1;')] }],
       ['the marks lit once and never stepped', { plant: [P(CLIP, 'characters.zLevels(f % characters.SLEEP_LOOP))', 'characters.zLevels(0))'), P(CLIP, 'characters.markerLevel(f % characters.SLEEP_LOOP)]', 'characters.markerLevel(0)]')] }],
     ],
     async run(chrome, c) {
@@ -1029,6 +1033,93 @@ const ROWS = {
         const i = await p.inspect();
         f.after = i.terms.transient.calls;
         if (seen && i.transient.birds + i.transient.envelopes + i.transient.rings > 0) d.push(`after the round the transient drawings are still drawn: ${JSON.stringify(i.transient)}`);
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  ride: {
+    what: 'the ride from the 3-D floor (FLOOR.md § 4.5): a drag across the doorway turns the camera and rides nothing; a click on the drawn doorway opens the leaves and then the cab dialog, its doors drawn by the one cab path; a floor\'s stop navigates to that floor\'s 3-D route, which arrives; and the elevator\'s keyboard control opens the cab on Enter',
+    base: { run: quiet() },
+    plants: [
+      ['the doorway not a pointer target', { plant: [P(PAINT, '        return first !== undefined && room.isDoorway(first.object);', '        return false;')] }],
+      ['a 3-D start arriving on the 2-D route (the page handing the screen the 2-D route kind)', { plant: [P('js/floor/floor-page.js', '        route,\n        reduce:', "        route: '2d',\n        reduce:")] }],
+      ['the cab drawn by nothing (the renderer\'s own empty `paintCab`)', { plant: [P(PAINT, '                paintCab,', '                paintCab() {},')] }],
+      ['the elevator\'s control with no keyboard route', { plant: [P('js/floor3d/floor-labels.js', "        if (event.key === 'Enter' || event.key === ' ') {", '        if (false) {')] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c, { kit: false });
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const f = {};
+        const cab = () => p.ev(`(() => { const c = document.getElementById('floor-cab'); return { open: c.open, drawn: document.querySelector('#floor-cab-doors svg.cab-scene') !== null, path: location.pathname }; })()`);
+        let i = await p.settle(800);
+        if (i.doorway === null) return { defects: ['the page draws no doorway — the ride was not read'], facts: {} };
+        const at = { x: p.stage.x + i.doorway.x, y: p.stage.y + i.doorway.y };
+        f.doorway = at;
+        // a drag that starts on the doorway is the camera's, not a press
+        const before = i.azimuth;
+        await p.drag(80, 0, { at });
+        i = await p.settle(800);
+        f.dragged = [before, i.azimuth];
+        if (Math.abs(i.azimuth - before) < 1e-3) d.push('CONTROL: a drag across the doorway did not turn the camera — the drag was not read');
+        if ((await cab()).open) d.push('a drag across the doorway opened the cab');
+        // the camera back to the entry pose, so the doorway is where it was drawn
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        i = await p.settle(1500);
+        const door = { x: p.stage.x + i.doorway.x, y: p.stage.y + i.doorway.y };
+        await p.b.page('Input.dispatchMouseEvent', { type: 'mouseMoved', x: door.x, y: door.y });
+        await p.b.page('Input.dispatchMouseEvent', { type: 'mousePressed', x: door.x, y: door.y, button: 'left', buttons: 1, clickCount: 1 });
+        await p.b.page('Input.dispatchMouseEvent', { type: 'mouseReleased', x: door.x, y: door.y, button: 'left', buttons: 0, clickCount: 1 });
+        // the leaves open before the cab: read them while the ride is `opening`
+        let opened = false;
+        let c1 = null;
+        for (let t = 0; t < 40; t++) {
+          await sleep(100);
+          const r = (await p.inspect()).room.leaves;
+          opened ||= r !== null && r[0][0] < r[0][1] * 0.9;
+          c1 = await cab();
+          if (c1.open) break;
+        }
+        f.clicked = { opened, cab: c1 };
+        if (!opened) d.push('a click on the doorway did not open the leaves');
+        if (!c1.open) d.push('a click on the doorway did not open the cab');
+        else if (!c1.drawn) d.push('the cab opened with nothing drawn behind its doors — not the one cab path');
+        // inside: the stops answer; a real click on another floor's stop
+        let stop = null;
+        for (let t = 0; t < 40 && stop === null; t++) {
+          await sleep(100);
+          stop = await p.ev(`(() => { if (document.getElementById('floor-cab-panel').inert) return null; const b = document.querySelector('#floor-cab-stops li[data-stop="kappa"] button'); if (b === null) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`).catch(() => null);
+        }
+        if (stop === null) d.push('the cab\'s buttons never answered, or it offers no stop for kappa');
+        else {
+          await p.b.page('Input.dispatchMouseEvent', { type: 'mousePressed', x: stop.x, y: stop.y, button: 'left', buttons: 1, clickCount: 1 });
+          await p.b.page('Input.dispatchMouseEvent', { type: 'mouseReleased', x: stop.x, y: stop.y, button: 'left', buttons: 0, clickCount: 1 });
+          let path = null;
+          for (let t = 0; t < 80; t++) {
+            await sleep(100);
+            path = await p.ev('location.pathname').catch(() => null);
+            if (path !== null && path !== '/floor/aimla/3d') break;
+          }
+          f.arrived = path;
+          if (path !== '/floor/kappa/3d') d.push(`the ride to kappa arrived at ${path}, not /floor/kappa/3d`);
+        }
+        // the keyboard route, on the floor the ride arrived at: Tab from the stage to the elevator, Enter
+        for (let t = 0; t < 100; t++) { await sleep(100); if ((await p.ev(`document.querySelector('#floor3d-labels [data-key="elevator"]') !== null && document.getElementById('floor-cab').open === false`).catch(() => false))) break; }
+        await sleep(1500);
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        await p.key('Tab', 'Tab');
+        await sleep(200);
+        f.focused = await p.ev(`document.activeElement?.dataset?.key ?? null`);
+        if (f.focused !== 'elevator') d.push(`a Tab from the stage focused ${f.focused}, not the elevator's control`);
+        await p.b.page('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+        await p.b.page('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+        let c2 = null;
+        for (let t = 0; t < 40; t++) { await sleep(100); c2 = await cab(); if (c2.open) break; }
+        f.keyed = c2;
+        if (!c2.open) d.push('Enter on the elevator\'s control did not open the cab');
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         return { defects: d, facts: f };
       } finally { p.close(); }

@@ -24,8 +24,9 @@ use Tests\TestCase;
  * classic script cannot import), and the style's `--ride-fade` is a copy of one loop frame, `1000 / LOOP_FPS`
  * (`wire/animation-set.js`). Each is read back here from its source and held equal.
  *
- * ⛔ ONLY THE FLOOR AND THE LOBBY DECLARE THE REVEAL (`data-ride-reveals`, through
- * `@section('document-attributes')`); every other view — the console's layout and every `auth/*` view
+ * ⛔ ONLY THE FLOORS AND THE LOBBY DECLARE THE REVEAL (`data-ride-reveals`, through
+ * `@section('document-attributes')`) — the 2-D floor, the 3-D floor (a ride begun on one arrives on one) and the
+ * lobby; every other view — the console's layout and every `auth/*` view
  * included — leaves it undeclared, so a ride's `#ride` reaching one of them (a 302 to the sign-in page, a
  * typed URL) cuts instead of holding the cab over it.
  *
@@ -48,7 +49,7 @@ class TheRideArrivalIsTheLayoutsTest extends TestCase
         $this->assertSame([], $this->copyDefects($this->pages()['the floor']));
     }
 
-    public function test_only_the_floor_and_the_lobby_declare_the_reveal(): void
+    public function test_only_the_floors_and_the_lobby_declare_the_reveal(): void
     {
         $this->assertSame([], $this->declarationDefects($this->declaringViews()));
         $this->assertSame([], $this->declaredOnPages($this->pages()));
@@ -57,7 +58,8 @@ class TheRideArrivalIsTheLayoutsTest extends TestCase
     /** ⛔ THE CONTROLS — each re-mints one defect this file exists to catch. */
     public function test_each_check_goes_red_against_the_defect_it_exists_to_catch(): void
     {
-        $html = $this->pages()['the floor'];
+        $pages = $this->pages();
+        $html = $pages['the floor'];
 
         foreach ([
             'a module' => ['<script>', '<script type="module">'],
@@ -80,7 +82,10 @@ class TheRideArrivalIsTheLayoutsTest extends TestCase
         $views = $this->declaringViews();
         $views[] = 'console/layout.blade.php';
         $this->assertNotSame([], $this->declarationDefects($views), 'CONTROL (the reveal declared on the console layout) did not bite');
-        $this->assertNotSame([], $this->declarationDefects(['floor.blade.php']), 'CONTROL (the lobby not declaring the reveal) did not bite');
+        $this->assertNotSame([], $this->declarationDefects(['floor.blade.php', 'floor3d.blade.php']), 'CONTROL (the lobby not declaring the reveal) did not bite');
+        $this->assertNotSame([], $this->declarationDefects(['dashboard.blade.php', 'floor.blade.php']), 'CONTROL (the 3-D floor not declaring the reveal) did not bite');
+        $pages['the 3-D floor'] = str_replace(' data-ride-reveals', '', $pages['the 3-D floor']);
+        $this->assertNotSame([], $this->declaredOnPages($pages), 'CONTROL (the served 3-D floor not declaring the reveal) did not bite');
     }
 
     /** @return array<string, string> */
@@ -199,9 +204,9 @@ class TheRideArrivalIsTheLayoutsTest extends TestCase
     {
         sort($views);
 
-        return $views === ['dashboard.blade.php', 'floor.blade.php']
+        return $views === ['dashboard.blade.php', 'floor.blade.php', 'floor3d.blade.php']
             ? []
-            : ['declared' => 'the views declaring data-ride-reveals are '.implode(', ', $views).' — exactly the lobby and the floor'];
+            : ['declared' => 'the views declaring data-ride-reveals are '.implode(', ', $views).' — exactly the lobby and the two floors'];
     }
 
     /** @return array<string, string> the served pages whose <html> declaration is not the expected one */
@@ -212,7 +217,7 @@ class TheRideArrivalIsTheLayoutsTest extends TestCase
         foreach ($pages as $page => $html) {
             $declared = preg_match('/<html\b[^>]*\bdata-ride-reveals\b/', $html) === 1;
 
-            if ($declared !== in_array($page, ['the lobby', 'the floor'], true)) {
+            if ($declared !== in_array($page, ['the lobby', 'the floor', 'the 3-D floor'], true)) {
                 $defects[$page] = $declared ? 'declares the reveal' : 'does not declare the reveal';
             }
         }
@@ -245,6 +250,7 @@ class TheRideArrivalIsTheLayoutsTest extends TestCase
             'sign in' => $login,
             'the lobby' => $this->actingAs($user)->get('/dashboard')->assertOk()->getContent() ?: '',
             'the floor' => $this->actingAs($user)->get('/floor/aimla')->assertOk()->getContent() ?: '',
+            'the 3-D floor' => $this->actingAs($user)->get('/floor/aimla/3d')->assertOk()->getContent() ?: '',
             'the console' => $this->actingAs($user)->get(route('admin.index'))->assertOk()->getContent() ?: '',
             'second-factor enrolment' => $this->actingAs(User::factory()->twoFactorUnenrolled()->create())->get(route('two-factor.enroll'))->assertOk()->getContent() ?: '',
         ];

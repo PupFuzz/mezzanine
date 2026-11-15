@@ -92,6 +92,8 @@
  *                                               //  number of `takeWire()` calls it made; with `resize`
  *                                               //  ({width, height}) the screen is resized to it once the run
  *                                               //  ends and the stack it answers is `building_resized`
+ *      "floor.route": "2d" | "3d"               // the page's route kind, as `floor-page.js` hands it — the
+ *                                               //  kind of the cab's floor stops' routes (§ 4.5); absent, `2d`
  *      "floor.lobby_href": "<url>"              // the floor page's own *Back to the lobby* link's href,
  *                                               //  handed to the screen as the page hands it (§ 4.5's
  *                                               //  ride, card#11795) — the cab's lobby stop
@@ -642,6 +644,8 @@ async function replay(scenario) {
         }, {
             floor: scenario.floor.key,
             seat: scenario.floor.seat ?? null,
+            // the page's route kind (`floor-page.js` hands its own): the 2-D floor's unless the run names the 3-D one
+            route: scenario.floor.route ?? '2d',
             reduce: scenario.reduce === true,
             local_time: viewerTime(scenario.floor),
             surface: scenario.floor.viewport ?? HARNESS_SURFACE,

@@ -917,6 +917,26 @@ main > section.lobby {
     outline: 2px solid var(--lamp);
 }
 
+/*
+ * The elevator's control on the 3-D floor (`floor3d/floor-labels.js`): the doorway's keyboard button, standing at its
+ * centre. Unseen and letting the pointer through to the drawn doorway — a press there is the renderer's — until it holds
+ * the keyboard's focus, when it shows as a plaque.
+ */
+.floor3d-elevator {
+    opacity: 0;
+    pointer-events: none;
+    font-weight: 700;
+}
+
+.floor3d-elevator:focus {
+    outline: none;
+}
+
+.floor3d-elevator:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--lamp);
+}
+
 .floor3d-status {
     background: var(--scene-monitor);
     color: var(--scene-monitor-on);

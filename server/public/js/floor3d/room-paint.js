@@ -10,8 +10,10 @@
  *
  * ⛔ WHAT MOVES IN THE ROOM IS THE SCENE's, STEPPED A FRAME AT A TIME FROM THE PAINT (plan § 3.5's A1, A2, A5, A15 and A26
  * rows): the elevator's two leaves — boxes over the doorway, as wide as the walks' leaf timeline says (`floorWorld()`'s
- * `doors`, read by `leafLevel()`), narrowing toward the frame as the 2-D leaves do, in front of the cab's room, which stands
- * behind the band's open doorway (`cabGeometry()`) and does not move;
+ * `doors`, read by `leafLevel()`) or, while the viewer's ride holds them (`scene.ride`, § 4.5), as the ride's phase says
+ * (`cab-paint.js`'s `rideLeafLevel()`, the table the 2-D leaves are drawn from, moving continuously and not at the loop's
+ * rate), narrowing toward the frame as the 2-D leaves do, in front of the cab's room, which stands behind the band's open
+ * doorway (`cabGeometry()`) and does not move;
  * each restroom door's leaf over its recess and its slider's field, vacant or occupied, at the scene's rects (§ 6.7 item
  * 2: the leaf and the field are the renderer's, never the theme's); a desk's screen cross-fading from what it showed to
  * what it shows over A5's frames (the old picture a second plane, the transient term's); and A15's replay marker sweeping
@@ -23,6 +25,9 @@
  * raised again when clear — each wall on its own, an instance of its height's mesh. A desk and a character are never cut.
  *
  * ⛔ A RASTERISED PICTURE WAKES THE FRAME when it answers (`wake`), so a room drawn before its pictures is drawn again.
+ *
+ * ⛔ THE DOORWAY's HIT AREA (`isDoorway()`): a plane over the elevator's frame, in front of its leaves, that draws
+ * nothing — what a pointer's ray meets for the doorway, its leaves and its opening alike, open or shut.
  */
 
 import {
@@ -47,7 +52,7 @@ import { onTerm } from './terms.js';
 import { leafLevel } from '../floor/scene.js';
 import { SKY_PAINT } from '../floor/floor-layout.js';
 import { textureSize } from '../building/stack-model.js';
-import { CAB_SHADE, CAB_STYLE, cabTheme } from '../floor/cab-paint.js';
+import { CAB_SHADE, CAB_STYLE, cabTheme, rideLeafLevel } from '../floor/cab-paint.js';
 
 /** A texture over a canvas, in the sheet's colour space. */
 function textureOf(canvas) {
@@ -212,6 +217,8 @@ const SCREEN = Object.freeze({ w: 256, h: 160 });
  */
 export function floorRoom({ document, renderer, cssColour, reduce, wake, room, walls: wallGroup, art, cabPalette }) {
     let world = null;
+    /** the viewer's ride as the last paint read it (`scene.ride`), or `null` */
+    let ride = null;
     let paintedAt = 0;
     /** the scene's loop rate, frames a second — the rate every frame count this file reads is in */
     let loopFps = 4;
@@ -472,13 +479,20 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
     const cab = onTerm(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ vertexColors: true })), 'fixed');
     const doorway = new Group();
     const leaves = [onTerm(new Mesh(doorBox, leafMaterial), 'fixed'), onTerm(new Mesh(doorBox, leafMaterial), 'fixed')];
+    // on no term's layer and never drawn: it is the pointer's
+    const hit = new Mesh(new PlaneGeometry(1, 1).translate(0.5, 0.5, 0), new MeshBasicMaterial({ visible: false }));
     const readCab = cabColours(document);
     let cabKey = null;
 
-    doorway.add(cab, ...leaves);
+    doorway.add(cab, ...leaves, hit);
 
-    /** The cab's room for the world's band in the elevator palette, built again when either changes. */
+    /** The doorway's hit area over its frame; and the cab's room for the world's band in the elevator palette, built again when either changes. */
     const standCab = () => {
+        const frame = world.band.elevator;
+
+        hit.position.set(frame.x - world.band.x, frame.y, LEAF_DEPTH * 2);
+        hit.scale.set(frame.w, frame.h, 1);
+
         const palette = cabPalette();
         const key = JSON.stringify([world.band.cab, world.band.x, world.band.z, palette]);
 
@@ -491,14 +505,17 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         cab.geometry = cabGeometry(world.band.cab, world.band, readCab(palette));
     };
 
-    /** The doorway's leaves at frame `f` of the walks' leaf timeline, each as wide as it is shut. */
-    const placeDoorway = (f) => {
+    /**
+     * The doorway's leaves, each as wide as it is shut: `open`, the ride's (0 shut to 1 open), or else at frame `f` of the
+     * walks' leaf timeline.
+     */
+    const placeDoorway = (f, open) => {
         const at = (r, z, depth) => [r.x - world.band.x, r.y, z, r.w, r.h, depth];
         const set = (mesh, [x, y, z, w, h, d]) => {
             mesh.position.set(x, y, z);
             mesh.scale.set(w, h, d);
         };
-        const shut = 1 - (1 - LEAF_OPEN) * leafLevel(world.doors, f);
+        const shut = 1 - (1 - LEAF_OPEN) * (open ?? leafLevel(world.doors, f));
         const [left, right] = world.band.leaves;
 
         // the left leaf narrows toward the frame's left, the right toward its right (`.elevator-leaf`'s transform origins)
@@ -705,6 +722,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
          */
         paint(worldIn, sceneIn, colour, at) {
             world = worldIn;
+            ride = sceneIn.ride ?? null;
             paintedAt = at;
             loopFps = sceneIn.loop_fps;
             wallMaterial.color.set(colour);
@@ -743,7 +761,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             const waits = [placeScreens(since)];
 
             if (world.band !== null) {
-                placeDoorway(f);
+                // the ride's leaves move continuously (§ 12's *Ride door motion*): a frame a display refresh while they do
+                const riding = rideLeafLevel(ride, since);
+
+                placeDoorway(f, riding?.open ?? null);
+                waits.push(riding?.moving ? 0 : null);
             }
 
             placeRestroom(f);
@@ -761,6 +783,9 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
 
         /** One frame's cut-away at `now` for the eye and the target; true while a wall or the band is still moving. */
         cutaway: applyCutaway,
+
+        /** Whether a pointer's ray met the elevator's doorway (the header's hit area) in `object`. */
+        isDoorway: (object) => object === hit,
 
         /** The loop has stopped: the next frame's tween starts from rest. */
         rested() {

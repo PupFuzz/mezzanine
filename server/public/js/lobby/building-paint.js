@@ -25,13 +25,13 @@
  * it is built once; the sky steps on a heartbeat.
  */
 
-import { CAB_STYLE, LANDING, clippedTo, drawCabInterior, rideLeaves } from '../floor/cab-paint.js';
+import { CAB_STYLE, ELEVATOR_NAME, LANDING, clippedTo, drawCabInterior, rideLeaves } from '../floor/cab-paint.js';
 import { lobbyScene, roomArt, windowArt } from './building-scene.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** The elevator control's accessible name — the floor's band's own (§ 4.1, § 4.5). */
-export const ELEVATOR_NAME = 'the elevator — ride to another floor';
+/** The elevator control's accessible name — `floor/cab-paint.js`'s, the floor's band's own (§ 4.1, § 4.5). */
+export { ELEVATOR_NAME };
 
 /**
  * One of `building-scene.js`'s shapes as an SVG element — its attributes and its text, or the shapes it holds (a paint

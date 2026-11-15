@@ -72,8 +72,8 @@ class Floor3dPageWiringTest extends TestCase
         $this->assertStringNotContainsString('/js/floor/main.js', $html);
         $this->assertStringContainsString('data-floor="aimla"', $html);
         $this->assertStringContainsString('data-seat="aimla-pm"', $html);
-        // No ride arrives on this route before the plan's slice 6, so it declares no arrival hold.
-        $this->assertDoesNotMatchRegularExpression('/<html\b[^>]*\bdata-ride-reveals\b/', $html);
+        // A ride begun on a 3-D floor arrives on one (§ 4.5), so the route declares the arrival hold the 2-D floor does.
+        $this->assertMatchesRegularExpression('/<html\b[^>]*\bdata-ride-reveals\b/', $html);
         // The two floor pages link each other, and the 2-D page keeps its link to the building view.
         $this->assertMatchesRegularExpression('#<a class="pill floor-route-pill" href="[^"]*/floor/aimla">2D</a>#', $html);
         $this->assertMatchesRegularExpression('#<a class="pill floor-route-pill" href="[^"]*/floor/aimla/3d">Floor in 3D</a>#', $this->page('/floor/aimla'));
@@ -107,10 +107,10 @@ class Floor3dPageWiringTest extends TestCase
         $plants = [
             'the 3-D entry on the 2-D route' => ['floor3d/main.js', "route: '3d' });", "route: '2d' });"],
             'the 3-D entry starting the page twice' => ['floor3d/main.js', "startFloorPage(document, window, { renderer: available ? inWorld() : listOnly(), route: '3d' });", "startFloorPage(document, window, { renderer: listOnly(), route: '3d' });\nstartFloorPage(document, window, { renderer: inWorld(), route: '3d' });"],
-            'the house gesture wire on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme } from '../floor/cab-paint.js';", "import { cabTheme } from '../floor/cab-paint.js';\nimport { cameraGestures } from '../wire/camera-gestures.js';\ncameraGestures(null);"],
-            'the 2-D painter on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme } from '../floor/cab-paint.js';", "import { cabTheme } from '../floor/cab-paint.js';\nimport { createPainter } from '../floor/painter.js';\ncreatePainter({});"],
+            'the house gesture wire on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { cameraGestures } from '../wire/camera-gestures.js';\ncameraGestures(null);"],
+            'the 2-D painter on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { createPainter } from '../floor/painter.js';\ncreatePainter({});"],
             'the controls\' own key listener connected' => ['floor3d/floor-paint.js', '    controls.screenSpacePanning = false;', "    controls.screenSpacePanning = false;\n    controls.listenToKeyEvents(window);"],
-            'the keys wired a second time, in the renderer' => ['floor3d/floor-paint.js', "import { cabTheme } from '../floor/cab-paint.js';", "import { cabTheme } from '../floor/cab-paint.js';\nimport { cameraKeys } from '../wire/camera-keys.js';\ncameraKeys(null);"],
+            'the keys wired a second time, in the renderer' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { cameraKeys } from '../wire/camera-keys.js';\ncameraKeys(null);"],
         ];
 
         foreach ($plants as $what => [$file, $anchor, $replacement]) {
