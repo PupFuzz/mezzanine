@@ -2220,13 +2220,23 @@ def gs_snack_leg(mrel, snack, blocking, objs, gw, gh, cell):
 # seat's width plus the side margin) from both snack spot 0s, so a visitor at the door and one at either table never
 # touch. The same halo as leg 3, read off section 12's rows. ⚠ The scene's own threshold, on its own lattice, and the
 # spots past it are AT-D3-33's; a difference between the two reds there.
+# card#13033 (section 6.7 item 2, item 3 rule 1): a door whose tile has a `wall` cell of the map beside its right edge
+# on every one of its cell rows faces `right` (its left edge, `left`; both, `right`) and is set into that wall -- its
+# own rect leaves the blocking list, as `map-tiles.js`'s `obstaclesOf()` drops it, and its threshold is `Walker
+# clearance`'s depth plus 1 px into the room from the wall face on the doorway's centre line (half the tile's width
+# above its foot), snapped, else the next cell on that row into the room that is open, no deeper than the seat's drawn
+# height from the face, the search STOPPING at the first blocked cell whose centre lies farther than half the seat plus
+# the side margin from the face. This is the one copy of the obstacle rule that cannot import the module; the status
+# line prints its facing, threshold and blocking count, and `verify-design-docs.selftest.py`'s drift check holds all
+# three equal to `walk-probe.mjs`'s `restroom` answer over the same map, with a plant seen to red it.
 GS_DOOR = "restroom-door"
 gs_door_status = "NOT MEASURED"
 gs_snack_spots = {}
 
 
-def gs_door_leg(mrel, doors, blocking, objs, gw, gh, cell):
-    """Leg 4's verdict for one map: the status line, failures appended to `fail`."""
+def gs_door_leg(mrel, doors, blocking, objs, gw, gh, cell, walls):
+    """Leg 4's verdict for one map: the status line, failures appended to `fail`. `walls` is every `wall` cell's
+    top-left on the map, which a door's facing is read off."""
     sec12 = section_text("12-every-number-and-where-it-comes-from") or ""
     char = re.search(r"^\| \*\*Character rect\*\* \| \*\*([\d.]+) × ([\d.]+)\*\* px", sec12, re.M)
     clr = re.search(r"^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside; (\d+) px in depth\*\*", sec12, re.M)
@@ -2234,7 +2244,7 @@ def gs_door_leg(mrel, doors, blocking, objs, gw, gh, cell):
         fail.append("G-scenery leg 4 CONTROL: section 12's *Character rect* or *Walker clearance* did not parse, so no "
                     "restroom threshold could be derived")
         return "NOT MEASURED"
-    w = float(char.group(1))
+    w, tall = float(char.group(1)), float(char.group(2))
     margin, depth = int(clr.group(1)), int(clr.group(2))
     if len(doors) != 1:
         fail.append(f"G-scenery leg 4 CONTROL: `{mrel}` places {len(doors)} `{GS_DOOR}` tile(s), and section 6.7 says the "
@@ -2255,15 +2265,33 @@ def gs_door_leg(mrel, doors, blocking, objs, gw, gh, cell):
 
     x, y, w_t, h_t, col, row = doors[0]
     snap = lambda v: (v // cell) * cell + cell / 2
-    mid = x + w_t / 2
-    under = (snap(mid), snap(y + h_t + depth + 1))
-    row_cells = sorted((snap(cx), under[1]) for cx in range(int(x), int(x + w_t), cell) if x <= snap(cx) < x + w_t)
-    row_cells.sort(key=lambda p: (abs(p[0] - mid), p[0]))
-    threshold = under if not blocked(*under) else next((p for p in row_cells if not blocked(*p)), None)
+    beside = lambda wx: sum(1 for yy in range(int(y), int(y + h_t), cell) if (wx, yy) in walls)
+    facing = "right" if beside(x + w_t) == h_t // cell else "left" if beside(x - cell) == h_t // cell else "back"
+    if facing != "back":
+        blocking = [b for b in blocking if b != (x, y, w_t, h_t)]
+    if facing == "back":
+        mid = x + w_t / 2
+        under = (snap(mid), snap(y + h_t + depth + 1))
+        row_cells = sorted((snap(cx), under[1]) for cx in range(int(x), int(x + w_t), cell) if x <= snap(cx) < x + w_t)
+        row_cells.sort(key=lambda p: (abs(p[0] - mid), p[0]))
+        threshold = under if not blocked(*under) else next((p for p in row_cells if not blocked(*p)), None)
+        searched = f"{under} and every cell on its row within the door's width are blocked"
+    else:
+        inward, face = (-1, x + w_t) if facing == "right" else (1, x)
+        start = (snap(face + inward * (depth + 1)), snap(y + h_t - w_t / 2))
+        threshold, p = None, start
+        while abs(p[0] - face) <= tall:
+            if not blocked(*p):
+                threshold = p
+                break
+            if abs(p[0] - face) > w / 2 + margin:
+                break
+            p = (p[0] + inward * cell, p[1])
+        searched = (f"from {start} into the room every cell is blocked up to the first one past the wall's own halo "
+                    f"or {tall} px from the face")
     if threshold is None:
-        fail.append(f"G-scenery leg 4: `{mrel}`'s `{GS_DOOR}` at ({col}, {row}) has no threshold open at `clear` for the "
-                    f"seat's {w} px body -- {under} and every cell on its row within the door's width are blocked -- so "
-                    f"it serves nobody (section 6.7 item 3)")
+        fail.append(f"G-scenery leg 4: `{mrel}`'s `{GS_DOOR}` at ({col}, {row}), facing `{facing}`, has no threshold open at "
+                    f"`clear` for the seat's {w} px body -- {searched} -- so it serves nobody (section 6.7 item 3)")
         return "FAILED"
     need = w + margin
     for kind, (sx, sy) in sorted(gs_snack_spots.items()):
@@ -2272,8 +2300,9 @@ def gs_door_leg(mrel, doors, blocking, objs, gw, gh, cell):
             fail.append(f"G-scenery leg 4: `{mrel}`'s restroom threshold {threshold} lies {apart:.1f} px from "
                         f"`{kind}`'s spot 0 {(sx, sy)}, under *Queue spacing*'s {need} px (section 6.7 item 3)")
             return "FAILED"
-    return (f"MEASURED from {mrel}: the `{GS_DOOR}` at ({col}, {row}) has its threshold at {threshold}, open at `clear` "
-            f"for the seat's body, at least *Queue spacing*'s {need} px from both snack spot 0s")
+    return (f"MEASURED from {mrel}: the `{GS_DOOR}` at ({col}, {row}) faces `{facing}` and has its threshold at "
+            f"{threshold}, open at `clear` for the seat's body over {len(blocking)} blocking rects, at least *Queue "
+            f"spacing*'s {need} px from both snack spot 0s")
 
 
 if not KINDS:
@@ -2313,6 +2342,7 @@ else:
         _wall_gids = {g for g, t in _tiles.items() if t[2] == "wall"}
         _walls, _pieces, _bad_tiles = 0, 0, []
         _blocking, _snack, _doors = [], [], [] # every wall and standing rect, the snack tables (card#12749), the doors (card#12786)
+        _wall_at = set()                        # every wall cell's top-left, a door's facing is read off (card#13033)
         for _l in gw_tile_layers(_doc.get("layers", [])):
             _cols = int(_l.get("width", _doc["width"]))
             for _i, _cell in enumerate(_l.get("data", [])):
@@ -2332,6 +2362,7 @@ else:
                     _walls += 1
                     _cx, _cy = _col * _tw, _row * _th
                     _blocking.append((_cx, _cy, _tw, _th))
+                    _wall_at.add((_cx, _cy))
                     for _o in _objs:
                         if _inside(_cx, _cy, _tw, _th, _o):
                             fail.append(f"G-walls leg 1: `{_mrel}` `{_l.get('name')}` wall cell ({_col}, {_row}) lies "
@@ -2367,7 +2398,7 @@ else:
             fail.append(f"G-scenery CONTROL: `{_mrel}` places no standing piece, and section 10.6 says the shipped "
                         f"default lays the house picture's scenery -- leg 2 read an empty population")
         gs_snack_status = gs_snack_leg(_mrel, _snack, _blocking, _objs, _gw, _gh, _tw)
-        gs_door_status = gs_door_leg(_mrel, _doors, _blocking, _objs, _gw, _gh, _tw)
+        gs_door_status = gs_door_leg(_mrel, _doors, _blocking, _objs, _gw, _gh, _tw, _wall_at)
         if not _missing and not _bad_tiles and _walls and _pieces:
             gw_status = (f"MEASURED from {_mrel}: {_walls} wall cell(s) outside all {len(_objs)} `desks` objects; "
                          f"the `{GW_TILE}` tile declares `kind: wall` and its marker parses")

@@ -79,8 +79,8 @@ class TheFloorsTilesDrawWithoutSeamsTest extends TestCase
                 ['under offsets', 'the edge between them is a seam'],
             ],
             'a tile\'s image drawn' => [
-                ['painter.js', '                    art(tiles, uris[0], piece, piece.doc.asset, `scenery ${piece.kind}`);',
-                    '                    art(tiles, \'/art/floor/tiles/floor-plane/bookcase.svg\', piece, piece.doc.asset, `scenery ${piece.kind}`);'],
+                ['painter.js', '                    art(tiles, uris[0], piece.draw ?? piece, piece.doc.asset, `scenery ${piece.kind}`);',
+                    '                    art(tiles, \'/art/floor/tiles/floor-plane/bookcase.svg\', piece.draw ?? piece, piece.doc.asset, `scenery ${piece.kind}`);'],
                 'the floor never draws a tile\'s image',
             ],
         ];

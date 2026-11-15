@@ -597,7 +597,8 @@ export function surfaces() {
  * A STANDING SCENERY PIECE (§ 10.6 item 6), at its tile's cell rect, its foot on the cell's floor line,
  * sized by the cell: `bookcase`, `plant`, `floor-lamp`, `armchair`, `cushion`, `book-pile`, or one of the snack
  * corner's two tables, `snack-table` and `snack-table-low` (card#12749, `snackTable()`), or the restroom's door,
- * `restroom-door` (card#12786, `restroomDoor()`), which the scene hands its `sign` and `plate` rects as well, or one of the
+ * `restroom-door` (card#12786, `restroomDoor()`), which the scene hands its `sign` and `plate` rects as well — and, for a door
+ * set into a side wall (card#13033), its `facing`, the `view` it is drawn for and, in plan, its `doorway` and `leaf` — or one of the
  * office pieces (card#12844, `OFFICE`): `water-cooler`, `filing-cabinet`, `copier`, `coat-rack`, `whiteboard`, `aquarium`,
  * `bean-bag` and `globe`. The floor
  * lamp's light is § 6.3's decorative glow, the painter's; the theme draws no glow of its own.
@@ -605,7 +606,7 @@ export function surfaces() {
  * @param {{kind: string, w: number, h: number, seed: string, index: number}} input the kind, the cell's size,
  *        the grid's seed and the cell's index
  */
-export function scenery({ kind, w, h, seed, index, sign = null, plate = null }) {
+export function scenery({ kind, w, h, seed, index, sign = null, plate = null, facing = 'back', view = 'plan', doorway = null, leaf = null }) {
     finite(w, h);
 
     const pen = new Pen();
@@ -697,7 +698,7 @@ export function scenery({ kind, w, h, seed, index, sign = null, plate = null }) 
     } else if (kind === 'snack-table' || kind === 'snack-table-low') {
         s.push(snackTable(pen, SNACK[kind], w, foot));
     } else if (kind === 'restroom-door') {
-        s.push(restroomDoor(pen, w, foot, sign, plate));
+        s.push(restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf }));
     } else if (OFFICE[kind] !== undefined) {
         s.push(OFFICE[kind](pen, { w, h, cx, foot, key, next }));
     }
@@ -1095,36 +1096,81 @@ const OFFICE = Object.freeze({
  * open and empty, and the painter draws the leaf over it and the vacant / occupied field inside the rim. No text, no
  * light, nothing that moves. `sign` and `plate` are the scene's (§ 12's *Restroom plates*), in the cell's px; a rect not
  * handed is not drawn.
+ *
+ * card#13033 — a door set into a SIDE wall (`facing` `right` or `left`) is drawn by `view`: `plan`, on the floor page, in
+ * the drawing box — on the wall strip over the doorway the recess over the leaf's span, a jamb block at each end and the
+ * sill just inside the room, and the FLAG SIGN on a 2 px bracket from the wall face; `elevation`, the cab's door view's
+ * billboard in the wall's plane — the frame alone, its head flush with the box's top, so nothing shows through above it;
+ * `flag`, the door view's second billboard — the flag plate alone.
  */
-function restroomDoor(pen, w, foot, sign, plate) {
+function restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf }) {
     const P = PALETTE['restroom-door'];
-    const top = 22;
-    const out = [shadow(pen, w / 2 + 2, foot, w * 0.5, 3, 0.28)];
 
-    // the frame: the head and the jambs round the recess, the pediment over the head, the sill at the foot
-    out.push(rimmed(`<path d="${rr(0, top, w, foot - top, 2)}" fill="${pen.face(P.frame, 0.2, 0.18)}" stroke="${line(P.frame)}" stroke-width=".9"/>`
-        + `<path d="${rr(6, top + 10, w - 12, foot - top - 14, 1)}" fill="${pen.v([[0, P.recess], [1, shade(P.recess, 0.3)]])}"/>`
-        + `<path d="${rr(-1, top - 4, w + 2, 6, 2)}" fill="${pen.face(P.pediment, 0.15, 0.2)}" stroke="${line(P.pediment)}" stroke-width=".7"/>`
-        + `<path d="${rr(-1, foot - 4, w + 2, 4, 1)}" fill="${pen.face(P.sill, 0.2, 0.15)}" stroke="${line(P.sill)}" stroke-width=".6"/>`));
-
-    if (plate !== null) {
-        const { x, y, w: pw, h: ph } = plate;
-        const ink = RULES.line;
-        const fig = (cx, skirt) => `<circle cx="${f(cx)}" cy="${f(y + ph * 0.3)}" r="${f(ph * 0.14)}" fill="${ink}"/>`
-            + (skirt
-                ? `<path d="M${f(cx)} ${f(y + ph * 0.46)}L${f(cx + ph * 0.24)} ${f(y + ph * 0.86)}H${f(cx - ph * 0.24)}Z" fill="${ink}"/>`
-                : `<path d="${rr(cx - ph * 0.12, y + ph * 0.46, ph * 0.24, ph * 0.4, ph * 0.08)}" fill="${ink}"/>`);
-
-        out.push(rimmed(`<path d="${rr(x, y, pw, ph, 4)}" fill="${pen.face(P.plate, 0.12, 0.2)}" stroke="${line(P.plate)}" stroke-width=".7"/>`
-            + fig(x + pw * 0.36, false) + fig(x + pw * 0.64, true)));
+    if (facing !== 'back' && view === 'flag') {
+        return flagPlate(pen, plate, sign);
     }
 
-    if (sign !== null) {
-        out.push(`<path d="${rr(sign.x - 1.5, sign.y - 1.5, sign.w + 3, sign.h + 3, 3)}" fill="none" stroke="${P.rim}" stroke-width="2"/>`
-            + `<path d="${rr(sign.x - 2.5, sign.y - 2.5, sign.w + 5, sign.h + 5, 3.5)}" fill="none" stroke="${line(P.rim)}" stroke-width=".6"/>`);
+    if (facing !== 'back' && view === 'plan') {
+        const inside = facing === 'right' ? doorway.x - 3 : doorway.x + doorway.w;
+        const bracket = facing === 'right' ? plate.x + plate.w : doorway.x + doorway.w;
+
+        return rimmed(`<path d="${rr(doorway.x, doorway.y, doorway.w, doorway.h, 1)}" fill="${pen.face(P.frame, 0.2, 0.18)}" stroke="${line(P.frame)}" stroke-width=".8"/>`
+            + `<path d="${rr(doorway.x, leaf.y, doorway.w, leaf.h, 0.5)}" fill="${pen.v([[0, P.recess], [1, shade(P.recess, 0.3)]])}"/>`
+            + `<path d="${rr(inside, doorway.y, 3, doorway.h, 1)}" fill="${pen.face(P.sill, 0.2, 0.15)}" stroke="${line(P.sill)}" stroke-width=".6"/>`)
+            + [plate.y + 5, plate.y + plate.h - 8].map((y) => `<path d="${rr(bracket, y, 2, 3, 0.5)}" fill="${line(P.frame)}"/>`).join('')
+            + flagPlate(pen, plate, sign);
+    }
+
+    const top = view === 'elevation' ? 0 : 22;
+    const out = view === 'elevation' ? [] : [shadow(pen, w / 2 + 2, foot, w * 0.5, 3, 0.28)];
+
+    // the frame: the head and the jambs round the recess, the pediment over the head on the floor page, the sill at the foot
+    out.push(rimmed(`<path d="${rr(0, top, w, foot - top, 2)}" fill="${pen.face(P.frame, 0.2, 0.18)}" stroke="${line(P.frame)}" stroke-width=".9"/>`
+        + `<path d="${rr(6, top + 10, w - 12, foot - top - 14, 1)}" fill="${pen.v([[0, P.recess], [1, shade(P.recess, 0.3)]])}"/>`
+        + (view === 'elevation' ? '' : `<path d="${rr(-1, top - 4, w + 2, 6, 2)}" fill="${pen.face(P.pediment, 0.15, 0.2)}" stroke="${line(P.pediment)}" stroke-width=".7"/>`)
+        + `<path d="${rr(-1, foot - 4, w + 2, 4, 1)}" fill="${pen.face(P.sill, 0.2, 0.15)}" stroke="${line(P.sill)}" stroke-width=".6"/>`));
+
+    if (facing === 'back' && plate !== null) {
+        out.push(rimmed(`<path d="${rr(plate.x, plate.y, plate.w, plate.h, 4)}" fill="${pen.face(P.plate, 0.12, 0.2)}" stroke="${line(P.plate)}" stroke-width=".7"/>`
+            + pictogram(plate)));
+    }
+
+    if (facing === 'back' && sign !== null) {
+        out.push(signRim(sign));
     }
 
     return out.join('');
+}
+
+/** The restroom pictogram — two round-headed figures side by side, one in a triangle skirt — across `r`, in the line colour. */
+function pictogram({ x, y, w: pw, h: ph }) {
+    const ink = RULES.line;
+    const fig = (cx, skirt) => `<circle cx="${f(cx)}" cy="${f(y + ph * 0.3)}" r="${f(ph * 0.14)}" fill="${ink}"/>`
+        + (skirt
+            ? `<path d="M${f(cx)} ${f(y + ph * 0.46)}L${f(cx + ph * 0.24)} ${f(y + ph * 0.86)}H${f(cx - ph * 0.24)}Z" fill="${ink}"/>`
+            : `<path d="${rr(cx - ph * 0.12, y + ph * 0.46, ph * 0.24, ph * 0.4, ph * 0.08)}" fill="${ink}"/>`);
+
+    return fig(x + pw * 0.36, false) + fig(x + pw * 0.64, true);
+}
+
+/** The slider plate's rim round the scene's `sign` rect, where the painter draws the vacant / occupied field. */
+function signRim(sign) {
+    const P = PALETTE['restroom-door'];
+
+    return `<path d="${rr(sign.x - 1.5, sign.y - 1.5, sign.w + 3, sign.h + 3, 3)}" fill="none" stroke="${P.rim}" stroke-width="2"/>`
+        + `<path d="${rr(sign.x - 2.5, sign.y - 2.5, sign.w + 5, sign.h + 5, 3.5)}" fill="none" stroke="${line(P.rim)}" stroke-width=".6"/>`;
+}
+
+/**
+ * card#13033 — THE FLAG SIGN (FLOOR.md § 6.7 item 2; the operator's ruling of 2026-11-14): a cream plate at `plate`, the
+ * pictogram in its upper 18 px and the slider's rim at `sign` in its lower half — one drawing for the floor page's plan and
+ * the door view's `flag` billboard.
+ */
+function flagPlate(pen, plate, sign) {
+    const P = PALETTE['restroom-door'];
+
+    return rimmed(`<path d="${rr(plate.x, plate.y, plate.w, plate.h, 4)}" fill="${pen.face(P.plate, 0.12, 0.2)}" stroke="${line(P.plate)}" stroke-width=".7"/>`
+        + pictogram({ x: plate.x, y: plate.y, w: plate.w, h: 18 })) + signRim(sign);
 }
 
 /**

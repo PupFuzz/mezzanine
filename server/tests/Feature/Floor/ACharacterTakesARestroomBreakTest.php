@@ -44,6 +44,12 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
     private const ROUTE = '../floor/route.js';
 
+    private const MAP_TILES = '../floor/map-tiles.js';
+
+    private const FLOOR_WALLS = '../floor/floor-walls.js';
+
+    private const PAINTER = '../floor/painter.js';
+
     private const LINE = 'no open route between its desk and the restroom door — drawn without the trip';
 
     /** One loop frame, ms (§ 12's loop rate). */
@@ -223,14 +229,17 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $g = $read('/^\| \*\*Restroom gap\*\* \| \*\*([\d,]+) … ([\d,]+) s\*\*/m', '*Restroom gap*');
         $a = $read("/^\\| \\*\\*Restroom anchor\\*\\* \\| one restroom break a day, at `day × ([\\d,]+) \\+ draw\\(key, 'restroom-anchor:' \\+ day\\) mod ([\\d,]+)` s/m", '*Restroom anchor*');
         $d = $read('/^\| \*\*Restroom dwell\*\* \| \*\*(\d+) … (\d+) s\*\* \|/m', '*Restroom dwell*');
-        $t = $read('/^\| \*\*Restroom door\*\* \| \*\*(\d+) × (\d+)\*\* px \|/m', '*Restroom door*');
-        $p = $read('/^\| \*\*Restroom plates\*\* \| sign \*\*(\d+) × (\d+) px at \((\d+), (\d+)\)\*\*, plate \*\*(\d+) × (\d+) px at \((\d+), (\d+)\)\*\*/m', '*Restroom plates*');
+        $t = $read('/^\| \*\*Restroom door\*\* \| \*\*(\d+) × (\d+)\*\* px; its facing \*\*`right`, `left` or `back`\*\*, derived; a side door\'s 2-D drawing box \*\*(\d+) × (\d+)\*\* px at \(`x_w` − \*\*(\d+)\*\*, foot − \*\*(\d+)\*\*\) for `right` \|/mu', '*Restroom door*');
+        $p = $read('/^\| \*\*Restroom plates\*\* \| `back`: sign \*\*(\d+) × (\d+) px at \((\d+), (\d+)\)\*\*, plate \*\*(\d+) × (\d+) px at \((\d+), (\d+)\)\*\*/m', '*Restroom plates*');
+        // card#13033: the side door's rects, in its drawing box's px (`right`)
+        $sp = $read('/^\| \*\*Restroom plates\*\* \|[^|]*flag \*\*plate (\d+) × (\d+) at \((\d+), (\d+)\)\*\*, \*\*sign (\d+) × (\d+) at \((\d+), (\d+)\)\*\*, \*\*doorway (\d+) × (\d+) at \((\d+), (\d+)\)\*\*, \*\*leaf (\d+) × (\d+) at \((\d+), (\d+)\)\*\*/mu', '*Restroom plates* side door');
+        $rect = static fn (array $m, int $at): array => ['x' => (int) $m[$at + 2], 'y' => (int) $m[$at + 3], 'w' => (int) $m[$at], 'h' => (int) $m[$at + 1]];
         $l = $read('/^\| \*\*Restroom line\*\* \| the one string \*([^*]+)\* \|/m', '*Restroom line*');
         $e = $read('/^\| \*\*Elevator leaves: opening \/ step \/ closing\*\* \| \*\*(\d+) \/ (\d+) \/ (\d+) frames\*\* \|/m', '*Elevator leaves*');
         $m = $read('/^\| \*\*Restroom door motion\*\* \| \*Elevator leaves\*\' \*\*(\d+) \/ (\d+) \/ (\d+)\*\* frames/m', '*Restroom door motion*');
         $c = $read('/^\| \*\*Walker clearance\*\* \| \*\*(\d+) px beside; (\d+) px in depth\*\* \|/m', '*Walker clearance*');
         $s = $read('/^\| \*\*Character rect\*\* \| \*\*([\d.]+) × ([\d.]+)\*\* px \|/m', '*Character rect*');
-        $ln = $read('/^\| \*\*Restroom lane\*\* \| \*\*the leaf\'s width, (\d+) px, or the seat\'s drawn width plus both \*Walker clearance\* side margins, whichever is wider, × one drawn body\'s height\*\* — on the shipped frame \*\*([\d.]+) × (\d+) px\*\*/mu', '*Restroom lane*');
+        $ln = $read('/^\| \*\*Restroom lane\*\* \| \*\*the doorway\'s width, or the seat\'s drawn width plus both \*Walker clearance\* side margins, whichever is wider\*\* — a `back` door\'s doorway the leaf\'s width, \*\*(\d+)\*\* px, the lane centred on the door and running \*\*one drawn body\'s height\*\* down from its foot line, \*\*([\d.]+) × (\d+) px\*\* on the shipped frame; ⭐ a side door\'s \(card#13033\) the doorway\'s \*\*(\d+)\*\* px along the wall, the lane centred on the doorway\'s centre line and running from the wall face into the room to \*\*one drawn body\'s height past the threshold\'s line\*\*, \*\*([\d.]+) along the wall × (\d+) px into the room\*\* on the shipped default/mu', '*Restroom lane*');
 
         return [
             'gap' => [$n($g[1]), $n($g[2])],
@@ -238,8 +247,10 @@ class ACharacterTakesARestroomBreakTest extends TestCase
             'anchor' => $n($a[2]),
             'dwell' => [(int) $d[1], (int) $d[2]],
             'door' => [(int) $t[1], (int) $t[2]],
+            'box' => ['w' => (int) $t[3], 'h' => (int) $t[4], 'face' => (int) $t[5], 'rise' => (int) $t[6]],
             'sign' => ['x' => (int) $p[3], 'y' => (int) $p[4], 'w' => (int) $p[1], 'h' => (int) $p[2]],
             'plate' => ['x' => (int) $p[7], 'y' => (int) $p[8], 'w' => (int) $p[5], 'h' => (int) $p[6]],
+            'side' => ['plate' => $rect($sp, 1), 'sign' => $rect($sp, 5), 'doorway' => $rect($sp, 9), 'leaf' => $rect($sp, 13)],
             'line' => $l[1],
             'leaves' => ['open' => (int) $e[1], 'step' => (int) $e[2], 'close' => (int) $e[3]],
             'motion' => ['open' => (int) $m[1], 'step' => (int) $m[2], 'close' => (int) $m[3]],
@@ -247,7 +258,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
             'depth' => (int) $c[2],
             'seat_w' => (float) $s[1],
             'seat_h' => (float) $s[2],
-            'lane' => ['leaf' => (int) $ln[1], 'w' => (float) $ln[2], 'h' => (float) $ln[3]],
+            'lane' => ['leaf' => (int) $ln[1], 'w' => (float) $ln[2], 'h' => (float) $ln[3], 'span' => (int) $ln[4], 'side_w' => (float) $ln[5], 'side_h' => (float) $ln[6]],
         ];
     }
 
@@ -255,11 +266,36 @@ class ACharacterTakesARestroomBreakTest extends TestCase
      * § 12's *Restroom threshold* for a door the scene read, on the lattice the scene drew: under the door's centre, *Walker
      * clearance*'s depth plus 1 px below its foot, snapped; where that cell is not open at `clear` for the seat, the nearest
      * cell on its row that is, its centre within the door's width, ties to the left — `$open` says which cells are.
+     *
+     * card#13033 — a door set into a side wall (its `facing`): *Walker clearance*'s depth plus 1 px into the room from the wall
+     * face — the tile's right edge for `right`, its left for `left` — on the doorway's centre line, half the tile's width
+     * above its foot, snapped; else the next cell on that row into the room that is open, no deeper than the seat's drawn
+     * height from the face, the search stopping at the first closed cell whose centre lies farther than half the seat's
+     * width plus the side margin from the face; none, no threshold.
      */
     private function thresholdOf(array $door, callable $open): ?array
     {
         $f = $this->section12();
         $snap = static fn (float $v): float => floor($v / 8) * 8 + 4;
+
+        if (($door['facing'] ?? 'back') !== 'back') {
+            $inward = $door['facing'] === 'right' ? -1 : 1;
+            $face = $door['facing'] === 'right' ? $door['x'] + $door['w'] : $door['x'];
+            $p = ['x' => $snap($face + $inward * ($f['depth'] + 1)), 'y' => $snap($door['y'] + $door['h'] - $door['w'] / 2)];
+
+            for (; abs($p['x'] - $face) <= $f['seat_h']; $p['x'] += $inward * 8) {
+                if ($open($p)) {
+                    return $p;
+                }
+
+                if (abs($p['x'] - $face) > $f['seat_w'] / 2 + $f['margin']) {
+                    return null;
+                }
+            }
+
+            return null;
+        }
+
         $mid = $door['x'] + $door['w'] / 2;
         $y = $snap($door['y'] + $door['h'] + $f['depth'] + 1);
         $under = ['x' => $snap($mid), 'y' => $y];
@@ -367,7 +403,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $this->assertSame($f['gap'][0], $f['anchor'], "§ 12's *Restroom anchor* does not lie under one minimum gap");
         $this->assertSame(['min' => $f['dwell'][0], 'max' => $f['dwell'][1]], $r['dwell_s'], "the scene's dwell is not § 12's *Restroom dwell*");
         $this->assertSame(['kind' => 'restroom-door', 'w' => $f['door'][0], 'h' => $f['door'][1]], $r['door'], "the scene's door is not § 12's *Restroom door*");
-        $this->assertSame(['sign' => $f['sign'], 'plate' => $f['plate']], $r['plates'], "the scene's plates are not § 12's *Restroom plates*");
+        $this->assertSame(['back' => ['sign' => $f['sign'], 'plate' => $f['plate']], 'side' => $f['side']], $r['plates'], "the scene's plates are not § 12's *Restroom plates*");
         $this->assertSame($f['line'], $r['line'], "the scene's line is not § 12's *Restroom line*");
         $this->assertSame($f['leaves'], $f['motion'], "§ 12's *Restroom door motion* is not *Elevator leaves*");
         $this->assertSame($f['leaves'], $r['door_motion'], "the door's frames are not § 12's *Elevator leaves*");
@@ -377,6 +413,233 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $this->assertSame(1, preg_match('/value="restroom-door"\/>\s*<\/properties>\s*<image source="[^"]+" width="(\d+)" height="(\d+)"/', $tsx, $m), 'the tileset declares no `restroom-door` tile');
         $this->assertSame($f['door'], [(int) $m[1], (int) $m[2]], 'the `restroom-door` tile is not § 12\'s size');
         $this->assertCount(1, $r['placed'], 'the shipped default does not place one restroom door');
+
+        // card#13033: the shipped default's door is set into the right wall, its drawing box § 12's from the wall face.
+        $d = $r['placed'][0];
+        $this->assertSame('right', $d['facing'], 'the shipped default\'s door does not face `right`');
+        $this->assertSame(['x' => $d['x'] + $d['w'] - $f['box']['face'], 'y' => $d['y'] + $d['h'] - $f['box']['rise'], 'w' => $f['box']['w'], 'h' => $f['box']['h']], $d['draw'],
+            'the side door\'s drawing box is not § 12\'s *Restroom door*');
+    }
+
+    // ── GREEN — the door set into its wall (card#13033) ──────────────────────────────────────────
+
+    /** § 12's *Restroom threshold* figure for the side door on the shipped default. */
+    private function sideThresholdFigure(): array
+    {
+        $this->assertSame(1, preg_match('/^\| \*\*Restroom threshold\*\* \|.*?on the shipped default and the lounge floor \*\*\(([\d,]+), ([\d,]+)\)\*\*/mu', $this->floorMd(), $m),
+            '§ 12\'s *Restroom threshold* row carries no side door figure in the form this test reads');
+
+        return ['x' => (float) str_replace(',', '', $m[1]), 'y' => (float) str_replace(',', '', $m[2])];
+    }
+
+    /**
+     * card#13033 — the shipped default's door as the scene hands it to the painter (`docs/design/FLOOR.md § 6.7` item 2):
+     * set into the right wall, its threshold § 12's figure — beside the doorway, not under the tile, which is no obstacle —
+     * its flag plate, field and leaf bar at § 12's *Restroom plates* in the drawing box § 12's *Restroom door* places from the
+     * wall face, the theme's document drawn in that box; and the facing read off the wall alone, whatever the tile's
+     * properties say (`walk-probe.mjs`'s `door_properties`).
+     *
+     * @return list<string>
+     */
+    private function wallDoorDefects(?string $dir = null): array
+    {
+        $defects = [];
+        $f = $this->section12();
+        $frame = $this->drawn($this->restroomRun('idle-visit', $dir))[0]['frame'];
+        $door = $this->door($frame);
+
+        if ($door === null) {
+            return ['idle-visit draws no restroom door'];
+        }
+
+        if ($door['facing'] !== 'right') {
+            return ["the shipped default's door faces ".json_encode($door['facing']).', not `right`, the wall its tile stands against'];
+        }
+
+        if ($door['threshold'] != $this->sideThresholdFigure()) {
+            $defects[] = "the shipped default's threshold ".json_encode($door['threshold']).' is not § 12\'s *Restroom threshold* '.json_encode($this->sideThresholdFigure());
+        }
+
+        $box = ['x' => $door['x'] + $door['w'] - $f['box']['face'], 'y' => $door['y'] + $door['h'] - $f['box']['rise'], 'w' => $f['box']['w'], 'h' => $f['box']['h']];
+        $in = static fn (array $r): array => ['x' => $box['x'] + $r['x'], 'y' => $box['y'] + $r['y'], 'w' => $r['w'], 'h' => $r['h']];
+
+        foreach (['plate' => 'plate', 'sign' => 'sign', 'bar' => 'leaf'] as $field => $plate) {
+            if (($door[$field] ?? null) != $in($f['side'][$plate])) {
+                $defects[] = "the door's {$field} ".json_encode($door[$field] ?? null).' is not § 12\'s *Restroom plates* '.$plate.' in the drawing box';
+            }
+        }
+
+        $piece = array_values(array_filter($frame['scene']['scenery'], static fn (array $p): bool => $p['kind'] === 'restroom-door'))[0] ?? null;
+
+        if ($piece === null || ($piece['draw'] ?? null) != $box || ($piece['facing'] ?? null) !== 'right') {
+            $defects[] = 'the door\'s theme document is not drawn in its drawing box: '.json_encode($piece === null ? null : ['draw' => $piece['draw'] ?? null, 'facing' => $piece['facing'] ?? null]);
+        }
+
+        $property = $this->probe(['mode' => 'restroom', 'door_properties' => ['facing' => 'left']], $dir, __DIR__.'/walk-probe.mjs')['placed'][0]['facing'];
+
+        if ($property !== 'right') {
+            $defects[] = "a `facing: left` property on the door's tile turns the door to ".json_encode($property).' — the facing is the wall\'s';
+        }
+
+        return $defects;
+    }
+
+    public function test_green_the_door_is_set_into_its_wall(): void
+    {
+        $this->assertSame([], $this->wallDoorDefects());
+    }
+
+    /**
+     * card#13033 — THE DOOR's TIMELINE IS THE FORMULA ON EVERY RUN: every whole visit fx-restroom draws — its walk or wait,
+     * its stand at the door, its `inside` leg and its walk home — carries the leaf's four moves, `occupied` and `claim` at the
+     * same offsets from the stand's, the `inside` leg's and the walk home's starts as before the door was set into its wall
+     * (§ 6.7 item 4: the leaf's timing is the same for every facing). The routes, and so those starts, moved with the door.
+     *
+     * @return list<string>
+     */
+    private function timelineDefects(?string $dir = null, ?array $only = null): array
+    {
+        $M = $this->section12()['motion'];
+        $defects = [];
+        $seen = 0;
+
+        foreach ($only ?? array_keys($this->fixtureFile('fx-restroom')['runs']) as $run) {
+            foreach ($this->drawn($this->restroomRun($run, $dir)) as $r) {
+                foreach ($this->visits($r['frame']) as $v) {
+                    $L = $this->legsOf($v);
+
+                    if ($L['door'] === null || $L['inside'] === null || $L['home']['kind'] !== 'walk') {
+                        continue;
+                    }
+
+                    $seen++;
+                    $dwell = $v['dwell_s'] * 4;
+                    $want = [
+                        'leaf' => [
+                            ['start' => $L['door']['start'], 'frames' => $M['open'], 'from' => 0, 'to' => 1],
+                            ['start' => $L['inside']['start'], 'frames' => $M['close'], 'from' => 1, 'to' => 0],
+                            ['start' => $L['inside']['start'] + $M['close'] + $dwell, 'frames' => $M['open'], 'from' => 0, 'to' => 1],
+                            ['start' => $L['home']['start'] + $M['step'], 'frames' => $M['close'], 'from' => 1, 'to' => 0],
+                        ],
+                        'occupied' => ['start' => $L['inside']['start'] + $M['close'], 'frames' => $dwell],
+                        'claim' => ['start' => $L['door']['start'], 'end' => $L['home']['start'] + $M['step'] + $M['close']],
+                        'legs' => [$M['open'], $M['close'] + $dwell + $M['open'], $L['door']['start'] + $M['open'], $L['inside']['start'] + $L['inside']['frames']],
+                    ];
+                    $got = ['leaf' => $v['leaf'], 'occupied' => $v['occupied'], 'claim' => $v['claim'],
+                        'legs' => [$L['door']['frames'], $L['inside']['frames'], $L['inside']['start'], $L['home']['start']]];
+
+                    if ($got != $want) {
+                        $defects[] = "[{$run}] {$v['walker_key']}'s visit at {$r['at']} ms: ".json_encode($got).' is not the formula\'s '.json_encode($want);
+                    }
+                }
+            }
+        }
+
+        return $seen === 0 ? ['no run of fx-restroom drew a whole visit — the check read nothing'] : array_values(array_unique($defects));
+    }
+
+    public function test_green_the_door_timeline_is_the_formula_on_every_run(): void
+    {
+        $this->assertSame([], $this->timelineDefects());
+    }
+
+    /**
+     * card#13033 — A SIDE DOOR's VISITOR FADES WITH THE LEAF (`docs/design/FLOOR.md § 6.7` item 4): painted through the
+     * shipped painter (`restroom-paint-probe.mjs`), every walker standing at a side door's threshold through an `inside` leg
+     * is drawn on the floor stack — never in a recess clip — its floor element shown through that leg, and its opacity at
+     * every frame from the paint on is its door's leaf level through its `inside` legs and full everywhere else, the fade
+     * pinned to the instant the leaf is: on the whole visit (idle-visit), and on a recall during the dwell (recall-inside),
+     * whose exit hands the walker the door's own reversing timeline rather than a fixed run of frames. A `back` door's
+     * walker (back-visit) is drawn in its door's recess clip and never faded. Answers the defects and how many frames were
+     * compared.
+     *
+     * @return array{0: list<string>, 1: int}
+     */
+    private function fadeDefects(?string $dir = null): array
+    {
+        $defects = [];
+        $compared = 0;
+
+        foreach (['idle-visit' => 'right', 'recall-inside' => 'right', 'back-visit' => 'back'] as $run => $facing) {
+            $paints = [];
+
+            foreach ($this->drawn($this->restroomRun($run)) as $r) {
+                $effects = array_values(array_filter($r['frame']['scene']['effects'] ?? [], static fn (array $e): bool => ($e['frames'] ?? 0) > 0
+                    && in_array('inside', array_column($e['legs'] ?? [], 'kind'), true)));
+
+                foreach ($effects as $e) {
+                    $paints[] = ['doors' => $r['frame']['scene']['restroom_doors'], 'effects' => [$e], 'doors_at' => $r['frame']['scene']['doors_at'],
+                        'loop_fps' => $r['frame']['scene']['loop_fps'], 'at' => $r['at']];
+                }
+            }
+
+            if ($paints === []) {
+                $defects[] = "[{$run}] draws no walker with an `inside` leg — the check read nothing";
+
+                continue;
+            }
+
+            $out = $this->probe(['paints' => $paints], dirname($dir ?? $this->moduleDir()), __DIR__.'/restroom-paint-probe.mjs');
+
+            foreach ($out as $k => $p) {
+                $fx = $paints[$k]['effects'][0];
+                $w = $p['walkers'][0];
+                $at = "[{$run}] at {$paints[$k]['at']} ms, {$fx['animation_id']}";
+
+                if ($p['doors'][0]['facing'] !== $facing) {
+                    $defects[] = "{$at}: the door faces ".json_encode($p['doors'][0]['facing']).", not `{$facing}` — the run's premise is broken";
+
+                    continue;
+                }
+
+                if ($facing === 'back') {
+                    if (! $w['clipped'] || $w['pinned'] !== null || array_unique($w['opacity']) !== [4]) {
+                        $defects[] = "{$at}: the back door's walker is not drawn unfaded in its recess clip";
+                    }
+
+                    continue;
+                }
+
+                if ($w['clipped'] || ! $w['within_shown'] || $w['pinned'] === null || $w['pinned'] !== $p['doors'][0]['pinned']) {
+                    $defects[] = "{$at}: the side door's walker is not faded on the floor stack, pinned to its leaf's instant: ".json_encode(['clipped' => $w['clipped'], 'pinned' => $w['pinned'], 'leaf' => $p['doors'][0]['pinned']]);
+
+                    continue;
+                }
+
+                $inside = [];
+
+                foreach ($fx['legs'] as $l) {
+                    if ($l['kind'] === 'inside') {
+                        $inside += array_fill_keys(range($l['start'], $l['start'] + $l['frames'] - 1), true);
+
+                        if (array_filter($w['shown'], static fn (array $s): bool => $s[0] <= $l['start'] + 1e-6 && $l['start'] + $l['frames'] <= $s[1] + 1e-6) === []) {
+                            $defects[] = "{$at}: the walker's floor element is not shown through its `inside` leg at frame {$l['start']}";
+                        }
+                    }
+                }
+
+                for ($f = intdiv((int) $fx['elapsed_ms'], (int) $fx['frame_interval_ms']); $f < $fx['frames']; $f++) {
+                    $want = isset($inside[$f]) ? $w['leaf'][$f] : 4;
+                    $compared += isset($inside[$f]) ? 1 : 0;
+
+                    if ($w['opacity'][$f] !== $want) {
+                        $defects[] = "{$at}: at frame {$f} the walker's opacity is {$w['opacity'][$f]}/4 where ".(isset($inside[$f]) ? "its door's leaf is {$want}/4 open" : 'it is on the floor at full opacity');
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        return [$defects, $compared];
+    }
+
+    public function test_green_a_side_doors_visitor_fades_with_the_leaf(): void
+    {
+        [$defects, $compared] = $this->fadeDefects();
+
+        $this->assertSame([], $defects);
+        $this->assertGreaterThan(0, $compared, 'no frame of a side door\'s `inside` leg was compared — the check read nothing');
     }
 
     // ── GREEN — the chain ────────────────────────────────────────────────────────────────────
@@ -1454,7 +1717,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     private const CORRIDOR = 'server/tests/Feature/Floor/fixtures/maps/restroom-corridor.json';
 
     /** The runs AT-D3-35 holds to the lane: its own, over the corridor, and AT-D3-33's queues over the shipped default. */
-    private const LANE_RUNS = ['lane-two-at-the-door', 'lane-straight-in', 'two-at-the-door', 'three-at-the-door', 'queue-of-three'];
+    private const LANE_RUNS = ['lane-two-at-the-door', 'lane-two-at-the-back-door', 'lane-straight-in', 'two-at-the-door', 'three-at-the-door', 'queue-of-three'];
 
     /**
      * § 12's *Restroom lane* for a door the scene read, re-derived from its tile rect and § 12 — never the lane the scene
@@ -1466,9 +1729,20 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     private function laneOf(array $door): array
     {
         $f = $this->section12();
-        $w = (float) max($f['lane']['leaf'], $f['seat_w'] + 2 * $f['margin']);
 
-        return ['x' => $door['x'] + $door['w'] / 2 - $w / 2, 'y' => (float) ($door['y'] + $door['h']), 'w' => $w, 'h' => $f['seat_h']];
+        if (($door['facing'] ?? 'back') === 'back') {
+            $w = (float) max($f['lane']['leaf'], $f['seat_w'] + 2 * $f['margin']);
+
+            return ['x' => $door['x'] + $door['w'] / 2 - $w / 2, 'y' => (float) ($door['y'] + $door['h']), 'w' => $w, 'h' => $f['seat_h']];
+        }
+
+        // card#13033: a side door's lane, from the wall face into the room to one body's height past the threshold's line,
+        // along the wall the doorway's span or the seat's body and both margins, centred on the doorway's centre line.
+        $w = (float) max($f['lane']['span'], $f['seat_w'] + 2 * $f['margin']);
+        $face = $door['facing'] === 'right' ? $door['x'] + $door['w'] : $door['x'];
+        $depth = abs($face - $door['threshold']['x']) + $f['seat_h'];
+
+        return ['x' => (float) ($door['facing'] === 'right' ? $face - $depth : $face), 'y' => $door['y'] + $door['h'] - $door['w'] / 2 - $w / 2, 'w' => $depth, 'h' => $w];
     }
 
     /** Whether feet at `$p` are in `$lane`, its edges included. */
@@ -1644,7 +1918,13 @@ class ACharacterTakesARestroomBreakTest extends TestCase
             $this->assertTrue($this->inLane($lane, $door['threshold']), "[{$run}] the threshold is not inside the lane");
         }
 
-        $this->assertSame([$f['lane']['w'], $f['lane']['h']], [$lane['w'], $lane['h']], '§ 12\'s *Restroom lane* is not the lane the shipped frame derives');
+        // card#13033: the shipped default's door is set into the right wall, so its lane is § 12's side lane — the run's last
+        // door read above — and the face-on figure is the `back` fixture's (`restroom-back.json`).
+        $this->assertSame([$f['lane']['side_w'], $f['lane']['side_h']], [$lane['h'], $lane['w']], '§ 12\'s *Restroom lane* is not the side lane the shipped frame derives');
+        $back = $this->door($this->drawn($this->restroomRun('back-visit'))[0]['frame']);
+        $this->assertSame('back', $back['facing'], 'back-visit\'s door is not a `back` door — the fixture\'s premise is broken');
+        $this->assertEqualsWithDelta($this->laneOf($back), $back['lane'], 0.001, '[back-visit] the lane the scene hands the painter is not § 12\'s *Restroom lane*');
+        $this->assertSame([$f['lane']['w'], $f['lane']['h']], [$this->laneOf($back)['w'], $this->laneOf($back)['h']], '§ 12\'s *Restroom lane* is not the `back` lane the shipped frame derives');
     }
 
     /**
@@ -1662,8 +1942,10 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $frame = $this->drawn($run)[0]['frame'];
         $door = $this->door($frame);
         $lane = $this->laneOf($door);
-        $with = $this->restroom($door['threshold'], [], 2, $frame, $lane, self::CORRIDOR)['spots'];
-        $without = $this->restroom($door['threshold'], [], 2, $frame, null, self::CORRIDOR)['spots'];
+        // card#13033: the re-cut corridor keeps both snack tables, whose spot 0s the scene passes as `clear` points too
+        $snack = $this->snackSpotZeros($frame);
+        $with = $this->restroom($door['threshold'], $snack, 2, $frame, $lane, self::CORRIDOR)['spots'];
+        $without = $this->restroom($door['threshold'], $snack, 2, $frame, null, self::CORRIDOR)['spots'];
 
         $this->assertTrue($this->inLane($lane, $without[1]), 'over the corridor spot 1 with no lane is outside the lane — the map\'s premise is broken');
         $this->assertSame(1, $second['spot']['index']);
@@ -1744,6 +2026,60 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         }
 
         return $dir;
+    }
+
+    /** card#13033 RED — the door kept as furniture: a side door's tile left among the obstacles, so its threshold is lost. */
+    public function test_red_the_door_kept_as_furniture(): void
+    {
+        $dir = $this->planted([self::MAP_TILES, "(c.kind !== RESTROOM_DOOR.kind || geometryOf(c).facing === 'back')", 'true']);
+
+        $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'threshold')),
+            'the side door\'s tile kept as an obstacle and the threshold guard saw nothing');
+    }
+
+    /** card#13033 RED — the facing counted from the foot cell: the tile's rows read down from its painted foot cell, not up from it. */
+    public function test_red_the_facing_counted_from_the_foot_cell(): void
+    {
+        $dir = $this->planted([self::FLOOR_WALLS, '    const top = at.y + T - cell.h;', '    const top = at.y;']);
+
+        $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'not `right`')),
+            'the facing counted over the rows under the foot cell and the facing guard saw nothing');
+    }
+
+    /** card#13033 RED — the facing from a property: a tile property consulted before the wall. */
+    public function test_red_the_facing_from_a_property(): void
+    {
+        $dir = $this->planted([self::FLOOR_WALLS, "    const facing = rows(at.x + cell.w) === full ? 'right' : rows(at.x - T) === full ? 'left' : 'back';",
+            "    const facing = cell.properties?.facing ?? (rows(at.x + cell.w) === full ? 'right' : rows(at.x - T) === full ? 'left' : 'back');"]);
+
+        $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'property')),
+            'a facing read off the tile\'s property and the facing guard saw nothing');
+    }
+
+    /**
+     * card#13033 RED — a fade on fixed frames: the walker faded out over the first closing's frames of every `inside` leg and in
+     * over its last opening's, whatever the door's leaf does. A whole visit cannot tell it from the leaf's own level; a recall
+     * during the dwell, whose exit leg opens the leaf from its first frame, does.
+     */
+    public function test_red_a_fade_on_fixed_frames(): void
+    {
+        $dir = $this->planted([self::PAINTER, '                    const runs = door.fadeRuns(legs.map((l) => [l.start + shift, l.start + l.frames + shift]));',
+            '                    const runs = legs.flatMap((l) => [0, 1, 2, 3].flatMap((k) => [{ from: l.start + shift + k, to: l.start + shift + k + 1, level: 4 - k },'
+            .' { from: l.start + l.frames + shift - 4 + k, to: l.start + l.frames + shift - 3 + k, level: k }]).concat([{ from: l.start + shift + 4, to: l.start + l.frames + shift - 4, level: 0 }]))'
+            .'.filter((x) => x.level < 4 && x.to > x.from);']);
+        [$defects] = $this->fadeDefects($dir);
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_starts_with($d, '[recall-inside]')), 'a fade on fixed frames over a recall and the fade guard saw nothing');
+        $this->assertSame([], array_filter($defects, static fn ($d) => str_starts_with($d, '[idle-visit]')), 'the whole visit told the fixed-frame fade apart — the recall is no longer the discriminant this RED names');
+    }
+
+    /** card#13033 RED — the door's timeline moved: the claim held a frame past the leaf's close behind the walker. */
+    public function test_red_the_door_timeline_moved(): void
+    {
+        $dir = $this->planted([self::SCENE, '            claim: Object.freeze({ start: atDoor.start, end: home.start + D.step + D.close }),',
+            '            claim: Object.freeze({ start: atDoor.start, end: home.start + D.step + D.close + 1 }),']);
+
+        $this->assertNotSame([], $this->timelineDefects($dir, ['idle-visit']), 'the claim moved and the timeline guard saw nothing');
     }
 
     /** RED — a trip over the arrival: a break that begins while the walker's elevator walk is in flight drawn as a visit anyway. */
@@ -1866,7 +2202,9 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     public function test_red_the_door_placed_by_the_client(): void
     {
         $dir = $this->planted([self::SCENE, '    const restroom = restroomDoor(restroomDoors, snack, walking, input, box);',
-            "    const restroom = restroomDoor(restroomDoors.length > 0 ? restroomDoors : [Object.freeze({ id: 'found', room: null, kind: 'restroom-door', x: 1712, y: 512, w: 64, h: 144, index: 0 })], snack, walking, input, box);"]);
+            // card#13033: the found door stands free of any wall, so its geometry is a `back` door's, the tile's own plates
+            "    const restroom = restroomDoor(restroomDoors.length > 0 ? restroomDoors : [Object.freeze({ id: 'found', room: null, kind: 'restroom-door', x: 1712, y: 512, w: 64, h: 144, index: 0, "
+            ."geometry: { facing: 'back', face: null, doorway: null, draw: null, plates: { sign: { x: 21, y: 58, w: 22, h: 12 }, plate: { x: 14, y: 2, w: 36, h: 18 } } } })], snack, walking, input, box);"]);
 
         $this->assertNotSame([], $this->doorDefects($dir), 'a door the client placed and the door guard saw nothing');
     }
@@ -1914,7 +2252,10 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     {
         $dir = $this->planted([self::IN_FLIGHT, "                clear: after('clear'),", '                clear: () => 0,']);
 
-        $this->assertNotSame([], $this->laneRunDefects(['lane-two-at-the-door'], $dir)[0], 'a visitor walked into the lane with the one coming out and the lane guard saw nothing');
+        // card#13033: over the `back` door's corridor — at a side door the walker coming out leaves the lane within a frame of
+        // the door freeing, so a release as the leaf closes overlaps nobody there (measured: no 60 Hz instant on the re-cut
+        // corridor, three on the `back` corridor)
+        $this->assertNotSame([], $this->laneRunDefects(['lane-two-at-the-back-door'], $dir)[0], 'a visitor walked into the lane with the one coming out and the lane guard saw nothing');
     }
 
     /** card#12841 Third RED — straight in through the lane: a walk straight to the door wherever the one coming out is. */

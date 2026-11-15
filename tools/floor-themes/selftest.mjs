@@ -206,6 +206,24 @@ function documents(o) {
         }
     }
 
+    // card#13033: the restroom door set into a side wall, both facings, in each of its views — the floor page's plan in the
+    // drawing box, the door view's elevation at the tile's size and its flag plate — through the same builder, its geometry
+    // the side plates `restroomDoorGeometry()` hands (`left` mirrored in the box's width).
+    const door = tiles.find((t) => t.kind === o.mapTiles.RESTROOM_DOOR.kind);
+    const B = o.mapTiles.SIDE_DOOR_BOX;
+    const mirrored = (r) => ({ ...r, x: B.w - r.x - r.w });
+    const sides = {
+        right: o.mapTiles.RESTROOM_PLATES.side,
+        left: Object.fromEntries(Object.entries(o.mapTiles.RESTROOM_PLATES.side).map(([k, r]) => [k, mirrored(r)])),
+    };
+
+    for (const [facing, plates] of Object.entries(sides)) {
+        for (const view of o.mapTiles.DOOR_VIEWS) {
+            out.push([`${door.kind} set into the ${facing} wall, ${view}`, 'scenery',
+                o.mapTiles.sceneryInput({ kind: door.kind, w: door.w, h: door.h, index: door.id }, 'aimla', { facing, plates }, view)]);
+        }
+    }
+
     for (const key of KEYS) {
         for (const fn of ['chair', 'desk', 'monitorFrame', 'deskProps']) {
             out.push([`${key.install_id}/${key.seat_id}: ${fn}`, fn, key]);

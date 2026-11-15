@@ -76,9 +76,9 @@ very fact it exists to check.
 | `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `f9fcf0884ae29ba08bccee3a7d78acd3d24dbee4010436f69f6dc7a5213d1f4e` |
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `025b287ea0f0c89a8aeebf54a44f4489adc9e4d9ee5c22ba57514aad6b5ca38a` |
 | `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `4dc1acb3c0e8a074766db39d16d4baac67c09eec87a59e6eb770ac0d48ea416a` |
-| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `1ac89013c67d245a14ad61cb312fb72a149a56ccbe29c2f79eaf9fe135dc99d5` |
+| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `d177e4623fc1d2da98c2f94ef614ae69deaa7a19f3526e445c9dc8bdc59d1fb9` |
 | `resources/floor/themes/studio/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-12 | `1da7dceee0aef93ff67c6090866d869f083145865ef85597cad3547aeefdddf8` |
-| `resources/floor/themes/cottage/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-08 | `56884f88381e911f82d847aa906b4175cfc09b0bca0ce170b358fdd7e08c4a04` |
+| `resources/floor/themes/cottage/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `86011f475decf3cbd284c4210c399fb90bbb7a567f1911a0075650ace84549de` |
 | `resources/floor/themes/cottage/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `3f98cb81162d1809955d811c937123adcfbdfe598a1ab2a4a8799c80c149eb1a` |
 | `resources/floor/themes/paint.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `673bf79eba995a33bd285aa08488a92a2b8e6fef665f1cc20440cbab1fdbb6a0` |
 | `resources/floor/themes/parts-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `9d34f8f4191c11ea91044fe494771b96b27b9c29b60da051f22ca9d6ca1a5891` |
@@ -94,7 +94,7 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane/plant.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `1cf4c0c61b87f54750c93332abea6783328e6f2df238144daf3aae804210dfb7` |
 | `resources/floor/tiles/floor-plane/snack-table.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `dfd1836bc5ca5e512fc34a9b6a01635b762a41ec149d3d30b7e3d2248dcf19dc` |
 | `resources/floor/tiles/floor-plane/snack-table-low.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `4963e1ae7c30b13f8547528a7be5b4c9ae20f509ed8f64760c6665d2d437406e` |
-| `resources/floor/tiles/floor-plane/restroom-door.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `46fae0d509afa4bfe5061173954e17c05ab636ac9bf704b94cbfbb8ed195c647` |
+| `resources/floor/tiles/floor-plane/restroom-door.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `fa390fd1234a65480d11970fd3d9949476cab1350d991e78fd2c849975e497f8` |
 | `resources/floor/tiles/floor-plane/aquarium.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `94ab95ceedab9ac89642330bc2c8b823579e80e0b4a5ce01fa788fe99dd736b4` |
 | `resources/floor/tiles/floor-plane/bean-bag.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `280f24018fe554c51c403d128c3b2b1f2a3924dac0f42aca8de8046c6a18f7a7` |
 | `resources/floor/tiles/floor-plane/coat-rack.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `3f9b1c96f2e9beb40c6adaf50b0cebd09ea7c995454953f709399169bbdeb433` |

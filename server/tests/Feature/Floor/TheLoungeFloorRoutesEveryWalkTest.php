@@ -63,10 +63,34 @@ class TheLoungeFloorRoutesEveryWalkTest extends TestCase
     /** @var array<string, array<string, mixed>> one probe per map and plant, shared across this class's tests */
     private static array $walked = [];
 
-    /** @return array<string, mixed> every walk of a floor (`walk-probe.mjs`'s `walks`) */
-    private function walks(?string $map, array $walls = []): array
+    /** @return array<string, mixed> every walk of a floor (`walk-probe.mjs`'s `walks`), its map mirrored in x where asked */
+    private function walks(?string $map, array $walls = [], bool $mirror = false): array
     {
-        return self::$walked[json_encode([$map, $walls])] ??= $this->probe(['mode' => 'walks', 'map' => $map, 'walls' => $walls], null, __DIR__.'/walk-probe.mjs');
+        return self::$walked[json_encode([$map, $walls, $mirror])] ??= $this->probe(['mode' => 'walks', 'map' => $map, 'walls' => $walls, 'mirror' => $mirror], null, __DIR__.'/walk-probe.mjs');
+    }
+
+    /**
+     * card#13033 — a floor's restroom door (`walk-probe.mjs`'s `restroom`: its geometry) and its first `$count` waiting spots,
+     * spot 0 the threshold: `spotsNear()` from the threshold, clear of both snack spot 0s, none in § 12's *Restroom lane* for a
+     * side door — from the wall face into the room to one body's height past the threshold's line, along the wall the
+     * doorway's span or the seat's body and both margins, centred on the doorway — as the scene calls it.
+     *
+     * @return array{door: array<string, mixed>, spots: list<?array>}
+     */
+    private function doorSpots(string $map, bool $mirror, int $count): array
+    {
+        $floor = $this->walks($map, [], $mirror);
+        $door = $this->probe(['mode' => 'restroom', 'map' => $map, 'mirror' => $mirror], null, __DIR__.'/walk-probe.mjs')['placed'][0];
+        $c = $this->clearance();
+        $seat = $floor['bodies']['seat'];
+        $t = $door['threshold'];
+        $span = max($door['w'], $seat['w'] + 2 * $c['margin']);
+        $depth = abs($door['face'] - $t['x']) + $seat['h'];
+        $lane = ['x' => $door['facing'] === 'right' ? $door['face'] - $depth : $door['face'], 'y' => $door['y'] + $door['h'] - $door['w'] / 2 - $span / 2, 'w' => $depth, 'h' => $span];
+        $clear = [$floor['spots']['snack-table'], $floor['spots']['snack-table-low']];
+
+        return ['door' => $door, 'spots' => $this->probe(['mode' => 'restroom', 'map' => $map, 'mirror' => $mirror, 'from' => $t, 'clear' => $clear, 'count' => $count, 'lane' => $lane],
+            null, __DIR__.'/walk-probe.mjs')['spots']];
     }
 
     /**
@@ -344,6 +368,32 @@ class TheLoungeFloorRoutesEveryWalkTest extends TestCase
                 $this->assertGreaterThanOrEqual($box->height, $o['height']);
             }
         }
+    }
+
+    /**
+     * card#13033 — A DOOR SET INTO THE LEFT WALL, which no committed map places: the lounge floor mirrored in x
+     * (`walk-probe.mjs`'s `mirror`). Its door faces `left`, the lounge's faces `right`; its threshold and its first four
+     * waiting spots are the lounge's mirrored; and every walk to and from the door and the snack tables routes as on the
+     * lounge floor. The elevator stands in the band, which no map carries and the mirror does not move, so the walks to it
+     * are not this test's.
+     */
+    public function test_green_the_mirrored_lounge_sets_its_door_into_the_left_wall(): void
+    {
+        $doc = json_decode((string) file_get_contents(self::LOUNGE), true);
+        $width = $doc['width'] * $doc['tilewidth'];
+        $lounge = $this->doorSpots(self::LOUNGE, false, 5);
+        $mirror = $this->doorSpots(self::LOUNGE, true, 5);
+
+        $this->assertSame('right', $lounge['door']['facing'], 'the lounge floor\'s door is not set into the right wall');
+        $this->assertSame('left', $mirror['door']['facing'], 'the mirrored lounge floor\'s door is not set into the left wall');
+        $this->assertNotContains(null, $lounge['spots'], 'the lounge floor holds fewer than four waiting spots — the comparison reads less than it says');
+        $this->assertEquals(array_map(static fn (array $p): array => ['x' => $width - $p['x'], 'y' => $p['y']], $lounge['spots']), $mirror['spots'],
+            'the mirrored door\'s threshold and waiting spots are not the lounge\'s mirrored');
+
+        $floor = $this->walks(self::LOUNGE, [], true);
+        $walks = array_values(array_filter($floor['walks'], static fn (array $w): bool => preg_match('/^A2[56] /', $w['kind']) === 1));
+        $this->assertNotSame([], $walks, 'the mirrored floor routed no walk to or from the door or a snack table — the check read nothing');
+        $this->assertSame([], $this->walkDefects(['walks' => $walks] + $floor));
     }
 
     // ── The REDs ────────────────────────────────────────────────────────────────────────────────
