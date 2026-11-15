@@ -16,7 +16,8 @@
  *    camera), refresh(view), paintCab(host, ride), cabTheme(dialog) }`, over `hooks` `{ failed, select, link, ride, clock }`
  *    — `link(seatId)` the desk's drill-down URL on this route, for a renderer that writes its desks as links.
  * `route` is `'2d'` or `'3d'`: the URL shape the page reads and writes (§ 4.4; the 3-D floor's segment follows the
- * floor's, the seat's follows it).
+ * floor's, the seat's follows it; `floor/floor-screen.js`'s `floorRoute()` states it), and the kind of the routes the
+ * cab's stops lead to — a ride arrives on the route kind it began on (§ 4.5).
  *
  * ⛔ THIS FILE DECIDES NOTHING. Every fact on the page is `floor/floor-screen.js`'s frame — the floor, its desks, the
  * room render, the coordination line, the status strip (`floor/status-strip.js`) and the failure renders
@@ -72,7 +73,7 @@
 
 import { livePage } from '../wire/live-page.js';
 import { startAgeTicker } from '../wire/age-readout.js';
-import { startFloorScreen } from './floor-screen.js';
+import { ROUTE_SEGMENTS, floorRoute, startFloorScreen } from './floor-screen.js';
 import { renderCompose, renderDrillDown } from '../drilldown/main.js';
 import { ComposeBox } from '../drilldown/compose-box.js';
 import { loadArt, measurer } from './painter.js';
@@ -82,9 +83,6 @@ import { deskListRow } from '../desk/desk-list.js';
 import { arrival, revealed } from '../wire/ride-arrival.js';
 import { ridePage } from '../wire/ride-page.js';
 import { keyOf } from '../wire/seat-key.js';
-
-/** The path segments each route kind puts between the floor's segment and the seat's (§ 4.4). */
-const ROUTE_SEGMENTS = Object.freeze({ '2d': Object.freeze([]), '3d': Object.freeze(['3d']) });
 
 /**
  * Start the floor page over `document` and `window`.
@@ -177,7 +175,7 @@ export function startFloorPage(document, window, { renderer, route }) {
 
     /** § 4.4's URL shapes for this page and its route kind, the floor segment first and the seat's last. */
     function routeOf(floor, seat) {
-        return `/${['floor', floor, ...kind, ...(seat === null ? [] : [seat])].map(encodeURIComponent).join('/')}`;
+        return floorRoute(route, floor, seat);
     }
 
     /**
@@ -389,6 +387,8 @@ export function startFloorPage(document, window, { renderer, route }) {
     const screen = startFloorScreen(client, pageFetch, clock, log, paint, {
         floor: root.dataset.floor,
         seat: root.dataset.seat === '' ? null : root.dataset.seat,
+        // § 4.5: the cab's stops are routes of this kind, so a ride arrives on the route kind it began on.
+        route,
         reduce: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
         surface: surface(),
         lobby_href: lobbyHref,

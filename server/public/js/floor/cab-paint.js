@@ -3,7 +3,7 @@
  * module*; hoisted out of `floor/painter.js` at its second caller, the lobby, card#12113). The cab's room in depth
  * (`drawCabInterior()`, card#12051), the views its open doors look out on (`drawFloorView()`, a floor's stop's own floor,
  * card#12987, with its bare room `drawOfficeView()`, and `drawLobbyView()`, card#12113), the cab dialog's drawing (`paintCab()`), its colours (`cabTheme()`), the ride's leaf
- * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`), the one URI a drawn document
+ * motion (`rideLeaves()` and `rideLeafLevel()`, one table for both floors' band leaves, and `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`), the one URI a drawn document
  * is shown by (`svgUri`, which the floor's painter imports), the lobby's theme loader (`loadThemes()`) and the scene's themes
  * input (`themeInputs()`, which the floor's painter re-exports).
  *
@@ -22,6 +22,9 @@
  */
 
 const SVG = 'http://www.w3.org/2000/svg';
+
+/** The elevator control's accessible name, on every page that draws one (§ 4.1, § 4.5) — the ride's, as the cab is. */
+export const ELEVATOR_NAME = 'the elevator — ride to another floor';
 
 /** The theme registry — `resources/floor/themes/index.js`, by the asset route (FLOOR.md § 10.6 item 1). */
 export const THEME_REGISTRY = '/art/floor/themes/index.js';
@@ -201,32 +204,104 @@ function doorTiming(ride) {
 }
 
 /**
- * The ride's band leaves (§ 4.5, card#11795), as a `style` — or `null` when no ride holds them, and the walks'
- * door spans draw them. `opening` opens them; `entering` to `leaving` hold them open while the viewer is in the
- * cab; `staying` and `arriving` draw them open and close them once the phase's fade is over. Each motion is
- * placed at the phase's elapsed time — `animation-delay: (door_delay − elapsed)` — so a re-paint mid-phase
- * neither restarts nor reorders it. A phase of no length (`prefers-reduced-motion`) moves nothing.
+ * The ride's band leaves (§ 4.5, card#11795) — what they do in a phase, the one table both floors draw them from: `opening`
+ * opens them; `entering` to `leaving` hold them open while the viewer is in the cab; `staying` and `arriving` draw them
+ * open and close them once the phase's fade is over. A phase of no length (`prefers-reduced-motion`) moves nothing:
+ * `opening` stands them open, `staying` and `arriving` shut. `null` when no ride holds them, and the walks' door spans
+ * draw them.
+ *
+ * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
+ * @returns {{leaves: 'open'|'opens'|'closes'|'shut', delay: number, motion: number}|null} `delay` and `motion` as
+ *          `doorTiming()` gives them
+ */
+function bandLeaves(ride) {
+    if (ride === null || ride === undefined) {
+        return null;
+    }
+
+    const still = ride.ms === 0;
+    const leaves = {
+        opening: still ? 'open' : 'opens',
+        staying: still ? 'shut' : 'closes',
+        arriving: still ? 'shut' : 'closes',
+    }[ride.phase] ?? 'open';
+
+    return { leaves, ...doorTiming(ride) };
+}
+
+/**
+ * The ride's band leaves as a `style` (`bandLeaves()`'s table) — or `null` when no ride holds them, or a still phase
+ * leaves them shut. Each motion is placed at the phase's elapsed time — `animation-delay: (door_delay − elapsed)` — so a
+ * re-paint mid-phase neither restarts nor reorders it.
  *
  * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
  * @returns {string|null}
  */
 export function rideLeaves(ride) {
-    if (ride === null || ride === undefined) {
+    const band = bandLeaves(ride);
+
+    switch (band?.leaves) {
+        case 'opens':
+            return `animation:leaf-open ${band.motion}ms ${RIDE_DOOR_EASING} ${band.delay}ms forwards`;
+        case 'closes':
+            return `animation:leaf-close ${band.motion}ms ${RIDE_DOOR_EASING} ${band.delay}ms both`;
+        case 'open':
+            return 'transform:scaleX(.12)';
+        default:
+            return null;
+    }
+}
+
+/**
+ * The ride's band leaves `sinceMs` after the paint that read `ride` (`bandLeaves()`'s table), as how far open they are —
+ * 0 shut, 1 fully open — for a renderer that steps them itself (the 3-D floor's), on the same `ease-in-out` curve the
+ * 2-D leaves' animation runs. `null` when no ride holds them.
+ *
+ * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
+ * @param {number} sinceMs
+ * @returns {{open: number, moving: boolean}|null} `moving` while the motion has not ended
+ */
+export function rideLeafLevel(ride, sinceMs) {
+    const band = bandLeaves(ride);
+
+    if (band === null) {
         return null;
     }
 
-    const { delay, motion } = doorTiming(ride);
-
-    switch (ride.phase) {
-        case 'opening':
-            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms forwards`;
-        case 'staying':
-        case 'arriving':
-            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;
-        default:
-            // `entering`, `inside`, `chosen`, `leaving`: the floor's leaves stand open behind the cab.
-            return 'transform:scaleX(.12)';
+    if (band.leaves === 'open' || band.leaves === 'shut') {
+        return { open: band.leaves === 'open' ? 1 : 0, moving: false };
     }
+
+    const t = Math.min(1, Math.max(0, (sinceMs - band.delay) / band.motion));
+    const eased = easeInOut(t);
+
+    return { open: band.leaves === 'opens' ? eased : 1 - eased, moving: t < 1 };
+}
+
+/**
+ * CSS's `ease-in-out` at `t` — `cubic-bezier(0.42, 0, 0.58, 1)` by the CSS Easing Functions specification — the curve's
+ * x solved for `t` by bisection, its y answered.
+ */
+function easeInOut(t) {
+    if (t <= 0 || t >= 1) {
+        return t <= 0 ? 0 : 1;
+    }
+
+    const bezier = (s, a, b) => 3 * a * s * (1 - s) ** 2 + 3 * b * s ** 2 * (1 - s) + s ** 3;
+    let lo = 0;
+    let hi = 1;
+
+    for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+
+        if (bezier(mid, 0.42, 0.58) < t) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+
+    return bezier((lo + hi) / 2, 0, 1);
 }
 
 /**

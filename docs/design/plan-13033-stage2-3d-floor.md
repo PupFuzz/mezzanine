@@ -1004,7 +1004,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    **the frame loop with its stop, its restarts and its `LOOP_FPS` rest rate, and the cut-away with its moving row**
    (M6: they are the renderer's own frame machinery and cannot wait for the clips), the lights, the fallback, **the renderer's `paintCab(host, ride)` a bare contract member until slice 6** — no
    statement and no stub: nothing reaches it before slice 6 provides the doorway control that starts a ride on this
-   page (m-6) — the shared chrome partial (hygiene), test 4,
+   page (m-6) (slice 6 hands on `cab-paint.js`'s `paintCab()`) — the shared chrome partial (hygiene), test 4,
    the browser leg's still rows and the camera, route and loop moving rows, the budget leg; the sandbox deployed and
    screenshots on the card — **the operator's reading** of the floor, where the two pills and the z-fight read are
    confirmed.
@@ -1096,7 +1096,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    painter draws nothing for it, so a 3-D walk would need a route the plan does not describe; A12's eased gauge (the
    gauge is the card's and the drill-down's); § 3.3's 512 px face bucket for the near desks (every face stays 256 px,
    § 6's texture row keeps the headroom) — choosing when a creature is re-rasterised and with what hysteresis is
-   mechanism the plan names and does not describe; the ride's leaves (`scene.ride`), slice 6's. The cap floor's figures,
+   mechanism the plan names and does not describe; the ride's leaves (`scene.ride`), slice 6's (built there). The cap floor's figures,
    read by `node tools/design/floor3d.browser.mjs --row budget` (2026-11-12, this host's SwiftShader): draw calls 154
    against 260 — characters 102 (S + 2 I, S = 6, I = 48), furniture 36 against 22 k = 88 (k = 4), walls 2, the fixed term
    14, exactly the count its members give (`fixedOf()`: a plane per grid, the band, the discs, a screen per monitor, the
@@ -1132,6 +1132,25 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    `steps` leg holds the rise; its plants are the couch at the file's own depth, the lift only at the foot, and no lift.
 6. **The ride from the 3-D floor** — the doorway as the control, the cab modal, `ride-page.js`'s route kind, the
    arrival on the destination's 3-D route; `TheFloorsRideIsNavigationTest`'s shape on the new page.
+   **As built (2026-11-14, on the operator's choice of option A — the existing cab, no camera ride), where it departs
+   from the text above, each the coder's to argue at review:** (a) **the route kind is not a member `ride-page.js`
+   writes**: the handover the departing page writes is the navigation itself (`window.location.assign(ride.route)`),
+   whose route is the chosen stop's `href` with `#ride` (`wire/ride.js`'s `opened()`), and the destination reads the URL
+   alone — so the route kind rides in that URL's path, as the stops' `href`: the floor screen is handed the page's
+   `route` and offers every floor stop at `floorRoute(route, key, null)`, which `floor/floor-page.js`'s `routeOf()` now
+   calls too, the floor pages' one statement of § 3.8's URL shape (`ROUTE_SEGMENTS` moved with it); `ride-page.js` and
+   `ride.js` are unchanged, and the lobby's cab, whose stops are the plaques', still reaches `/floor/{floor}`;
+   (b) the doorway's pointer half is a press and release under `DRAG_SLOP_PX` whose ray meets an undrawn hit plane over
+   the elevator's frame (`room-paint.js`'s `isDoorway()`) before any wall, piece or room part — bodies and birds are not
+   in the ray's population, as the 2-D floor's walkers let the pointer through; its keyboard half is a `role="button"`
+   that `floor-labels.js` keeps first in the label layer (the band is the room's back), unseen until it has the
+   keyboard's focus and letting the pointer through to the canvas, its focus moving the target to the doorway as a
+   desk's name does — the `focused` hook now takes a floor point and a name; (c) the ride's band leaves (`scene.ride`,
+   slice 5's *not built*) are drawn: `cab-paint.js`'s band-leaf table is one function (`bandLeaves()`) that the 2-D
+   style (`rideLeaves()`, its strings unchanged) and the 3-D level (`rideLeafLevel()`, CSS's `ease-in-out` solved) both
+   read, the room stepping a frame a display refresh while they move; (d) `floor3d.blade.php` declares
+   `data-ride-reveals`. The checks: `TheThreeDFloorsRideIsNavigationTest` (its probe `three-d-ride-probe.mjs`) and the
+   browser leg's `ride` row.
 7. **The default** (gated on the operator's reading — Q3's answer A was *beside first*): `/floor/{floor}` serves the
    3-D view and `/floor/{floor}/2d` the drawing, the pills swapped, `FLOOR.md` § 4.4's table amended — one route change.
 8. **The building in volume** (the operator's *eventually*, comment 17050; its own operator gate before it starts):

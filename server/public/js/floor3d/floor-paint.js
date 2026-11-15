@@ -30,6 +30,13 @@
  * creature built, the plane or the band rasterised — so a floor drawn before its models arrived is drawn again when they
  * do.
  *
+ * ⛔ THE ELEVATOR's DOORWAY IS A CONTROL (`FLOOR.md` § 4.5; plan § 3.8): a primary press and release on the stage that
+ * moved less than `DRAG_SLOP_PX` — a click, not a turn — whose ray meets the doorway (`room-paint.js`'s hit area over its
+ * frame, leaves and opening) before any wall, piece of furniture or part of the room calls the page's `ride` once; a
+ * body or a bird in front of it does not stand in the way, as the 2-D floor's walkers let the pointer through. Its
+ * keyboard route is `floor-labels.js`'s button. The ride's cab is the 2-D floor's — `floor/cab-paint.js`'s `paintCab()`,
+ * handed on as the 2-D painter hands it — and the ride's leaves are drawn by `room-paint.js` from `scene.ride`.
+ *
  * ⛔ THE CLOCK (plan § 3.5) is `body-paint.js`'s and the CUT-AWAY (plan § 3.7) `room-paint.js`'s; each states its rule.
  *
  * ⛔ A LOST CONTEXT STOPS THE DRAWING AND SAYS SO (§ 7, `floor3d/main.js`'s statement); a restored one re-uploads every
@@ -42,7 +49,9 @@ import {
     Group,
     HemisphereLight,
     PerspectiveCamera,
+    Raycaster,
     Scene,
+    Vector2,
     Vector3,
     WebGLRenderer,
 } from '../vendor/three/three.module.js';
@@ -58,7 +67,8 @@ import { floorBodies } from './body-paint.js';
 import { floorTransients } from './transient-paint.js';
 import { TERMS, onTerm } from './terms.js';
 import { floorWorld } from '../floor/floor-world.js';
-import { cabTheme } from '../floor/cab-paint.js';
+import { cabTheme, paintCab } from '../floor/cab-paint.js';
+import { DRAG_SLOP_PX } from '../wire/camera-gestures.js';
 
 /**
  * The 3-D floor's renderer.
@@ -203,6 +213,22 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         marks: markScene,
     });
     const transients = floorTransients({ group: transientGroup });
+
+    // The pointer's ray, through every term's layer; what it may meet first is the room's structure and the furniture.
+    const raycaster = new Raycaster();
+
+    raycaster.layers.enableAll();
+
+    /** Whether a pointer at `(clientX, clientY)` points at the elevator's doorway first (the header's rule). */
+    const atDoorway = (clientX, clientY) => {
+        const r = canvas.getBoundingClientRect();
+
+        raycaster.setFromCamera(new Vector2(((clientX - r.left) / r.width) * 2 - 1, 1 - ((clientY - r.top) / r.height) * 2), camera);
+
+        const [first] = raycaster.intersectObjects([roomGroup, wallGroup, furnitureGroup], true);
+
+        return first !== undefined && room.isDoorway(first.object);
+    };
 
     /**
      * One frame at `now`: the controls, the clamp, the cut-away, the bodies, the room's moving parts and the birds, drawn;
@@ -364,6 +390,23 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         });
                     }
 
+                    // A click on the doorway rides (the header's rule): a primary press that comes up where it went down.
+                    let press = null;
+
+                    stage.addEventListener('pointerdown', (event) => {
+                        press = event.button === 0 ? { id: event.pointerId, x: event.clientX, y: event.clientY } : null;
+                    });
+                    stage.addEventListener('pointerup', (event) => {
+                        const was = press;
+
+                        press = null;
+
+                        if (was?.id === event.pointerId && hooks !== null && Math.hypot(event.clientX - was.x, event.clientY - was.y) < DRAG_SLOP_PX
+                            && atDoorway(event.clientX, event.clientY)) {
+                            hooks.ride();
+                        }
+                    });
+
                     controls.connect(stage);
                     stage.addEventListener('wheel', (event) => {
                         const d = controls.getDistance();
@@ -382,18 +425,19 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
             labels = floorLabels(labelLayer, labelGroup, {
                 select: hooks.select,
                 link: hooks.link,
-                focused: (desk) => {
-                    // Keyboard focus on a desk's name: the target to the desk, the eye moved by the same vector — the
-                    // angles and the distance left as they are (plan § 3.6).
-                    const to = new Vector3((desk.slab.left + desk.slab.right) / 2, 0, (desk.slab.back + desk.slab.front) / 2);
+                focused: (point, what) => {
+                    // Keyboard focus on a desk's name or the elevator: the target to it, the eye moved by the same vector
+                    // — the angles and the distance left as they are (plan § 3.6).
+                    const to = new Vector3(point.x, 0, point.z);
 
                     camera.position.add(to.clone().sub(controls.target));
                     controls.target.copy(to);
                     controls.update();
                     clamp();
-                    focusLine.textContent = `looking at ${desk.seat_id}`;
+                    focusLine.textContent = `looking at ${what}`;
                     wake();
                 },
+                ride: hooks.ride,
             });
 
             loadKitMap().then((map) => {
@@ -432,6 +476,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                     bodies.paint(world, at);
                     transients.paint(world, at);
                     labels.sync(world);
+                    labels.riding((sceneIn.ride ?? null) !== null);
                     wake();
                 },
 
@@ -448,8 +493,8 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                     labels.sync(world);
                 },
 
-                /** The ride's cab drawing (§ 4.5): no control on this floor starts a ride before the plan's slice 6. */
-                paintCab() {},
+                /** The ride's cab drawing (§ 4.5): the 2-D floor's, one cab for every page. */
+                paintCab,
 
                 /** The page's cab dialog in the house theme's elevator palette, as the 2-D floor's (card#12039). */
                 cabTheme: (dialog) => cabTheme(dialog, cabPalette()),
@@ -486,6 +531,9 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                     });
 
                     const heights = room.heights();
+                    // where the doorway's centre is drawn on the stage, px — what the browser leg clicks
+                    const door = world?.band?.elevator ?? null;
+                    const seen = door === null ? null : new Vector3(door.x + door.w / 2, door.y + door.h / 2, door.z).project(camera);
 
                     return {
                         frames,
@@ -499,6 +547,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         limits: view === null ? null : { polar: view.polar, distance: view.distance, near: view.near, far: view.far, box: view.box },
                         target: controls.target.toArray(),
                         eye: camera.position.toArray(),
+                        doorway: seen === null ? null : { x: ((seen.x + 1) / 2) * surface.width, y: ((1 - seen.y) / 2) * surface.height },
                         walls: heights.walls,
                         band: heights.band,
                         calls: renderer.info.render.calls,
