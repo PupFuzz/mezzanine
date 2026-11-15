@@ -150,8 +150,9 @@ would have made every caller place the cell itself or closed an import cycle). `
   `hrefsOf()` passes the `view` (§ 6), once Q4 is answered.
 - `back`: `{ facing, face: null, doorway: null, draw: null, plates: RESTROOM_PLATES.back }` — today's values, so every
   existing consumer is unchanged for a `back` door.
-- `right` (`left` mirrors every `x`): `face`, the wall face `x_w = cell.x + cell.w` (`left`: `cell.x`), `foot = cell.y +
-  cell.h`, `y_c = foot − cell.w ÷ 2`; `doorway: { x: x_w, y: foot − cell.w, w: T, h: cell.w }` (the strip over the span;
+- `right` (`left` mirrors every `x`): `face`, the wall face `x_w = at.x + cell.w` (`left`: `at.x`), `foot = at.y + T` —
+  the PLACED cell's, as the wall bodies are (the slice-2 review's gating finding: read off the drawn `cell`, a door layer
+  dragged off the grid cut its doorway beside its wall column) — `y_c = foot − cell.w ÷ 2`; `doorway: { x: x_w, y: foot − cell.w, w: T, h: cell.w }` (the strip over the span;
   `left`: `x: x_w − T`);
   `draw: { x: x_w − 40, y: foot − 146, w: 48, h: 150 }`; `plates: RESTROOM_PLATES.side` — in the draw box's px: plate
   `(2, 2, 36, 32)`, sign `(9, 20, 22, 12)`, doorway `(40, 82, 8, 64)`, leaf `(42, 88, 4, 52)`; for `left`, each `x` is

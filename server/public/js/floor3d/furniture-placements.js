@@ -4,7 +4,9 @@
  * node. `docs/design/plan-13033-stage2-3d-floor.md` § 3.4.
  *
  * A placement is `{ at, w, h, d?, turn? }`: centred across and in depth on `at`, its foot at `at.y`, `w` across and `h`
- * up (`d` deep, or as deep as its model's plan keeps it at `w`), turned `turn` radians about `y`.
+ * up (`d` deep, or as deep as its model's plan keeps it at `w`), turned `turn` radians about `y`. A restroom door set into
+ * a side wall (`floor-world.js`'s piece) also carries its `facing`, the wall's thickness (`wall`) and its `flag`, which
+ * its theme's part list is drawn from.
  *
  * ⛔ A DRESSED PIECE STANDS AS TWO PLACEMENTS: the kit's piece fitted to the height and depth its dressing gives — the
  * theme's 2-D table top, not the tile's height, which holds what stands on it too — and the dressing under
@@ -18,9 +20,13 @@ export function dressingOf(kind) {
     return `${kind}+dressing`;
 }
 
-/** The inputs a theme's `piece3d()` and `dressing3d()` are called with for a placement: its size, and a picture px's. */
+/**
+ * The inputs a theme's `piece3d()` and `dressing3d()` are called with for a placement: its size, and a picture px's — and
+ * a side door's `facing`, `wall` and `flag`. A part list is a function of these alone, so placements with equal inputs
+ * share one geometry.
+ */
 export function inputsOf(p) {
-    return { w: p.w, h: p.h, px: 1 / UNIT };
+    return { w: p.w, h: p.h, px: 1 / UNIT, ...(p.facing === undefined ? {} : { facing: p.facing, wall: p.wall, flag: p.flag }) };
 }
 
 /**
@@ -36,7 +42,7 @@ export function placementsOf(world, dressed, dressing) {
     const add = (kind, p) => by.set(kind, [...(by.get(kind) ?? []), p]);
 
     for (const piece of world.pieces) {
-        const p = { at: piece.at, w: piece.w, h: piece.h };
+        const p = { at: piece.at, w: piece.w, h: piece.h, ...(piece.turn === undefined ? {} : { turn: piece.turn, facing: piece.facing, wall: piece.wall, flag: piece.flag }) };
         const dress = dressed.includes(piece.kind) && dressing !== null ? dressing(piece.kind, inputsOf(p)) : null;
 
         if (dress === null) {

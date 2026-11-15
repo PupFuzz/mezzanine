@@ -110,8 +110,13 @@ const PIECES = Object.freeze({
         ];
     },
     // The door into the restroom: its frame and pediment, the sill, the dark recess, its sign plate — the leaf over the
-    // recess is the renderer's.
-    'restroom-door': (P, { w, h }) => {
+    // recess is the renderer's. A door set into a side wall is `sideDoor()`'s.
+    'restroom-door': (P, inputs, rules) => {
+        if (inputs.facing !== undefined && inputs.facing !== 'back') {
+            return sideDoor(P, inputs, rules);
+        }
+
+        const { w, h } = inputs;
         const d = 0.12, jamb = w * 0.12, head = h * 0.1;
 
         return [
@@ -124,6 +129,53 @@ const PIECES = Object.freeze({
         ];
     },
 });
+
+/** How far the frame stands proud of each face of the wall it lines, units. */
+const FRAME_LIP = 0.01;
+/** The flag's thickness, units — the field the renderer lays on it is a shade thicker, so both faces show it. */
+const PLATE_T = 0.01;
+/** How far the pictogram's figures stand proud of each face of the flag, units. */
+const FIGURE_PROUD = 0.004;
+/** The bracket's section, units: a bar along the flag's top from inside the frame out to the flag's far edge. */
+const BRACKET = 0.02;
+
+/**
+ * THE RESTROOM DOOR SET INTO A SIDE WALL (FLOOR.md § 6.7 item 2), in the piece's frame — its origin the wall face's foot
+ * centre over the doorway, `x` along the wall (the near jamb toward `+x` for a `right` door, `−x` for a `left`), its front
+ * toward `+z`, the room; the wall's thickness `wall` behind it (`−z`), cut away over the doorway to the tile's height `h`.
+ * The frame lines the cut: the sill, a jamb at each end of the doorway, and the head from the flag's bottom up to the
+ * lintel — no recess (the cut is the doorway) and no pediment. The FLAG projects into the room at the near jamb's end:
+ * a plate `flag.gap` out from the face, `flag.out` across and from `flag.y` up `flag.h`, its top flush under the lintel;
+ * hung from a bracket along its top that runs from inside the frame to its far edge; the pictogram — the two figures the
+ * 2-D flag draws in its upper 18 px — standing proud of both its faces in the line colour (`ink`). The field on its lower
+ * half and the leaf in the doorway are the renderer's.
+ */
+function sideDoor(P, { w, h, facing, wall, flag }, { line: ink }) {
+    const end = (facing === 'right' ? 1 : -1) * w / 2;
+    const depth = wall + 2 * FRAME_LIP;
+    const back = -wall / 2;
+    const jamb = w * 0.12;
+    const top = flag.y + flag.h;
+    const reach = flag.gap + flag.out;
+    // the pictogram's box, as the 2-D flag draws it: the plate's upper 18 of its 32 px
+    const ph = flag.h * 18 / 32;
+    const thick = PLATE_T + 2 * FIGURE_PROUD;
+    const across = (k) => flag.gap + flag.out * k;
+    const head = (k) => part('sphere', { r: ph * 0.14 }, [end, top - ph * 0.3, across(k)], ink, [0, 0, 0], [thick / (ph * 0.28), 1, 1]);
+
+    return [
+        block(w, 0.03, depth, 0, 0, back, P.sill),
+        block(jamb, flag.y, depth, -(w - jamb) / 2, 0, back, P.frame),
+        block(jamb, flag.y, depth, (w - jamb) / 2, 0, back, P.frame),
+        block(w, h - flag.y, depth, 0, flag.y, back, P.frame),
+        block(PLATE_T, flag.h, flag.out, end, flag.y, across(0.5), P.plate),
+        block(BRACKET, BRACKET, reach + FRAME_LIP, end, top - BRACKET, (reach - FRAME_LIP) / 2, ink),
+        head(0.36),
+        block(thick, ph * 0.4, ph * 0.24, end, top - ph * 0.86, across(0.36), ink),
+        head(0.64),
+        part('cone', { radius: ph * 0.24, height: ph * 0.4, dir: [0, 1, 0] }, [end, top - ph * 0.86, across(0.64)], ink, [0, 0, 0], [thick / (ph * 0.48), 1, 1]),
+    ];
+}
 
 /** The kinds this module draws. */
 export const KINDS_3D = Object.freeze(Object.keys(PIECES));
@@ -238,11 +290,14 @@ export function dressings3d(palette, snack, kind, inputs) {
  *
  * @param {object} palette the theme's `PALETTE`
  * @param {string} kind a standing kind (`../index.js`'s `KINDS`)
- * @param {{w: number, h: number}} inputs the tile's width and height, world units
+ * @param {{w: number, h: number, facing?: string, wall?: number, flag?: object}} inputs the tile's width and height, world
+ *        units — and for a restroom door set into a side wall its facing, the wall's thickness and its flag
+ *        (`floor3d/furniture-placements.js`'s `inputsOf()`)
+ * @param {{line: string}} rules the theme's paint rules: the line colour a pictogram is drawn in
  * @returns {list<object>|null}
  */
-export function pieces3d(palette, kind, { w, h }) {
+export function pieces3d(palette, kind, inputs, rules) {
     const draw = PIECES[kind];
 
-    return draw === undefined ? null : Object.freeze(draw(palette[kind], { w, h }));
+    return draw === undefined ? null : Object.freeze(draw(palette[kind], inputs, rules));
 }

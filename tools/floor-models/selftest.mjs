@@ -19,6 +19,9 @@
 // - every `DRESSED` kind is a `FILES` kind, and every theme of the registry exports its own `dressing3d`, which dresses
 //   each at its tile's size: a table top above the floor and under the tile's top, a depth, and a part list of coloured parts standing in
 //   the tile's height;
+// - the house theme's restroom door set into a side wall (each facing, at the shipped door's size and the side plates of
+//   `floor/map-tiles.js`): its flag plate at the near jamb's end, out from the wall face and at the plate's heights, hung
+//   on a bracket that runs from inside the wall face out along it, and the pictogram standing proud of both its faces;
 // - `PAINT` names, for every `FILES` kind, exactly the materials its file carries (read off the `.glb`'s own JSON
 //   chunk), each mapped for every theme of the registry to a `PALETTE` path holding a colour in that theme.
 //
@@ -41,6 +44,21 @@ const { UNIT } = await load('server', 'public', 'js', 'floor', 'floor-world.js')
 const TILE = Object.freeze({ w: 72 / UNIT, h: 96 / UNIT, px: 1 / UNIT });
 
 const NOT_FURNITURE = Object.freeze(['band', 'windowSurround', 'elevatorSurround', 'clockCase', 'plane', 'scenery', 'PALETTE', 'surfaces']);
+
+/**
+ * A side door's `piece3d` inputs (`floor3d/furniture-placements.js`'s `inputsOf()` of the world's piece), derived from
+ * the shipped tile and the side plates in the drawing box's px — the doorway strip's foot at the box's foot line and its
+ * edge on the wall face — never restated.
+ */
+function sideInputs({ RESTROOM_DOOR, RESTROOM_PLATES }, facing) {
+    const { plate, doorway } = RESTROOM_PLATES.side;
+    const foot = doorway.y + doorway.h;
+
+    return {
+        w: RESTROOM_DOOR.w / UNIT, h: RESTROOM_DOOR.h / UNIT, px: 1 / UNIT, facing, wall: doorway.w / UNIT,
+        flag: { gap: (doorway.x - (plate.x + plate.w)) / UNIT, out: plate.w / UNIT, y: (foot - (plate.y + plate.h)) / UNIT, h: plate.h / UNIT },
+    };
+}
 
 let failures = 0;
 const check = (cond, what) => { console.log(`  ${cond ? 'ok  ' : 'FAIL'} ${what}`); if (!cond) failures++; };
@@ -68,6 +86,9 @@ async function reading() {
         houseHasPiece3d: typeof house.piece3d === 'function',
         // what the house theme's `piece3d` answers for each kind PIECE3D lists, at a tile's size
         drawn: Object.fromEntries(map.PIECE3D.map((k) => [k, typeof house.piece3d === 'function' ? house.piece3d(k, { w: 0.6, h: 1 }) : null])),
+        // the restroom door set into a side wall, each facing, at the inputs the floor world hands it
+        sideDoor: Object.fromEntries(['right', 'left'].map((facing) => [facing, typeof house.piece3d === 'function' ? house.piece3d('restroom-door', sideInputs(tiles, facing)) : null])),
+        sideInputs: sideInputs(tiles, 'right'),
         // what each theme's own `dressing3d` answers for each kind DRESSED lists, at a tall snack table's tile — `null`
         // for a theme that exports none
         dressings: Object.fromEntries(Object.entries(modules).map(([t, m]) => [t, typeof m.dressing3d === 'function'
@@ -208,7 +229,53 @@ function paintDefects(r) {
     return defects;
 }
 
-const LEGS = { totality: totalityDefects, files: fileDefects, piece3d: piece3dDefects, dressing: dressingDefects, paint: paintDefects };
+/** A part's box in the piece's frame — `[min, max]` per axis — for the shapes a flag is drawn with. */
+function extent(p) {
+    const half = p.shape === 'box' ? p.params.size.map((v, k) => v * p.scale[k] / 2)
+        : p.shape === 'sphere' ? p.scale.map((v) => v * p.params.r)
+            : p.shape === 'cone' ? [p.params.radius * p.scale[0], p.params.height / 2, p.params.radius * p.scale[2]] : null;
+
+    if (half === null) {
+        return null;
+    }
+
+    const centre = p.shape === 'cone' ? [p.at[0], p.at[1] + p.params.height / 2, p.at[2]] : p.at;
+
+    return centre.map((c, k) => [c - half[k], c + half[k]]);
+}
+
+function flagDefects(r) {
+    const { w, flag } = r.sideInputs;
+    const E = 1e-9;
+    const defects = [];
+
+    for (const [facing, parts] of Object.entries(r.sideDoor)) {
+        const end = (facing === 'right' ? 1 : -1) * w / 2;
+        const boxes = (parts ?? []).map(extent).filter((b) => b !== null);
+        const atEnd = (b) => b[0][0] < end + E && b[0][1] > end - E;
+        const [top, bottom] = [flag.y + flag.h, flag.y];
+        const plate = boxes.find((b) => atEnd(b) && Math.abs(b[2][0] - flag.gap) < E && Math.abs(b[2][1] - flag.gap - flag.out) < E && Math.abs(b[1][0] - bottom) < E && Math.abs(b[1][1] - top) < E);
+
+        if (plate === undefined) {
+            defects.push(`the ${facing} side door draws no flag plate at its near jamb's end (x ${end}), ${flag.gap}–${flag.gap + flag.out} out from the wall face and ${bottom}–${top} up`);
+            continue;
+        }
+
+        if (!boxes.some((b) => atEnd(b) && b[2][0] < E && b[2][1] > flag.gap + flag.out - E && b[1][0] > bottom - E && b[1][1] < top + E)) {
+            defects.push(`the ${facing} side door's flag hangs on no bracket from inside the wall face out along it — it floats ${flag.gap} units off the wall`);
+        }
+
+        const proud = boxes.filter((b) => b !== plate && b[0][0] < plate[0][0] - E && b[0][1] > plate[0][1] + E && b[2][0] > flag.gap && b[2][1] < flag.gap + flag.out && b[1][0] > bottom && b[1][1] < top);
+
+        if (proud.length < 2) {
+            defects.push(`the ${facing} side door's pictogram stands proud of both the flag's faces in ${proud.length} part(s), not its two figures'`);
+        }
+    }
+
+    return defects;
+}
+
+const LEGS = { totality: totalityDefects, files: fileDefects, piece3d: piece3dDefects, flag: flagDefects, dressing: dressingDefects, paint: paintDefects };
 
 const shipped = await reading();
 const { standing, parts } = population(shipped);
@@ -236,6 +303,9 @@ const PLANTS = [
     ['files', 'a .glb shipped that no kind is mapped to', (r) => ({ beside: [...r.beside, 'bathtub.glb'] }), 'no kind is mapped to it'],
     ['piece3d', 'PIECE3D naming kinds while the house theme exports no piece3d', () => ({ houseHasPiece3d: false }), 'exports no `piece3d`'],
     ['piece3d', 'a PIECE3D kind the house theme\'s piece3d does not draw', (r) => ({ drawn: { ...r.drawn, globe: null } }), '`globe` and the house theme'],
+    ['flag', 'the flag drawn at the far jamb', (r) => ({ sideDoor: { ...r.sideDoor, right: r.sideDoor.right.map((p) => ({ ...p, at: [-p.at[0], p.at[1], p.at[2]] })) } }), 'no flag plate at its near jamb'],
+    ['flag', 'the bracket dropped — a flag floating off the wall', (r) => ({ sideDoor: { ...r.sideDoor, left: r.sideDoor.left.filter((p) => extent(p)?.[2][0] >= 0) } }), 'hangs on no bracket'],
+    ['flag', 'the pictogram flat in the plate', (r) => ({ sideDoor: { ...r.sideDoor, right: r.sideDoor.right.map((p) => (p.shape === 'box' ? p : { ...p, scale: [0, 1, 1] })) } }), 'pictogram stands proud'],
     ['dressing', 'a DRESSED kind with no kit piece to dress', (r) => ({ dressedKinds: [...r.dressedKinds, 'globe'] }), '`globe`, which FILES does not map'],
     ['dressing', 'DRESSED naming kinds while the house theme exports no dressing3d', (r) => ({ dressings: { ...r.dressings, studio: null } }), 'studio exports no `dressing3d`'],
     ['dressing', 'a second theme with no dressing3d of its own', (r) => ({ dressings: { ...r.dressings, cottage: null } }), 'cottage exports no `dressing3d`'],

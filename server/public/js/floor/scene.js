@@ -785,8 +785,8 @@ export function elevatorLane(band, character) {
  * floor line*, which at a back door is the doorway's own line and at a side door lies the wall's halo into the room). A
  * side door with no threshold serves nobody and has no lane.
  *
- * @param {{x: number, y: number, w: number, h: number, facing: string, face: ?number}} door the door's tile rect, scene px,
- *        and its geometry (`restroomDoorGeometry()`)
+ * @param {{x: number, y: number, w: number, h: number, facing: string, face: ?number, doorway: ?object}} door the door's
+ *        tile rect, scene px, and its geometry (`restroomDoorGeometry()`)
  * @param {?{x: number, y: number}} threshold the door's threshold
  * @param {{w: number, h: number}} character the seat character's rect
  */
@@ -799,7 +799,7 @@ export function restroomLane(door, threshold, character) {
         return null;
     }
 
-    return doorLane({ x: door.face, y: door.y + door.h - door.w / 2 }, door.w, character, door.facing, Math.abs(door.face - threshold.x));
+    return doorLane({ x: door.face, y: door.doorway.y + door.doorway.h / 2 }, door.doorway.h, character, door.facing, Math.abs(door.face - threshold.x));
 }
 
 /**
@@ -1987,7 +1987,7 @@ function restroomDoor(doors, snack, walking, input, box) {
     const sideThresholdOf = (d) => {
         const g = d.geometry;
         const inward = g.facing === 'right' ? -1 : 1;
-        const yc = d.y + d.h - d.w / 2;
+        const yc = g.doorway.y + g.doorway.h / 2;
         const start = cellAt(grid, { x: g.face + inward * (CLEARANCE.depth + 1), y: yc });
 
         if (start === null) {
@@ -2048,8 +2048,8 @@ function restroomDoor(doors, snack, walking, input, box) {
     const clear = snack.tables.map((t) => snack.spot(t.id, 0)?.at ?? null).filter((p) => p !== null);
     const at = (o, r) => Object.freeze({ x: o.x + r.x, y: o.y + r.y, w: r.w, h: r.h });
     // Each door's rects in scene px: a `back` door's on its tile; a side door's on its drawing box (§ 12's *Restroom
-    // plates*), its leaf the painter's bar over the doorway. `recess` is the tile's face-on recess on every door, which
-    // the 3-D floor stands its leaf in until it turns the door into the wall (plan-13033-restroom-wall-door.md § 8 slice 2).
+    // plates*), its leaf the painter's bar over the doorway. `recess` is the tile's face-on recess on every door: a back
+    // door's leaf stands in it, and a side door's leaf in 3-D takes its heights (`floor-world.js`).
     const placed = ordered.map(({ geometry, ...d }) => {
         const p = geometry.plates;
         const box = geometry.draw ?? d;

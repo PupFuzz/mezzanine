@@ -11,7 +11,8 @@
 //                                                      which must red
 //   node tools/design/floor3d.browser.mjs --out <dir>  also save the operator's reading pictures: the entry pose, a turned
 //                                                      pose, a close view, a view with the band cut away, the cap floor,
-//                                                      the leaves open, the cab through them, a walker, the marks, a bird and reduced motion
+//                                                      the leaves open, the cab through them, a walker, the marks, a bird, the
+//                                                      restroom door in its side wall and reduced motion
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -1107,6 +1108,126 @@ const ROWS = {
         const i = await p.inspect();
         f.after = i.terms.transient.calls;
         if (seen && i.transient.birds + i.transient.envelopes + i.transient.rings > 0) d.push(`after the round the transient drawings are still drawn: ${JSON.stringify(i.transient)}`);
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  restroom: {
+    what: 'a restroom door set into its side wall (the shipped default\'s, `right`): the wall over its doorway drawn as lintels from their box\'s foot; its leaf drawn at the world\'s box in the wall\'s thickness, as long as it is shut from the back jamb, and its field centred on the flag\'s plane; with the target at the door and the eye low outside that side wall, every lintel of a lowered column lowered to nothing with it',
+    base: { run: fixtureRun('idle-visit'), media: [] },
+    plants: [
+      ['the lintel stood on the floor, not at its box\'s foot', { plant: [P(ROOM, 'makeTranslation(w.box.x, w.box.y, w.box.z)', 'makeTranslation(w.box.x, 0, w.box.z)')] }],
+      ['the side leaf laid across the room as a face-on door\'s, not in the wall', { plant: [P(ROOM, '                leaf.scale.set(b.w, b.h, b.d * shut);', '                leaf.scale.set(b.d * shut, b.h, b.w);')] }],
+      ['a lintel lowered only when the eye meets it, not with its column', { plant: [P(ROOM, ': toward(w.h, w.box.h, cut.has(id) || w.column.some((c) => cut.has(c)), 0);', ': toward(w.h, w.box.h, cut.has(id), 0);')] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c);
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const f = {};
+        const E = 1e-6;
+        const out = argOf('--out') !== null && !(c.plant ?? []).length ? argOf('--out') : null;
+        const quick = () => p.ev(`document.getElementById('floor3d-canvas').inspect({ terms: false })`);
+        let i = await quick();
+        const side = () => i.room.restroom.filter((r) => r.facing !== 'back');
+        if (side().length === 0 || i.room.lintels.length === 0) return { defects: [`CONTROL: no restroom door set into a side wall, or no lintel, on the page — ${JSON.stringify(i.room.restroom.map((r) => r.facing))}, ${i.room.lintels.length} lintel(s)`], facts: {} };
+        f.doors = side().map((r) => r.id);
+        f.lintels = i.room.lintels.length;
+        for (const l of i.room.lintels) {
+          if (Math.abs(l.foot - l.y) > E || Math.abs(l.h - l.full) > E) d.push(`the lintel ${l.id} is drawn from ${l.foot} up ${l.h} units — not from its box's foot ${l.y} up its full ${l.full}`);
+        }
+        // the leaf in the wall's thickness at the world's box, as long as it is shut from the back jamb, and the field
+        // centred on the flag's plane — read across the page's paints, each of which stands the doors' meshes afresh and
+        // the next frame places them, so a box counts once a frame has placed it
+        let read = 0;
+        for (let t = 0; t < 100 && read < 10; t++) {
+          await sleep(200);
+          i = await quick();
+          if (!side().every((r) => r.drawn.leaf.slice(3).some((v) => v !== 1))) continue;
+          read++;
+          for (const r of side()) {
+            const [x, y, z, sx, sy, sz] = r.drawn.leaf;
+            const b = r.drawn.bar;
+            if ([x - b.x, y - b.y, z - b.z, sx - b.w, sy - b.h].some((v) => Math.abs(v) > E) || !(sz > 0 && sz <= b.d + E)) {
+              d.push(`${r.id}'s leaf is drawn at ${JSON.stringify(r.drawn.leaf)} — not its box ${JSON.stringify(b)} in the wall, as long as it is shut from the back jamb`);
+            }
+            const [fx, fy, fz, fw, fh, fd] = r.drawn.field;
+            const s = r.drawn.sign;
+            if ([fx - s.x, fy - s.y, fw - s.w, fh - s.h, fz + fd / 2 - s.z].some((v) => Math.abs(v) > E)) {
+              d.push(`${r.id}'s field is drawn at ${JSON.stringify(r.drawn.field)} — not centred on the flag's plane at ${JSON.stringify(s)}`);
+            }
+          }
+          if (d.length > 0) break;
+        }
+        f.reads = read;
+        if (read === 0) d.push('CONTROL: no frame placed the side door\'s leaf and field — they were not read');
+        // seen through the side wall: the eye turned to the wall's outside (`+x`, azimuth +90°), the segment to the target
+        // meets that wall's cells, and every lintel of a column with a lowered wall is lowered to nothing
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        // the azimuth turned to `az` by the arrow keys, each press read once its damped turn has settled
+        const turnTo = async (az) => {
+          const off = async () => { await sleep(400); i = await quick(); return Math.abs(Math.atan2(Math.sin(i.azimuth - az), Math.cos(i.azimuth - az))); };
+          let gap = await off();
+          await p.key('ArrowLeft', 'ArrowLeft');
+          const key = (await off()) < gap ? 'ArrowLeft' : 'ArrowRight';
+          gap = await off();
+          for (let k = 0; k < 120 && gap > 0.15; k++) {
+            await p.key(key, key);
+            const next = await off();
+            if (next > gap) break;
+            gap = next;
+          }
+          await sleep(1200);
+          i = await quick();
+        };
+        // the target slid to `goal` (the door, by default) by Shift + the arrows: a press kept where it brings the target
+        // nearer once its damped pan has settled, and undone by the opposite key where it does not
+        const toDoor = async (goal = side()[0].at) => {
+          const opposite = { ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft', ArrowUp: 'ArrowDown', ArrowDown: 'ArrowUp' };
+          const gapNow = async () => { await sleep(900); i = await quick(); return Math.hypot(goal.x - i.target[0], i.target[1], goal.z - i.target[2]); };
+          let gap = await gapNow();
+          for (let k = 0; k < 40 && gap > 0.3; k++) {
+            let moved = false;
+            for (const key of Object.keys(opposite)) {
+              await p.key(key, key, true);
+              const next = await gapNow();
+              if (next < gap - 0.05) { gap = next; moved = true; break; }
+              await p.key(opposite[key], opposite[key], true);
+              gap = await gapNow();
+            }
+            if (!moved) break;
+          }
+          f.pan = [...(f.pan ?? []), { goal: [goal.x, goal.z].map((v) => +v.toFixed(2)), at: i.target.map((v) => +v.toFixed(2)) }];
+        };
+        // the target a unit into the room beside the door's near jamb, past its doorway: the eye's line to it crosses a
+        // full wall cell of the door's column, below its top, and no lintel
+        const beside = { x: side()[0].at.x - 1, z: side()[0].at.z + 0.6 };
+        await toDoor(beside);
+        await turnTo(Math.PI / 2);
+        await toDoor(beside);
+        // the eye lowered toward the floor, so its line to the target crosses the side wall below its top
+        for (let k = 0; k < 8; k++) await p.key('PageDown', 'PageDown');
+        await sleep(1500);
+        i = await quick();
+        const lowered = i.room.lintels.filter((l) => l.column);
+        f.through = { az: deg(i.azimuth).toFixed(1), eye: i.eye.map((v) => +v.toFixed(2)), target: i.target.map((v) => +v.toFixed(2)), columnLowered: lowered.length, standing: lowered.filter((l) => l.h > E).map((l) => l.id) };
+        if (lowered.length === 0) d.push(`CONTROL: turned to ${deg(i.azimuth).toFixed(1)}°, the eye lowered no wall of a side door's column — the column rule was not read`);
+        else if (f.through.standing.length > 0) d.push(`seen through the side wall with its column lowered, the lintels ${f.through.standing.join(', ')} still stand — floating over the lowered wall`);
+        // the picture: from inside the room, beside the door, close
+        if (out !== null) {
+          for (let k = 0; k < 8; k++) await p.key('PageUp', 'PageUp');
+          await turnTo(-0.7);
+          await toDoor();
+          await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < 12; k++) b.click(); })()`);
+          await sleep(2500);
+          writeFileSync(join(out, 'floor3d-restroom-door.png'), await p.shot());
+          for (let k = 0; k < 4; k++) await p.key('PageUp', 'PageUp');
+          await sleep(1500);
+          writeFileSync(join(out, 'floor3d-restroom-door-raised.png'), await p.shot());
+        }
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         return { defects: d, facts: f };
       } finally { p.close(); }

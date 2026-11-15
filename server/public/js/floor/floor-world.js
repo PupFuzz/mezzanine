@@ -41,6 +41,7 @@ import { DESK_H, MONITOR_TOP, PARTITION_H, ROOM_H, SCALE } from './door-view.js'
 import { CAB, CAB_FITTINGS } from './cab-paint.js';
 import { cabSpan, pointAt } from './route.js';
 import { ELEVATOR_DOOR } from './scene.js';
+import { RESTROOM_DOOR } from './map-tiles.js';
 import { BIRD_LIFT, HOP_SCALE, arcLift } from './bird.js';
 import { keyOf } from '../wire/seat-key.js';
 
@@ -492,21 +493,90 @@ export function floorWorld(scene) {
         }
     }
 
-    // The restroom doors (§ 6.7): each door tile's leaf and its slider's field at the rects the 2-D painter draws them,
-    // stood on the tile's foot line — a rect on a standing tile's face-on picture, its rows heights above that line.
+    // A wall cell of a side door's doorway is CUT to a lintel from the tile's height to the wall's top (§ 6.7 item 2): its
+    // box raised, not a body of its own; a partition no taller than the door has no body there. `cell` is the scene's.
+    const walls = Object.freeze(scene.walls.flatMap((w) => {
+        const corner = at(w);
+        const full = w.kind === 'edge' ? ROOM_H_U : PARTITION_H_U;
+        const door = (scene.restroom_doors ?? []).find((d) => d.facing !== 'back' && w.x === d.doorway.x && w.y >= d.doorway.y && w.y < d.doorway.y + d.doorway.h);
+        const y = door === undefined ? 0 : door.h / UNIT;
+
+        return y >= full ? [] : [Object.freeze({
+            id: `wall:${w.x}:${w.y}`,
+            kind: w.kind,
+            cell: Object.freeze({ x: w.x, y: w.y }),
+            box: Object.freeze({ x: corner.x, y, z: corner.z, w: w.size / UNIT, h: full - y, d: w.size / UNIT }),
+        })];
+    }));
+
+    // The restroom doors (§ 6.7 item 2), each the scene's leaf timeline and field spans at the scene's rects. A `back`
+    // door's recess (where its leaf stands) and sign are rects on the tile's face-on picture, stood on its foot line, their
+    // rows heights above it. A door set into a SIDE wall stands in the wall's plane: `at` the wall face's foot centre over
+    // the doorway, `jambs` the doorway's back and near ends (`z`), `bar` its leaf's box in the wall's thickness over the
+    // recess's heights (scaled from its back jamb, its least `z`), `plate` the flag and `sign` its field, each the scene's
+    // rect lifted as a height over the foot line and standing in the near jamb's plane (`z`), and `wall` the ids of the wall
+    // column it is set into — the run of wall cells through the doorway, which the cut-away lowers its lintels with.
+    const columnOf = (d) => {
+        const T = d.doorway.w;
+        const rows = new Set(scene.walls.filter((w) => w.x === d.doorway.x).map((w) => w.y));
+        let [from, to] = [d.doorway.y, d.doorway.y + d.doorway.h - T];
+
+        while (rows.has(from - T)) {
+            from -= T;
+        }
+
+        while (rows.has(to + T)) {
+            to += T;
+        }
+
+        return walls.filter((w) => w.cell.x === d.doorway.x && w.cell.y >= from && w.cell.y <= to).map((w) => w.id).filter((id, k, ids) => ids.indexOf(id) === k);
+    };
     const restroomDoors = (scene.restroom_doors ?? []).map((d) => {
-        const foot = d.y + d.h;
+        // a side door's rects stand over its doorway's foot line, which is the wall's grid (`restroomDoorGeometry()`)
+        const foot = d.facing === 'back' ? d.y + d.h : d.doorway.y + d.doorway.h;
         const onTile = (r) => Object.freeze({ x: at(r).x, w: r.w / UNIT, y: (foot - (r.y + r.h)) / UNIT, h: r.h / UNIT });
+        const shared = { id: d.id, facing: d.facing, leaf: d.leaf, occupied: d.occupied };
+
+        if (d.facing === 'back') {
+            return Object.freeze({ ...shared, at: at({ x: d.x + d.w / 2, y: foot }), recess: onTile(d.recess), sign: onTile(d.sign) });
+        }
+
+        const near = at({ x: d.face, y: foot }).z;
+        const recess = onTile(d.recess);
+        const bar = at(d.bar);
 
         return Object.freeze({
-            id: d.id,
-            at: at({ x: d.x + d.w / 2, y: foot }),
-            recess: onTile(d.recess),
-            sign: onTile(d.sign),
-            leaf: d.leaf,
-            occupied: d.occupied,
+            ...shared,
+            at: at({ x: d.face, y: d.doorway.y + d.doorway.h / 2 }),
+            jambs: Object.freeze([at(d.doorway).z, near]),
+            bar: Object.freeze({ x: bar.x, w: d.bar.w / UNIT, y: recess.y, h: recess.h, z: bar.z, d: d.bar.h / UNIT }),
+            plate: Object.freeze({ ...onTile(d.plate), z: near }),
+            sign: Object.freeze({ ...onTile(d.sign), z: near }),
+            wall: Object.freeze(columnOf(d)),
         });
     });
+    // A side door's piece by its cell: the frame turned into the wall's plane, its front toward the room, standing at the
+    // doorway; its inputs the wall's thickness and the flag in the piece's frame — out from the wall face (`gap` to the
+    // plate, `out` across it) and its heights over the foot — so the theme's flag stands where the world's plate does.
+    const sideDoors = new Map((scene.restroom_doors ?? []).map((d, k) => [`${d.room}#${d.x}:${d.y}`, [d, restroomDoors[k]]]).filter(([, [d]]) => d.facing !== 'back'));
+    const pieceOf = (s) => {
+        const side = sideDoors.get(`${s.room}#${s.x}:${s.y}`);
+
+        if (s.kind !== RESTROOM_DOOR.kind || side === undefined) {
+            return { at: at({ x: s.x + s.w / 2, y: s.y + s.h }) };
+        }
+
+        const [d, w] = side;
+        const p = d.plate;
+
+        return {
+            at: w.at,
+            turn: d.facing === 'right' ? -Math.PI / 2 : Math.PI / 2,
+            facing: d.facing,
+            wall: d.doorway.w / UNIT,
+            flag: Object.freeze({ gap: (d.facing === 'right' ? d.face - (p.x + p.w) : p.x - d.face) / UNIT, out: p.w / UNIT, y: w.plate.y, h: w.plate.h }),
+        };
+    };
 
     // An intern walker's seat: its stool's foot, the plan depth of its couch's front edge, and the height it sits at.
     const seatOf = (fx) => {
@@ -543,20 +613,12 @@ export function floorWorld(scene) {
             // The cab behind the doorway the band cuts for it: the leaves' rect, as the 2-D band cab is fitted to it.
             cab: cabRoom({ x: at({ x: band.elevator.x, y: top }).x, w: band.elevator.w / UNIT, h: band.elevator.h / UNIT }, slab.box.z),
         }),
-        walls: Object.freeze(scene.walls.map((w) => {
-            const corner = at(w);
-
-            return Object.freeze({
-                id: `wall:${w.x}:${w.y}`,
-                kind: w.kind,
-                box: Object.freeze({ x: corner.x, y: 0, z: corner.z, w: w.size / UNIT, h: w.kind === 'edge' ? ROOM_H_U : PARTITION_H_U, d: w.size / UNIT }),
-            });
-        })),
+        walls,
         pieces: Object.freeze(scene.scenery.map((s) => Object.freeze({
             kind: s.kind,
             room: s.room,
             cell: Object.freeze({ x: s.x, y: s.y }),
-            at: at({ x: s.x + s.w / 2, y: s.y + s.h }),
+            ...pieceOf(s),
             w: s.w / UNIT,
             h: s.h / UNIT,
             decoration: s.decoration,

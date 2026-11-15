@@ -76,8 +76,8 @@ very fact it exists to check.
 | `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `f9fcf0884ae29ba08bccee3a7d78acd3d24dbee4010436f69f6dc7a5213d1f4e` |
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `025b287ea0f0c89a8aeebf54a44f4489adc9e4d9ee5c22ba57514aad6b5ca38a` |
 | `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `4dc1acb3c0e8a074766db39d16d4baac67c09eec87a59e6eb770ac0d48ea416a` |
-| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `d177e4623fc1d2da98c2f94ef614ae69deaa7a19f3526e445c9dc8bdc59d1fb9` |
-| `resources/floor/themes/studio/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-12 | `1da7dceee0aef93ff67c6090866d869f083145865ef85597cad3547aeefdddf8` |
+| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `652547fa68957adff360671179f23ca866dbc4daa59db6be8693d4790751ad7a` |
+| `resources/floor/themes/studio/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `bd3102bd712ae60c242dfa92560cc1fcb8b260351c3f3184c3c32b020fc80153` |
 | `resources/floor/themes/cottage/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `86011f475decf3cbd284c4210c399fb90bbb7a567f1911a0075650ace84549de` |
 | `resources/floor/themes/cottage/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `3f98cb81162d1809955d811c937123adcfbdfe598a1ab2a4a8799c80c149eb1a` |
 | `resources/floor/themes/paint.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `673bf79eba995a33bd285aa08488a92a2b8e6fef665f1cc20440cbab1fdbb6a0` |
