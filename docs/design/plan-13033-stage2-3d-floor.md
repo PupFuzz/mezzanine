@@ -523,7 +523,11 @@ right-drag panning, two fingers on touch.** A walk mode was offered and not chos
 **rotates** (`mouseButtons.LEFT = ROTATE`, `touches.ONE = ROTATE`, the defaults); **right-drag** and a two-finger
 drag **pan** the target across the floor (`RIGHT = PAN`, `TWO = DOLLY_PAN`, the defaults — `screenSpacePanning`
 false, so a pan slides along the floor plane rather than the screen's); the wheel and a pinch **dolly**
-(`enableZoom`, the default). This restores the right-drag pan the operator dropped for stage 1 (`FLOOR.md` § 14
+(`enableZoom`, the default). **Alt + a left-drag raises and lowers the eye** (the operator's answer A on card#13033 to
+*"is there a way to adjust the height of my perspective from the floor?"*): the renderer's own `pointerdown` listener,
+added before the library's, takes an Alt + left press and stops it there, so the library neither turns nor pans for
+it, and the drag's vertical movement is handed to the acts' `rise(dy)` (below); every other press is the library's,
+Shift + a left-drag its pan as before. This restores the right-drag pan the operator dropped for stage 1 (`FLOOR.md` § 14
 item 49: *right-drag is the browser's default*) — dropped there because a fixed pose cannot be panned; here the pan
 is the ruling's *move around*, and the operator chose it. The stage suppresses `contextmenu` (the library's
 `connect()` already prevents it on its element). ⚠ **This is the one page whose pointer gestures do not come
@@ -548,7 +552,8 @@ controls are configured with, and the probe reads it):
   past 90° and reads the camera's `y` under a drag that pushes down (§ 8 item 5). No collider and no third guard:
   the review's stop rule applies, and none was needed;
 - **Within the floor — the target's box clamp**: after every controls update the renderer clamps the target into
-  the extent box (`y` from 0 to `ROOM_H_U`) and, if it moved, moves the camera by the same vector — three lines in
+  the extent box (`y` from 0 to `ROOM_H_U`, the range the eye's rise moves it through) and, if it moved, moves the
+  camera by the same vector — three lines in
   `floor-paint.js`, the box `view-limits.js`'s. Why not the library's target radius: that is a sphere about a point,
   and the floor is a box. **One clamp**: the keyboard acts (below) write the target through the same controls and
   are clamped by the same lines — there is no second clamp in `view-limits.js`;
@@ -576,17 +581,23 @@ controls are configured with, and the probe reads it):
 
 **The keyboard reaches rotation and tilt — a seat ruling (M3, § 12 item 3), consistent with `/building` where the
 arrows turn the view:** `←`/`→` rotate (azimuth), `↑`/`↓` tilt (polar, within the limits), **Shift + arrows pan** the
-target along the floor, `+`/`−` dolly, *Fit the floor* the entry pose. **The keys are wired where the 2-D page's are
+target along the floor, **Page Up / Page Down raise and lower the eye**, `+`/`−` dolly, *Fit the floor* the entry
+pose. **The keys are wired where the 2-D page's are
 — in the hoisted page `floor/floor-page.js`, by `wire/camera-keys.js`'s `cameraKeys()` and `offerKeys()` — over the
 act set the RENDERER CONTRACT supplies (M4, § 4)**: `floor3d/camera-acts.js` is the 3-D renderer's act set — `drag(dx,
-dy, modifiers)` with `modifiers.shift` deciding pan over rotate/tilt, `zoomStep(n)`, `fit()`, `camera()` answering
+dy, modifiers)` with `modifiers.shift` deciding pan over rotate/tilt, `zoomStep(n)`, `rise(dy)` and `riseStep(n)` lifting the
+target and the eye by one vector — the drag's `dy` px of the scene at the target's distance (the library's own pan
+rate), a key's `n` steps of `RISE_STEP`, a share of the room's height (`FLOOR.md` § 12's *Floor 3-D camera*) — so the view's direction and distance are
+kept and the clamp holds the height in the box — `fit()`, `camera()` answering
 `{ bounds }` for the wire's gate — each a call on the controls' public rotate, tilt, pan and dolly methods (to
 confirm in slice 4) ending in an update and the clamp; the arrows' step is the per-pixel turn constant the building
 acts hold today, **hoisted to `wire/camera.js` beside `PAN_STEP_PX`** at its second caller. **The keys wire is
 extended by one optional argument**: `cameraKeys()` hands the key event's modifiers (`{ shift }`) as `drag()`'s third
 argument (the 2-D acts read two and ignore it, as they ignore `pan()`'s point since stage 1; L69 already lets a
-Shift-arrow through, refusing only Ctrl, Meta and Alt). `offerKeys()` advertises `+ - ArrowLeft ArrowRight ArrowUp
-ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown`. The library's own key listener is never
+Shift-arrow through, refusing only Ctrl, Meta and Alt). Page Up and Page Down are handed to `riseStep()` as one
+step each — only on a screen whose acts offer it, so on the 2-D pages they stay the browser's and scroll.
+`offerKeys()` advertises `+ - ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp
+Shift+ArrowDown PageUp PageDown` (`floor3d/camera-acts.js`'s `SHORTCUTS`). The library's own key listener is never
 connected, so the keys have one reader.
 
 **Keyboard focus** on a desk's label (`:focus-visible`, stage 1's predicate) moves the target to that desk (the
@@ -1240,7 +1251,8 @@ Waits for a slice, with its reason:
    near plane 0.05 units (derived in § 3.6 so the near plane's corners stay above the floor); the entry pose at the
    home tilt from the front at the fit distance, set from the spherical figures; `enableDamping` on with the library's
    factor, off under `reduce` (§ 3.6).
-3. **The keyboard map**: arrows rotate and tilt, Shift+arrows pan, `+`/`−` dolly, *Fit* the entry pose; the keys wire
+3. **The keyboard map**: arrows rotate and tilt, Shift+arrows pan, Page Up / Page Down raise and lower the eye (as
+   Alt + a vertical drag does), `+`/`−` dolly, *Fit* the entry pose; the keys wire
    hands the key event's modifiers to `drag(dx, dy, modifiers)` as an optional third argument; the keys are wired in
    the hoisted page over the renderer contract's `keys`; the library's key listener is never connected (§ 3.6).
 4. **A seat's character costs at most one draw call and an intern's at most two** — one skinned mesh over one skeleton per character, its joints
@@ -1270,7 +1282,7 @@ for what the kit lacks and C held as the exit; the asset gate admits `.glb` (§ 
 revision 1's record, folded into § 3.2's table.
 
 **Q2 — The camera: orbit + pan + zoom, and the pan gesture. ANSWERED A** (comment 17079: *"Q2. A / Q3. A"*): orbit +
-pan + zoom, right-drag pans, two fingers on touch (§ 3.6). The walk mode (C) and Shift+drag (B) are not built.
+pan + zoom, right-drag pans, two fingers on touch (§ 3.6). The walk mode (C) is not built; B's Shift + a left-drag pans too, as the library's default beside the right-drag.
 
 **Q3 — Does 3-D replace the 2-D floor page, or sit beside it? ANSWERED A** (the same comment): beside first —
 `/floor/{key}/3d` built beside `/floor/{key}`, the default swap after the operator's reading (slice 7). The example as

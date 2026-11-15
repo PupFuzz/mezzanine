@@ -156,4 +156,32 @@ if (!cut(behind(onBand), onBand).includes('band')) {
     legs.cutaway.push('a target on the band\'s line, seen from behind the room, does not cut the band');
 }
 
+// A RAISED target (Page Up, Alt + a drag: the target and the eye lifted by one vector) is a target like any other: the
+// segment from the eye still lowers what stands between. Looking nearly level at half the room's height, the full-height
+// wall between cuts; a low wall the same segment passes over stands, and cuts again once the pair is lowered to the
+// floor; from behind the room at the home tilt, a target raised a quarter of the room by the band cuts the band (raised
+// half the room, the 50° line clears the band's top a unit out, and the band rightly stands).
+const level = (target) => eyeAt(target, (85 * Math.PI) / 180, 0, 5);
+const raised = { x: 0, y: ROOM_H_U / 2, z: -1 };
+const floored = { ...raised, y: 0 };
+const low = { walls: [{ id: 'low', box: { x: -0.5, y: 0, z: 1, w: 1, h: 0.5, d: 0.08 } }], band: null };
+
+if (JSON.stringify(cut(level(raised), raised)) !== JSON.stringify(['on'])) {
+    legs.cutaway.push(`a raised target seen level through the wall at z 1 cuts [${cut(level(raised), raised)}] — not that wall alone`);
+}
+
+if (L.cutaway(level(raised), raised, low).size !== 0) {
+    legs.cutaway.push('a raised eye looking over a low wall cuts it — the segment passes above it');
+}
+
+if (!L.cutaway(level(floored), floored, low).has('low')) {
+    legs.cutaway.push('CONTROL: the same eye lowered to the floor does not cut the low wall it now looks through');
+}
+
+const raisedClose = { ...close, y: ROOM_H_U / 4 };
+
+if (!cut(behind(raisedClose), raisedClose).includes('band')) {
+    legs.cutaway.push('a target raised a quarter of the room, 1 unit in front of the band, seen from behind the room, does not cut the band');
+}
+
 process.stdout.write(JSON.stringify({ legs, printed }));

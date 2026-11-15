@@ -235,17 +235,18 @@ async function open(chrome, c, { path = '/floor/aimla/3d', w = 1280, h = 800, ki
   const mouse = (type, x, y, extra = {}) => b.page('Input.dispatchMouseEvent', { type, x, y, ...extra });
   const stage = await ev(`(() => { const r = document.getElementById('floor-drawing').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
   const mid = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
-  const drag = async (dx, dy, { button = 'left', steps = 12, at = mid } = {}) => {
+  // `modifiers` is the protocol's bit field: 1 Alt, 2 Ctrl, 4 Meta, 8 Shift.
+  const drag = async (dx, dy, { button = 'left', steps = 12, at = mid, modifiers = 0 } = {}) => {
     const buttons = button === 'left' ? 1 : 2;
-    await mouse('mouseMoved', at.x, at.y);
-    await mouse('mousePressed', at.x, at.y, { button, buttons, clickCount: 1 });
-    for (let k = 1; k <= steps; k++) await mouse('mouseMoved', at.x + (dx * k) / steps, at.y + (dy * k) / steps, { button, buttons });
-    await mouse('mouseReleased', at.x + dx, at.y + dy, { button, buttons: 0, clickCount: 1 });
+    await mouse('mouseMoved', at.x, at.y, { modifiers });
+    await mouse('mousePressed', at.x, at.y, { button, buttons, clickCount: 1, modifiers });
+    for (let k = 1; k <= steps; k++) await mouse('mouseMoved', at.x + (dx * k) / steps, at.y + (dy * k) / steps, { button, buttons, modifiers });
+    await mouse('mouseReleased', at.x + dx, at.y + dy, { button, buttons: 0, clickCount: 1, modifiers });
   };
   const wheel = (deltaY, n = 1) => (async () => { for (let k = 0; k < n; k++) await mouse('mouseWheel', mid.x, mid.y, { deltaX: 0, deltaY }); })();
   const key = async (k, code, shift = false) => {
     const mod = shift ? 8 : 0;
-    await b.page('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers: mod, windowsVirtualKeyCode: { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Tab: 9 }[k] ?? 0 });
+    await b.page('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers: mod, windowsVirtualKeyCode: { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Tab: 9, PageUp: 33, PageDown: 34 }[k] ?? 0 });
     await b.page('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers: mod });
   };
   const settle = async (ms = 1200) => { await sleep(ms); return inspect(); };
@@ -420,7 +421,7 @@ const ROWS = {
   },
 
   camera: {
-    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, a wheel at the dolly limit scrolls the page',
+    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, Page Up / Page Down and Alt + a vertical drag raise and lower the eye and the target together within the box and turn nothing, Shift + a left-drag still pans along the floor, a wheel at the dolly limit scrolls the page',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['`maxPolarAngle` widened past 90°', { plant: [P('js/floor3d/view-limits.js', 'export const MAX_POLAR = (88 * Math.PI) / 180;', 'export const MAX_POLAR = (120 * Math.PI) / 180;')] }],
@@ -428,6 +429,9 @@ const ROWS = {
       ['screen-space panning', { plant: [P(PAINT, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
       ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
+      ['a rise that moves the target alone (the view turns)', { plant: [P('js/floor3d/camera-acts.js', '        position.set(position.x, position.y + h, position.z);', '')] }],
+      ['the Alt press left to the controls (Alt + drag turns)', { plant: [P(PAINT, '                        event.stopImmediatePropagation();\n', '')] }],
+      ['the Alt drag never reaching the rise', { plant: [P(PAINT, '                        acts.rise(event.clientY - rising.y);', '')] }],
     ],
     async run(chrome, c) {
       const p = await open(chrome, c);
@@ -454,6 +458,53 @@ const ROWS = {
         i = await p.settle(400);
         f.zoom.push(i.distance);
         if (!(i.distance > f.zoom[1] + 1e-6)) d.push(`the zoom-out button took the eye from ${f.zoom[1].toFixed(3)} to ${i.distance.toFixed(3)} — not farther`);
+        // Page Up / Page Down: the target and the eye lifted by one vector — angles and distance kept — within the box
+        const sub = (a, b) => a.map((v, k) => v - b[k]);
+        const kept = (what, a, b) => {
+          const off = sub(sub(b.eye, b.target), sub(a.eye, a.target)).map(Math.abs);
+          if (Math.max(...off) > 1e-6 || Math.abs(a.polar - b.polar) > 1e-6 || Math.abs(a.azimuth - b.azimuth) > 1e-6) d.push(`${what} turned or moved the eye apart from the target: offset change ${off.map((v) => v.toExponential(1))}, polar ${deg(a.polar).toFixed(3)}° → ${deg(b.polar).toFixed(3)}°, azimuth ${deg(a.azimuth).toFixed(3)}° → ${deg(b.azimuth).toFixed(3)}°`);
+        };
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        let at = await p.inspect();
+        for (let k = 0; k < 3; k++) await p.key('PageUp', 'PageUp');
+        i = await p.settle(400);
+        f.rise = [at.target[1], i.target[1]];
+        if (!(i.target[1] > at.target[1] + 1e-3)) d.push(`three Page Ups took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not up`);
+        kept('Page Up', at, i);
+        at = i;
+        for (let k = 0; k < 400 && i.target[1] < i.limits.box.max.y - 1e-6; k++) { await p.key('PageUp', 'PageUp'); if (k % 8 === 7) i = await p.inspect(); }
+        i = await p.settle(300);
+        f.top = i.target[1];
+        if (Math.abs(i.target[1] - i.limits.box.max.y) > 1e-6) d.push(`Page Up held left the target at y ${i.target[1].toFixed(3)}, not the box's top ${i.limits.box.max.y}`);
+        kept('Page Up to the top', at, i);
+        at = i;
+        for (let k = 0; k < 400 && i.target[1] > 1e-6; k++) { await p.key('PageDown', 'PageDown'); if (k % 8 === 7) i = await p.inspect(); }
+        await p.key('PageDown', 'PageDown');
+        i = await p.settle(300);
+        f.bottom = i.target[1];
+        if (Math.abs(i.target[1]) > 1e-6) d.push(`Page Down held left the target at y ${i.target[1].toFixed(4)}, not the floor`);
+        kept('Page Down to the floor', at, i);
+        // Alt + a drag down the stage raises, up it lowers — and turns nothing
+        at = i;
+        await p.drag(0, 160, { modifiers: 1 });
+        i = await p.settle(400);
+        f.altRise = [at.target[1], i.target[1]];
+        if (!(i.target[1] > at.target[1] + 1e-3)) d.push(`Alt + a drag down took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not up`);
+        kept('Alt + a drag down', at, i);
+        at = i;
+        await p.drag(0, -80, { modifiers: 1 });
+        i = await p.settle(400);
+        f.altRise.push(i.target[1]);
+        if (!(i.target[1] < at.target[1] - 1e-3)) d.push(`Alt + a drag up took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not down`);
+        kept('Alt + a drag up', at, i);
+        // Shift + a left-drag: still the controls' pan, along the floor at the raised height
+        at = i;
+        await p.drag(0, 120, { modifiers: 8 });
+        i = await p.settle(600);
+        f.shiftPan = [at.target, i.target];
+        if (Math.abs(i.target[1] - at.target[1]) > 1e-6 || Math.abs(i.target[2] - at.target[2]) < 0.05) d.push(`Shift + a left-drag moved the target ${at.target.map((v) => v.toFixed(2))} → ${i.target.map((v) => v.toFixed(2))} — not along the floor`);
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        i = await p.settle(600);
         // a vertical right-drag: along the floor, never up
         const before = i.target;
         await p.drag(0, 120, { button: 'right' });
@@ -489,7 +540,7 @@ const ROWS = {
   },
 
   cutaway: {
-    what: 'the cut-away: with the target within a unit of the band, turned to the back, the band is lowered to its foot strip; turned to the front, it stands again; from the floor\'s centre it never lowers',
+    what: 'the cut-away: with the target within a unit of the band, turned to the back, the band is lowered to its foot strip, and stays lowered with the eye and the target raised (Page Up) while the band is still between them; turned to the front, it stands again; from the floor\'s centre it never lowers',
     base: { run: quiet(), media: REDUCE },
     plants: [['the cut-away\'s segment test dropped', { plant: [P(ROOM, '        const cut = cutaway(eye, target, world);', '        const cut = new Set();')] }]],
     async run(chrome, c) {
@@ -523,6 +574,14 @@ const ROWS = {
         f.back = { band: i.band, az: deg(i.azimuth).toFixed(1) };
         if (Math.abs(i.band - L.CUTAWAY_H) > 1e-3) d.push(`turned to the back with the target by the band, the band stands ${i.band} tall — not lowered to ${L.CUTAWAY_H}`);
         if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-cutaway.png'), await p.shot());
+        // raised: closer in (six notches), the eye and the target lifted one Page Up — still under the band's top a unit
+        // out along the home tilt's line, so the band is still between them
+        for (let k = 0; k < 6; k++) await p.key('+', 'Equal');
+        await p.key('PageUp', 'PageUp');
+        i = await p.settle(500);
+        f.raised = { band: i.band, target: i.target, distance: i.distance };
+        if (!(i.target[1] > 0.1)) d.push(`CONTROL: Page Up did not raise the target (y ${i.target[1].toFixed(3)}) — the raised cut-away was not measured`);
+        if (Math.abs(i.band - L.CUTAWAY_H) > 1e-3) d.push(`with the eye and the target raised to y ${i.target[1].toFixed(2)} behind the band, the band stands ${i.band} tall — not lowered to ${L.CUTAWAY_H}`);
         i = await turnFront();
         f.front = { band: i.band };
         if (Math.abs(i.band - i.limits.box.max.y) > 1e-3) d.push(`turned to the front again, the band stands ${i.band} tall — not restored`);

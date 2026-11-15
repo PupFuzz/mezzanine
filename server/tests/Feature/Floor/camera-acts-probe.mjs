@@ -9,16 +9,32 @@
  * the wire hands them, so a wire that dropped the Shift member reds here as an act that read it wrongly would.
  */
 
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const wire = process.argv[2];
 const { cameraKeys } = await import(pathToFileURL(join(wire, 'camera-keys.js')).href);
 const { PAN_STEP_PX, ZOOM_STEP, turnOf } = await import(pathToFileURL(join(wire, 'camera.js')).href);
-const { cameraActs } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'camera-acts.js')).href);
+const { RISE_STEP, cameraActs } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'camera-acts.js')).href);
+const L = await import(pathToFileURL(join(wire, '..', 'floor3d', 'view-limits.js')).href);
+const { ROOM_H_U } = await import(pathToFileURL(join(wire, '..', 'floor', 'floor-world.js')).href);
+const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const { SCENE_W, SCENE_H } = await import(pathToFileURL(join(repo, 'resources', 'characters', 'index.js')).href);
 
 const log = [];
-const vector = (name) => ({ set: (x, y, z) => log.push([`${name}.set`, x, y, z]) });
+/** The eye's distance from the target the stub answers — moved by the rise leg between the closest and the fit. */
+let distance = 5;
+/** A stand-in vector at (x, y, z): its `set()` recorded and applied, so an act that reads it reads what it wrote. */
+const vector = (name, x, y, z) => {
+    const v = { x, y, z };
+
+    v.set = (...xyz) => {
+        log.push([`${name}.set`, ...xyz]);
+        [v.x, v.y, v.z] = xyz;
+    };
+
+    return v;
+};
 const controls = {
     rotateLeft: (angle) => log.push(['rotateLeft', angle]),
     rotateUp: (angle) => log.push(['rotateUp', angle]),
@@ -26,8 +42,9 @@ const controls = {
     dollyIn: (s) => log.push(['dollyIn', s]),
     dollyOut: (s) => log.push(['dollyOut', s]),
     update: () => log.push(['update']),
-    target: vector('target'),
-    object: { position: vector('position') },
+    getDistance: () => distance,
+    target: vector('target', 0.5, 0.25, -1),
+    object: { position: vector('position', 0.5, 3.25, 3), fov: 45 },
 };
 const surface = { width: 1280, height: 800 };
 const entry = { position: { x: 0, y: 3, z: 4 }, target: { x: 0, y: 0, z: 0 } };
@@ -61,7 +78,7 @@ const shown = [];
 cameraKeys(stage, buttons, acts, (camera) => shown.push(camera));
 
 const turn = turnOf(PAN_STEP_PX, surface.width);
-const legs = { turn: [], tilt: [], pan: [], dolly: [], toward: [], fit: [], wire: [] };
+const legs = { turn: [], tilt: [], pan: [], dolly: [], toward: [], rise: [], fit: [], wire: [] };
 const press = (event, target = stage) => {
     log.length = 0;
     shown.length = 0;
@@ -107,6 +124,44 @@ for (const [what, event, target, closer] of [['+', { type: 'keydown', key: '+' }
     }
 }
 
+// Page Up / Page Down raise and lower the target and the eye by one vector, straight up, one `RISE_STEP` a press — an
+// eighth of the room's height — and turn nothing; then the clamp. The same step at the closest distance the limits allow
+// and at the fit (the shipped default floor's on this stage): a press is a share of the room, not of the stage. Read
+// from the stub's own pose, so each key starts where the last left it.
+if (Math.abs(RISE_STEP - ROOM_H_U / 8) > 1e-12) {
+    legs.rise.push(`a key's step is ${RISE_STEP} units — not an eighth of the room's height (${ROOM_H_U / 8})`);
+}
+
+const view = L.limits({ w: 17.84, d: 6.96 }, surface, { w: SCENE_W, h: SCENE_H });
+
+for (const [where, at] of [['closest', view.distance.min], ['fit', view.distance.max / L.MAX_FIT_SHARE]]) {
+    distance = at;
+
+    for (const [what, key, h] of [['Page Up', 'PageUp', ROOM_H_U / 8], ['Page Down', 'PageDown', -ROOM_H_U / 8]]) {
+        const { target: t, object: { position: p } } = controls;
+        const want = [['target.set', t.x, t.y + h, t.z], ['position.set', p.x, p.y + h, p.z], ['update'], ['clamp']];
+
+        expect('rise', `${what} at the ${where} distance (${at.toFixed(2)})`, press({ type: 'keydown', key }), want);
+    }
+}
+
+// Alt + a vertical drag (`rise(dy)`, which the renderer hands the pointer's movement): `dy` px of the scene at the
+// target's distance — the controls' pan rate at their 45° field — so it does scale with the distance.
+distance = 5;
+
+for (const dy of [PAN_STEP_PX, -PAN_STEP_PX]) {
+    const h = (2 * dy * distance * Math.tan(Math.PI / 8)) / surface.height;
+    const { target: t, object: { position: p } } = controls;
+    const want = JSON.stringify([['target.set', t.x, t.y + h, t.z], ['position.set', p.x, p.y + h, p.z], ['update'], ['clamp']]);
+
+    log.length = 0;
+    acts.rise(dy);
+
+    if (JSON.stringify(log) !== want) {
+        legs.rise.push(`a drag of ${dy} px called ${JSON.stringify(log)} — not ${want}`);
+    }
+}
+
 // *Fit the floor*: the entry pose set, the controls updated, the target clamped.
 log.length = 0;
 acts.fit();
@@ -120,6 +175,12 @@ const ctrl = press({ type: 'keydown', key: 'ArrowLeft', ctrlKey: true });
 
 if (ctrl.calls !== '[]' || ctrl.prevented) {
     legs.wire.push(`Ctrl+← reached the camera: ${ctrl.calls}`);
+}
+
+const altPage = press({ type: 'keydown', key: 'PageUp', altKey: true });
+
+if (altPage.calls !== '[]' || altPage.prevented) {
+    legs.wire.push(`Alt+Page Up reached the camera: ${altPage.calls}`);
 }
 
 if (JSON.stringify(acts.camera()) !== JSON.stringify({ bounds })) {
