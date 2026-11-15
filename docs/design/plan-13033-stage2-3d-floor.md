@@ -256,8 +256,8 @@ height without a new constant; the only number this section chooses is none.
   walls: [{ id, box: {x, y, z, w, h, d}, kind: 'edge'|'partition' }],   // from door-view.js's wall classification, hoisted
   pieces: [{ kind, at: {x, z}, size: {w, d}, seed, index, theme }],      // every standing scenery tile, foot at its cell's floor line
   desks: [{ key, at, parts: { desk, chair, monitor, sideTable, props }, sitter: { key, species, pose, glyph, lighting, side: 'band' } | null,
-            interns: [{ key, species, at, laptop, typing }], screen: { glyph, line } }],
-  walkers: [{ key, species, chibi, effect }],  // the scene's in-flight § 6.2 effects, each positioned by route.js's pointAt() at draw time
+            interns: [{ key, seat_species, at, laptop, typing }], screen: { glyph, line } }],   // an intern's body: internSpeciesOf(key, seat_species), as 2-D's chibiFrame()
+  walkers: [{ key, character, chibi, effect }],  // character: walkerCharacter(effect), the 2-D painter's tree inputs; the scene's in-flight § 6.2 effects, each positioned by route.js's pointAt() at draw time
   elevator: { at, leaves: {…} }, restroom: { at, leaf: {…} }, birdhouse: {…},
   labels: [{ key, kind: 'name'|'chip'|'facts'|'bubble'|'notice', anchor: {x, depth, height}, text|model }] }
 ```

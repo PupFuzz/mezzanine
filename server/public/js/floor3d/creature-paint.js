@@ -221,8 +221,9 @@ async function atlases(document, docs, layout) {
  * @param {object} characters the character tree's module (`resources/characters/index.js`): `bodyParts`, `chibiParts`,
  *        `faceDocument`, `lidDocument`, `BONES`, `BONE_PARENT`, `POSES`
  * @param {string} key the seat key or the intern key
- * @param {{species?: string, chibi?: boolean, pose?: string, height?: number, textureSize?: number}} [opt] `height` the
- *        character's world height its frame rect stands (`floor-world.js`'s figure; 1 by default)
+ * @param {{species?: string, chibi?: boolean, pose?: string, height?: number, textureSize?: number}} [opt] `species` the
+ *        body built — for an intern its own species, never its seat's (`chibiParts()`); `height` the character's world
+ *        height its frame rect stands (`floor-world.js`'s figure; 1 by default)
  * @returns {Promise<{mesh: SkinnedMesh, parts: object, pose: function(string): void, blink: function(boolean): void,
  *          fade: function(number): void, textures: function(): object[], dispose: function(): void}>}
  */
