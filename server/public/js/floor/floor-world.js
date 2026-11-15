@@ -532,7 +532,8 @@ export function floorWorld(scene) {
         return walls.filter((w) => w.cell.x === d.doorway.x && w.cell.y >= from && w.cell.y <= to).map((w) => w.id).filter((id, k, ids) => ids.indexOf(id) === k);
     };
     const restroomDoors = (scene.restroom_doors ?? []).map((d) => {
-        const foot = d.y + d.h;
+        // a side door's rects stand over its doorway's foot line, which is the wall's grid (`restroomDoorGeometry()`)
+        const foot = d.facing === 'back' ? d.y + d.h : d.doorway.y + d.doorway.h;
         const onTile = (r) => Object.freeze({ x: at(r).x, w: r.w / UNIT, y: (foot - (r.y + r.h)) / UNIT, h: r.h / UNIT });
         const shared = { id: d.id, facing: d.facing, leaf: d.leaf, occupied: d.occupied };
 
@@ -540,7 +541,7 @@ export function floorWorld(scene) {
             return Object.freeze({ ...shared, at: at({ x: d.x + d.w / 2, y: foot }), recess: onTile(d.recess), sign: onTile(d.sign) });
         }
 
-        const near = at({ x: d.face, y: d.doorway.y + d.doorway.h }).z;
+        const near = at({ x: d.face, y: foot }).z;
         const recess = onTile(d.recess);
         const bar = at(d.bar);
 

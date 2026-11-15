@@ -452,7 +452,7 @@ for (const { run, i, scene } of scenes) {
             const nearEnd = Z(side.doorway.y + side.doorway.h / 2) - Math.sin(turn) * -into * p.w / 2;
             const plate = side.plate;
             const gap = side.facing === 'right' ? side.face - (plate.x + plate.w) : plate.x - side.face;
-            const foot = side.y + side.h;
+            const foot = side.doorway.y + side.doorway.h;
             const flag = { gap: gap / W.UNIT, out: plate.w / W.UNIT, y: (foot - (plate.y + plate.h)) / W.UNIT, h: plate.h / W.UNIT };
 
             if (!same(p.at, X(side.face), Z(side.doorway.y + side.doorway.h / 2)) || !near(Math.sin(turn), into) || !near(nearEnd, Z(side.doorway.y + side.doorway.h))) {
@@ -807,7 +807,7 @@ for (const { run, i, scene } of scenes) {
         }
 
         if (d.facing !== 'back') {
-            sideDoorDefects(d, w, foot);
+            sideDoorDefects(d, w, d.doorway.y + d.doorway.h);
 
             return;
         }

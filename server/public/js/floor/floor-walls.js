@@ -133,8 +133,10 @@ export function wallBodies(grids, cellsOf, T, slabs) {
  * reads `back`.
  *
  * `back` answers today's face-on door: `{ facing, face: null, doorway: null, draw: null, plates }`, `plates` the tile's
- * (`RESTROOM_PLATES.back`). A side door, in scene px for `right` (`left` mirrors in x): the wall FACE `x_w`, the tile's
- * right edge; the DOORWAY, the wall strip over the span from the tile's foot back by the tile's width (`{x, y, w: T, h}`);
+ * (`RESTROOM_PLATES.back`). A side door, in scene px for `right` (`left` mirrors in x), every figure from the PLACED cell
+ * (`cellOf()`), as the wall bodies are, so the doorway is cut from exactly the wall cells the facing counted: the wall
+ * FACE `x_w`, the placed tile's right edge; the DOORWAY, the wall strip over the span from the placed foot line back by
+ * the tile's width (`{x, y, w: T, h}`);
  * the 2-D drawing box (`SIDE_DOOR_BOX`) and the `side` plates in its px, mirrored as `box.w − x − w` for `left`.
  *
  * @param {object} cell a `restroom-door` cell of `g` (`mapTiles()`)
@@ -153,9 +155,11 @@ export function restroomDoorGeometry(cell, g, walls, T) {
         return Object.freeze({ facing, face: null, doorway: null, draw: null, plates: RESTROOM_PLATES.back });
     }
 
+    // Placed as the walls are (`at`), never by the drawn pixels: a layer dragged off the cell grid moves the tile's
+    // picture, and the doorway still lines up with the wall column and rows the facing was read from.
     const right = facing === 'right';
-    const face = right ? cell.x + cell.w : cell.x;
-    const foot = cell.y + cell.h;
+    const face = right ? at.x + cell.w : at.x;
+    const foot = at.y + T;
     const B = SIDE_DOOR_BOX;
     const mirror = (r) => Object.freeze(right ? r : { ...r, x: B.w - r.x - r.w });
 

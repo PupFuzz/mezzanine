@@ -280,8 +280,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
         if (($door['facing'] ?? 'back') !== 'back') {
             $inward = $door['facing'] === 'right' ? -1 : 1;
-            $face = $door['facing'] === 'right' ? $door['x'] + $door['w'] : $door['x'];
-            $p = ['x' => $snap($face + $inward * ($f['depth'] + 1)), 'y' => $snap($door['y'] + $door['h'] - $door['w'] / 2)];
+            $face = $door['face'];
+            $p = ['x' => $snap($face + $inward * ($f['depth'] + 1)), 'y' => $snap($door['doorway']['y'] + $door['doorway']['h'] / 2)];
 
             for (; abs($p['x'] - $face) <= $f['seat_h']; $p['x'] += $inward * 8) {
                 if ($open($p)) {
@@ -479,6 +479,34 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
         if ($property !== 'right') {
             $defects[] = "a `facing: left` property on the door's tile turns the door to ".json_encode($property).' — the facing is the wall\'s';
+        }
+
+        // A door layer an author dragged off the cell grid (Tiled's layer offset, which the map's layer walk sums): the
+        // doorway is still cut from the wall column and the wall rows its facing was read from, so the 3-D lintels and the
+        // 2-D drawing line up with the wall — and with the layer where it was, the shipped door's geometry is unmoved.
+        $T = 8;
+        $shipped = null;
+
+        foreach ([[0, 0], [3, 0], [0, 3]] as $offset) {
+            $placed = $this->probe(['mode' => 'restroom', 'door_offset' => $offset], $dir, __DIR__.'/walk-probe.mjs')['placed'][0];
+            $w = $placed['doorway'];
+            $shipped ??= $placed;
+
+            if ($placed['facing'] !== 'right' || $w === null) {
+                $defects[] = 'the door layer dragged by '.json_encode($offset).' faces '.json_encode($placed['facing']).', not `right`';
+
+                continue;
+            }
+
+            $rows = range($w['y'], $w['y'] + $w['h'] - $T, $T);
+
+            if ($w['x'] !== $placed['face'] || array_diff($rows, $placed['walls']) !== [] || ($w['y'] - $placed['walls'][0]) % $T !== 0) {
+                $defects[] = 'the door layer dragged by '.json_encode($offset).' cuts its doorway '.json_encode($w).' off its wall: the column at x '.$placed['face'].' stands at rows '.json_encode($placed['walls']);
+            }
+
+            if ([$placed['face'], $w, $placed['draw']] != [$shipped['face'], $shipped['doorway'], $shipped['draw']]) {
+                $defects[] = 'the door layer dragged by '.json_encode($offset).' moves the doorway or the drawing box off the grid\'s: '.json_encode([$placed['face'], $w, $placed['draw']]).' against '.json_encode([$shipped['face'], $shipped['doorway'], $shipped['draw']]);
+            }
         }
 
         return $defects;
@@ -1739,10 +1767,10 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         // card#13033: a side door's lane, from the wall face into the room to one body's height past the threshold's line,
         // along the wall the doorway's span or the seat's body and both margins, centred on the doorway's centre line.
         $w = (float) max($f['lane']['span'], $f['seat_w'] + 2 * $f['margin']);
-        $face = $door['facing'] === 'right' ? $door['x'] + $door['w'] : $door['x'];
+        $face = $door['face'];
         $depth = abs($face - $door['threshold']['x']) + $f['seat_h'];
 
-        return ['x' => (float) ($door['facing'] === 'right' ? $face - $depth : $face), 'y' => $door['y'] + $door['h'] - $door['w'] / 2 - $w / 2, 'w' => $depth, 'h' => $w];
+        return ['x' => (float) ($door['facing'] === 'right' ? $face - $depth : $face), 'y' => $door['doorway']['y'] + $door['doorway']['h'] / 2 - $w / 2, 'w' => $depth, 'h' => $w];
     }
 
     /** Whether feet at `$p` are in `$lane`, its edges included. */
@@ -2044,6 +2072,16 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
         $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'not `right`')),
             'the facing counted over the rows under the foot cell and the facing guard saw nothing');
+    }
+
+    /** card#13033 RED — the doorway from the drawn cell: the wall face and foot read off the tile's drawn pixels, not its placed cell. */
+    public function test_red_the_doorway_from_the_drawn_cell(): void
+    {
+        $dir = $this->planted([self::FLOOR_WALLS, "    const face = right ? at.x + cell.w : at.x;\n    const foot = at.y + T;",
+            "    const face = right ? cell.x + cell.w : cell.x;\n    const foot = cell.y + cell.h;"]);
+
+        $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'dragged by')),
+            'the doorway read off the drawn cell and the dragged-layer guard saw nothing');
     }
 
     /** card#13033 RED — the facing from a property: a tile property consulted before the wall. */

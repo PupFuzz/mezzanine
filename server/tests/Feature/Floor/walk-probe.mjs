@@ -29,7 +29,8 @@
  *                over whole days (AT-D3-33, AT-D3-35). card#13033: each door placed, with its geometry (`facing`, `face`,
  *                `draw`) and its threshold by the test's restatement of § 12's rule, and the obstacle list's length — the
  *                map at `map` (a repo path), mirrored in x where `mirror` is set, the door's tile carrying
- *                `door_properties` where given.
+ *                `door_properties` where given, its doors on a layer of their own dragged by `door_offset` ([dx, dy] px)
+ *                where given; each door's `doorway` and the rows of the wall bodies in its column (`walls`).
  *   `spots`    — card#12793: the elevator lane and the elevator queue's spots on the shipped default with the slots
  *                `open` names left open, with the lane and without it, and the lattice they were searched on (AT-D3-34).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
@@ -152,7 +153,28 @@ const read = (map) => {
     const walls = wallBodies([g], () => cells, T, deskSlabs([g], T));
     const geometryOf = (c) => restroomDoorGeometry(c, g, walls, T);
 
-    return { grid, extent, cells, geometryOf, obstacles: obstaclesOf(cells, STANDING, geometryOf) };
+    return { grid, extent, cells, walls, geometryOf, obstacles: obstaclesOf(cells, STANDING, geometryOf) };
+};
+
+/**
+ * card#13033 — a COPY of `map` whose restroom doors stand on a tile layer of their own dragged by `[dx, dy]` px (Tiled's
+ * `offsetx` / `offsety`), every other tile where it was: an author's door layer moved off the cell grid.
+ */
+const doorDragged = (map, [dx, dy]) => {
+    const copy = structuredClone(map);
+    const doors = read(map).cells.filter((c) => c.kind === 'restroom-door');
+    const layer = { type: 'tilelayer', name: 'door-dragged', width: copy.width, height: copy.height, opacity: 1, visible: true, offsetx: dx, offsety: dy, data: new Array(copy.width * copy.height).fill(0) };
+
+    for (const c of doors) {
+        const from = copy.layers.find((l) => l.name === c.layer);
+
+        layer.data[c.index] = from.data[c.index];
+        from.data[c.index] = 0;
+    }
+
+    copy.layers.push(layer);
+
+    return copy;
 };
 
 /**
@@ -169,7 +191,7 @@ const thresholdOn = (g, d, geometry, open) => {
 
     if (geometry.facing !== 'back') {
         const inward = geometry.facing === 'right' ? -1 : 1;
-        const start = cellAt(g, { x: geometry.face + inward * (CLEARANCE.depth + 1), y: d.y + d.h - d.w / 2 });
+        const start = cellAt(g, { x: geometry.face + inward * (CLEARANCE.depth + 1), y: geometry.doorway.y + geometry.doorway.h / 2 });
 
         for (let col = start?.[0]; start !== null && col >= 0 && col < g.cols; col += inward) {
             const centre = cellCentre(g, [col, start[1]]);
@@ -583,8 +605,9 @@ if (input.mode === 'snack-chain') {
 if (input.mode === 'restroom') {
     const scene = await mod('floor/scene.js');
     const { CLEARANCE, spotsNear, cellAt, blockedFor } = await mod('floor/route.js');
-    const map = loadMap(input.map, input.mirror === true);
-    const { grid, extent, cells, geometryOf, obstacles } = read(map);
+    const loaded = loadMap(input.map, input.mirror === true);
+    const map = input.door_offset === undefined ? loaded : doorDragged(loaded, input.door_offset);
+    const { grid, extent, cells, walls, geometryOf, obstacles } = read(map);
     const desks = input.desks ?? mapDesks(map).map((o) => {
         const slot = { x: o.x, y: o.y, w: o.width, h: o.height };
         const at = slotOrigin(slot, FURNITURE_BOX);
@@ -614,7 +637,10 @@ if (input.mode === 'restroom') {
             // `door_properties`: tile properties laid over the door's cell first — the facing is the wall's, never a property
             const geometry = geometryOf(input.door_properties === undefined ? c : Object.freeze({ ...c, properties: { ...c.properties, ...input.door_properties } }));
 
-            return { x: c.x, y: c.y, w: c.w, h: c.h, facing: geometry.facing, face: geometry.face, draw: geometry.draw, threshold: thresholdOn(g, c, geometry, openAt) };
+            // `walls`: the rows of the wall bodies in the doorway's column, which its doorway must be cut from
+            const column = geometry.doorway === null ? [] : walls.filter((w) => w.x === geometry.doorway.x).map((w) => w.y);
+
+            return { x: c.x, y: c.y, w: c.w, h: c.h, facing: geometry.facing, face: geometry.face, doorway: geometry.doorway, draw: geometry.draw, walls: [...new Set(column)].sort((a, b) => a - b), threshold: thresholdOn(g, c, geometry, openAt) };
         }),
         spots: input.from === undefined ? null : (() => {
             const lane = input.lane ?? null;
