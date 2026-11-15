@@ -250,7 +250,7 @@ function lagLine(seat, stamp) {
  * departure left is an empty seat between interns.
  *
  * `activity` is the intern's own `subagents[].activity_state` (§ 8's *Working and idle interns*, card#12451): `working`
- * draws its laptop, `idle` none.
+ * draws its laptop, `idle` none. `species` is its own `subagents[].species`, the body it is drawn in (card#13258).
  */
 function sideTable(seat, slots = null) {
     const subagents = Array.isArray(seat.subagents) ? seat.subagents : [];
@@ -261,6 +261,9 @@ function sideTable(seat, slots = null) {
             call_id: s.call_id ?? null,
             slot: held.get(s.call_id),
             activity: s.activity_state ?? null,
+            // card#13258: the intern's own body, D2's delivered `subagents[].species`; `null` where the wire carries none,
+            // which the floor draws as § 9 F14's placeholder and never as another body.
+            species: s.species ?? null,
             // § 5.6: **untitled**, never an invented title and never the type standing in for one.
             label: s.title ?? UNTITLED,
             untitled: (s.title ?? null) === null,

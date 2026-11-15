@@ -60,7 +60,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -473,7 +473,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1293,7 +1293,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -1317,7 +1317,7 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.800Z",
             "install_id": "aimla",
@@ -1734,7 +1734,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -1759,7 +1759,7 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.800Z",
             "install_id": "aimla",
@@ -1842,7 +1842,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2278,7 +2278,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -2368,7 +2368,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2717,7 +2717,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -2800,7 +2800,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3236,7 +3236,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.400Z",
             "install_id": "aimla",
@@ -3261,7 +3261,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.retired",
             "server_time": "2026-08-23T14:23:22.000Z",
             "install_id": "aimla",
@@ -3339,7 +3339,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3870,7 +3870,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4390,7 +4390,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4766,7 +4766,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5227,7 +5227,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:20.400Z",
             "fleet": {
@@ -5245,7 +5245,7 @@
         {
           "at_ms": 500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.500Z",
             "install_id": "aimla",
@@ -5263,7 +5263,7 @@
         {
           "at_ms": 550,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.550Z",
             "install_id": "aimla",
@@ -5281,7 +5281,7 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:20.600Z",
             "install_id": "aimla",

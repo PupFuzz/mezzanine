@@ -113,7 +113,7 @@
                 "subagent_type": null,
                 "activity_state": "working",
                 "started_at": "2026-08-23T14:22:51.000Z",
-                "species": "cat"
+                "species": null
               }
             ],
             "subagents_open": 1,
@@ -301,7 +301,7 @@
                           "subagent_type": null,
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:51.000Z",
-                          "species": "cat"
+                          "species": null
                         }
                       ],
                       "subagents_open": 1,

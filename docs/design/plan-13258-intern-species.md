@@ -14,7 +14,7 @@ been used up)"*, and earlier: *"I thought there can't be duplicates unless all c
 animals - are already used"*. The card's text is the design's brief: every character in the building — seats and
 interns alike — is a different species until every species is in use; then a repeat is allowed.
 
-**Status: S1 built (the server half, 2026-11-14); S2 to build.** The operator ruled § 11's questions on 2026-11-14:
+**Status: built — S1 (the server half, 2026-11-14) and S2 (the floor's half, 2026-11-15); this file is history.** The operator ruled § 11's questions on 2026-11-14:
 Q1 (a), one pool — a new seat avoids an open intern's species; Q2 (a), no cool-down. The final design review's round
 3 changed seven things at S1's build, each folded into the section it changed and marked *revised at S1's build*:
 `ensure()` for `for()` (§ 3.3), one seed primitive covering closed rows by rule 0 (§ 3.5, § 4.1), a seed that never
@@ -660,7 +660,7 @@ that slice) and a `docs/changelog.d/13258[-<slug>].md` note.
 | Slice | Content | Closes |
 |---|---|---|
 | **S1 — the server allocates an intern's species** (✅ built) | § 4.1's migration with its two-kind backfill (open rows by the rules, closed rows rule 0's answer) and printed table; `InternSpecies::seed()`, the one seed primitive — the migration's backfill, and run by `FoldCommand::handle()` before its first `pass()`, its throw logged and counted (`intern_species_seed_failed`) and never stopping the fold — **no `RebuildCommand` seed, no `deploy.sh` step**; `'intern_species'` in `Purge::PLAN` (after `events`) and in `Purge::orderColumns()` (§ 3.5); `choose()`'s `$excluded`, `openInterns()` under `RetirementFilter::renderable()`, `characters()` (§ 3.2), the empty floor for a room-less seat (R4); `InternSpecies::ensure()` — find, allocate, `INSERT … ON DUPLICATE KEY UPDATE call_id = call_id`, nothing returned — at the three sites (§ 3.3); the species list kept per worker process (§ 6); `issue()` reading the union (Q1); `openSubagents()`'s LEFT JOIN and `SeatObject` delivering `subagents[].species` nullable; the second-worker sentence in `Fold::claim()`'s docblock (§ 3.4). T1–T5b (T2's startup-seed, throwing-seed, rebuild and closed-history legs included), T8's server half (the member, with `SeatObjectMatchesTheDocumentTest`'s fixture given an open intern so `subagents[]`'s members are compared; **no bump yet**). **The client fixtures carry the member too** (ruled at S1's build, after `EveryFixtureSeatMatchesThePublishedSeatObjectTest` — which holds every `fx-*.json` seat object to § 8.2.1 as parsed — had gone red on the design commit's § 8.2.1 row): every `subagents[]` element in `server/tests/Feature/Floor/fixtures/fx-*.json` holds `species` = `internSpeciesOf(internKey(seat_id, call_id), character.species)`, the body the floor draws today, computed by the generator's own function — written into the hand-kept fixtures by a one-off script and emitted by `tools/design/gen-fx-snack.mjs` and `gen-fx-turn-back.mjs` from their regenerated sources — so nothing changes on screen; S2's T6 re-plants the elements whose species must differ from that value. Docs: D2 § 6.4, § 6.5, § 6.6, § 6.7, § 6.13, § 8.2.1, § 13 row 67, Appendix B row 18 (this commit drafts them; S1 marks them built) | — |
-| **S2 — both floors draw the delivered species** | § 4.3: the tree (`chibiFrame`/`internFrames` forced, `speciesOf` plain, `internSpeciesOf` and `species-redraw` deleted), every `seat_species` site, `body-paint.js`, the probes and the selftest; `FEED_VERSION` 4 on both sides. T6, T7, T8, T9. Docs: D3 § 8, § 10.4 (three bullets), the frame contract, AT-D3-24, § 13 rows 54 and 121, Appendix B row 59, T41 (this commit drafts them; S2 marks them built) | **card#13258** |
+| **S2 — both floors draw the delivered species** (✅ built) | § 4.3: the tree (`chibiFrame`/`internFrames` forced, `speciesOf` plain, `internSpeciesOf` and `species-redraw` deleted), every `seat_species` site, `body-paint.js`, the probes and the selftest; `FEED_VERSION` 4 on both sides. T6, T7, T8, T9. Docs: D3 § 8, § 10.4 (three bullets), the frame contract, AT-D3-24, § 13 rows 54 and 121, Appendix B row 59, T41 (this commit drafts them; S2 marks them built) | **card#13258** |
 
 Order: S1 → S2; S2 after `card-13033-3d-chars` lands, or subsuming it (§ 4.4). One release carries both.
 
@@ -781,10 +781,10 @@ lands them — S1's rows below are built:
 | D2 | § 14 item 18 | the 2026-10-27 *"Ruled: no"* for interns marked reversed by the operator on 2026-11-14 | S1 — ✅ built |
 | D2 | Appendix B | row 18 | S1 — ✅ built |
 | D2 | AT-D2-31 | its intro names the intern legs this plan's T2–T5 add | S1 — ✅ built |
-| D3 `FLOOR.md` | § 8 table, the sprite row | drawn in `subagents[].species` | S2 |
-| D3 | § 10.4 tree API paragraph; interns bullet; the *NOT distinct among siblings* sentence; the growth bullet's intern sentence; frame contract item 3 | the delivered species replaces the pure draw; the reversal stated with what replaces it | S2 |
-| D3 | AT-D3-24 interns leg | the forced-species leg replaces the repeat-rate measurement | S2 |
-| D3 | § 5.1 body row; § 5.6; § 11 `fx-nulls`; § 12 | the render map names the intern's own body; the null render for `subagents[].species` (F14 in both renderers, never a fallback body — in 3-D by the explicit route of § 4.3); `fx-nulls`'s `nulls-b` gaining the member's null marked **proposed (S2)**, § 12's nullable count re-derived from D2's `Null? yes` rows, and § 5.6's and § 12's G10 prose pointing at the gate's own printed count instead of a written figure | S2 |
-| D3 | § 13 rows 54 and 121 | 54 superseded; 121 the decision | S2 |
-| D3 | Appendix B row 59; T41 | the floor half; the hop's consumer statement | S2 |
+| D3 `FLOOR.md` | § 8 table, the sprite row | drawn in `subagents[].species` | S2 — ✅ built |
+| D3 | § 10.4 tree API paragraph; interns bullet; the *NOT distinct among siblings* sentence; the growth bullet's intern sentence; frame contract item 3 | the delivered species replaces the pure draw; the reversal stated with what replaces it | S2 — ✅ built |
+| D3 | AT-D3-24 interns leg | the forced-species leg replaces the repeat-rate measurement | S2 — ✅ built |
+| D3 | § 5.1 body row; § 5.6; § 11 `fx-nulls`; § 12 | the render map names the intern's own body; the null render for `subagents[].species` (F14 in both renderers, never a fallback body — in 3-D by the explicit route of § 4.3); `fx-nulls`'s `nulls-b` gaining the member's null marked **proposed (S2)**, § 12's nullable count re-derived from D2's `Null? yes` rows, and § 5.6's and § 12's G10 prose pointing at the gate's own printed count instead of a written figure | S2 — ✅ built |
+| D3 | § 13 rows 54 and 121 | 54 superseded; 121 the decision | S2 — ✅ built |
+| D3 | Appendix B row 59; T41 | the floor half; the hop's consumer statement | S2 — ✅ built |
 | D1 `EVENT-SCHEMA.md` | — | nothing: no event changes; the reporter is untouched | — |

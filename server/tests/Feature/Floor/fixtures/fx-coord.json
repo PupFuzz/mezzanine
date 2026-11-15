@@ -54,7 +54,7 @@
                 "subagent_type": "coder",
                 "activity_state": "working",
                 "started_at": "2026-08-23T14:23:31.004Z",
-                "species": "pepper"
+                "species": "carrot"
               }
             ],
             "subagents_open": 1,
@@ -516,7 +516,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1549,7 +1549,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
@@ -1578,7 +1578,7 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
@@ -1602,7 +1602,7 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:18.000Z",
             "coord_round": {
@@ -1626,7 +1626,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:19.000Z",
             "coord_round": {
@@ -1654,7 +1654,7 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:20.000Z",
             "coord_round": {
@@ -1678,7 +1678,7 @@
         {
           "at_ms": 1400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:26.000Z",
             "coord_thread": {
@@ -1781,7 +1781,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2808,7 +2808,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
@@ -2837,7 +2837,7 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
@@ -2861,7 +2861,7 @@
         {
           "at_ms": 800,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:18.000Z",
             "coord_round": {
@@ -2885,7 +2885,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:19.000Z",
             "coord_round": {
@@ -2913,7 +2913,7 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:20.000Z",
             "coord_round": {
@@ -2937,7 +2937,7 @@
         {
           "at_ms": 1400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:26.000Z",
             "coord_thread": {
@@ -3030,7 +3030,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4057,7 +4057,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:16.000Z",
             "coord_thread": {
@@ -4086,7 +4086,7 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
@@ -4179,7 +4179,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5212,7 +5212,7 @@
         {
           "at_ms": 600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:17.000Z",
             "coord_round": {
@@ -5238,7 +5238,7 @@
         {
           "at_ms": 900,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:18.000Z",
             "coord_round": {
@@ -5264,7 +5264,7 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:19.000Z",
             "coord_round": {
@@ -5290,7 +5290,7 @@
         {
           "at_ms": 1400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.round",
             "server_time": "2026-08-23T14:23:20.000Z",
             "coord_round": {
@@ -5316,7 +5316,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:21.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5325,7 +5325,7 @@
         {
           "at_ms": 2800,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:22.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5334,7 +5334,7 @@
         {
           "at_ms": 3600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:23.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5343,7 +5343,7 @@
         {
           "at_ms": 4400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:24.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5352,7 +5352,7 @@
         {
           "at_ms": 5200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:25.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5361,7 +5361,7 @@
         {
           "at_ms": 6000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:26.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5370,7 +5370,7 @@
         {
           "at_ms": 6800,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:27.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }
@@ -5379,7 +5379,7 @@
         {
           "at_ms": 7600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:28.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 5, "seats_live": 5 }

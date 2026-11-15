@@ -406,7 +406,7 @@ export function floorWorld(scene) {
             interns: Object.freeze(of('stool').map((e) => Object.freeze({
                 key: e.key,
                 call_id: e.call_id,
-                seat_species: e.seat_species,
+                species: e.species,
                 chibi: true,
                 laptop: e.activity === 'working',
                 lid: 'intern',

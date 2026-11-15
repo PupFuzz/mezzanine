@@ -880,8 +880,9 @@ export const DRAWN_MEMBERS = Object.freeze({
     side_table: ['side-table', 'stool', 'stool-more'],
     bubble: ['bubble'],
     held: ['character'],
-    // card#12443: the delivered body the character is drawn in, and the body each intern is kept off.
-    species: ['character', 'stool'],
+    // card#12443: the delivered body the character is drawn in. An intern's body is its stool's own `species`, a member of
+    // `side_table.stools[]` (card#13258), which `side_table` covers.
+    species: ['character'],
     // § 6.2 A23 (card#12448): the interns' held render, drawn as each intern's laptop still or typing loop.
     interns_held: ['stool'],
     // Drawn on the chip's hollow dashed form; the desk's dimming is the group's lighting class (FLOOR.md decision 63).
@@ -1180,8 +1181,8 @@ export function deskLayout(desk, ctx) {
             // from the same model the asset id is, so the two can never name different interns.
             install_id: desk.install_id,
             key: internKey(desk.seat_id, stool.call_id),
-            // card#12443: the body the intern must not wear — its seat's DELIVERED species, never the seat key's draw.
-            seat_species: desk.species,
+            // card#13258: the intern's own body — its DELIVERED `subagents[].species`, never its key's draw or its seat's.
+            species: stool.species,
             asset,
             art: !ctx.failed.has(asset),
             // § 6.2 A23 (card#12448): the interns' held rendering, which the desk model derives — whether the
@@ -1276,9 +1277,9 @@ export function characterAsset(desk) {
 
 /**
  * THE INTERN KEY — `seat~<call_id>` (§ 10.4; the operator's ruling of 2026-10-02 on card#11058 Q3: "intern
- * sprites keyed by call_id"). The character tree is handed it in the seat's place, so an intern's look is
- * a pure function of `(seat_id, call_id)`: it keeps its sprite when `subagents[]` reorders or
- * a sibling leaves, and two siblings never share one. `~` is outside the `seat_id` alphabet
+ * sprites keyed by call_id"). The character tree is handed it in the seat's place beside the intern's delivered
+ * species, so an intern's look is a pure function of `(seat_id, call_id)` and that body: it keeps its sprite when
+ * `subagents[]` reorders or a sibling leaves, and two siblings never share one. `~` is outside the `seat_id` alphabet
  * (`App\Support\Slug::SEAT_ID`), so no intern key is ever a seat's.
  */
 export function internKey(seatId, callId) {
@@ -1288,14 +1289,14 @@ export function internKey(seatId, callId) {
 /**
  * WHO A WALKER IS — what the character tree is handed for the body a walk effect draws, which the 2-D painter and the
  * 3-D world both read, so a walker is one character in both views: an intern's (A10, and an intern's A25 or A26) is its
- * intern key beside its seat's delivered species, the body the tree keeps it off (`chibiFrame()`); a seat's is its
- * `seat_id` beside its own delivered species. `asset` is the id § 9 F14 reports it under.
+ * intern key, a seat's its `seat_id`, each beside its own delivered species (`fx.species` — card#12443's
+ * `character.species`, card#13258's `subagents[].species`). `asset` is the id § 9 F14 reports it under.
  *
  * @returns {{key: string, species: string|null, intern: boolean, asset: string}}
  */
 export function walkerCharacter(fx) {
     return typeof fx.intern_key === 'string'
-        ? { key: fx.intern_seat_key, species: fx.seat_species, intern: true, asset: `intern:${fx.intern_seat_key}` }
+        ? { key: fx.intern_seat_key, species: fx.species, intern: true, asset: `intern:${fx.intern_seat_key}` }
         : { key: fx.seat_id, species: fx.species, intern: false, asset: characterAsset(fx) };
 }
 

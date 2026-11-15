@@ -14,15 +14,21 @@
  *
  * ⛔ WHAT A BODY IS DRAWN AS IS READ OFF THE TREE's ANSWER, NEVER OFF ITS RULES. A seat's entries take the species they
  * draw (the tree's forced-species path, `recipe(key, force)`), and a 3-D part list names its own `species`. An intern's
- * 2-D entries take its SEAT's species, which the tree keeps the intern off; the species the intern was drawn as is found
- * here by matching the document the entry answered against `frameDocument()`'s for each species in turn — so this probe
- * holds no copy of the intern rule (`internSpeciesOf()`), and a tree that changed the rule is read as drawn. Every field
- * of the identity is then the tree's `recipe()` and `laptopOf()` for that key and species.
+ * 2-D entries are read by matching the document the entry answered against `frameDocument()`'s for each species in
+ * turn, never off the species it was handed — so a tree that drew an intern in another body than it was handed is read
+ * as drawn. Every field of the identity is then the tree's `recipe()` and `laptopOf()` for that key and species.
+ *
+ * ⛔ AN INTERN's BODY IS ITS DELIVERED SPECIES (card#13258): the scene's own `species` on its stool and on its walk effect —
+ * `subagents[].species` as the floor screen carried it. Parity alone cannot see both views re-drawing an intern from
+ * its key alike; the `delivered` leg holds each view to the delivered value, and `printed.delivered` counts the interns
+ * whose delivered species differs from their key's own draw — the ones on which a re-draw is visible at all.
  *
  * Legs: `fields` — a key whose 2-D and 3-D identities differ, field by field; `kind` — a key drawn as an intern in one view
  * and a seat in the other; `views` — one view drawing one key as two characters; `coverage` — a key with a body in one
  * view and none in the other; `match` — a 2-D intern drawing that is no species' drawing (the reading failed, not the
- * floor); `parts` — a 3-D face or paint asked for under another key or species than its body's.
+ * floor); `parts` — a 3-D face or paint asked for under another key or species than its body's; `delivered` — an intern
+ * drawn in either view in another species than the scene delivered for it. `printed.failed` is each view's § 9 F14
+ * reports, by view.
  *
  * ⚠ WHAT IT DOES NOT SEE: pixels, the 3-D face's expression (a 3-D body is built once per key, in its standing face), and
  * where in its walk a body is shown (`walkerAt()`'s, read by the world half). A body neither view draws is outside it.
@@ -147,8 +153,8 @@ function drawn2d({ entry, args, answer }) {
     return { key, intern: false, species };
 }
 
-const legs = { fields: [], kind: [], views: [], coverage: [], match: [], parts: [] };
-const printed = { scenes: scenes.length, bodies: 0, compared: 0, routes: {} };
+const legs = { fields: [], kind: [], views: [], coverage: [], match: [], parts: [], delivered: [] };
+const printed = { scenes: scenes.length, bodies: 0, compared: 0, routes: {}, delivered: { interns: 0, apart: 0 }, failed: { '2d': [], '3d': [] } };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 for (const { run, i, scene } of scenes) {
@@ -159,7 +165,7 @@ for (const { run, i, scene } of scenes) {
 
     host.children = [];
     canvasOk = true;
-    createPainter({ characters: recorder(log2d), themes: {}, failed: () => {}, select: () => {}, clock: { now: () => 0 } })
+    createPainter({ characters: recorder(log2d), themes: {}, failed: (ids) => printed.failed['2d'].push(...ids), select: () => {}, clock: { now: () => 0 } })
         .paint(scene, { bounds: null, view: null });
 
     const views2d = new Map();
@@ -194,7 +200,7 @@ for (const { run, i, scene } of scenes) {
         marks: new Group(),
         wake: () => {},
         art: () => ({ characters: recorder(log3d) }),
-        failed: () => {},
+        failed: (ids) => printed.failed['3d'].push(...ids),
         now: () => 0,
     });
 
@@ -243,6 +249,30 @@ for (const { run, i, scene } of scenes) {
         count(`${w.animation_id}${w.chibi ? ' intern' : ''}`);
     }
 
+    // ---- each intern against the species the scene delivered for it ----
+    const delivered = new Map();
+
+    for (const d of scene.desks) {
+        for (const e of d.elements.filter((x) => x.kind === 'stool')) {
+            delivered.set(e.key, e.species);
+        }
+    }
+
+    for (const fx of scene.effects.filter((x) => typeof x.intern_seat_key === 'string')) {
+        delivered.set(fx.intern_seat_key, fx.species);
+    }
+
+    for (const [key, species] of delivered) {
+        printed.delivered.interns++;
+        printed.delivered.apart += typeof species === 'string' && species !== C.speciesOf(key) ? 1 : 0;
+
+        for (const [view, drawn] of [['2-D', views2d.get(key)?.id ?? null], ['3-D', views3d.get(key) ?? null]]) {
+            if (drawn !== null && drawn.species !== species) {
+                legs.delivered.push(`${where} ${key}: the ${view} view draws it as ${drawn.species}, the scene delivered ${JSON.stringify(species)}`);
+            }
+        }
+    }
+
     // ---- the two views, key by key ----
     for (const key of new Set([...views2d.keys(), ...views3d.keys()])) {
         const a = views2d.get(key)?.id ?? null;
@@ -268,6 +298,10 @@ for (const { run, i, scene } of scenes) {
             }
         }
     }
+}
+
+for (const view of ['2d', '3d']) {
+    printed.failed[view] = [...new Set(printed.failed[view])].sort();
 }
 
 process.stdout.write(JSON.stringify({ legs, printed }));

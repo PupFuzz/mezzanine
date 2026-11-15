@@ -54,7 +54,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:23:31.004Z",
-                  "species": "pepper"
+                  "species": "carrot"
                 }
               ],
               "subagents_open": 1,
@@ -354,7 +354,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -768,7 +768,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:05.100Z",
             "install_id": "aimla",
@@ -793,7 +793,7 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:20.300Z",
             "install_id": "aimla",
@@ -855,7 +855,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -1310,7 +1310,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1715,7 +1715,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:20.300Z",
             "install_id": "aimla",
@@ -1777,7 +1777,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -2231,7 +2231,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2607,7 +2607,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3196,7 +3196,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -3214,7 +3214,7 @@
         {
           "at_ms": 5100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.460Z",
             "install_id": "aimla",
@@ -3240,7 +3240,7 @@
         {
           "at_ms": 5200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.600Z",
             "install_id": "aimla-win",
@@ -3290,7 +3290,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -3836,7 +3836,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4221,7 +4221,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4722,7 +4722,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -4740,7 +4740,7 @@
         {
           "at_ms": 20000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -4795,7 +4795,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -5340,7 +5340,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5721,7 +5721,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -6222,7 +6222,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -6240,7 +6240,7 @@
         {
           "at_ms": 20000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {
@@ -6295,7 +6295,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -6840,7 +6840,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -7216,7 +7216,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -7805,7 +7805,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -7823,7 +7823,7 @@
         {
           "at_ms": 5200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.600Z",
             "install_id": "aimla-win",
@@ -7848,7 +7848,7 @@
         {
           "at_ms": 5600,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:30.000Z",
             "install_id": "aimla-win",
@@ -7910,7 +7910,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -8455,7 +8455,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -8831,7 +8831,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -9291,7 +9291,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -9792,7 +9792,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -9810,7 +9810,7 @@
         {
           "at_ms": 5500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.900Z",
             "fleet": {
@@ -9865,7 +9865,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -10410,7 +10410,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -10833,7 +10833,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:05.100Z",
             "install_id": "aimla",
@@ -10858,7 +10858,7 @@
         {
           "at_ms": 1200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:20.300Z",
             "install_id": "aimla",
@@ -10883,7 +10883,7 @@
         {
           "at_ms": 3000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:40.000Z",
             "install_id": "aimla",
@@ -10926,7 +10926,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -10952,7 +10952,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:24:20.300Z",
             "install_id": "aimla",
@@ -11037,7 +11037,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -11413,7 +11413,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -11925,7 +11925,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -11943,7 +11943,7 @@
         {
           "at_ms": 5100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.460Z",
             "install_id": "aimla",
@@ -11969,7 +11969,7 @@
         {
           "at_ms": 5200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.600Z",
             "install_id": "aimla-win",
@@ -12019,7 +12019,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -12565,7 +12565,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -12941,7 +12941,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -13453,7 +13453,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -13471,7 +13471,7 @@
         {
           "at_ms": 7100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.600Z",
             "install_id": "aimla-win",
@@ -13533,7 +13533,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -14078,7 +14078,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -14442,7 +14442,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -14954,7 +14954,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -14972,7 +14972,7 @@
         {
           "at_ms": 5100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.560Z",
             "install_id": "aimla",
@@ -15022,7 +15022,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,
@@ -15567,7 +15567,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -15943,7 +15943,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -16455,7 +16455,7 @@
         {
           "at_ms": 4900,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:24.900Z",
             "install_id": "aimla-win",
@@ -16480,7 +16480,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:29.400Z",
             "fleet": {
@@ -16498,7 +16498,7 @@
         {
           "at_ms": 7100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:29.600Z",
             "install_id": "aimla-win",
@@ -16560,7 +16560,7 @@
               "subagent_type": "coder",
               "activity_state": "working",
               "started_at": "2026-08-23T14:23:31.004Z",
-              "species": "pepper"
+              "species": "carrot"
             }
           ],
           "subagents_open": 1,

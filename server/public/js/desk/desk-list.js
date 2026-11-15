@@ -118,6 +118,9 @@ export const NOT_LISTED = Object.freeze({
     'side_table.stools[].call_id': {
         reason: "the intern join key (§ 5.1): stored to attribute an intern's calls, drawn by no element",
     },
+    'side_table.stools[].species': {
+        reason: "the intern's body (card#13258), appearance and not a fact about the intern, as the seat's `species` is",
+    },
     'side_table.stools[].slot': {
         reason: "where the intern sits at the side table (card#12450's kept slot); a place on the drawing, and the list "
             + "prints the interns in the wire's order",

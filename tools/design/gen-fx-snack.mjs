@@ -197,12 +197,12 @@ function run({ note, at_s, seats = {}, deltas = [], beats = null, until_ms, map 
     const linksAt = (ms) => new Map([...seeded, ...linkDeltas.filter((m) => m.at_ms < ms).map((m) => [m.seat, m.patch.link_state])]);
     for (const ms of beats ?? range(500, until_ms, 15000)) {
         const fleet = { db: 'ok', fold: 'ok', sweep: 'ok', sweep_last_run_at: server(ms - 2000), ingest_last_receipt_at: server(ms), max_fold_lag_ms: 50, ...counts(linksAt(ms)) };
-        messages.push({ at_ms: ms, envelope: { feed_version: 3, t: 'feed.heartbeat', server_time: server(ms), fleet } });
+        messages.push({ at_ms: ms, envelope: { feed_version: 4, t: 'feed.heartbeat', server_time: server(ms), fleet } });
     }
     for (const m of deltas) {
         messages.push(m.t === 'room.map'
-            ? { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
-            : { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
+            ? { at_ms: m.at_ms, envelope: { feed_version: 4, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
+            : { at_ms: m.at_ms, envelope: { feed_version: 4, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
     }
     messages.sort((a, b) => a.at_ms - b.at_ms);
     return { note, http, messages, until_ms, floor: clone(tpl.floor), ...(reduce ? { reduce: true } : {}) };
@@ -514,7 +514,7 @@ function chained(old) {
         msgs.push({
             at_ms: 35000,
             envelope: {
-                feed_version: 3,
+                feed_version: 4,
                 t: 'seat.delta',
                 server_time: iso(E + 35),
                 install_id: 'aimla',
@@ -716,7 +716,7 @@ function restroomRuns() {
         const at = dwellAt(fx, 20);
         const v1 = SEATS['aimla-impl-1'].state_version;
 
-        r.messages.push({ at_ms: at, envelope: { feed_version: 3, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
+        r.messages.push({ at_ms: at, envelope: { feed_version: 4, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
         r.messages.sort((a, b) => a.at_ms - b.at_ms);
         runs['busy-visit'] = r;
         notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping its facts and drawing no task bubble; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
