@@ -414,8 +414,9 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
                 "        if (characters === null || typeof species !== 'string') {\n            report(asset);", "        if (characters === null || typeof species !== 'string') {\n            void asset;"],
             // card#12443 — AT-D3-24's body legs: the seat's frames drawn from its key alone, the delivered species
             // dropped (the operator's "two characters have the same image", re-made); the frame cache keyed on the
-            // asset alone; a species the tree does not hold drawn as the key's own body instead of F14; and an intern
-            // handed the seat key's own draw instead of its seat's delivered body.
+            // asset alone; a species the tree does not hold drawn as the key's own body instead of F14. card#13258 — an
+            // intern drawn in a body not its own (its key's draw, its seat's), its frames cached without its species, and
+            // an intern — seated or walking — with no species drawn in some body rather than F14.
             "a seat drawn from its key, the delivered species dropped" => ['../floor/painter.js',
                 "characters.poseFrames(seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear, species })",
                 "characters.poseFrames(seatId, { pose: at.pose, glyph: at.glyph ?? null, deskTop: at.desk_top, clear: at.clear })"],
@@ -424,8 +425,16 @@ class TheNewDeskKeepsEveryLeafTest extends TestCase
             "an unheld species drawn as the key's own body" => ['../floor/painter.js',
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                report(asset);",
                 "                frames.set(key, { uris: drawn.frames.map(svgUri), loopFrom: drawn.loopFrom });\n            } catch {\n                frames.set(key, { uris: characters.poseFrames(seatId, { pose: at?.pose ?? 'present', deskTop: at?.desk_top ?? 0.5, clear: at?.clear }).frames.map(svgUri), loopFrom: 0 });\n                return frames.get(key);"],
-            "an intern kept off the seat key's draw, not its seat's delivered body" => ['../floor/painter.js',
+            "an intern drawn in its key's own body, its delivered species dropped" => ['../floor/painter.js',
                 'characters.internFrames(seatId, species)', 'characters.internFrames(seatId)'],
+            "an intern drawn in its seat's body" => ['../floor/desk-layout.js',
+                '            species: stool.species,', '            species: desk.species,'],
+            "an intern's frames cached without its species" => ['../floor/painter.js',
+                '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`}~${species}`;', '`${asset}#${at.pose}/${at.glyph ?? \'\'}@${at.desk_top}`}${intern === null ? `~${species}` : \'\'}`;'],
+            "an intern with no species drawn in its seat's body" => ['../floor/desk-layout.js',
+                '            species: stool.species,', '            species: stool.species ?? desk.species,'],
+            "a walking intern with no species drawn in some body" => ['../floor/desk-layout.js',
+                'species: fx.species, intern: true,', "species: fx.species ?? 'otter', intern: true,"],
             // § 9 F14's third cause (§ 10.2): an undecodable frame's <image> error event, unreported.
             "an undecodable frame's error event left unreported" => ['../floor/painter.js',
                 "        el.addEventListener('error', () => report(asset ?? href), { once: true });\n", ''],

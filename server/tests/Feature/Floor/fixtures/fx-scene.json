@@ -61,7 +61,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -739,7 +739,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -919,7 +919,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1348,7 +1348,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1785,7 +1785,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2222,7 +2222,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2659,7 +2659,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3091,7 +3091,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3570,7 +3570,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4408,7 +4408,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4748,7 +4748,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5337,7 +5337,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5439,7 +5439,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z",
-                          "species": "axolotl"
+                          "species": "sloth"
                         },
                         {
                           "call_id": "01K3TB00000000000000000101",
@@ -5447,7 +5447,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z",
-                          "species": "pepper"
+                          "species": "axolotl"
                         },
                         {
                           "call_id": "01K3TB00000000000000000102",
@@ -5455,7 +5455,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z",
-                          "species": "sloth"
+                          "species": "watermelon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000103",
@@ -5463,7 +5463,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z",
-                          "species": "strawberry"
+                          "species": "peapod"
                         },
                         {
                           "call_id": "01K3TB00000000000000000104",
@@ -5471,7 +5471,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z",
-                          "species": "mole"
+                          "species": "pineapple"
                         },
                         {
                           "call_id": "01K3TB00000000000000000105",
@@ -5479,7 +5479,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z",
-                          "species": "mushroom"
+                          "species": "elephant"
                         },
                         {
                           "call_id": "01K3TB00000000000000000106",
@@ -5487,7 +5487,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z",
-                          "species": "turnip"
+                          "species": "cabbage"
                         },
                         {
                           "call_id": "01K3TB00000000000000000107",
@@ -5495,7 +5495,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z",
-                          "species": "dragonfruit"
+                          "species": "avocado"
                         }
                       ],
                       "subagents_open": 9,
@@ -5583,7 +5583,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z",
-                          "species": "otter"
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TB00000000000000000201",
@@ -5591,7 +5591,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z",
-                          "species": "mango"
+                          "species": "bear"
                         },
                         {
                           "call_id": "01K3TB00000000000000000202",
@@ -5599,7 +5599,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z",
-                          "species": "corn"
+                          "species": "raccoon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000203",
@@ -5607,7 +5607,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z",
-                          "species": "cabbage"
+                          "species": "corn"
                         },
                         {
                           "call_id": "01K3TB00000000000000000204",
@@ -5615,7 +5615,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z",
-                          "species": "koala"
+                          "species": "kiwi"
                         },
                         {
                           "call_id": "01K3TB00000000000000000205",
@@ -5623,7 +5623,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z",
-                          "species": "sloth"
+                          "species": "capybara"
                         },
                         {
                           "call_id": "01K3TB00000000000000000206",
@@ -5631,7 +5631,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z",
-                          "species": "dragonfruit"
+                          "species": "cat"
                         },
                         {
                           "call_id": "01K3TB00000000000000000207",
@@ -5639,7 +5639,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z",
-                          "species": "lemon"
+                          "species": "elephant"
                         }
                       ],
                       "subagents_open": 9,
@@ -5917,7 +5917,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -6019,7 +6019,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z",
-                          "species": "axolotl"
+                          "species": "sloth"
                         },
                         {
                           "call_id": "01K3TB00000000000000000101",
@@ -6027,7 +6027,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z",
-                          "species": "pepper"
+                          "species": "axolotl"
                         },
                         {
                           "call_id": "01K3TB00000000000000000102",
@@ -6035,7 +6035,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z",
-                          "species": "sloth"
+                          "species": "watermelon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000103",
@@ -6043,7 +6043,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z",
-                          "species": "strawberry"
+                          "species": "peapod"
                         },
                         {
                           "call_id": "01K3TB00000000000000000104",
@@ -6051,7 +6051,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z",
-                          "species": "mole"
+                          "species": "pineapple"
                         },
                         {
                           "call_id": "01K3TB00000000000000000105",
@@ -6059,7 +6059,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z",
-                          "species": "mushroom"
+                          "species": "elephant"
                         },
                         {
                           "call_id": "01K3TB00000000000000000106",
@@ -6067,7 +6067,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z",
-                          "species": "turnip"
+                          "species": "cabbage"
                         },
                         {
                           "call_id": "01K3TB00000000000000000107",
@@ -6075,7 +6075,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z",
-                          "species": "dragonfruit"
+                          "species": "avocado"
                         }
                       ],
                       "subagents_open": 9,
@@ -6163,7 +6163,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z",
-                          "species": "otter"
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TB00000000000000000201",
@@ -6171,7 +6171,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z",
-                          "species": "mango"
+                          "species": "bear"
                         },
                         {
                           "call_id": "01K3TB00000000000000000202",
@@ -6179,7 +6179,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z",
-                          "species": "corn"
+                          "species": "raccoon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000203",
@@ -6187,7 +6187,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z",
-                          "species": "cabbage"
+                          "species": "corn"
                         },
                         {
                           "call_id": "01K3TB00000000000000000204",
@@ -6195,7 +6195,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z",
-                          "species": "koala"
+                          "species": "kiwi"
                         },
                         {
                           "call_id": "01K3TB00000000000000000205",
@@ -6203,7 +6203,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z",
-                          "species": "sloth"
+                          "species": "capybara"
                         },
                         {
                           "call_id": "01K3TB00000000000000000206",
@@ -6211,7 +6211,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z",
-                          "species": "dragonfruit"
+                          "species": "cat"
                         },
                         {
                           "call_id": "01K3TB00000000000000000207",
@@ -6219,7 +6219,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z",
-                          "species": "lemon"
+                          "species": "elephant"
                         }
                       ],
                       "subagents_open": 9,
@@ -6505,7 +6505,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:10.004Z",
-                          "species": "eggplant"
+                          "species": "dragonfruit"
                         },
                         {
                           "call_id": "01K3TB00000000000000000301",
@@ -6513,7 +6513,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:11.004Z",
-                          "species": "snail"
+                          "species": "frog"
                         },
                         {
                           "call_id": "01K3TB00000000000000000302",
@@ -6521,7 +6521,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z",
-                          "species": "avocado"
+                          "species": "frog"
                         },
                         {
                           "call_id": "01K3TB00000000000000000303",
@@ -6529,7 +6529,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:13.004Z",
-                          "species": "peapod"
+                          "species": "fox"
                         },
                         {
                           "call_id": "01K3TB00000000000000000304",
@@ -6537,7 +6537,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:14.004Z",
-                          "species": "carrot"
+                          "species": "banana"
                         },
                         {
                           "call_id": "01K3TB00000000000000000305",
@@ -6545,7 +6545,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z",
-                          "species": "elephant"
+                          "species": "pepper"
                         },
                         {
                           "call_id": "01K3TB00000000000000000306",
@@ -6553,7 +6553,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:20:16.004Z",
-                          "species": "mango"
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TB00000000000000000307",
@@ -6561,7 +6561,7 @@
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:21:17.004Z",
-                          "species": "potato"
+                          "species": "pig"
                         }
                       ],
                       "subagents_open": 9,

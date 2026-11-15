@@ -199,6 +199,10 @@ class TheDeskRenderNeverDrawsANullAsAZeroTest extends TestCase
                 && $d['side_table']['stools'][0]['untitled'] === true,
             'subagents[].subagent_type' => static fn (array $d): bool => $d['side_table']['stools'][0]['type'] === null
                 && $d['side_table']['stools'][0]['label'] === 'untitled',
+            // card#13258: the stool carries the null, never a body in its place; the painter draws it as § 9 F14's glyph
+            // and the 3-D floor builds no body for it (painter-probe.mjs's and character-identity-probe.mjs's null legs).
+            'subagents[].species' => static fn (array $d): bool => array_key_exists('species', $d['side_table']['stools'][0])
+                && $d['side_table']['stools'][0]['species'] === null,
             'context.used_tokens' => static fn (array $d, array $s): bool => $d['gauge']['numerals'] === 'not reported'
                 && $d['gauge']['bar'] == $s['context']['used_pct'],
             'context.total_tokens' => static fn (array $d, array $s): bool => $d['gauge']['numerals'] === 'not reported'

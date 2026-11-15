@@ -1809,7 +1809,7 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 call_id: stool.call_id,
                 slot: stool.slot,
                 intern_seat_key: internKey(desk.seat_id, stool.call_id),
-                seat_species: model.species ?? null,
+                species: stool.species ?? null,
                 activity_state: stool.activity,
                 anchor: slotFoot(desk, stool.slot, box, character),
                 in_room: desk.slot_rect !== null,
@@ -1888,9 +1888,8 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 cause: null,
                 install_id: w.install_id,
                 seat_id: w.seat_id,
-                ...(intern
-                    ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, seat_species: w.seat_species, slot: w.slot }
-                    : { species: w.species }),
+                species: w.species,
+                ...(intern ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, slot: w.slot } : {}),
                 walker_key: w.key,
                 leg_kind: 'snack',
                 start_s: schedule.start_s,
@@ -2177,9 +2176,8 @@ function restroomDoor(doors, snack, walking, input, box) {
             cause: null,
             install_id: w.install_id,
             seat_id: w.seat_id,
-            ...(intern
-                ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, seat_species: w.seat_species, slot: w.slot }
-                : { species: w.species }),
+            species: w.species,
+            ...(intern ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, slot: w.slot } : {}),
             walker_key: w.key,
             leg_kind: 'restroom',
             start_s: brk.start_s,
@@ -2911,8 +2909,9 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
             anchor,
             leg_kind: kind,
             activity_state: element.activity_state ?? null,
-            // card#12443: the body the intern must not wear — its seat's delivered species.
-            seat_species: frame.desks.desks[seat]?.species ?? null,
+            // card#13258: the intern's own delivered body, read off the element itself — for a departure the PREVIOUS
+            // seat object's element (`advanceSlots()`'s `lost`), which the current frame's desk no longer holds.
+            species: element.species ?? null,
             lattice_key: walking.key,
             size: INTERN_SIZE,
             frame: Object.freeze({ w: STOOL_FRAME, h: STOOL_H }),

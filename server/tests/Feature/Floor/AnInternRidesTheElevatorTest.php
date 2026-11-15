@@ -473,6 +473,87 @@ class AnInternRidesTheElevatorTest extends TestCase
         $this->assertSame('walk', $idle['legs'][0]['kind'], 'an idle departure fades a laptop it does not have');
     }
 
+    // ── GREEN — the walker's body (card#13258) ───────────────────────────────────────────────
+
+    /**
+     * Each intern walks in its OWN delivered `subagents[].species` — the arrival in the gained element's, the departure in
+     * the departed element's, which the frame's desk no longer holds — never its seat's body. The fixture delivers each
+     * intern a species apart from its seat's, which the first assertion holds, so a walk in the seat's body is seen.
+     */
+    public function test_green_an_intern_walks_in_its_own_delivered_body(): void
+    {
+        foreach ($this->bodyDefects() as $what => $defect) {
+            $this->assertNull($defect, $what);
+        }
+    }
+
+    /** The departure read off the frame's desk — its seat's body — and off the frame's own stools, where it is gone. */
+    public function test_red_a_departure_walked_in_another_body(): void
+    {
+        foreach ([
+            "the seat's body" => '            species: frame.desks.desks[seat]?.species ?? null,',
+            "the frame's stools" => '            species: (frame.desks.desks[seat]?.side_table?.stools ?? []).find((s) => s.call_id === element.call_id)?.species ?? null,',
+        ] as $what => $replacement) {
+            $dir = $this->planted([self::SCENE, '            species: element.species ?? null,', $replacement]);
+
+            $this->assertNotNull($this->bodyDefects($dir)['leave-working'], "a departure read off {$what} and the body leg saw nothing");
+        }
+    }
+
+    /** @return array<string, string|null> the arrival's and the departure's defect, `null` where it walks in its body */
+    private function bodyDefects(?string $dir = null): array
+    {
+        $defects = [];
+
+        foreach (['arrive' => 'arrive', 'leave-working' => 'leave'] as $run => $kind) {
+            [, $walk] = $this->firstWalk($this->floorRun($run, $dir), $kind);
+            $call = explode('~', $walk['intern_key'])[1];
+            $owed = array_values(array_unique($this->deliveredSpecies($this->fixture($run), $call)));
+            $seat = array_values(array_unique($this->seatSpecies($this->fixture($run), self::IMPL_1)));
+
+            $this->assertCount(1, $owed, "[{$run}] the fixture delivers the intern {$call} no one species: ".json_encode($owed));
+            $this->assertNotContains($owed[0], $seat, "[{$run}] the fixture delivers the intern its seat's body — a walk in the seat's body would read clean");
+            $defects[$run] = ($walk['species'] ?? null) === $owed[0] ? null
+                : "[{$run}] the {$kind} walks in ".json_encode($walk['species'] ?? null).", not its delivered {$owed[0]}";
+        }
+
+        return $defects;
+    }
+
+    /** @return list<string|null> every `species` the run's seat objects deliver for the intern `$call` */
+    private function deliveredSpecies(array $node, string $call): array
+    {
+        $found = [];
+
+        foreach ($node as $k => $v) {
+            if ($k === 'subagents' && is_array($v)) {
+                foreach ($v as $e) {
+                    if (($e['call_id'] ?? null) === $call) {
+                        $found[] = $e['species'] ?? null;
+                    }
+                }
+            } elseif (is_array($v)) {
+                array_push($found, ...$this->deliveredSpecies($v, $call));
+            }
+        }
+
+        return $found;
+    }
+
+    /** @return list<string> every `character.species` the run delivers for the seat `$seatId` */
+    private function seatSpecies(array $node, string $seatId): array
+    {
+        $found = ($node['seat_id'] ?? null) === $seatId && is_string($node['character']['species'] ?? null) ? [$node['character']['species']] : [];
+
+        foreach ($node as $v) {
+            if (is_array($v)) {
+                array_push($found, ...$this->seatSpecies($v, $seatId));
+            }
+        }
+
+        return $found;
+    }
+
     // ── GREEN — the turn-round (item 16) ─────────────────────────────────────────────────────
 
     public function test_green_a_stop_before_the_stool_turns_the_intern_round_from_where_it_is(): void

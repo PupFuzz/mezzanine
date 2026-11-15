@@ -352,10 +352,11 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
      * generator that throws for this key, is § 9 F14 for this asset and never a throw out of the paint.
      *
      * ⛔ `species` IS THE BODY, AND IT IS IN THE CACHE KEY (card#12443). For a seat it is the seat object's delivered
-     * `character.species`, handed to the tree's forced-species path; for an intern it is its seat's, which the tree
-     * keeps the intern off. A frame cached under the asset alone would keep a desk in its old body after a snapshot
-     * moved it. A species that is not a string — a seat object with no `character` — or one the tree does not hold
-     * (a throw) is § 9 F14 for this asset: the placeholder, and never the key's own body.
+     * `character.species`, for an intern its own delivered `subagents[].species` (card#13258), each handed to the tree's
+     * forced-species path. A frame cached under the asset alone would keep a desk in its old body after a snapshot
+     * moved it. A species that is not a string — a seat object with no `character`, an intern the wire delivers no
+     * species for — or one the tree does not hold (a throw) is § 9 F14 for this asset: the placeholder, and never the
+     * key's own body or its seat's.
      *
      * @param {{pose: string, glyph?: string, desk_top: number, clear?: object[]}|null} at a desk's pose, its § 7.1 glyph,
      *        its desk's top edge and the clear rects a sleeper's z's and a marker keep out of (`characterOverdraw()`), or
@@ -576,11 +577,11 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
                         // intern is drawn dashed (§ 8): its sprite with a dashed edge at its own stool rect —
                         // rx 3, no fill, `--scene-stool` at 1.5 wide, dashed `3 2` — and its fallback glyph
                         // below is dashed `3 2` with no fill (the designer's rulings on card#11058 PR-C).
-                        const drawn = characterFrames(e.key, e.asset, e.seat_species, null, 'laptop');
+                        const drawn = characterFrames(e.key, e.asset, e.species, null, 'laptop');
                         // card#12451: an idle intern sits in its chibi frame with no laptop, still; a laptop fade in
                         // flight draws the chibi under the laptop's still at the fade's opacity (A24).
                         const fade = laptopFades.get(e.key) ?? null;
-                        const chibi = e.activity === 'idle' || fade !== null ? characterFrames(e.key, e.asset, e.seat_species, null, 'chibi') : null;
+                        const chibi = e.activity === 'idle' || fade !== null ? characterFrames(e.key, e.asset, e.species, null, 'chibi') : null;
 
                         if (drawn !== null) {
                             interns.add(e.asset);
@@ -1413,7 +1414,7 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
             if (!drawnInterns.has(asset)) {
                 interns.delete(asset);
 
-                // An intern's frames are held under its asset and the body it was kept off (`characterFrames()`).
+                // An intern's frames are held under its asset and its body (`characterFrames()`).
                 for (const key of [...frames.keys()].filter((k) => k.startsWith(`${asset}~`))) {
                     frames.delete(key);
                 }

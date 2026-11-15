@@ -173,7 +173,7 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
     /**
      * ⛔ ONE CHARACTER IN BOTH VIEWS — every body the 2-D painter draws and the 3-D floor builds over these scenes is the
      * same character, field by field (`character-identity-probe.mjs`): the operator saw a seat's interns wear its own body
-     * in 3-D, where 2-D keeps them off it.
+     * in 3-D, where 2-D kept them off it — and, since card#13258, every intern is drawn in both in its delivered species.
      */
     public function test_green_one_character_in_both_views(): void
     {
@@ -183,6 +183,11 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
         $this->assertSame([], array_values(array_diff(self::IDENTITY_ROUTES, array_keys($answer['printed']['routes']))),
             'a route the scenes hold no body on was read for nothing: '.json_encode($answer['printed']['routes']));
         $this->assertSame($answer['printed']['bodies'], $answer['printed']['compared'], 'a body was not compared across the views');
+        // card#13258: every intern the scenes hold is delivered a species apart from its key's own draw, so a view that
+        // re-drew one from its key would be seen by the delivered leg.
+        $this->assertGreaterThan(0, $answer['printed']['delivered']['interns'], 'the scenes hold no intern — the delivered leg reads nothing');
+        $this->assertSame($answer['printed']['delivered']['interns'], $answer['printed']['delivered']['apart'],
+            'an intern of the scenes is delivered its key\'s own draw, where a re-draw from the key is invisible: '.json_encode($answer['printed']['delivered']));
     }
 
     /**
@@ -193,14 +198,18 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
     public static function identityPlants(): array
     {
         return [
-            'a 3-D intern built as its seat\'s species (the operator\'s report)' => ['../floor3d/body-paint.js',
-                'species: spec.chibi ? C.internSpeciesOf(key, spec.species) : spec.species,', 'species: spec.species,', 'fields'],
+            'a 3-D intern built in its seat\'s body (the operator\'s report, before card#13258)' => ['../floor/floor-world.js',
+                '                species: e.species,', '                species: character?.species ?? null,', 'delivered'],
+            'a 3-D intern built in its key\'s own body, its delivered species dropped' => ['../floor3d/body-paint.js',
+                'createCreature(document, C, key, { species: spec.species,', 'createCreature(document, C, key, { species: spec.chibi ? undefined : spec.species,', 'delivered'],
             'a 3-D walking intern built as a seat' => ['../floor3d/body-paint.js',
                 'out.set(key, { key, species, chibi: w.chibi,', 'out.set(key, { key, species, chibi: false,', 'kind'],
             'a 3-D face drawn as the key\'s own species, not its body\'s' => ['../floor3d/creature-paint.js',
                 'C.faceDocument(key, { species: body.species, pose, blink })', 'C.faceDocument(key, { species: undefined, pose, blink })', 'parts'],
             'a 2-D couch intern drawn under its seat\'s key' => ['../floor/painter.js',
-                "characterFrames(e.key, e.asset, e.seat_species, null, 'laptop');", "characterFrames(desk.seat_id, e.asset, e.seat_species, null, 'laptop');", 'kind'],
+                "characterFrames(e.key, e.asset, e.species, null, 'laptop');", "characterFrames(desk.seat_id, e.asset, e.species, null, 'laptop');", 'kind'],
+            'a 2-D couch intern drawn in its key\'s own body' => ['../floor/painter.js',
+                'characters.internFrames(seatId, species)', 'characters.internFrames(seatId)', 'delivered'],
         ];
     }
 
@@ -213,21 +222,38 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
     }
 
     /**
-     * A seat object with no delivered species is § 9 F14's in both views — no body for the seat or its interns, never the
-     * key's own draw — and the 3-D guard that keeps it so is seen red when it is planted away.
+     * A seat object with no delivered species, and an intern with none, are § 9 F14's in both views — no body for either,
+     * never the key's own draw and never the seat's, each reported under its own asset — and the 3-D guard that keeps it
+     * so is seen red when it is planted away (`recipe()` draws the key's own body for an absent species).
      */
-    public function test_a_seat_with_no_species_has_no_body_in_either_view(): void
+    public function test_a_character_with_no_species_has_no_body_in_either_view(): void
     {
-        $scene = $this->scenes(null)[0];
-        $desk = &$scene['scene']['desks'][0];
+        // The first scene with a desk that draws a character and seats an intern, that desk's seat object stripped.
+        [$scene, $d] = (function (): array {
+            foreach ($this->scenes(null) as $scene) {
+                foreach ($scene['scene']['desks'] as $d => $desk) {
+                    $kinds = array_column($desk['elements'], 'kind');
+
+                    if (in_array('character', $kinds, true) && in_array('stool', $kinds, true)) {
+                        return [$scene, $d];
+                    }
+                }
+            }
+
+            $this->fail('no scene holds a desk with a character and an intern — the leg reads nothing');
+        })();
+        $desk = &$scene['scene']['desks'][$d];
+        $owed = [];
 
         foreach ($desk['elements'] as &$e) {
             if ($e['kind'] === 'character') {
                 $e['species'] = null;
+                $owed[] = 'character:'.$desk['key'];
             }
 
             if ($e['kind'] === 'stool') {
-                $e['seat_species'] = null;
+                $e['species'] = null;
+                $owed[] = 'intern:'.$e['key'];
             }
         }
         unset($e, $desk);
@@ -237,6 +263,10 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
 
         $this->assertSame([], $this->defects($answer));
 
+        foreach (['2d', '3d'] as $view) {
+            $this->assertSame([], array_values(array_diff($owed, $answer['printed']['failed'][$view])), "the {$view} view did not report every character with no species");
+        }
+
         $planted = $this->probe(['scenes' => [$scene]], $this->mutatedModules(['../floor3d/body-paint.js',
             "if (typeof spec.species !== 'string') {", 'if (false) {']), $script)['legs'];
 
@@ -244,27 +274,49 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
     }
 
     /**
-     * The tree's own rule is read, not copied: `chibiFrame()` drawing an intern AS its seat's species reds the 2-D side
-     * against the 3-D one, which still keeps the intern off it.
+     * The tree's own drawing is read, not its rule: the tree's intern entries re-drawing an intern from its key — in 2-D
+     * alone, the views part (`fields`); in both views alike (`chibiFrame()`, `internFrames()` and `chibiParts()` all
+     * dropping the species they are handed), parity holds and only the `delivered` leg sees the intern out of its body.
      */
-    public function test_red_the_tree_drawing_an_intern_as_its_seat(): void
+    public function test_red_the_tree_drawing_an_intern_from_its_key(): void
+    {
+        $twoD = [
+            ['index.js', "export function chibiFrame(internKey, species) {\n  return frameDocument(seatKey(internKey), { chibi: true, species });",
+                "export function chibiFrame(internKey, species) {\n  return frameDocument(seatKey(internKey), { chibi: true });"],
+            ['index.js', "export function internFrames(internKey, species) {\n  const key = seatKey(internKey);",
+                "export function internFrames(internKey, species) {\n  species = undefined;\n  const key = seatKey(internKey);"],
+        ];
+        $threeD = [['creatures-3d.js', "export function chibiParts(key, { species } = {}) {\n  return bodyParts(key, { species, chibi: true });",
+            "export function chibiParts(key, { species } = {}) {\n  return bodyParts(key, { chibi: true });"]];
+
+        $legs = $this->identity(null, $this->plantedTree($twoD))['legs'];
+
+        $this->assertNotSame([], $legs['fields'], 'the 2-D tree plant did not red the fields leg: '.json_encode(array_filter($legs)));
+        $this->assertNotSame([], $legs['delivered'], 'the 2-D tree plant did not red the delivered leg: '.json_encode(array_filter($legs)));
+
+        $legs = $this->identity(null, $this->plantedTree([...$twoD, ...$threeD]))['legs'];
+
+        $this->assertNotSame([], $legs['delivered'], 'the both-views tree plant did not red the delivered leg: '.json_encode(array_filter($legs)));
+        $this->assertSame([], $legs['fields'], 'the both-views tree plant parted the views — the control no longer shows what parity alone misses');
+    }
+
+    /** A copy of the character tree with each `[file, anchor, replacement]` applied once. */
+    private function plantedTree(array $edits): string
     {
         $tree = (string) tempnam(sys_get_temp_dir(), 'tree');
         unlink($tree);
         mkdir($tree);
         $this->scratchDirs[] = $tree;
-        $source = realpath(__DIR__.'/../../../../resources/characters');
-        $this->copyTree($source, $tree);
-        $index = $tree.'/index.js';
-        $anchor = "export function chibiFrame(internKey, seatSpecies) {\n  const key = seatKey(internKey);\n  const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);";
-        $original = (string) file_get_contents($index);
+        $this->copyTree((string) realpath(__DIR__.'/../../../../resources/characters'), $tree);
 
-        $this->assertSame(1, substr_count($original, $anchor), 'the tree plant\'s anchor is not in index.js exactly once');
-        file_put_contents($index, str_replace($anchor, "export function chibiFrame(internKey, seatSpecies) {\n  const key = seatKey(internKey);\n  const species = seatSpecies;", $original));
+        foreach ($edits as [$file, $anchor, $replacement]) {
+            $original = (string) file_get_contents($tree.'/'.$file);
 
-        $legs = $this->identity(null, $tree)['legs'];
+            $this->assertSame(1, substr_count($original, $anchor), "the tree plant's anchor is not in {$file} exactly once");
+            file_put_contents($tree.'/'.$file, str_replace($anchor, $replacement, $original));
+        }
 
-        $this->assertNotSame([], $legs['fields'], 'the tree plant did not red the fields leg: '.json_encode(array_filter($legs)));
+        return $tree;
     }
 
     /**

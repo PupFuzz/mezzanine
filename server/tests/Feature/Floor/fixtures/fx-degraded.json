@@ -1031,7 +1031,7 @@
         {
           "at_ms": 30000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:44.400Z",
             "fleet": {

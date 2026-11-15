@@ -50,12 +50,13 @@
  * and AT-D3-19's two causes — a tree that failed to load, a generator that throws for one intern's key —
  * reach the painter's report, the second for that intern alone, and never throw out of the paint.
  *
- * ⛔ AT-D3-24's BODY LEGS (card#12443): every desk, walker and intern is drawn from the seat object's DELIVERED
- * `character.species` — the stub names the species it was handed in every frame, and what each element is owed is
- * written from the fixture seat's `character`, never from the element under test. The planted seats deliver a species
- * that differs from their key's own draw, on purpose, so a painter that draws from the key is seen. A second paint
- * after the species moved draws the new body (the frame cache is keyed on it), and a species the tree does not hold
- * — the stub throws for it, as the tree does — is § 9 F14's placeholder for that asset alone.
+ * ⛔ AT-D3-24's BODY LEGS (card#12443, card#13258): every desk and walker is drawn from the seat object's DELIVERED
+ * `character.species`, every intern from its own delivered `subagents[].species` — the stub names the species it was
+ * handed in every frame, and what each element is owed is written from the fixture seat, never from the element under
+ * test. The planted seats deliver a species that differs from their key's own draw, and their interns one that differs
+ * from their seat's, on purpose, so a painter that draws from the key or the seat is seen. A second paint after the
+ * species moved draws the new body (the frame cache is keyed on it), and a species the tree does not hold — the stub
+ * throws for it, as the tree does — or an intern's `null` is § 9 F14's placeholder for that asset alone.
  *
  * The desks are every planted seat (`desk-leaves/fx-desk-leaves-planted.json` — the bounds, the caps,
  * the badges, the nulls) confirmed, unconfirmed and as the placeholder, each placed at its own box on a
@@ -156,20 +157,26 @@ const characters = {
     },
     // An intern's frames (card#12448, § 10.4's frame contract item 3): FIVE documents with `loopFrom` 1 — its laptop
     // still, then its typing loop of four — so an intern drawn at another document, or stepped from the still, reds.
-    // Each names the body the intern is kept off, its seat's delivered species (card#12443). The plain `chibiFrame()` —
-    // an IDLE intern's drawing, no laptop (card#12451) — is stubbed beside it under its own name, so a working intern
-    // drawn at it reds below.
-    internFrames(key, seatSpecies) {
+    // Each names the body it was handed, the intern's own delivered `subagents[].species` (card#13258). The plain
+    // `chibiFrame()` — an IDLE intern's drawing, no laptop (card#12451) — is stubbed beside it under its own name, so a
+    // working intern drawn at it reds below.
+    internFrames(key, species) {
         asked.chibi.push(key);
         if (key === throwFor) throw new Error('a planted generator defect for one key');
-        return { frames: Array.from({ length: 5 }, (_, i) => doc(`${key}!${body(seatSpecies)}#intern#${i}`)), loopFrom: 1 };
+        return { frames: Array.from({ length: 5 }, (_, i) => doc(`${key}!${body(species)}#intern#${i}`)), loopFrom: 1 };
     },
-    chibiFrame(key, seatSpecies) {
+    chibiFrame(key, species) {
         asked.chibi.push(key);
-        return doc(`${key}!${body(seatSpecies)}#chibi`);
+        return doc(`${key}!${body(species)}#chibi`);
     },
 };
-const internFrame = (seatId, callId, seatSpecies, i = 0) => uri(doc(`${seatId}~${callId}!${seatSpecies}#intern#${i}`));
+const internFrame = (seatId, callId, species, i = 0) => uri(doc(`${seatId}~${callId}!${species}#intern#${i}`));
+const chibiOf = (key, species) => uri(doc(`${key}!${species}#chibi`));
+/**
+ * The body an intern is owed (card#13258): its own `subagents[].species` in the FIXTURE seat it was placed from — never
+ * read off the element under test, so a layout that carried another value onto the stool reds.
+ */
+const deliveredOf = (seat, callId) => seat.subagents.find((s) => s.call_id === callId)?.species;
 /**
  * The document an intern is first painted at, from the published rule (§ 6.2 A23, card#12451) written out here and never
  * read off the model's own `interns_held` — reading the model's answer would hold the painter to whatever the model says,
@@ -474,7 +481,7 @@ function owed(e, seat, failed, key) {
             // intern with a dashed edge at its own rect.
             const look = e.untitled ? ['intern', 'untitled'] : ['intern'];
             const start = internStart(modelOf.get(key));
-            const want = internFrame(seat.seat_id, e.call_id, seat.character.species, start);
+            const want = internFrame(seat.seat_id, e.call_id, deliveredOf(seat, e.call_id), start);
 
             internForms[start === 0 ? 'still' : 'typing']++;
             const port = internPort(e);
@@ -1051,7 +1058,7 @@ function heldLoop(desk, withIntern, internTypes = false) {
         if (withIntern) {
             // the stool whose intern the leg read — the first painted, whose key its document names
             const stool = moving.elements.find((e) => e.kind === 'stool' && decodeURIComponent(internBefore).includes(`${e.key}!`));
-            const iframe = (i) => internFrame(...stool.key.split('~'), stool.seat_species, i);
+            const iframe = (i) => internFrame(...stool.key.split('~'), deliveredOf(seatOf.get(desk.key), stool.call_id), i);
             const owedIntern = internTypes ? [1, 2, 3, 4, 5, 6, 7, 8].map((i) => 1 + ((i + STUB_OFFSET) % 4)) : [0, 0, 0, 0, 0, 0, 0, 0];
             const firstIntern = internTypes ? 1 + (STUB_OFFSET % 4) : 0;
 
@@ -1407,6 +1414,92 @@ const body_ = { apart: 0, recached: false, unheld: false };
 
     if (!body_.unheld) {
         defects.push(`body: a delivered species the tree does not hold ${threw ? `threw out of the paint (${threw.message})` : `drew ${characterHref() === undefined ? 'no image' : 'an image'} and reported ${JSON.stringify(reported)}`} — § 9 F14 is that asset's placeholder alone, never another body`);
+    }
+}
+
+// ── AT-D3-24's intern legs (card#13258): an intern is drawn in its OWN delivered `subagents[].species`. The stool legs above
+// hold every intern's image to its fixture element's species; this block holds the fixture to delivering species apart
+// from the intern key's own draw and its seat's body (or those legs could not tell them apart), the painter's cache to
+// the intern's species, a `null` species — on a stool and on a walker — to § 9 F14, and a walking intern to its body ──
+Object.assign(body_, { intern_apart: 0, intern_recached: false, intern_null: false, walker_body: false, walker_null: false });
+{
+    // The stub names whatever species it is handed, so a painter that hands it none (the key's own draw) reds the stool
+    // legs on every intern; one that hands it the seat's body reds them only where the two differ — on every planted one.
+    const interns = seats.flatMap((seat) => seat.subagents.map((s) => ({ seat, s, key: `${seat.seat_id}~${s.call_id}` })));
+    const same = interns.filter(({ seat, s }) => typeof s.species !== 'string' || s.species === seat.character.species);
+
+    body_.intern_apart = interns.length - same.length;
+
+    if (interns.length === 0 || same.length > 0) {
+        defects.push(`body: ${same.length} planted intern(s) deliver no species or their seat's body (e.g. ${same.slice(0, 2).map((i) => i.key).join(', ')}) — a painter drawing the seat's body would pass the stool legs over them`);
+    }
+
+    const desk = desks.find((d) => d.elements.some((e) => e.kind === 'stool' && e.art && e.activity === 'working'));
+    const stool = desk.elements.find((e) => e.kind === 'stool' && e.art && e.activity === 'working');
+    const owed = deliveredOf(seatOf.get(desk.key), stool.call_id);
+    const moved = SPECIES_KEYS.find((sp) => sp !== owed && sp !== stool.species);
+    const withSpecies = (species) => ({ ...desk, elements: desk.elements.map((e) => (e === stool ? { ...e, species } : e)) });
+    const internHref = () => walkOf(host.children[0]).find((n) => n.name === 'image' && classes(n).includes('intern')
+        && decodeURIComponent(String(n.getAttribute('href'))).includes(`${stool.key}!`))?.getAttribute('href');
+    const one = createPainter({ characters, themes: { studio: theme }, failed() {}, select() {} });
+
+    one.paint({ ...scene, desks: [desk] }, { bounds: null });
+    one.paint({ ...scene, desks: [withSpecies(moved)] }, { bounds: null });
+    body_.intern_recached = decodeURIComponent(String(internHref())).includes(`${stool.key}!${moved}#intern#`);
+
+    if (!body_.intern_recached) {
+        defects.push(`body: after ${stool.key}'s delivered species moved to ${moved}, one painter still drew «${decodeURIComponent(String(internHref())).match(/![a-z-]+#/)?.[0] ?? '?'}» — an intern's frames are not cached by its species`);
+    }
+
+    // The null leg is laid out from a seat object whose element delivers `null`, so a layout that fills the gap is read.
+    const reported = [];
+    const nullSeat = { ...seatOf.get(desk.key), subagents: seatOf.get(desk.key).subagents.map((s) => (s.call_id === stool.call_id ? { ...s, species: null } : s)) };
+    const nullDesk = placeDesk(deskModel(nullSeat, deskAgeReadout(nullSeat, NOW_MS), { missing: false, derivation_stamp: '2026-08-23T14:23:14.400Z' }, {}), desk.key, nullSeat.install_id, null,
+        { x: 0, y: 0 }, { box: BOX, measure, character: { w: 18, h: 32 }, crest: crestTop, headClear, theme: 'studio', placeholder: false, failed: new Set() },
+        { overflow: false, slot: null, object_id: null });
+
+    createPainter({ characters, themes: { studio: theme }, failed: (ids) => reported.push(...ids), select() {} }).paint({ ...scene, desks: [nullDesk] }, { bounds: null });
+    body_.intern_null = internHref() === undefined && reported.length === 1 && reported[0] === stool.asset;
+
+    if (!body_.intern_null) {
+        defects.push(`body: an intern delivered no species drew ${internHref() === undefined ? 'no image' : `«${decodeURIComponent(String(internHref())).match(/![a-z-]+#/)?.[0] ?? '?'}»`} and reported ${JSON.stringify(reported)} — § 9 F14 is that intern's placeholder alone, never its key's body or its seat's`);
+    }
+
+    // A walking intern (A10) beside its seat: the walker draws the intern's own body, and with none delivered the
+    // placeholder and the intern's report — never its seat's body, which the effect's seat carries beside it.
+    const { backWall, threshold } = await mod('floor/scene.js');
+    const { backWallBand } = await mod('floor/floor-layout.js');
+    const band = backWall(backWallBand({ x: 0, y: 0, width: 1200 }), null);
+    const T = threshold(band);
+    const ikey = stool.key;
+    const walking = (species) => ({
+        animation_id: 'A10', cause: 79, install_id: desk.install_id, seat_id: seatOf.get(desk.key).seat_id, class: 'edge', motion: true, frame_interval_ms: 250,
+        intern_key: `${desk.key}~${stool.call_id}`, intern_seat_key: ikey, call_id: stool.call_id, slot: 0, species, leg_kind: 'arrive',
+        route: 'routed', side: null, lattice_key: 'k', frames: 8, door: null,
+        legs: [{ kind: 'walk', start: 0, frames: 8, points: [T, { x: 300, y: 200 }], length: 0 }],
+        size: { w: 30, h: 50 }, frame: { w: 60, h: 64 }, elapsed_frames: 0, elapsed_ms: 0, started_at: 5000,
+    });
+    const walkerHref = () => walkOf(host.children[0]).filter((n) => classes(n).includes('fx-walker-shown'))
+        .flatMap((n) => walkOf(n)).find((n) => n.name === 'image' && classes(n).includes('intern'))?.getAttribute('href');
+    const placeholders = () => walkOf(host.children[0]).filter((n) => classes(n).includes('fx-walker-shown'))
+        .flatMap((n) => walkOf(n)).filter((n) => n.name === 'rect' && classes(n).includes('placeholder')).length;
+
+    createPainter({ characters, themes: { studio: theme }, failed() {}, select() {}, clock: { now: () => 5000 } })
+        .paint({ ...scene, band, desks: [], effects: [walking(owed)], doors: [], loop_fps: 4 }, { bounds: null });
+    body_.walker_body = walkerHref() === chibiOf(ikey, owed);
+
+    if (!body_.walker_body) {
+        defects.push(`body: a walking intern delivered ${owed} drew «${decodeURIComponent(String(walkerHref())).match(/![a-z-]+#/)?.[0] ?? 'no image'}», not its own body`);
+    }
+
+    const walkReported = [];
+
+    createPainter({ characters, themes: { studio: theme }, failed: (ids) => walkReported.push(...ids), select() {}, clock: { now: () => 5000 } })
+        .paint({ ...scene, band, desks: [], effects: [walking(null)], doors: [], loop_fps: 4 }, { bounds: null });
+    body_.walker_null = walkerHref() === undefined && placeholders() > 0 && walkReported.length === 1 && walkReported[0] === `intern:${ikey}`;
+
+    if (!body_.walker_null) {
+        defects.push(`body: a walking intern delivered no species drew ${walkerHref() === undefined ? 'no image' : 'an image'} and ${placeholders()} placeholder(s), and reported ${JSON.stringify(walkReported)} — § 9 F14 is the intern's placeholder and its own report`);
     }
 }
 

@@ -406,7 +406,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -425,7 +425,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -864,7 +864,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -883,7 +883,7 @@
                   "subagent_type": "coder",
                   "activity_state": "idle",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -1069,7 +1069,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 1,
@@ -1331,7 +1331,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -1527,7 +1527,7 @@
                           "subagent_type": "coder",
                           "activity_state": "idle",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 1,
@@ -1789,7 +1789,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -1985,7 +1985,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 1,
@@ -2247,7 +2247,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2266,7 +2266,7 @@
                   "subagent_type": "coder",
                   "activity_state": "idle",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -2276,7 +2276,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2295,7 +2295,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -2734,7 +2734,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2753,7 +2753,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -2763,7 +2763,7 @@
         {
           "at_ms": 1250,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3212,7 +3212,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3231,7 +3231,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -3241,7 +3241,7 @@
         {
           "at_ms": 2100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3690,7 +3690,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -3709,7 +3709,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -3719,7 +3719,7 @@
         {
           "at_ms": 7625,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4168,7 +4168,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4187,7 +4187,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -4197,7 +4197,7 @@
         {
           "at_ms": 7625,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4216,7 +4216,7 @@
                   "subagent_type": "coder",
                   "activity_state": "idle",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -4655,7 +4655,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -4674,7 +4674,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:02.004Z",
-                  "species": "duck"
+                  "species": "otter"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -4682,7 +4682,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 2
@@ -4692,7 +4692,7 @@
         {
           "at_ms": 16500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5141,7 +5141,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5160,7 +5160,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:02.004Z",
-                  "species": "duck"
+                  "species": "otter"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -5168,7 +5168,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 2
@@ -5178,7 +5178,7 @@
         {
           "at_ms": 1875,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5197,7 +5197,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -5636,7 +5636,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5655,7 +5655,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -5665,7 +5665,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -5684,7 +5684,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:02.004Z",
-                  "species": "duck"
+                  "species": "otter"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -5692,7 +5692,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 2
@@ -6131,7 +6131,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -6150,7 +6150,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:03.004Z",
-                  "species": "duck"
+                  "species": "pumpkin"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J02",
@@ -6158,7 +6158,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:02.004Z",
-                  "species": "duck"
+                  "species": "otter"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -6166,7 +6166,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 3
@@ -6176,7 +6176,7 @@
         {
           "at_ms": 16500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -6195,7 +6195,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:03.004Z",
-                  "species": "duck"
+                  "species": "pumpkin"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -6203,7 +6203,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 2
@@ -6213,7 +6213,7 @@
         {
           "at_ms": 136500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -6232,7 +6232,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:04.004Z",
-                  "species": "dragonfruit"
+                  "species": "avocado"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J03",
@@ -6240,7 +6240,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:03.004Z",
-                  "species": "duck"
+                  "species": "pumpkin"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -6248,7 +6248,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 3
@@ -6434,7 +6434,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:03.004Z",
-                          "species": "duck"
+                          "species": "pumpkin"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -6442,7 +6442,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 2,
@@ -7143,7 +7143,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7163,7 +7163,7 @@
         {
           "at_ms": 1100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7182,7 +7182,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -7368,7 +7368,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 1,
@@ -7641,7 +7641,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7660,7 +7660,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -7670,7 +7670,7 @@
         {
           "at_ms": 1100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -7689,7 +7689,7 @@
                   "subagent_type": "coder",
                   "activity_state": "idle",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "banana"
+                  "species": "lemon"
                 }
               ],
               "subagents_open": 1
@@ -7875,7 +7875,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:16.004Z",
-                          "species": "penguin"
+                          "species": "cabbage"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
@@ -7883,7 +7883,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z",
-                          "species": "sloth"
+                          "species": "panda"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
@@ -7891,7 +7891,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:14.004Z",
-                          "species": "kiwi"
+                          "species": "turnip"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
@@ -7899,7 +7899,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:13.004Z",
-                          "species": "raccoon"
+                          "species": "hedgehog"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
@@ -7907,7 +7907,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z",
-                          "species": "pig"
+                          "species": "banana"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
@@ -7915,7 +7915,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:11.004Z",
-                          "species": "carrot"
+                          "species": "peach"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
@@ -7923,7 +7923,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:10.004Z",
-                          "species": "cabbage"
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 7,
@@ -8185,7 +8185,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -8204,7 +8204,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:16.004Z",
-                  "species": "penguin"
+                  "species": "cabbage"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
@@ -8212,7 +8212,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:15.004Z",
-                  "species": "sloth"
+                  "species": "panda"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
@@ -8220,7 +8220,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:14.004Z",
-                  "species": "kiwi"
+                  "species": "turnip"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
@@ -8228,7 +8228,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:13.004Z",
-                  "species": "raccoon"
+                  "species": "hedgehog"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
@@ -8236,7 +8236,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:12.004Z",
-                  "species": "pig"
+                  "species": "banana"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
@@ -8244,7 +8244,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:11.004Z",
-                  "species": "carrot"
+                  "species": "peach"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
@@ -8252,7 +8252,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:10.004Z",
-                  "species": "cabbage"
+                  "species": "pepper"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J09",
@@ -8260,7 +8260,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:09.004Z",
-                  "species": "strawberry"
+                  "species": "watermelon"
                 }
               ],
               "subagents_open": 8
@@ -8270,7 +8270,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -8289,7 +8289,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:17.004Z",
-                  "species": "hedgehog"
+                  "species": "snail"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0G",
@@ -8297,7 +8297,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:16.004Z",
-                  "species": "penguin"
+                  "species": "cabbage"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
@@ -8305,7 +8305,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:15.004Z",
-                  "species": "sloth"
+                  "species": "panda"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
@@ -8313,7 +8313,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:14.004Z",
-                  "species": "kiwi"
+                  "species": "turnip"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
@@ -8321,7 +8321,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:13.004Z",
-                  "species": "raccoon"
+                  "species": "hedgehog"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
@@ -8329,7 +8329,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:12.004Z",
-                  "species": "pig"
+                  "species": "banana"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
@@ -8337,7 +8337,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:11.004Z",
-                  "species": "carrot"
+                  "species": "peach"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
@@ -8345,7 +8345,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:10.004Z",
-                  "species": "cabbage"
+                  "species": "pepper"
                 }
               ],
               "subagents_open": 9
@@ -8531,7 +8531,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:17.004Z",
-                          "species": "hedgehog"
+                          "species": "snail"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0G",
@@ -8539,7 +8539,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:16.004Z",
-                          "species": "penguin"
+                          "species": "cabbage"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
@@ -8547,7 +8547,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:15.004Z",
-                          "species": "sloth"
+                          "species": "panda"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
@@ -8555,7 +8555,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:14.004Z",
-                          "species": "kiwi"
+                          "species": "turnip"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
@@ -8563,7 +8563,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:13.004Z",
-                          "species": "raccoon"
+                          "species": "hedgehog"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
@@ -8571,7 +8571,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:12.004Z",
-                          "species": "pig"
+                          "species": "banana"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
@@ -8579,7 +8579,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:11.004Z",
-                          "species": "carrot"
+                          "species": "peach"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
@@ -8587,7 +8587,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:10.004Z",
-                          "species": "cabbage"
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 10,
@@ -8849,7 +8849,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -8868,7 +8868,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:16.004Z",
-                  "species": "penguin"
+                  "species": "cabbage"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0F",
@@ -8876,7 +8876,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:15.004Z",
-                  "species": "sloth"
+                  "species": "panda"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0E",
@@ -8884,7 +8884,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:14.004Z",
-                  "species": "kiwi"
+                  "species": "turnip"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0D",
@@ -8892,7 +8892,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:13.004Z",
-                  "species": "raccoon"
+                  "species": "hedgehog"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0C",
@@ -8900,7 +8900,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:12.004Z",
-                  "species": "pig"
+                  "species": "banana"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0B",
@@ -8908,7 +8908,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:11.004Z",
-                  "species": "carrot"
+                  "species": "peach"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J0A",
@@ -8916,7 +8916,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:10.004Z",
-                  "species": "cabbage"
+                  "species": "pepper"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J09",
@@ -8924,7 +8924,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:09.004Z",
-                  "species": "strawberry"
+                  "species": "watermelon"
                 }
               ],
               "subagents_open": 9
@@ -9110,7 +9110,7 @@
                           "subagent_type": "coder",
                           "activity_state": "idle",
                           "started_at": "2026-08-23T14:22:02.004Z",
-                          "species": "duck"
+                          "species": "otter"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -9118,7 +9118,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 2,
@@ -9380,7 +9380,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -9917,7 +9917,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -9936,7 +9936,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "penguin"
+                  "species": "strawberry"
                 }
               ],
               "subagents_open": 1
@@ -9946,7 +9946,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.900Z",
             "install_id": "aimla",
@@ -10147,7 +10147,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:02.004Z",
-                          "species": "duck"
+                          "species": "otter"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -10155,7 +10155,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 2,
@@ -10594,7 +10594,7 @@
                           "subagent_type": "coder",
                           "activity_state": "idle",
                           "started_at": "2026-08-23T14:22:03.004Z",
-                          "species": "duck"
+                          "species": "pumpkin"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J02",
@@ -10602,7 +10602,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:02.004Z",
-                          "species": "duck"
+                          "species": "otter"
                         },
                         {
                           "call_id": "01K3TD1A2B3C4D5E6F7G8H9J01",
@@ -10610,7 +10610,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 3,
@@ -10954,7 +10954,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:23:31.004Z",
-                          "species": "pepper"
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -11309,7 +11309,7 @@
         {
           "at_ms": 1937,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11328,7 +11328,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "penguin"
+                  "species": "strawberry"
                 }
               ],
               "subagents_open": 1
@@ -11338,7 +11338,7 @@
         {
           "at_ms": 3174,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11357,7 +11357,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "turtle"
+                  "species": "cat"
                 }
               ],
               "subagents_open": 1
@@ -11367,7 +11367,7 @@
         {
           "at_ms": 8717,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11387,7 +11387,7 @@
         {
           "at_ms": 16703,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11406,7 +11406,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "otter"
+                  "species": "pig"
                 }
               ],
               "subagents_open": 1
@@ -11416,7 +11416,7 @@
         {
           "at_ms": 17290,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11435,7 +11435,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "otter"
+                  "species": "pig"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J11",
@@ -11443,7 +11443,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "peach"
+                  "species": "mole"
                 }
               ],
               "subagents_open": 2
@@ -11453,7 +11453,7 @@
         {
           "at_ms": 21337,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11472,7 +11472,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "otter"
+                  "species": "pig"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J13",
@@ -11480,7 +11480,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "duck"
+                  "species": "lion"
                 },
                 {
                   "call_id": "01K3TD1A2B3C4D5E6F7G8H9J14",
@@ -11488,7 +11488,7 @@
                   "subagent_type": "coder",
                   "activity_state": "working",
                   "started_at": "2026-08-23T14:22:01.004Z",
-                  "species": "mushroom"
+                  "species": "pineapple"
                 }
               ],
               "subagents_open": 3
@@ -11674,7 +11674,7 @@
                           "subagent_type": "coder",
                           "activity_state": "working",
                           "started_at": "2026-08-23T14:22:01.004Z",
-                          "species": "banana"
+                          "species": "lemon"
                         }
                       ],
                       "subagents_open": 1,
@@ -11936,7 +11936,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11956,7 +11956,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -11976,7 +11976,7 @@
         {
           "at_ms": 20000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",

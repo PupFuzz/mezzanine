@@ -69,7 +69,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
     /**
      * What the world draws a body for: each sitter, each intern, each walker — its key, body and where it stands. `key` and
      * `species` are what the 2-D painter hands the character tree for the same body: a seat's key and its delivered
-     * species; an intern's key and its SEAT's species, the body it is kept off (`standBodies()`).
+     * `character.species`; an intern's key and its own delivered `subagents[].species` (card#13258).
      */
     const wantedBodies = () => {
         const out = new Map();
@@ -80,7 +80,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             }
 
             for (const n of d.interns) {
-                out.set(n.key, { key: n.key, species: n.seat_species, chibi: true, h: n.h, at: n.at, pose: 'present', held: n.animation ?? null, walker: null, laptop: n.laptop });
+                out.set(n.key, { key: n.key, species: n.species, chibi: true, h: n.h, at: n.at, pose: 'present', held: n.animation ?? null, walker: null, laptop: n.laptop });
             }
         }
 
@@ -138,14 +138,14 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
                 const asset = spec.chibi ? `intern:${key}` : `character:${key}`;
                 const C = art().characters;
 
-                // No delivered species — the seat's, or an intern's seat's — is F14's, as in 2-D: never the key's own body.
+                // No delivered species — a seat's or an intern's — is F14's, as in 2-D: never the key's own body, which is what
+                // the tree's `recipe()` draws for an absent species, and never the seat's.
                 if (typeof spec.species !== 'string') {
                     failed([asset]);
                     continue;
                 }
 
-                // An intern is built as the body the tree's `chibiFrame()` draws it in: its own species, kept off its seat's.
-                createCreature(document, C, key, { species: spec.chibi ? C.internSpeciesOf(key, spec.species) : spec.species, chibi: spec.chibi, pose: 'stand', height: spec.h })
+                createCreature(document, C, key, { species: spec.species, chibi: spec.chibi, pose: 'stand', height: spec.h })
                     .then((c) => {
                         if (b.dead) {
                             c.dispose();

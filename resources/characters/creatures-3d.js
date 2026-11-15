@@ -448,8 +448,8 @@ export function bodyParts(key, { species, chibi = false } = {}) {
 
 /**
  * The intern's body: `bodyParts()` with the chibi proportions, drawn as `species` — the body itself, as `frameDocument()`'s
- * forced species is. The floor hands it the intern's own species, `internSpeciesOf(internKey, seatSpecies)`, the body
- * `chibiFrame()` draws in 2-D (`floor3d/body-paint.js`); handed the seat's species, it would wear its seat's body.
+ * forced species is. The floor hands it the intern's own delivered `subagents[].species` (card#13258), the value the 2-D
+ * floor hands `chibiFrame()` (`floor3d/body-paint.js`).
  */
 export function chibiParts(key, { species } = {}) {
   return bodyParts(key, { species, chibi: true });
