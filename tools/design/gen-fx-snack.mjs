@@ -904,6 +904,11 @@ function restroomRuns() {
         // lane-two-at-the-door: two-at-the-door's walkers and breaks over the corridor — the second waits outside the lane
         // and leaves its spot once the first, on its way out down the corridor, is clear of it.
         runs['lane-two-at-the-door'] = make({ at_s: T, until_ms: tUntil, seats: { 'aimla-impl-1': IDLE_SEAT }, map: corridor });
+        // card#13033: the same over the `back` door's corridor. At a door set into a side wall the walker coming out leaves the
+        // lane — one body's height past the threshold — within a frame of the door freeing behind it, so only a `back` door's
+        // corridor shows a visitor released as the leaf closes walking into the lane while the first is still in it.
+        runs['lane-two-at-the-back-door'] = make({ at_s: T, until_ms: tUntil, seats: { 'aimla-impl-1': IDLE_SEAT }, map: `@json:${MAPS}/restroom-back.json` });
+        notes['lane-two-at-the-back-door'] = `lane-two-at-the-door's walkers and breaks over \`fixtures/maps/restroom-back.json\`, whose \`back\` door's forecourt is a corridor down its lane: the second waits at a spot outside the lane and leaves it once the first, walking out down the corridor, is clear of the lane. ${clock(T)}.`;
         notes['lane-two-at-the-door'] = `two-at-the-door's walkers and breaks (${breakNote(I2, T + 5)} 5 s after clock 0, ${breakNote(I1, T + 5 + tGap)} ${tGap} s after it) over \`fixtures/maps/restroom-corridor.json\`, whose door's forecourt is a corridor down its lane: the second waits at a spot outside the lane and leaves it once the first, walking out down the corridor, is clear of the lane. ${clock(T)}.`;
 
         // lane-straight-in: aimla-impl-1's break comes as aimla-impl-2 is about to come out, timed so that its walk straight
@@ -1035,7 +1040,7 @@ function restroomRuns() {
     }
 
     const ORDER = ['idle-visit', 'busy-visit', 'blocked-visit', 'intern-visit', 'two-at-the-door', 'three-at-the-door', 'queue-of-three', 'restroom-past-the-last-spot',
-        'lane-two-at-the-door', 'lane-straight-in',
+        'lane-two-at-the-door', 'lane-two-at-the-back-door', 'lane-straight-in',
         'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'intern-arrives-in-its-break', 'seat-arrives-in-its-break', 'intern-leave-resync', 'snack-then-restroom', 'restroom-then-snack',
         'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'back-visit', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
         'map-removes-door', 'stilled-inside', ...lateNames];

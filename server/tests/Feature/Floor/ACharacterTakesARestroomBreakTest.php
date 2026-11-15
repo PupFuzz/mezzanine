@@ -1717,7 +1717,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     private const CORRIDOR = 'server/tests/Feature/Floor/fixtures/maps/restroom-corridor.json';
 
     /** The runs AT-D3-35 holds to the lane: its own, over the corridor, and AT-D3-33's queues over the shipped default. */
-    private const LANE_RUNS = ['lane-two-at-the-door', 'lane-straight-in', 'two-at-the-door', 'three-at-the-door', 'queue-of-three'];
+    private const LANE_RUNS = ['lane-two-at-the-door', 'lane-two-at-the-back-door', 'lane-straight-in', 'two-at-the-door', 'three-at-the-door', 'queue-of-three'];
 
     /**
      * § 12's *Restroom lane* for a door the scene read, re-derived from its tile rect and § 12 — never the lane the scene
@@ -2202,7 +2202,9 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     public function test_red_the_door_placed_by_the_client(): void
     {
         $dir = $this->planted([self::SCENE, '    const restroom = restroomDoor(restroomDoors, snack, walking, input, box);',
-            "    const restroom = restroomDoor(restroomDoors.length > 0 ? restroomDoors : [Object.freeze({ id: 'found', room: null, kind: 'restroom-door', x: 1712, y: 512, w: 64, h: 144, index: 0 })], snack, walking, input, box);"]);
+            // card#13033: the found door stands free of any wall, so its geometry is a `back` door's, the tile's own plates
+            "    const restroom = restroomDoor(restroomDoors.length > 0 ? restroomDoors : [Object.freeze({ id: 'found', room: null, kind: 'restroom-door', x: 1712, y: 512, w: 64, h: 144, index: 0, "
+            ."geometry: { facing: 'back', face: null, doorway: null, draw: null, plates: { sign: { x: 21, y: 58, w: 22, h: 12 }, plate: { x: 14, y: 2, w: 36, h: 18 } } } })], snack, walking, input, box);"]);
 
         $this->assertNotSame([], $this->doorDefects($dir), 'a door the client placed and the door guard saw nothing');
     }
@@ -2250,7 +2252,10 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     {
         $dir = $this->planted([self::IN_FLIGHT, "                clear: after('clear'),", '                clear: () => 0,']);
 
-        $this->assertNotSame([], $this->laneRunDefects(['lane-two-at-the-door'], $dir)[0], 'a visitor walked into the lane with the one coming out and the lane guard saw nothing');
+        // card#13033: over the `back` door's corridor — at a side door the walker coming out leaves the lane within a frame of
+        // the door freeing, so a release as the leaf closes overlaps nobody there (measured: no 60 Hz instant on the re-cut
+        // corridor, three on the `back` corridor)
+        $this->assertNotSame([], $this->laneRunDefects(['lane-two-at-the-back-door'], $dir)[0], 'a visitor walked into the lane with the one coming out and the lane guard saw nothing');
     }
 
     /** card#12841 Third RED — straight in through the lane: a walk straight to the door wherever the one coming out is. */

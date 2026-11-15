@@ -732,22 +732,25 @@ export function queueSpacing(character) {
  * door that no waiting walker's feet stand in, and no incoming walker's feet enter while an outgoing one's are in it. As
  * wide as the doorway — `span`, or a seat's drawn body plus both *Walker clearance* side margins where that is wider, so a
  * narrower door widens it rather than shrinks it — centred on `foot`, the doorway's centre on its floor line, and from that
- * line into the room `depth`: one drawn body's height (`walkerSize()`) for a door in the back of the room, so a walker
- * standing outside it is drawn wholly below the doorway's foot. One lane, sized to the seat, for seats and interns alike.
+ * line into the room one drawn body's height (`walkerSize()`), so a walker standing outside it is drawn wholly below the
+ * doorway's foot. One lane, sized to the seat, for seats and interns alike.
  * A rect `{x, y, w, h}` in scene px.
  *
  * card#13033: a door set into a SIDE wall (`facing` `right` or `left`) turns the rule with it — `foot` the doorway's centre
- * on the wall face, the span along the wall, the depth from the face into the room (`restroomLane()` hands it).
+ * on the wall face, the span along the wall, the depth from the face into the room, one body's height `past` the
+ * threshold's line (`restroomLane()` hands it).
  *
  * @param {{x: number, y: number}} foot
  * @param {number} span the doorway's width, px
  * @param {{w: number, h: number}} character the seat character's rect
  * @param {'back'|'right'|'left'} facing the wall the doorway is in
- * @param {number} depth how far into the room the lane runs from the doorway's line, px
+ * @param {number} past how far into the room from the doorway's line the threshold's line lies, px — the lane runs one
+ *        drawn body's height past it (0 at a back door and the elevator, whose lane starts on the doorway's line)
  */
-export function doorLane(foot, span, character, facing = 'back', depth = walkerSize(character).h) {
+export function doorLane(foot, span, character, facing = 'back', past = 0) {
     const body = walkerSize(character);
     const w = Math.max(span, body.w + 2 * CLEARANCE.margin);
+    const depth = past + body.h;
 
     if (facing === 'back') {
         return Object.freeze({ x: foot.x - w / 2, y: foot.y, w, h: depth });
@@ -796,7 +799,7 @@ export function restroomLane(door, threshold, character) {
         return null;
     }
 
-    return doorLane({ x: door.face, y: door.y + door.h - door.w / 2 }, door.w, character, door.facing, Math.abs(door.face - threshold.x) + walkerSize(character).h);
+    return doorLane({ x: door.face, y: door.y + door.h - door.w / 2 }, door.w, character, door.facing, Math.abs(door.face - threshold.x));
 }
 
 /**

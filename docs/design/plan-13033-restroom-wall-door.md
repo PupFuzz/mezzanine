@@ -535,6 +535,10 @@ What this plan can say durably: the files slice 1 edits that the siblings have b
   passed* reds it, and `test_green_the_restroom_lane_is_section_12s` holds the 164 px); a threshold found past another
   piece (F8's stop, in all three copies; the selftest's x 1,712 plant reds only with it); the Python copy of the obstacle
   rule drifting from `obstaclesOf()` (the selftest's drift check and its plant).
+- **At a side door the lane clears with the door** (measured at the build): the walker coming out crosses one body's
+  height past the threshold in the step and closing frames at *Walk speed*, so `laneFrame()` lands one frame after the
+  door frees on the re-cut corridor. AT-D3-35's Second RED (*released as the leaf closes*) therefore cannot red there —
+  measured: no 60 Hz instant of overlap — and runs over `lane-two-at-the-back-door` (the `back` corridor, three instants).
 - **What the build did NOT cover, named**: the cab's door view (§ 7 Q4); the 3-D figures, which are lifts of the 2-D
   ones and slice 2's, held by `floor-world-probe.mjs`; and how the fade LOOKS — the probe reads the written keyframes,
   not a rendered frame (the screenshots on the card are the eye's check).

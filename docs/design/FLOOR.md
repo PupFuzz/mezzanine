@@ -5398,7 +5398,11 @@ place of the table's front-left corner:
    at (1,652, 628), in the approach, under the shallow lane and at (1,676, 572) under this one. On the shipped default
    and the lounge floor the two depths place the same first two spots (the lay below). It bites where a map walls the
    approach into a corridor: the committed `restroom-corridor.json` moves only its SECOND spot under it, so the fixture is
-   RE-CUT to move its first (the measured lay below).
+   RE-CUT to move its first (the measured lay below). **What it holds back, measured:** a walker coming out of a side door
+   straight into the room crosses the lane's depth past the threshold, one body's height, in *Restroom door motion*'s
+   step and closing frames at *Walk speed*, so the lane clears within a frame of the door freeing — on the re-cut corridor
+   one frame later (`laneFrame()` over its runs). The lane keeps waiting spots out of the exit path at a side door; the
+   frames it adds to the door's are a `back` door's (`lane-two-at-the-back-door`).
 3. **One door per floor is the rule this design assumes, and it is not enforced.** A walker visits the NEAREST
    `restroom-door` on its floor by the route's length from its anchor to its threshold, ties by the room's
    `install_id` and then the tile's index — § 6.6 item 3's rule 4, re-aimed — so an author who paints two gets two
@@ -12250,8 +12254,8 @@ The look of the queue at the door is the operator's reading of the floor, and no
   their late viewers, and two-at-the-door, three-at-the-door and queue-of-three over the shipped default, collecting the
   scene of every render and every paint-only refresh. card#13033: the corridor is RE-CUT for the door set into the right
   wall — the door at the default's cell, its approach a corridor straight into the room from the wall, y 584–664, inside
-  the side lane and entered from the channel through an 88 px gap — and back-visit, over `fixtures/maps/restroom-back.json`,
-  is the `back` door's lane run. **Reads:** **the harness**, the **animation set**, the **elevator
+  the side lane and entered from the channel through an 88 px gap — and back-visit and lane-two-at-the-back-door, over
+  `fixtures/maps/restroom-back.json` (card#12841's corridor with its door off the wall), are the `back` door's lane runs. **Reads:** **the harness**, the **animation set**, the **elevator
   walk**, the **snack corner**, the **snack trip**, the **restroom door**, the **restroom break**.
 - **GREEN — § 12's figure:** the lane the scene hands the painter with each door is *Restroom lane* re-derived from the
   door's tile rect and facing, its threshold, *Character rect* and *Walker clearance* — never typed — at least a seat's
@@ -12275,7 +12279,7 @@ The look of the queue at the door is the operator's reading of the floor, and no
   legs, and no other (AT-D3-33's late-viewer comparison over these routes).
 - **RED — the lane not passed:** find the spots with only the threshold skipped, as before the lane →
   lane-two-at-the-door's second walker waits in the corridor inside the lane. Caught by: the spots.
-- **Second RED — released as the leaf closes:** hand every visit a lane already clear → lane-two-at-the-door's second
+- **Second RED — released as the leaf closes:** hand every visit a lane already clear → lane-two-at-the-back-door's second
   walker walks into the lane while the first is still in it. Caught by: the one inside steps out first.
 - **Third RED — straight in through the lane:** let a visitor walk straight to the door whenever the door is free by
   its arrival → lane-straight-in's second walker walks up the corridor into the first. Caught by: the one inside steps
