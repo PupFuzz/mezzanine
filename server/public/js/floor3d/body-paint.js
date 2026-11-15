@@ -66,10 +66,13 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
     const seatHeight = () => world.desks.find((d) => d.sitter !== null)?.sitter.h ?? 1.2;
     const internHeight = () => world.desks.flatMap((d) => d.interns)[0]?.h ?? 0.56;
 
-    /** What the world draws a body for: each sitter, each intern, each walker — its key, body and where it stands. */
+    /**
+     * What the world draws a body for: each sitter, each intern, each walker — its key, body and where it stands. `key` and
+     * `species` are what the 2-D painter hands the character tree for the same body: a seat's key and its delivered
+     * species; an intern's key and its SEAT's species, the body it is kept off (`standBodies()`).
+     */
     const wantedBodies = () => {
         const out = new Map();
-        const speciesOf = new Map(world.desks.map((d) => [d.key, d.sitter?.species ?? null]));
 
         for (const d of world.desks) {
             if (d.sitter !== null && d.sitter.pose !== 'empty-chair') {
@@ -82,13 +85,11 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
         }
 
         for (const w of world.walkers) {
-            const fx = w.effect;
-            const body = w.chibi ? fx.intern_key : fx.seat_id;
-            const species = w.species ?? fx.seat_species ?? speciesOf.get(fx.seat_id) ?? null;
-            const seated = out.get(body);
+            const { key, species } = w.character;
+            const seated = out.get(key);
 
             // A walker is its body away from its desk: drawn under the walk, never twice.
-            out.set(body, { key: body, species, chibi: w.chibi, h: seated?.h ?? (w.chibi ? internHeight() : seatHeight()), at: null, pose: 'stand', held: null, walker: w });
+            out.set(key, { key, species, chibi: w.chibi, h: seated?.h ?? (w.chibi ? internHeight() : seatHeight()), at: null, pose: 'stand', held: null, walker: w });
         }
 
         return out;
@@ -132,7 +133,19 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
                 const b = { creature: null, spec, dead: false, mark: null, thought: null, read: null };
 
                 bodies.set(key, b);
-                createCreature(document, art().characters, key, { species: spec.species ?? undefined, chibi: spec.chibi, pose: 'stand', height: spec.h })
+
+                // § 9 F14's asset ids, the 2-D painter's: an intern's sprite, or a seat's character.
+                const asset = spec.chibi ? `intern:${key}` : `character:${key}`;
+                const C = art().characters;
+
+                // No delivered species — the seat's, or an intern's seat's — is F14's, as in 2-D: never the key's own body.
+                if (typeof spec.species !== 'string') {
+                    failed([asset]);
+                    continue;
+                }
+
+                // An intern is built as the body the tree's `chibiFrame()` draws it in: its own species, kept off its seat's.
+                createCreature(document, C, key, { species: spec.chibi ? C.internSpeciesOf(key, spec.species) : spec.species, chibi: spec.chibi, pose: 'stand', height: spec.h })
                     .then((c) => {
                         if (b.dead) {
                             c.dispose();
@@ -146,8 +159,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
                         place(b, clock());
                         wake();
                     }, () => {
-                        // § 9 F14's asset ids, the 2-D painter's: an intern's sprite, or a seat's character.
-                        failed([spec.chibi ? `intern:${key}` : `character:${key}`]);
+                        failed([asset]);
                     });
             }
 

@@ -156,6 +156,125 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
         ];
     }
 
+    /**
+     * The bodies' routes the scenes must hold, so a green over them read every one: a seated character, an intern on its
+     * couch, a seat and an intern walking to and from the elevator, and each on a snack and a restroom break.
+     */
+    private const IDENTITY_ROUTES = ['desk', 'stool', 'A1', 'A2', 'A10 intern', 'A25', 'A25 intern', 'A26', 'A26 intern'];
+
+    /**
+     * ⛔ ONE CHARACTER IN BOTH VIEWS — every body the 2-D painter draws and the 3-D floor builds over these scenes is the
+     * same character, field by field (`character-identity-probe.mjs`): the operator saw a seat's interns wear its own body
+     * in 3-D, where 2-D keeps them off it.
+     */
+    public function test_green_one_character_in_both_views(): void
+    {
+        $answer = $this->identity();
+
+        $this->assertSame([], $this->defects($answer));
+        $this->assertSame([], array_values(array_diff(self::IDENTITY_ROUTES, array_keys($answer['printed']['routes']))),
+            'a route the scenes hold no body on was read for nothing: '.json_encode($answer['printed']['routes']));
+        $this->assertSame($answer['printed']['bodies'], $answer['printed']['compared'], 'a body was not compared across the views');
+    }
+
+    /**
+     * Each plant moves one view's character off the other's, and reds the leg that names it.
+     *
+     * @return array<string, array{0: string, 1: string, 2: string, 3: string}>
+     */
+    public static function identityPlants(): array
+    {
+        return [
+            'a 3-D intern built as its seat\'s species (the operator\'s report)' => ['../floor3d/body-paint.js',
+                'species: spec.chibi ? C.internSpeciesOf(key, spec.species) : spec.species,', 'species: spec.species,', 'fields'],
+            'a 3-D walking intern built as a seat' => ['../floor3d/body-paint.js',
+                'out.set(key, { key, species, chibi: w.chibi,', 'out.set(key, { key, species, chibi: false,', 'kind'],
+            'a 3-D face drawn as the key\'s own species, not its body\'s' => ['../floor3d/creature-paint.js',
+                'C.faceDocument(key, { species: body.species, pose, blink })', 'C.faceDocument(key, { species: undefined, pose, blink })', 'parts'],
+            'a 2-D couch intern drawn under its seat\'s key' => ['../floor/painter.js',
+                "characterFrames(e.key, e.asset, e.seat_species, null, 'laptop');", "characterFrames(desk.seat_id, e.asset, e.seat_species, null, 'laptop');", 'kind'],
+        ];
+    }
+
+    #[DataProvider('identityPlants')]
+    public function test_red_each_identity_plant_reds_its_leg(string $file, string $anchor, string $replacement, string $leg): void
+    {
+        $legs = $this->identity($this->mutatedModules([$file, $anchor, $replacement]))['legs'];
+
+        $this->assertNotSame([], $legs[$leg], "the plant did not red the {$leg} leg: ".json_encode(array_filter($legs)));
+    }
+
+    /**
+     * A seat object with no delivered species is § 9 F14's in both views — no body for the seat or its interns, never the
+     * key's own draw — and the 3-D guard that keeps it so is seen red when it is planted away.
+     */
+    public function test_a_seat_with_no_species_has_no_body_in_either_view(): void
+    {
+        $scene = $this->scenes(null)[0];
+        $desk = &$scene['scene']['desks'][0];
+
+        foreach ($desk['elements'] as &$e) {
+            if ($e['kind'] === 'character') {
+                $e['species'] = null;
+            }
+
+            if ($e['kind'] === 'stool') {
+                $e['seat_species'] = null;
+            }
+        }
+        unset($e, $desk);
+
+        $script = __DIR__.'/character-identity-probe.mjs';
+        $answer = $this->probe(['scenes' => [$scene]], null, $script);
+
+        $this->assertSame([], $this->defects($answer));
+
+        $planted = $this->probe(['scenes' => [$scene]], $this->mutatedModules(['../floor3d/body-paint.js',
+            "if (typeof spec.species !== 'string') {", 'if (false) {']), $script)['legs'];
+
+        $this->assertNotSame([], $planted['coverage'], 'the plant did not red the coverage leg: '.json_encode(array_filter($planted)));
+    }
+
+    /**
+     * The tree's own rule is read, not copied: `chibiFrame()` drawing an intern AS its seat's species reds the 2-D side
+     * against the 3-D one, which still keeps the intern off it.
+     */
+    public function test_red_the_tree_drawing_an_intern_as_its_seat(): void
+    {
+        $tree = (string) tempnam(sys_get_temp_dir(), 'tree');
+        unlink($tree);
+        mkdir($tree);
+        $this->scratchDirs[] = $tree;
+        $source = realpath(__DIR__.'/../../../../resources/characters');
+        $this->copyTree($source, $tree);
+        $index = $tree.'/index.js';
+        $anchor = "export function chibiFrame(internKey, seatSpecies) {\n  const key = seatKey(internKey);\n  const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);";
+        $original = (string) file_get_contents($index);
+
+        $this->assertSame(1, substr_count($original, $anchor), 'the tree plant\'s anchor is not in index.js exactly once');
+        file_put_contents($index, str_replace($anchor, "export function chibiFrame(internKey, seatSpecies) {\n  const key = seatKey(internKey);\n  const species = seatSpecies;", $original));
+
+        $legs = $this->identity(null, $tree)['legs'];
+
+        $this->assertNotSame([], $legs['fields'], 'the tree plant did not red the fields leg: '.json_encode(array_filter($legs)));
+    }
+
+    /**
+     * The identity probe's answer over the shipped scenes, its client modules `$dir`'s and its character tree `$tree`'s.
+     *
+     * @return array{legs: array<string, list<string>>, printed: array<string, mixed>}
+     */
+    private function identity(?string $dir = null, ?string $tree = null): array
+    {
+        $payload = ['scenes' => $this->scenes(null)];
+
+        if ($tree === null) {
+            return $this->probe($payload, $dir, __DIR__.'/character-identity-probe.mjs');
+        }
+
+        return $this->probe($payload + ['tree' => $tree], $dir, __DIR__.'/character-identity-probe.mjs');
+    }
+
     #[DataProvider('plants')]
     public function test_red_each_plant_reds_its_leg(string $file, string $anchor, string $replacement, string $leg, bool $rebuild): void
     {

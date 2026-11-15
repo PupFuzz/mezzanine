@@ -35,7 +35,7 @@
  * `tests/Feature/Floor/floor-world-probe.mjs` drives it over the harness's scenes (`TheFloorIsTheScenesThirdRendererTest`).
  */
 
-import { COUCH_FOOTPRINT, LINE, STOOL_H, STOOL_PITCH, STOOL_W, couchFootprint, internOverdraw, union } from './desk-layout.js';
+import { COUCH_FOOTPRINT, LINE, STOOL_H, STOOL_PITCH, STOOL_W, couchFootprint, internOverdraw, union, walkerCharacter } from './desk-layout.js';
 import { deskSlab, monitorFrame } from './desk-geometry.js';
 import { DESK_H, MONITOR_TOP, PARTITION_H, ROOM_H, SCALE } from './door-view.js';
 import { CAB, CAB_FITTINGS } from './cab-paint.js';
@@ -505,7 +505,8 @@ export function floorWorld(scene) {
         key: walkerKey(fx),
         animation_id: fx.animation_id,
         chibi: typeof fx.intern_key === 'string',
-        species: fx.species ?? null,
+        // the character it is, as the 2-D painter draws it: the tree's key and the species beside it
+        character: walkerCharacter(fx),
         seat: seatOf(fx),
         effect: fx,
     }));

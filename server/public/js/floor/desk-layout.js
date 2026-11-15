@@ -1285,6 +1285,20 @@ export function internKey(seatId, callId) {
     return `${seatId}~${callId}`;
 }
 
+/**
+ * WHO A WALKER IS — what the character tree is handed for the body a walk effect draws, which the 2-D painter and the
+ * 3-D world both read, so a walker is one character in both views: an intern's (A10, and an intern's A25 or A26) is its
+ * intern key beside its seat's delivered species, the body the tree keeps it off (`chibiFrame()`); a seat's is its
+ * `seat_id` beside its own delivered species. `asset` is the id § 9 F14 reports it under.
+ *
+ * @returns {{key: string, species: string|null, intern: boolean, asset: string}}
+ */
+export function walkerCharacter(fx) {
+    return typeof fx.intern_key === 'string'
+        ? { key: fx.intern_seat_key, species: fx.seat_species, intern: true, asset: `intern:${fx.intern_seat_key}` }
+        : { key: fx.seat_id, species: fx.species, intern: false, asset: characterAsset(fx) };
+}
+
 /** The asset id an intern's sprite is reported under when the painter cannot draw it (§ 9 F14). */
 export function internAsset(desk, callId) {
     return `intern:${internKey(desk.seat_id, callId)}`;

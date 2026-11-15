@@ -47,7 +47,7 @@
  * Decorative motion is the stylesheet's, at the cycle the scene states.
  */
 
-import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, characterAsset } from './desk-layout.js';
+import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, walkerCharacter } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
 import { ELEVATOR_DOOR, leafLevel } from './scene.js';
 import { cabStep, floorStackOrder, pointAt } from './route.js';
@@ -1011,10 +1011,12 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
         const occupant = door === null ? null : node('g', { transform: `translate(${stood.x} ${stood.y})` }, door);
         const animated = [shown, ...segments.map((sg) => sg.glide), ...(door === null ? [] : [door])];
         const entry = origin({ key: effectKey(fx), started_at: fx.started_at, elapsed_ms: elapsed, nodes: cab === null ? animated : [...animated, cab, ...(step === null ? [] : [inner])] });
-        const asset = intern ? `intern:${fx.intern_seat_key}` : characterAsset(fx);
+        // Who walks — the tree's key and the species beside it, as the 3-D world reads them (`walkerCharacter()`).
+        const who = walkerCharacter(fx);
+        const asset = who.asset;
         // card#12450: an intern walks at its chibi frame and glides (the tree hands no walk frames for an intern key),
         // with its laptop drawn over it through its `seat` legs.
-        const drawn = intern ? characterFrames(fx.intern_seat_key, asset, fx.seat_species, null, 'chibi') : characterFrames(fx.seat_id, asset, fx.species);
+        const drawn = intern ? characterFrames(who.key, asset, who.species, null, 'chibi') : characterFrames(who.key, asset, who.species);
 
         if (drawn === null) {
             // § 9 F14: the art failed, so the walker is the placeholder rectangle at the character's size.
@@ -1044,7 +1046,7 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
             // `seat` leg is at the slot, so its laptop is the segment's that stands there: the first on a departure, the
             // last on an arrival.
             const seatLeg = intern ? fx.legs.find((l) => l.kind === 'seat') ?? null : null;
-            const laptop = seatLeg === null ? null : characterFrames(fx.intern_seat_key, asset, fx.seat_species, null, 'laptop');
+            const laptop = seatLeg === null ? null : characterFrames(who.key, asset, who.species, null, 'laptop');
 
             if (seatLeg !== null && laptop !== null) {
                 const to = fx.leg_kind === 'arrive' ? (fx.held_activity === 'idle' ? 0 : seatLeg.laptop_to) : seatLeg.laptop_to;
