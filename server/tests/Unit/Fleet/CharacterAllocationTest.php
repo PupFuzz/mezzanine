@@ -91,6 +91,33 @@ class CharacterAllocationTest extends TestCase
         $this->assertSame($p0, CharacterAllocation::choose($key, $live, fn () => ['a'], $list));
     }
 
+    /**
+     * T1 (card#13258) — rule 0: an excluded species is never the answer, by any rule. The excluded one is the key's
+     * own draw, so every rule would take it first if the filter were not there: free while the rest are held once
+     * (rule 1's answer), free while the rest are held twice on the floor (rule 3's least used), and free on the floor
+     * while the rest are held there (rule 2's).
+     */
+    public function test_an_excluded_species_is_never_chosen_even_when_it_is_the_only_free_one_or_the_least_used(): void
+    {
+        $list = $this->list();
+        $key = 'seat~call';
+        [$p0, $p1, $p2, $p3] = $list->preference($key);
+
+        // Control — without the exclusion every case below answers `$p0`, so the leg can tell the filter is there.
+        $this->assertSame($p0, CharacterAllocation::choose($key, $this->live("a:{$p1}", "a:{$p2}", "a:{$p3}"), $this->unread(), $list));
+
+        // Only `$p0` free: rule 1 has no answer, rule 2's floor is everyone, rule 3 ranks the held ones.
+        $this->assertSame($p1, CharacterAllocation::choose($key, $this->live("a:{$p1}", "a:{$p2}", "a:{$p3}"), fn () => ['a'], $list, [$p0]));
+
+        // `$p0` free, the rest held twice on the floor: still never `$p0`; the least used of the rest by order.
+        $live = $this->live("a:{$p1}", "a:{$p1}", "a:{$p2}", "a:{$p2}", "a:{$p3}", "a:{$p3}");
+        $this->assertSame($p1, CharacterAllocation::choose($key, $live, fn () => ['a'], $list, [$p0]));
+
+        // `$p0` held only off the floor, the rest on it: rule 2 would take `$p0`; excluded, rule 3 answers.
+        $live = $this->live("far:{$p0}", "a:{$p1}", "a:{$p2}", "a:{$p3}", "a:{$p3}");
+        $this->assertSame($p1, CharacterAllocation::choose($key, $live, fn () => ['a'], $list, [$p0]));
+    }
+
     public function test_the_list_parse_is_strict_and_refuses_a_key_the_column_cannot_hold(): void
     {
         $this->assertSame(['ant', 'bee', 'cat', 'dog'], $this->list()->keys);

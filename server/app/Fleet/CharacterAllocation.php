@@ -16,19 +16,22 @@ use Illuminate\Support\Facades\Log;
  * the next rule is not to have a duplicate character within the floor"*.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
- * ⛔ `choose()` IS PURE, and it is the rules. Its two callers — `SeatTokens::issue()`'s insert branch and the
- * migration's backfill — read the population under the `species_allocation_lock` mutex and hand it in; the floor is
- * a THUNK `choose()` calls only when rule 1 has no answer, so the building layout is never read while the fleet
- * still has a free species (§ 6.13 rule 2's lazy read). The rules, in the order tried:
+ * ⛔ `choose()` IS PURE, and it is the rules. Its callers read the population and hand it in: `SeatTokens::issue()`'s
+ * insert branch and the seats' species migration under the `species_allocation_lock` mutex, and — since card#13258 —
+ * `App\Fleet\InternSpecies` for an intern, in the fold or in its seed. The floor is a THUNK `choose()` calls only
+ * when rule 1 has no answer, so the building layout is never read while the building still has a free species
+ * (§ 6.13 rule 2's lazy read). A CHARACTER is a live seat or an open dispatch call (an intern); the population both
+ * kinds of caller hand in is `characters()`, the two together. The rules, in the order tried:
  *
- *   1. a species no live seat holds;
- *   2. else one no live seat on the seat's FLOOR holds — skipped for a seat on no floor, which since card#13117 is
- *      every new seat: it is created in no room;
- *   3. else the one the fewest live seats on the floor hold, then the fewest fleet-wide, then the first in the
- *      seat's preference order — total, so the allocation always answers.
+ *   0. the `$excluded` species are not candidates — an intern's own seat's body (card#13258), none for a seat;
+ *   1. a species no live character holds;
+ *   2. else one no live character on the new character's FLOOR holds — skipped for one on no floor, which since
+ *      card#13117 is every new seat (it is created in no room) and an intern of a seat in no room;
+ *   3. else the one the fewest live characters on the floor hold, then the fewest building-wide, then the first in
+ *      the preference order — total, so the allocation always answers while one candidate is left.
  *
- * Within each rule the candidate taken is the first in the seat's PREFERENCE ORDER — the list rotated to start at
- * the key's own draw (`SpeciesList::preference()`), so a seat whose own draw is free gets its own draw.
+ * Within each rule the candidate taken is the first in the key's PREFERENCE ORDER — the list rotated to start at
+ * the key's own draw (`SpeciesList::preference()`), so a character whose own draw is free gets its own draw.
  *
  * ⚠ NO `UNIQUE` INDEX STANDS BEHIND THIS, and none may: rules 2 and 3 admit a repeat once the list is exhausted,
  * so uniqueness is a preference the store must not enforce (§ 6.13's refused alternatives).
@@ -39,16 +42,20 @@ final class CharacterAllocation
     public const FLOOR_UNREAD = 'character_floor_unread';
 
     /**
-     * @param  string  $key  the new seat's key, its `seat_id` — its preference order's start
-     * @param  iterable<object|array{install_id: string, species: string}>  $live  every live seat: its install and species
-     * @param  callable(): list<string>  $floorInstalls  the install ids on the new seat's floor, its own included, or
-     *                                                   none for a seat on no floor — called only when rule 1 has
-     *                                                   no answer
+     * @param  string  $key  the new character's key — a seat's `seat_id`, an intern's `seat_id~call_id` — its
+     *                       preference order's start
+     * @param  iterable<object|array{install_id: string, species: string}>  $live  every live character: its install
+     *                                                                            (an intern's is its seat's room) and species
+     * @param  callable(): list<string>  $floorInstalls  the install ids on the new character's floor, its own
+     *                                                   included, or none for one on no floor — called only when
+     *                                                   rule 1 has no answer
      * @param  SpeciesList  $list  the generator's species list and draw field
+     * @param  list<string>  $excluded  rule 0: species that are never candidates — an intern's seat's own body. The
+     *                                  caller leaves at least one species a candidate.
      */
-    public static function choose(string $key, iterable $live, callable $floorInstalls, SpeciesList $list): string
+    public static function choose(string $key, iterable $live, callable $floorInstalls, SpeciesList $list, array $excluded = []): string
     {
-        $preference = $list->preference($key);
+        $preference = array_values(array_diff($list->preference($key), $excluded));
         $population = [];
 
         foreach ($live as $seat) {
@@ -58,7 +65,7 @@ final class CharacterAllocation
 
         $fleet = self::counts($population);
 
-        // Rule 1 — no live seat holds it. The layout is not read.
+        // Rule 1 — no live character holds it. The layout is not read.
         foreach ($preference as $species) {
             if (($fleet[$species] ?? 0) === 0) {
                 return $species;
@@ -68,8 +75,8 @@ final class CharacterAllocation
         $onFloor = array_flip($floorInstalls());
         $floor = self::counts(array_values(array_filter($population, static fn (array $s): bool => isset($onFloor[$s[0]]))));
 
-        // Rule 2 — no live seat on its floor holds it. A seat on NO floor (an empty list: a floor always holds the
-        // seat's own room) skips it rather than reading it as a floor nobody is on, where every species would pass
+        // Rule 2 — no live character on its floor holds it. One on NO floor (an empty list: a floor always holds its
+        // own room) skips it rather than reading it as a floor nobody is on, where every species would pass
         // and the first preference would win over the least used — § 6.13 rule 2 is *the seat's floor, or nothing
         // while it has none* (card#13117, operator ruling 2026-11-10, Q6 (a)).
         if ($onFloor !== []) {
@@ -89,9 +96,10 @@ final class CharacterAllocation
     }
 
     /**
-     * The live population an allocation reads — `seats` with `retired_at IS NULL` (§ 4.10's one predicate),
-     * with each seat's room (`unassigned` for none) through `App\Read\SeatIdentity`. A PLAIN read: the caller holds the mutex, taken as its transaction's
-     * first statement, so this read's snapshot follows every allocation that committed before it (§ 6.13).
+     * The live SEATS an allocation reads — `seats` with `retired_at IS NULL` (§ 4.10's one predicate), with each
+     * seat's room (`unassigned` for none) through `App\Read\SeatIdentity`. A PLAIN read: a seat's allocation holds the
+     * mutex, taken as its transaction's first statement, so this read's snapshot follows every seat allocation that
+     * committed before it (§ 6.13). Half of `characters()`.
      *
      * @return list<object{install_id: string, species: string}>
      */
@@ -101,6 +109,42 @@ final class CharacterAllocation
             ->orderBy('seats.id')
             ->get([SeatIdentity::installId(), 'seats.species'])
             ->all();
+    }
+
+    /**
+     * The open interns an allocation reads (card#13258) — every `calls` row with `closed_at IS NULL AND
+     * is_dispatch = 1`, the predicate `subagents[]` is selected on, joined to its `intern_species` row, each as its
+     * seat's room and its species. Under `RetirementFilter::renderable()`, so a retired seat's still-open interns
+     * hold nothing. An open dispatch row with no `intern_species` row holds nothing either: it is outside the
+     * population (§ 6.13's card#13258 paragraph), and `null` on the wire.
+     *
+     * @return list<object{install_id: string, species: string}>
+     */
+    public static function openInterns(): array
+    {
+        return RetirementFilter::renderable(SeatIdentity::query())
+            ->join('calls', 'calls.seat_ref', '=', 'seats.id')
+            ->join('intern_species', function ($join): void {
+                $join->on('intern_species.seat_ref', '=', 'calls.seat_ref')->on('intern_species.call_id', '=', 'calls.call_id');
+            })
+            ->whereNull('calls.closed_at')
+            ->where('calls.is_dispatch', true)
+            ->orderBy('calls.id')
+            ->get([SeatIdentity::installId(), 'intern_species.species'])
+            ->all();
+    }
+
+    /**
+     * EVERY CHARACTER IN THE BUILDING — the live seats, then the open interns: the one population every allocation
+     * hands to `choose()`, a seat's at its creation and an intern's at its open (§ 6.13, card#13258). Plain reads;
+     * what snapshot they answer from is the caller's (§ 6.13's card#13258 paragraph says why the fold's is its
+     * window's own).
+     *
+     * @return list<object{install_id: string, species: string}>
+     */
+    public static function characters(): array
+    {
+        return [...self::livePopulation(), ...self::openInterns()];
     }
 
     /**

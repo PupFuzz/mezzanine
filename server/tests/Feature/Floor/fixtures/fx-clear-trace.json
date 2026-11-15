@@ -60,7 +60,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -447,7 +448,8 @@
                   "title": null,
                   "subagent_type": null,
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:16.400Z"
+                  "started_at": "2026-08-23T14:23:16.400Z",
+                  "species": "potato"
                 }
               ],
               "subagents_open": 1
@@ -474,7 +476,8 @@
                   "title": "run the long sleep",
                   "subagent_type": "general-purpose",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:16.400Z"
+                  "started_at": "2026-08-23T14:23:16.400Z",
+                  "species": "potato"
                 }
               ]
             }

@@ -73,7 +73,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -1053,7 +1054,8 @@
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:31.004Z"
+                  "started_at": "2026-08-23T14:23:31.004Z",
+                  "species": "pepper"
                 }
               ],
               "subagents_open": 1,
@@ -1357,7 +1359,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -2337,7 +2340,8 @@
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:31.004Z"
+                  "started_at": "2026-08-23T14:23:31.004Z",
+                  "species": "pepper"
                 }
               ],
               "subagents_open": 1,
@@ -2711,7 +2715,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -3690,7 +3695,8 @@
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:31.004Z"
+                  "started_at": "2026-08-23T14:23:31.004Z",
+                  "species": "pepper"
                 }
               ],
               "subagents_open": 1,
@@ -3900,7 +3906,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -4887,7 +4894,8 @@
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:31.004Z"
+                  "started_at": "2026-08-23T14:23:31.004Z",
+                  "species": "pepper"
                 }
               ],
               "subagents_open": 1,
@@ -5171,7 +5179,8 @@
                           "title": null,
                           "subagent_type": null,
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:51.000Z"
+                          "started_at": "2026-08-23T14:22:51.000Z",
+                          "species": "cat"
                         }
                       ],
                       "subagents_open": 1,
@@ -5991,7 +6000,8 @@
                   "title": null,
                   "subagent_type": null,
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:22:51.000Z"
+                  "started_at": "2026-08-23T14:22:51.000Z",
+                  "species": "cat"
                 }
               ],
               "subagents_open": 1,
@@ -7753,56 +7763,64 @@
                   "title": "slice 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:15.400Z"
+                  "started_at": "2026-08-23T14:23:15.400Z",
+                  "species": "hedgehog"
                 },
                 {
                   "call_id": "MCBER9GSAVH650000000000000",
                   "title": "slice 2",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:16.400Z"
+                  "started_at": "2026-08-23T14:23:16.400Z",
+                  "species": "capybara"
                 },
                 {
                   "call_id": "6Z4PBH9H12NNE0000000000000",
                   "title": null,
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:17.400Z"
+                  "started_at": "2026-08-23T14:23:17.400Z",
+                  "species": "broccoli"
                 },
                 {
                   "call_id": "RJXYYS29R9S370000000000000",
                   "title": "slice 4",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:18.400Z"
+                  "started_at": "2026-08-23T14:23:18.400Z",
+                  "species": "frog"
                 },
                 {
                   "call_id": "A5P6J2V1EGXH10000000000000",
                   "title": "slice 5",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:19.400Z"
+                  "started_at": "2026-08-23T14:23:19.400Z",
+                  "species": "mole"
                 },
                 {
                   "call_id": "WREE5AKS5R2ZA0000000000000",
                   "title": "slice 6",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:20.400Z"
+                  "started_at": "2026-08-23T14:23:20.400Z",
+                  "species": "panda"
                 },
                 {
                   "call_id": "EB7PRKCHWZ6D40000000000000",
                   "title": "slice 7",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:21.400Z"
+                  "started_at": "2026-08-23T14:23:21.400Z",
+                  "species": "sheep"
                 },
                 {
                   "call_id": "0Y0YBV59K6AVD0000000000000",
                   "title": "slice 8",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:22.400Z"
+                  "started_at": "2026-08-23T14:23:22.400Z",
+                  "species": "starfruit"
                 }
               ],
               "subagents_open": 9,
@@ -8047,56 +8065,64 @@
                   "title": "slice 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:15.400Z"
+                  "started_at": "2026-08-23T14:23:15.400Z",
+                  "species": "hedgehog"
                 },
                 {
                   "call_id": "MCBER9GSAVH650000000000000",
                   "title": "slice 2",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:16.400Z"
+                  "started_at": "2026-08-23T14:23:16.400Z",
+                  "species": "capybara"
                 },
                 {
                   "call_id": "6Z4PBH9H12NNE0000000000000",
                   "title": null,
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:17.400Z"
+                  "started_at": "2026-08-23T14:23:17.400Z",
+                  "species": "broccoli"
                 },
                 {
                   "call_id": "RJXYYS29R9S370000000000000",
                   "title": "slice 4",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:18.400Z"
+                  "started_at": "2026-08-23T14:23:18.400Z",
+                  "species": "frog"
                 },
                 {
                   "call_id": "A5P6J2V1EGXH10000000000000",
                   "title": "slice 5",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:19.400Z"
+                  "started_at": "2026-08-23T14:23:19.400Z",
+                  "species": "mole"
                 },
                 {
                   "call_id": "WREE5AKS5R2ZA0000000000000",
                   "title": "slice 6",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:20.400Z"
+                  "started_at": "2026-08-23T14:23:20.400Z",
+                  "species": "panda"
                 },
                 {
                   "call_id": "EB7PRKCHWZ6D40000000000000",
                   "title": "slice 7",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:21.400Z"
+                  "started_at": "2026-08-23T14:23:21.400Z",
+                  "species": "sheep"
                 },
                 {
                   "call_id": "0Y0YBV59K6AVD0000000000000",
                   "title": "slice 8",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:22.400Z"
+                  "started_at": "2026-08-23T14:23:22.400Z",
+                  "species": "starfruit"
                 }
               ],
               "subagents_open": 8,
@@ -8198,7 +8224,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -8573,7 +8600,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -9680,7 +9708,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -10055,7 +10084,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -11155,7 +11185,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -12293,7 +12324,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -12668,7 +12700,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "pepper"
                         }
                       ],
                       "subagents_open": 1,
@@ -13568,7 +13601,8 @@
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:31.004Z"
+                  "started_at": "2026-08-23T14:23:31.004Z",
+                  "species": "pepper"
                 }
               ],
               "subagents_open": 1,

@@ -83,6 +83,10 @@ final class Purge
      * defect." A `WHERE closed_at < ?` is null-safe in SQL, so an open row is excluded by the
      * comparison itself rather than by a second clause.
      *
+     * `intern_species` (card#13258) is purged on `allocated_at` against the event retention, never on its `calls`
+     * row: a durable input a rebuild re-reads (§ 6.6), it should outlast the events that can replay its call, and
+     * § 6.7's row says how closely `allocated_at` bounds that.
+     *
      * ⛔ WHAT IS DELIBERATELY ABSENT. `seat_state`, `seat_counters`, `global_counters`,
      * `seat_predicates`, `installs`, `seats`, `feed_tokens` are retained **for ever** (§ 6.7).
      * "A seat row outlives its events deliberately: a provisioned seat that has never reported must
@@ -97,6 +101,10 @@ final class Purge
      */
     private const PLAN = [
         'events' => 'received_at',
+        // card#13258's durable input (§ 6.6), on the event retention, AFTER `events` so a pass that runs out of
+        // budget has drained the log before the table that outlives it. On `allocated_at` and never on the `calls`
+        // row: a `--since` rebuild drops calls whose events remain, and a later full rebuild must still find them.
+        'intern_species' => 'allocated_at',
         // Aligned with `events` so a forensic question about an event can always reach its batch.
         // D1 § 10.4's 24 h idempotency memory is a TIMESTAMP COMPARISON, not a deletion (§ 6.4) —
         // "a policy expressed as a deletion is indistinguishable from data loss".
@@ -265,6 +273,7 @@ final class Purge
     {
         return match ($table) {
             'events', 'batches' => ['received_at', 'id'],                 // ix_purge
+            'intern_species' => ['allocated_at', 'seat_ref', 'call_id'],  // ix_allocated, then PRIMARY
             'sessions' => ['ended_at', 'id'],                             // ix_purge
             'calls' => ['closed_at', 'orphan_due_at', 'id'],              // ix_orphan
             'attention_requests' => ['resolved_at', 'id'],                // ix_purge
