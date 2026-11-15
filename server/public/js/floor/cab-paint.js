@@ -269,6 +269,27 @@ export const CAB = Object.freeze({ w: 200, d: 140, h: 230, eye: 155, back: 120, 
 export const LANDING = Object.freeze({ view: 230, back: 230 + CAB.d });
 
 /**
+ * WHAT STANDS IN THE CAB's ROOM (§ 12's *Cab interior*), in centimetres: the kick plate along each side wall's foot
+ * (`kick` high); the handrail along each side wall, its bar `rail.h` tall centred `rail.y` up, standing `rail.off` off the
+ * wall on a post at each end, and running the wall's length but `rail.end` at each end; and the ceiling's light, a panel
+ * `light.w` across and `light.d` deep in the middle of the ceiling. `drawCabInterior()` draws them, and the 3-D floor's
+ * cab stands them (`floor/floor-world.js`'s band `cab`).
+ */
+export const CAB_FITTINGS = Object.freeze({
+    kick: 10,
+    rail: Object.freeze({ y: 95, h: 4, off: 5, end: 10 }),
+    light: Object.freeze({ w: 68, d: 64 }),
+});
+
+/**
+ * HOW DEEP THE CAB's SHADE IS AT ITS FAR END — the room's ink over each surface where it meets the far wall, clear where
+ * it meets the open front: the side walls (and their kick plates), the floor, and the ceiling, whose share is also the far
+ * wall's even shade, so the corner is one tone and the far wall reads as the deepest surface. `drawCabInterior()` lays
+ * them as overlays, and the 3-D floor's cab on its vertices (`floor3d/room-paint.js`).
+ */
+export const CAB_SHADE = Object.freeze({ side: 0.32, floor: 0.4, ceiling: 0.3 });
+
+/**
  * THE CAB's INTERIOR, REUSABLE (card#12051): the room of `CAB` drawn in one-point perspective into `parent`, fitted to
  * `box` (`{x, y, w, h}`, the frame — the room's cross-section where `lens` cuts it — in `parent`'s units) — the ceiling and
  * its light, the floor and its tiles, the two side walls and their handrails, and the far wall, each surface shaded so the
@@ -305,16 +326,16 @@ export function drawCabInterior(parent, box, id = 'cab', lens = CAB) {
     const g = node('g', { class: 'cab-room' }, parent);
     const defs = node('defs', {}, g);
     // The depth the ceiling's shade reaches at the back wall, and the back wall's own even shade.
-    const FAR = 0.3;
+    const FAR = CAB_SHADE.ceiling;
     // Each overlay deepens toward the back: clear at the near edge, the room's ink at the far one.
     const shade = (name, x1, y1, x2, y2, far) => {
         const grad = node('linearGradient', { id: `${id}-${name}`, x1, y1, x2, y2 }, defs);
         node('stop', { offset: 0, class: 'cab-shade-stop', 'stop-opacity': 0 }, grad);
         node('stop', { offset: 1, class: 'cab-shade-stop', 'stop-opacity': far }, grad);
     };
-    shade('shade-left', 0, 0, 1, 0, 0.32);
-    shade('shade-right', 1, 0, 0, 0, 0.32);
-    shade('shade-floor', 0, 1, 0, 0, 0.4);
+    shade('shade-left', 0, 0, 1, 0, CAB_SHADE.side);
+    shade('shade-right', 1, 0, 0, 0, CAB_SHADE.side);
+    shade('shade-floor', 0, 1, 0, 0, CAB_SHADE.floor);
     shade('shade-ceiling', 0, 0, 0, 1, FAR);
     const glow = node('radialGradient', { id: `${id}-glow`, cx: 0.5, cy: 0, r: 0.75 }, defs);
     node('stop', { offset: 0, class: 'cab-glow-stop', 'stop-opacity': 0.55 }, glow);
@@ -360,26 +381,28 @@ export function drawCabInterior(parent, box, id = 'cab', lens = CAB) {
         node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-seam' }, g);
     }
 
-    // A kick plate along each side wall's foot, and a handrail at hip height running the wall's length but 10 cm at each
+    // A kick plate along each side wall's foot, and a handrail at hip height running the wall's length but `end` at each
     // end, standing off the wall on a post at each end — the part of it in view, its bar thinning with depth as the room does.
-    const [near, far] = [Math.max(0, Zof(CAB.d - 10)), Zof(10)];
+    const { kick, rail: bar, light } = CAB_FITTINGS;
+    const [near, far] = [Math.max(0, Zof(CAB.d - bar.end)), Zof(bar.end)];
     for (const side of [l, r]) {
-        face('cab-kick', pts(at(side, 10, 0), at(side, 10, D), at(side, 0, D), at(side, 0, 0)), side < 0 ? 'shade-left' : 'shade-right');
-        const rail = side - Math.sign(side) * 5;
-        for (const Z of [Zof(CAB.d - 10), far].filter((v) => v >= 0)) {
-            const [p, q] = [at(side, 95, Z), at(rail, 95, Z)];
+        face('cab-kick', pts(at(side, kick, 0), at(side, kick, D), at(side, 0, D), at(side, 0, 0)), side < 0 ? 'shade-left' : 'shade-right');
+        const rail = side - Math.sign(side) * bar.off;
+        for (const Z of [Zof(CAB.d - bar.end), far].filter((v) => v >= 0)) {
+            const [p, q] = [at(side, bar.y, Z), at(rail, bar.y, Z)];
             node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-rail-post' }, g);
         }
-        face('cab-rail', pts(at(rail, 97, near), at(rail, 97, far), at(rail, 93, far), at(rail, 93, near)));
-        const [a, b] = [at(rail, 96.5, near), at(rail, 96.5, far)];
+        const [head, foot] = [bar.y + bar.h / 2, bar.y - bar.h / 2];
+        face('cab-rail', pts(at(rail, head, near), at(rail, head, far), at(rail, foot, far), at(rail, foot, near)));
+        const [a, b] = [at(rail, head - 0.5, near), at(rail, head - 0.5, far)];
         node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-rail-shine' }, g);
     }
 
     // The ceiling light: a lit panel in the middle of the ceiling, and its soft glow — when it lies in view.
-    const [lightNear, lightFar] = [Zof(CAB.d / 2 + 32), Zof(CAB.d / 2 - 32)];
+    const [lightNear, lightFar] = [Zof(CAB.d / 2 + light.d / 2), Zof(CAB.d / 2 - light.d / 2)];
     if (lightFar > 0) {
         const z0 = Math.max(0, lightNear);
-        const panel = pts(at(-34, top, z0), at(34, top, z0), at(34, top, lightFar), at(-34, top, lightFar));
+        const panel = pts(at(-light.w / 2, top, z0), at(light.w / 2, top, z0), at(light.w / 2, top, lightFar), at(-light.w / 2, top, lightFar));
         const [gx, gy] = at(0, top, Zof(CAB.d / 2));
         node('ellipse', { cx: gx, cy: gy + 2 * sy, rx: 46 * sx, ry: 14 * sy, class: 'cab-light-glow' }, g);
         node('polygon', { points: panel, class: 'cab-light' }, g);

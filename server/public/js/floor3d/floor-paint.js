@@ -187,9 +187,11 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     let furnitureTheme = null;
     let kitMap = null;
     let labels = null;
+    /** The house theme's elevator palette — the cab dialog's and the cab's room's — or `null` when that theme did not load. */
+    const cabPalette = () => art.themes[art.registry?.HOUSE_THEME]?.PALETTE?.elevator ?? null;
 
     // ── the parts, and the one frame ───────────────────────────────────────────────────────────
-    const room = floorRoom({ document, renderer, cssColour, reduce, wake: () => loop.wake(), room: roomGroup, walls: wallGroup, art: () => art });
+    const room = floorRoom({ document, renderer, cssColour, reduce, wake: () => loop.wake(), room: roomGroup, walls: wallGroup, art: () => art, cabPalette });
     const bodies = floorBodies({
         document,
         creatures,
@@ -450,7 +452,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                 paintCab() {},
 
                 /** The page's cab dialog in the house theme's elevator palette, as the 2-D floor's (card#12039). */
-                cabTheme: (dialog) => cabTheme(dialog, art.themes[art.registry?.HOUSE_THEME]?.PALETTE?.elevator ?? null),
+                cabTheme: (dialog) => cabTheme(dialog, cabPalette()),
 
                 /**
                  * What the browser leg reads (`tools/design/floor3d.browser.mjs`): the camera, the frames drawn, the
