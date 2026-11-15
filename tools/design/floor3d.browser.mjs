@@ -122,6 +122,9 @@ const primitives = (file) => {
   return j.meshes.reduce((n, m) => n + m.primitives.length, 0);
 };
 const K = Math.max(...Object.values(KITMAP.FILES).map(primitives));
+/** § 6's furniture term: each of the 22 kinds and parts at most `k` calls, and a dressed kind's dressing one more. */
+const DRESSINGS = KITMAP.DRESSED.length;
+const FURNITURE = 22 * K + DRESSINGS;
 
 // ── the runs ──────────────────────────────────────────────────────────────────────────────────
 /** floor_rides with no stream messages after the snapshot: nothing but the viewer wakes the page. */
@@ -749,7 +752,7 @@ const ROWS = {
         const total = Object.values(t).reduce((n, x) => n + x.calls, 0);
         if (S < desks || I < 8 * desks) d.push(`CONTROL: the cap floor drew ${S} seats and ${I} interns — not ${desks} desks each at the cap`);
         if (t.characters.calls > S + 2 * I) d.push(`characters ${t.characters.calls} calls > S + 2I = ${S + 2 * I}`);
-        if (t.furniture.calls > 22 * K) d.push(`furniture ${t.furniture.calls} calls > 22 k = ${22 * K} (k = ${K}, the most primitives a kit file carries)`);
+        if (t.furniture.calls > FURNITURE) d.push(`furniture ${t.furniture.calls} calls > 22 k + ${DRESSINGS} = ${FURNITURE} (k = ${K}, the most primitives a kit file carries; a dressing each dressed kind)`);
         if (t.walls.calls > BUDGET.walls) d.push(`walls ${t.walls.calls} calls > ${BUDGET.walls}`);
         if (t.fixed.calls > BUDGET.fixed) d.push(`fixed ${t.fixed.calls} calls > ${BUDGET.fixed}`);
         if (t.fixed.calls > fixedOf(i.room.members)) d.push(`fixed ${t.fixed.calls} calls > the ${fixedOf(i.room.members)} its members count (${JSON.stringify(i.room.members)})`);
@@ -762,7 +765,7 @@ const ROWS = {
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-cap.png'), await p.shot());
         const perDesk = (x) => (x / desks).toFixed(1);
-        return { defects: d, facts: { desks, S, I, k: K, members: i.room.members, fixedOf: fixedOf(i.room.members), terms: t, calls: total, triangles: i.triangles, perDesk: { calls: perDesk(total), triangles: perDesk(i.triangles) }, textureMB: mb.toFixed(1), textures: i.textures.length, glbMB: glbMB.toFixed(3), glb: glb.length, memory: i.memory } };
+        return { defects: d, facts: { desks, S, I, k: K, furnitureBound: FURNITURE, members: i.room.members, fixedOf: fixedOf(i.room.members), terms: t, calls: total, triangles: i.triangles, perDesk: { calls: perDesk(total), triangles: perDesk(i.triangles) }, textureMB: mb.toFixed(1), textures: i.textures.length, glbMB: glbMB.toFixed(3), glb: glb.length, memory: i.memory } };
       } finally { p.close(); }
     },
   },

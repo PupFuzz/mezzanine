@@ -1,0 +1,84 @@
+/**
+ * WHERE THE 3-D FLOOR's FURNITURE STANDS — the world's pieces and desks (`floor/floor-world.js`) read into placements, by
+ * kind, for `floor3d/furniture.js` to instance. Pure, no DOM and no Three, so `snack-dressing-probe.mjs` reads it under
+ * node. `docs/design/plan-13033-stage2-3d-floor.md` § 3.4.
+ *
+ * A placement is `{ at, w, h, d?, turn? }`: centred across and in depth on `at`, its foot at `at.y`, `w` across and `h`
+ * up (`d` deep, or as deep as its model's plan keeps it at `w`), turned `turn` radians about `y`.
+ *
+ * ⛔ A DRESSED PIECE STANDS AS TWO PLACEMENTS: the kit's piece fitted to the height and depth its dressing gives — the
+ * theme's 2-D table top, not the tile's height, which holds what stands on it too — and the dressing under
+ * `dressingOf(kind)` at the piece's own foot and size, which the theme lays out on that top.
+ */
+
+import { UNIT } from '../floor/floor-world.js';
+
+/** The key a dressed kind's dressing is placed under. */
+export function dressingOf(kind) {
+    return `${kind}+dressing`;
+}
+
+/** The inputs a theme's `piece3d()` and `dressing3d()` are called with for a placement: its size, and a picture px's. */
+export function inputsOf(p) {
+    return { w: p.w, h: p.h, px: 1 / UNIT };
+}
+
+/**
+ * What the world places: kind → `[placement]`.
+ *
+ * @param {object} world the floor's world
+ * @param {list<string>} dressed the kind map's `DRESSED`
+ * @param {function|null} dressing the theme's `dressing3d()`, or `null` where no theme exports one
+ * @returns {Map<string, list<object>>}
+ */
+export function placementsOf(world, dressed, dressing) {
+    const by = new Map();
+    const add = (kind, p) => by.set(kind, [...(by.get(kind) ?? []), p]);
+
+    for (const piece of world.pieces) {
+        const p = { at: piece.at, w: piece.w, h: piece.h };
+        const dress = dressed.includes(piece.kind) && dressing !== null ? dressing(piece.kind, inputsOf(p)) : null;
+
+        if (dress === null) {
+            add(piece.kind, p);
+        } else {
+            add(piece.kind, { ...p, h: dress.top, d: dress.d });
+            add(dressingOf(piece.kind), p);
+        }
+    }
+
+    for (const desk of world.desks) {
+        const { slab, parts } = desk;
+        const centre = { x: (slab.left + slab.right) / 2, y: 0, z: (slab.back + slab.front) / 2 };
+        const depth = slab.front - slab.back;
+
+        if (desk.placeholder) {
+            add('placeholder', { at: centre, w: slab.right - slab.left, h: slab.top, d: depth });
+            continue;
+        }
+
+        // The drawers toward the sitter: the kit's desk is turned to face the band.
+        add('desk', { at: centre, w: slab.right - slab.left, h: slab.top, d: depth, turn: Math.PI });
+
+        if (parts.chair !== null) {
+            // The chair behind its sitter, its seat under it.
+            add('chair', { at: { ...parts.chair.at, z: parts.chair.at.z - parts.chair.w * 0.25 }, w: parts.chair.w * 0.8, h: parts.chair.h * 0.8 });
+        }
+
+        if (parts.monitor !== null) {
+            // The monitor facing its sitter (the operator's Q4 answer).
+            add('monitorFrame', { at: { ...parts.monitor.at, y: slab.top }, w: parts.monitor.w, h: parts.monitor.h * 0.6, turn: Math.PI });
+        }
+
+        if (parts.props !== null) {
+            add('deskProps', { at: { ...parts.props.at, x: slab.left + parts.props.w * 0.35, y: slab.top }, w: parts.props.w * 0.4, h: parts.props.h * 0.8 });
+        }
+
+        // A couch a row of the side table's seats, each as long as the world lays it.
+        for (const couch of parts.sideTable ?? []) {
+            add('sideTable', { at: couch.at, w: couch.w, h: couch.h, d: couch.d });
+        }
+    }
+
+    return by;
+}

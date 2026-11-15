@@ -33,6 +33,7 @@
 // drawing primitives and where a wall's strips and free ends are, are the themes' shared ones (`../paint.js`).
 
 import { brushes, doc, draw, f, finite, leafPath, mix, pick, rr, stream, wallRuns } from '../paint.js';
+import { dressings3d } from './pieces-3d.js';
 
 /** The paint rules (§ 10.6, the creatures' own): the shade, the highlight and the line colour. */
 export const RULES = Object.freeze({ shade: '#3d2b3c', highlight: '#fff6e6', line: '#3a2420' });
@@ -1526,4 +1527,14 @@ function moreScenery(pen, kind, key, w, h, cx, foot, next) {
     }
 
     return s.join('');
+}
+
+/**
+ * § 10.6 item 1's optional `dressing3d` (card#13033): what this theme stands on a kit piece of `kind` in 3-D — the tea
+ * table's cloth, teapot, cake stand and teacups, laid out as `teaTable()` draws them from the same `SNACK` and
+ * `PALETTE` — with the height and depth the kit's table is fitted to, or `null` for a kind it does not dress. This theme
+ * exports no `piece3d`: the kinds the kit lacks are drawn by the house theme's.
+ */
+export function dressing3d(kind, inputs) {
+    return dressings3d(PALETTE, SNACK, kind, inputs);
 }
