@@ -89,12 +89,16 @@ Rejected, each with its mechanism and cost:
   second door mechanism against the 3-D slide the seat ruled, and the flag's field carries the state the operator wants
   readable. § 7 Q2 offers it to the operator.
 - **The flag centred over the doorway**: on the shipped default its plate (y 470–502 at x 1,738–1,776) lies over the
-  low snack table's picture (rect x 1,728–1,776, y 432–496). Mounted over the NEAR jamb it stands at y 502–534 over
-  floor. The near-jamb mount is a seat ruling, reversible (§ 7 Q1).
-- **A 3-D walker hidden by visibility rather than clipped**: `body-paint.js` L315 already hides every non-`floor`
-  walker, so the cheapest 3-D is to show the `inside` walker while its point is on the room side of the face. The body
-  then pops out of sight with its far half already inside the wall. A clipping plane at the face cuts it as the 2-D clip
-  does; it costs `renderer.localClippingEnabled` and a per-walker material clone during the leg (§ 3.6).
+  low snack table's picture (rect x 1,728–1,776, y 432–496; with the flag at 112–144 px over the floor line, the centred
+  plate stands at y 480–512). Mounted over the NEAR jamb it stands at y 512–544 over floor. The near-jamb mount is a seat
+  ruling, reversible (§ 7 Q1).
+- **A walk THROUGH the wall** (the first two drafts: an `inside` leg with a `through` point and glides in and out, a 2-D
+  clip at the wall line, a 3-D clipping plane, a re-timed leaf rule and a hoisted early-exit leg to carry it): design
+  review round 2 returned six gating findings, four of them minted by that leg or by round 1's fixes to it — the stop
+  signal canon #15 names, corrections adding mechanism to hold up one piece. The seat re-derived from the product: the
+  operator asked for the door to sit in the wall, not for a walk through it. Dropped whole. The walker does at a side
+  door exactly what it does at a back door on today's frames; the only difference is a fade in place of the covering
+  leaf (§ 3.4).
 - **A restroom closet beyond the wall**: beyond the right wall is outside the room's footprint. A closet means the map
   grows; the operator has not asked for one (§ 7 Q3).
 
@@ -108,30 +112,48 @@ Rejected, each with its mechanism and cost:
 out), `T` the floor's cell (`floorCell()`: one cell SIZE per floor; rooms on different sizes are not defended, which is
 what the `floor-walls.js` header says):
 
-- `facing`: `right` if the DISTINCT rows `y` of the wall bodies with `x === at.x + cell.w` and `y` within
-  `[at.y, at.y + cell.h)` number `cell.h ÷ T` (distinct, because two layers may paint one cell twice); else `left` by the
-  same test at `x === at.x − T`; else `back`. Both → `right`. Reading the wall BODIES rather than the door's own map's
+- `facing`: the tile's rows run from `top = at.y + T − cell.h` to `at.y + T` — `cellOf()` answers the cell's ANCHOR row,
+  the foot cell the author painted (`floor-walls.js` L68's `y`, `map-tiles.js` L116's placement), not the drawn tile's
+  top (design review round 2, F1: written over `[at.y, at.y + cell.h)` the test counted the six rows below the foot and
+  answered `back` for every shipped door). `right` if the DISTINCT rows `y` of the wall bodies with `x === at.x + cell.w`
+  and `y` within `[top, top + cell.h)` number `cell.h ÷ T` (distinct, because two layers may paint one cell twice); else
+  `left` by the same test at `x === at.x − T`; else `back`. Both → `right`. **Re-measured over the rule as written**
+  (the review's `r2/facing.mjs` with the corrected top): `default.tmj` right 18 of 18, `lounge-floor.json` 18, the
+  committed `restroom-corridor.json` 18, the mirrored lounge (§ 6) left 18 — every shipped side door `right`, the mirror
+  `left`. Reading the wall BODIES rather than the door's own map's
   drawn pixels (design review round 1, F7) means a wall painted on another room's grid, or on a dragged layer, counts
   exactly as the 3-D floor and the door view stand it, and a wall cell under a desk's slab does not. `buildScene()`
   therefore computes `wallBodies()` BEFORE the scenery loop (today L1422–1434 run after L1386–1410; the two move).
 - **The cab's door view draws the same door** (`floor/door-view.js` L205–220 stands every standing kind as an upright
-  billboard from `sceneryInput()`; design review round 1, F3). Seat ruling: a side door's billboard is TURNED into the
-  wall's plane — `x1 = x2 = X(x_w)`, `z1 = Z(y_c + 32)`, `z2 = Z(y_c − 32)`, `y2 = cell.h × SCALE` — carrying the
-  theme's UPRIGHT side-door picture (the frame as an elevation: jambs, head, the flag at the near jamb — the same figures
-  § 12 gives, drawn by `scenery()` under a `view: 'elevation'` input the door view alone passes), and the door view's
-  `wallBodies()` loop (L189–199) cuts the wall there as 3-D does: a lintel body from the tile's height for each cell of
-  the doorway's span. Measured nowhere yet — the door view has no restroom fixture; `door-view-leg.mjs` gains one (§ 6).
+  billboard from `sceneryInput()`; design review round 1, F3). Seat ruling, specified in full (round 2, F6): a side
+  door is TWO billboards and a cut. (1) **The elevation** — `scenery(sceneryInput(cell, seed, geometry, 'elevation'))`,
+  a `cell.w × cell.h` (64 × 144) box: the frame as today's face-on picture (6 px jambs, the 10 px head whose top is
+  22 px under the box's top, the 4 px sill, the recess between), no pediment, no flag — stood in the wall's plane,
+  `x1 = x2 = X(x_w)`, `z1 = Z(y_c + 32)` (the near jamb), `z2 = Z(y_c − 32)`, `y1 = 0`, `y2 = cell.h × SCALE`, sorted at
+  the doorway's rows. (2) **The flag** — `scenery(…, 'flag')`, a 36 × 32 box facing the eye (a plate at right angles to a
+  side wall faces the band): `x1 = X(x_w − 2)`, `x2 = X(x_w − 38)` (`left`: `X(x_w + 2)`, `X(x_w + 38)`), `z1 = z2 =
+  Z(y_c + 32)`, `y1 = 112 × SCALE`, `y2 = 144 × SCALE`, sorted at the near jamb's row. (3) **The cut** — the door view's
+  `wallBodies()` loop (L189–199) raises `y1` to `cell.h × SCALE` for each wall body of the door's column whose row lies in
+  the doorway's span (a lintel, as 3-D's), AND the FOOTPRINT's side-wall row strips behind them (L177–185, one strip per
+  footprint edge and row, `y1: 0, y2: ROOM_H`) get the same `y1` for those rows — without that the cut would open onto a
+  solid strip. Measured nowhere yet — the door view has no restroom fixture; `door-view-leg.mjs` gains one and its
+  `hrefsOf()` passes the `view` (§ 6).
 - `back`: `{ facing, wall: null, doorway: null, draw: null, plates: RESTROOM_PLATES.back }` — today's values, so every
   existing consumer is unchanged for a `back` door.
 - `right` (`left` mirrors every `x`): `x_w = cell.x + cell.w`, `foot = cell.y + cell.h`, `y_c = foot − cell.w ÷ 2`;
   `wall: { x: x_w, t: T }`; `doorway: { x: x_w, y: foot − cell.w, w: T, h: cell.w }` (the strip over the span);
-  `draw: { x: x_w − 40, y: foot − 156, w: 48, h: 160 }`; `plates: RESTROOM_PLATES.side` — in the draw box's px: plate
-  `(2, 2, 36, 32)`, sign `(9, 20, 22, 12)`, doorway `(40, 92, 8, 64)`, leaf `(42, 98, 4, 52)`; for `left`, each `x` is
-  `48 − x − w`. `RESTROOM_RECESS` stays the `back` recess and the leaf's 52 px span.
-- `sceneryInput(cell, seed, geometry = null)` adds `facing` and the plates to a door's input (`w`, `h` become the draw
-  box's for a side door); every caller hands the door's geometry: `scene.js` L1392, `door-view.js` L213,
-  `door-view-leg.mjs` L201/256, `tools/design/door-view.selftest.mjs` L163/193, `tools/floor-themes/selftest.mjs`
-  L198/204.
+  `draw: { x: x_w − 40, y: foot − 146, w: 48, h: 150 }`; `plates: RESTROOM_PLATES.side` — in the draw box's px: plate
+  `(2, 2, 36, 32)`, sign `(9, 20, 22, 12)`, doorway `(40, 82, 8, 64)`, leaf `(42, 88, 4, 52)`; for `left`, each `x` is
+  `48 − x − w`. The flag's plate stands 112–144 px over the foot line — its top at the tile's top, flush under the 3-D
+  lintel, its bottom at the head's underside — so every renderer's flag is one figure (the first draft's 122–154 stood
+  above a 144 px tile and could not be drawn in the door view's box). `RESTROOM_RECESS` stays the `back` recess and the
+  leaf's 52 px span.
+- `sceneryInput(cell, seed, geometry = null, view = 'plan')` adds `facing`, the plates and `view` to a door's input
+  (`w`, `h` become the draw box's for a side door's `plan`, the tile's for `elevation`, 36 × 32 for `flag`); the `view`
+  is part of the contract — its JSDoc names the three members and the door view is the only caller of the two it adds
+  (round 2, F6). Every caller hands the door's geometry: `scene.js` L1392, `door-view.js` L213 (twice for a side door),
+  `door-view-leg.mjs`'s `hrefsOf()` (L199–201, which must pass the `view` or its hrefs will not match the view's),
+  `tools/design/door-view.selftest.mjs` L163/193, `tools/floor-themes/selftest.mjs` L198/204.
 - **`obstaclesOf(cells, geometryOf)`** — the ONE statement of the walkable model's obstacle rule (every `wall` cell and
   every standing tile's rect, less a side door's): exported here and imported by `scene.js` (L1350) and by
   `walk-probe.mjs` (today's copies at L115–117 and L478); `verify-floor.py`'s Python copy keeps a drift check (§ 6;
@@ -145,70 +167,74 @@ what the `floor-walls.js` header says):
 - **`scenery[]`** (L1400): a side door's entry keeps the cell rect in `x, y, w, h` (the 3-D piece's size and foot) and
   adds `draw` (the painter positions the theme's document there) and `facing`.
 - **`thresholdOf()`** (L1942): by facing — `back` as today; side: `cellAt(x_w − d − 1, y_c)` (mirrored for `left`), open
-  at `clear` or the nearest open cell on that row no deeper than `walkerSize().h` from the face; none → `null`.
+  at `clear`, else the search walks the row into the room cell by cell, no deeper than `walkerSize().h` from the face,
+  and STOPS at the first cell blocked by anything other than the door's own wall (design review round 2, F8): a cell is
+  wall-blocked when its centre lies within `walkerSize().w ÷ 2 + CLEARANCE.margin` of the face (the halo's own
+  arithmetic — on the shipped default the five cells x 1,740–1,772); a blocked cell past that band is another piece's or
+  a desk's, and the threshold is `null` rather than a cell on the far side of it. Measured: on every map that places a
+  door the first open cell, x 1,732, follows five wall-blocked cells and nothing else, so no figure moves; the stop is
+  what keeps a visitor from standing past a table that an author pushes against the approach.
 - **`doorLane(line, span, character, facing = 'back', face = line)`** (L742) and `restroomLane(door, threshold,
   character)` (L772): the lane runs from the doorway's FACE to one `body.h` past the THRESHOLD's line — at the elevator
   the two lines coincide and nothing changes; for a side door the rect spans `x ∈ [thr.x − body.h, x_w]` (`right`) and
   `max(doorway.h, body.w + 2 × 8)` along the wall, centred on `y_c`. `restroomLane()` therefore takes the threshold, so
   `placed[]` computes the threshold first and the lane from it; a door with no threshold has no lane (and serves nobody).
   `elevatorLane()` passes nothing new.
-- **`plan()`'s legs** (the `inside` leg at L2078): `inside` becomes `{ kind: 'inside', start, frames, at: thr, through, step_in,
-  step_out }` with `frames = step_in + D.close + dwell + D.open + step_out`; `through = { x: x_w + T + body.w ÷ 2, y: thr.y }`
-  (`back`: `through = at`, steps 0); steps `max(1, ⌈hypot ÷ WALK_PX_PER_FRAME⌉)` for a side door. The leaf timeline's
-  second move starts at `inside.start + step_in`; `occupied` from `inside.start + step_in + D.close` for `dwell`; the
-  third move at `inside.start + step_in + D.close + dwell`; the fourth as today from `home.start + D.step`. `claim`
-  unchanged.
-- **`restroomExit()`** (L532): three windows inside the leg, ONE leaf rule (design review round 1, F2). `lead` is the
-  frames until the walker stands on the threshold again — during the step in, the frames elapsed into the step (it
-  reverses); through the close, dwell and open, `opening + step_out` (the field vacant now, the leaf opening from its
-  level); during the step out, the step's remaining frames. In every window the leaf's CLOSE starts at `lead + D.step`
-  and `free = lead + D.step + D.close` — *the leaf closes one step after the walker leaves the threshold*, the rule the
-  visit itself follows (`home.start + D.step`), so a recall during the step out can no longer close the leaf behind a
-  walker still in the doorway. Today's two formulas (`max(opening, D.step)` at the door; `opening + D.step` inside) are
-  this one rule with `lead` 0 and `opening`, so the `back` door's frames are unchanged. Its returned `at` stays the
-  threshold. **RED** (§ 6): a recall planted during the step out → the leaf's close must start `D.step` after the step
-  ends, never before.
-- **One primitive for the early-exit leg** — `exitLeg(at, here, lead, stepFrames)` → `{ kind: 'inside', start: 0,
-  frames: lead, at, through: here, step_in: 0, step_out: min(lead, stepFrames) }` — and FOUR sites moved onto it (F1):
-  `restroomHome()` L590 (the recall's walk home — MISSED by the first draft: left as it is, a recalled occupant would be
-  drawn at the threshold in front of a shut leaf and then step out of nothing), `walkEffect()`'s A2 lead L1028, the intern
-  leave L2906 and `turnRound()` L3045. `tripStart()` (L610) hands them `lead` and `at` from `restroomExit()` as today.
-  The walker glides out along the same line before its departure or walk home routes from the threshold.
-- **`poseOf()`** (L2963) gains `inside_at` (the leg's `at`) for `where === 'inside'`; **`turnRound()`** (L3045, L3112)
-  builds its `inside` leg through `exitLeg(pose.inside_at, pose.p, pose.inside_left, stepFrames)` and routes home from
-  `inside_at`, never from `p`.
-- Unchanged, verified by reading: `floor/in-flight.js` `handPoint()` (L136, the `inside` leg's end is still the
-  threshold), `#admit()`'s `laneFrame()` reads (L959, L1011 — the lane is a rule on `where === 'floor'` points, and the
-  walk home still starts at the threshold).
+- **The visit's legs, the leaf, the exit and the turn-round are UNTOUCHED** (the seat's ruling of 2026-11-14 after
+  design review round 2, which returned six gating findings, four of them minted by the step-through leg the first two
+  drafts added and by the fixes to it: *the operator asked for the door to sit in the wall, not for a walk through it*).
+  The `inside` leg at L2078 keeps its shape (`{ kind: 'inside', start, frames, at: thr }`, `D.close + dwell + D.open`
+  frames at the threshold), the leaf timeline its four moves, `occupied` and `claim` their frames; `restroomExit()`
+  (L532), `restroomHome()` (L590), `tripStart()` (L610), `walkEffect()`'s lead leg (L1028), the intern leave (L2906),
+  `poseOf()` (L2963) and `turnRound()` (L3045, L3112) are not edited; `floor/in-flight.js` is not edited. The leaf's
+  timing is byte-identical to today for every facing. What differs at a side door is DRAWING ONLY (§ 3.4): the walker at
+  the threshold fades out as the leaf closes and fades back in as it opens, in place of the recess clip the leaf used to
+  cover. The one scene-side addition is the door's `facing` on `scene.restroom_doors[]`, which the painter reads.
+  (The four hand-built `kind: 'inside'` early-exit legs at L590, L1028, L2906 and L3045 are identical and could be one
+  `exitLeg()` — a pure consolidation with no behaviour change, left OUT of this plan as a separate refactor item.)
 
 ### 3.3 The route (`floor/route.js`)
 
-`pointAt()` (L747): an `inside` leg answers `at → through` over its first `step_in` frames, `through` between, and
-`through → at` over its last `step_out`, `where: 'inside'` throughout — `cabStep()`'s shape as `insideStep(leg)`, so a
-`back` door's leg (steps 0) answers `at` as today. `floorStackOrder()` unchanged (inside legs are not stacked).
+Unchanged. `pointAt()` (L747) answers an `inside` leg at its threshold with `where: 'inside'`, as today; nothing in this
+plan touches `route.js`.
 
 ### 3.4 The 2-D drawing — both themes and the painter
 
-- **Themes** (`studio/theme.js` `restroomDoor(pen, w, foot, sign, plate, facing, doorway)`, `cottage/theme.js` likewise):
-  `back` draws today's picture. A side door draws, in the draw box's px: the wall strip's recess (dark, over the leaf's
-  52 px of the `doorway` rect), two jamb blocks in the frame colour at the span's ends over the strip, the sill as a
-  3 px strip just inside the room across the span; the FLAG — the plate at `plate` with a 2 px bracket to the wall face,
-  the pictogram (the two figures the theme already draws) in its upper 18 px, the slider rim at `sign`; nothing else —
-  no `<text>`, no light, nothing that moves (AT-D3-25's form checks). The two § 10.6 table rows are amended in this
-  commit; their palette keys are unchanged (the drift leg holds table and module equal by key).
+- **Themes** (`studio/theme.js` `restroomDoor(pen, w, foot, sign, plate, facing, doorway, view)`, `cottage/theme.js`
+  likewise): `back` draws today's picture whatever the view. A side door is drawn by `view`, the third member of
+  `sceneryInput()`'s contract (`view ∈ { 'plan', 'elevation', 'flag' }`, default `'plan'`; design review round 2, F6):
+  **`plan`** (the floor page, in the draw box's px) — the wall strip's recess (dark, over the leaf's 52 px of the
+  `doorway` rect), two jamb blocks in the frame colour at the span's ends over the strip, the sill as a 3 px strip just
+  inside the room across the span, and the FLAG PLATE at `plate` with a 2 px bracket to the wall face; **`elevation`**
+  (the cab's door view, a `cell.w × cell.h` box, 64 × 144) — the frame as today's face-on picture draws it, 6 px jambs,
+  the 10 px head with its top 22 px under the box's top, the 4 px sill, the dark recess between, NO pediment and no flag
+  (the flag faces the eye and is its own billboard); **`flag`** (the door view's second billboard, a 36 × 32 box) — the
+  plate alone. ONE function draws the plate for `plan` and `flag`: the pictogram (the two figures the theme already
+  draws) in its upper 18 px, the slider rim at `sign` in its lower half. Nothing else — no `<text>`, no light, nothing
+  that moves (AT-D3-25's form checks). The two § 10.6 table rows are amended in this commit; their palette keys are
+  unchanged (the drift leg holds table and module equal by key); `tools/floor-themes/selftest.mjs` draws all three views
+  per theme (§ 6).
 - **Painter** (`painter.js` L1318–1353): per door by facing — `back` as today; side: the leaf a `rect` at `d.leaf`
   with `transform-origin` at the back jamb's end and `scaleY` keyframes (`restroom-leaf-y-n`, the same five levels),
-  the field at `d.sign` as today; the clip (`clippedTo`) is the APPROACH BOX `{ x: thr.x − body.w, y: y_c − 32 − body.h,
-  w: x_w − (thr.x − body.w), h: 64 + body.h + 8 }` for `right` (mirrored for `left`), and `floor.restroom(at)` answers it
-  for the door whose threshold is `at`. The `inside` walker's glide (L1002–1009) is drawn through `pointAt()` as the
-  cab's step is (`fx-walker-step`'s `offset-path` precedent), inside that clip. The stylesheet (L107–111) gains the
-  `scaleY` keyframes beside the `scaleX` ones. **Draw order, named** (design review round 1, F11): the clip is a child of
-  the `tiles` group, appended AFTER the scenery documents (L1300–1306) and BEFORE the leaf and field nodes (L1320–1332),
-  so the stepping walker is drawn over the theme's doorway and UNDER the leaf's bar and the flag's field — the field
-  stays readable over the walker's head through the step, which is the one moment a body covers the flag. At the
-  `inside` leg's first frame the walker LEAVES the floor stack (`fx-walker-shown`'s runs exclude the leg, L954–960) and
-  appears in the `tiles` clip; at its last frame the reverse — the same layer switch today's recess clip makes, at a
-  threshold 44 px from the wall instead of under the leaf.
+  the field at `d.sign` as today; and in place of the recess clip, **the FADE**. The `inside` walker's element
+  (`fx-walker-inside`, L1002–1009, today a child of the door's recess clip) is for a side door an unclipped group in the
+  same place in `tiles` — after the scenery documents (L1300–1306), before the leaf and field nodes (L1320–1332), so the
+  field stays drawn over the walker's head — standing at the threshold through the leg, with its OPACITY stepped by
+  **the fade primitive the painter already has**: `laptopOver()` (L405–415), the A24 laptop fade's — `--laptop-from` /
+  `--laptop-to` custom properties read by the `laptop` keyframes, `steps(frames)` at the loop rate, `animation-delay`
+  of `−elapsed` so a repaint neither restarts nor skips. It is generalised at this second caller (canon #5): renamed
+  `fadeOver(el, from, to, frames, interval, elapsed)` with neutral `--fade-from` / `--fade-to` properties and a
+  `step-fade` keyframe, the laptop call moved onto it, nothing else changed. The side-door walker gets TWO runs on one
+  element: 1 → 0 over the leaf's CLOSING (`D.close` frames from `inside.start` — the frames the closing leaf covers a
+  back-door walker, so the two doors hide the walker on the same frames) and 0 → 1 over the exit OPENING (`D.open`
+  frames ending at the leg's end — the frames the opening reveals a back-door walker); between them opacity 0, and the
+  walk home begins as today from the threshold at full opacity. `floor.restroom(at)` answers `{ clip, fade }` for the
+  door whose threshold is `at` — the clip for `back`, the fade's frames for a side door. No clip at the wall line, no
+  glide, no change to any leg: the stylesheet (L107–111) gains only the `scaleY` keyframes and the renamed fade. The
+  reading of the ruling's *"fades out over the leaf's open frames"* taken here is *the frames the leaf is moving*,
+  matched to the moves that hide and reveal a back-door walker; if the operator reads it as the opening's frames on the
+  way in, the fade-out's start moves to `atDoor.start` on the floor element — one constant, named here so it is not a
+  redesign.
 - **Marker SVG** (`resources/floor/tiles/floor-plane/restroom-door.svg`): still 64 × 144; the lower 64 px band is
   marked as the doorway (a dashed band labelled `doorway` with arrow-heads to both side edges) over the faint upper
   outline, so an author reads *paint this cell against the wall the door is in*. Its `docs/ATTRIBUTION.md` row (L95) is
@@ -218,8 +244,9 @@ what the `floor-walls.js` header says):
 
 - **`floor-world.js`** L449–462: per door by facing. `back` as today. Side: `wall_x` (world `x` of the face),
   `jambs: [z_back, z_near]`, `leaf: { x: wall_x + T ÷ 2 ÷ UNIT, z: z of y_c − 26, span: 0.52, y0: 0.05, h: 1.07, pocket:
-  'back' }`, `flag: { x0: wall_x, out: −1 | +1, z: z_near, y0: 1.22, h: 0.32, w: 0.36 }`, `field` the sign rect lifted
-  onto the flag (`x` from the face by 0.09–0.31, `y` 1.24–1.36). **Walls** (L497–506): a cell of the door's wall column
+  'back' }`, `flag: { x0: wall_x, out: −1 | +1, z: z_near, y0: 1.12, h: 0.32, w: 0.36 }` (its top at the tile's height,
+  flush under the lintel; its bottom at the head's underside), `field` the sign rect lifted onto the flag (`x` from the
+  face by 0.09–0.31, `y` 1.30–1.42). **Walls** (L497–506): a cell of the door's wall column
   whose `y` lies in the doorway's span gets its EXISTING `box.y` raised from 0 to `RESTROOM_DOOR.h ÷ UNIT` (1.44 — a
   lintel; the box already carries `y`, nothing new is minted — design review round 1, F10) and `box.h` the rest to its
   top, 0.16 for an `edge` wall; a `partition` (0.864 u) shorter than the door contributes no body there. **Pieces**
@@ -232,28 +259,32 @@ what the `floor-walls.js` header says):
   flag's parts are built from the shared part helpers the snack slice adds (`resources/floor/themes/parts-3d.js` on dev;
   F8), not from a second `block()`/`post()` pair in `pieces-3d.js`.
 - **`pieces-3d.js`** `restroom-door` (L127): with `facing` a side door's frame has its jambs at `±w ÷ 2` in `x`, head and
-  no pediment above the lintel line, and the FLAG at the near-jamb end — a plate `0.01 × 0.32 × 0.36` from `y` 1.22
-  projecting toward `+z` (the room, after the turn), the pictogram's two figures as spheres, a box and a cone on BOTH
-  faces in `P.figure`; the recess block is dropped (the wall's cut is the recess).
+  no pediment above the lintel line, and the FLAG at the near-jamb end — a plate `0.01 × 0.32 × 0.36` from `y` 1.12 to
+  1.44, flush under the lintel, projecting toward `+z` (the room, after the turn), the pictogram's two figures as
+  spheres, a box and a cone on BOTH faces in `P.figure`; the recess block is dropped (the wall's cut is the recess).
 - **`room-paint.js`** `placeWall` (L92): translates to `box.y` (today's literal `0`) and scales to `h`. **The cut-away**
   (`applyCutaway()`, L100–135): a lowered wall's goal is `CUTAWAY_H` (0.15 u) reached over `CUTAWAY_MS` (150 ms) at the
   rate `(full − CUTAWAY_H) ÷ CUTAWAY_MS`; a lintel's goal when lowered is height 0 — it stands above 0.15, so a stub of
   it would float — and its rate `full ÷ CUTAWAY_MS`, so it drops in the same 150 ms as the wall it sits in; raised, it
-  returns to `full` at the same rate. `standRestroom` / `placeRestroom` (L353–386): side
+  returns to `full` at the same rate. **When a lintel lowers** (design review round 2, F11): `cutaway()` (`view-limits.js`
+  L119) answers the ids whose boxes the eye→target segment meets, and a lintel's 0.16 u box is met far less often than
+  the column it sits in, so a lintel is lowered whenever ANY wall body of its door's column (`world.restroom_doors[].wall`
+  names the column's cell ids) is in the cut set — the eye looking through that wall sees the whole doorway open, never a
+  floating lintel over a lowered wall. `standRestroom` / `placeRestroom` (L353–386): side
   leaf box at `leaf` scaled along `z` from the back jamb by `shut`; field box on the flag, `0.012` thick. The browser
   leg's fixed-term formula (`floor3d.browser.mjs` L87, `2 × m.restroom`) is unchanged — one leaf, one field per door.
 
 ### 3.6 The 3-D walker (`floor3d/body-paint.js`, `floor3d/floor-paint.js`)
 
-`c.mesh.visible` (L315) admits `where === 'inside'`; the body's materials are cloned for the leg's duration with
-`clippingPlanes = [new Plane(normal toward the room, constant at the face)]` and `renderer.localClippingEnabled = true`
-set once where the renderer is constructed (`floor-paint.js` L78, `new WebGLRenderer(…)`). The clone is dropped when
-the leg ends. **The thought bubble is NOT clipped** (design review round 1, F4): it is a `CSS2DObject` overlay whose
-visibility follows `mesh.visible` (`b.thought.object.visible = b.creature?.mesh.visible`, L247), so with the mesh
-admitted it would hang over the point outside the building for the whole dwell. Its visibility is tied to
-`p.where === 'floor'` instead — the bubble rides the walker on the floor and is gone the frame it steps into the
-doorway, as 2-D draws nothing of the walker inside. If the chars slice has reshaped how a body's materials are owned,
-the coder lands the plane on whatever the single owner is and says so on the card.
+**Unchanged.** `c.mesh.visible = p !== null && p.where === 'floor'` (L315) hides every `inside` walker today, for every
+facing, and keeps doing so: with no step through the wall there is nothing to clip and no clipping plane
+(`renderer.localClippingEnabled` is not touched; `floor-paint.js` L78's renderer is constructed as it is). The thought
+bubble's visibility follows the mesh's (`b.thought.object.visible = b.creature?.mesh.visible ?? false`, L247), so it is
+hidden with the body the frame the `inside` leg begins and shown again the frame the walk home begins — confirmed by
+reading L247 against L315: the bubble needs no change. The 3-D side door therefore shows the walker standing at the
+threshold while the leaf opens, gone while it is inside, and standing there again as it opens — the 2-D fade's
+end-states on the same frames, without the fade (a 3-D fade would be a new mechanism; the seat's ruling takes the hide as
+it is).
 
 ## 4. Measurement — the lay on every map, with the instrument
 
@@ -287,38 +318,51 @@ rewrote `route.js`'s desk cells; this plan's author did not re-run that bisectio
 
 ## 5. The flag sign, the plates and the door motion — figures
 
-In § 12's rows. Scene px on the shipped default: flag plate x 1,738–1,774, y 502–534; field x 1,745–1,767, y 520–532;
+In § 12's rows. Scene px on the shipped default: flag plate x 1,738–1,774, y 512–544; field x 1,745–1,767, y 530–542;
 leaf x 1,778–1,782, y 598–650; doorway strip x 1,776–1,784, y 592–656. The leaf's motion is *Restroom door motion*'s
-4 / 1 / 4 frames unchanged; the step through is 4 frames each way on the default (85.75 px at 24 px a frame).
+4 / 1 / 4 frames unchanged, and so is every leg; the fade runs over the closing's 4 frames and the exit opening's 4.
 
 ## 6. Tests, fixtures and tools — what is regenerated, and the RED each must keep
 
 - **`ACharacterTakesARestroomBreakTest`** — `test_green_section_12s_figures_are_the_scenes` reads `RESTROOM_PLATES.back`
-  and `.side` and the geometry primitive's answer for the default; `test_green_the_visit` holds the new leg shape
-  (`inside` with `at`, `through`, steps; the leaf's second move at `inside.start + step_in`); the lane tests read the
-  side lane; `test_red_the_walker_through_the_door` is re-aimed: plant `pointAt()` answering `where: 'floor'` for an
-  inside leg → the walker is drawn on the floor past the wall. **Every planted RED below was MEASURED with the review's
-  probe before it was written down** (`scratchpad/probe/side.mjs`, over the repository's own modules; design review
+  and `.side` and the geometry primitive's answer for the default; `test_green_the_visit` holds the legs and the leaf
+  timeline UNCHANGED frame for frame against the committed `fx-restroom` (the ruling's *byte-identical* leaf timing is
+  the GREEN: the regenerated fixture's `legs`, `leaf`, `occupied` and `claim` equal today's); the lane tests read the
+  side lane; `test_red_the_walker_through_the_door` keeps its RED exactly as it is. **GREEN — the fade**: the side door's
+  `inside` element carries `fadeOver()`'s two runs — 1 → 0 over `D.close` frames from `inside.start`, 0 → 1 over the
+  last `D.open` frames of the leg — read off the painted DOM in `painter-probe.mjs`; a `back` door's element is clipped
+  and unfaded as today. **RED — the fade on the wrong frames**: start the fade-out at `atDoor.start` → the walker is
+  half-gone while the leaf is still opening. **Every planted RED below was MEASURED with the review's probe before it was
+  written down** (`scratchpad/probe/side.mjs` and `r2/side2.mjs`, over the repository's own modules; design review
   round 1, F6 — the first draft's forecourt RED and selftest column could not fail). **New RED — the door as furniture**:
   keep the side door's rect in `obstacles` → the default's threshold is **(1,668, 628)**, not (1,732, 628) — the tile's
-  halo (`1,712 − 41.75`) blocks the row to x 1,670, so the fallback walks 64 px further into the room; the lounge floor
-  reds the same way. **New RED — the facing from a property**: a map that sets a tile property `facing: left` on the
-  default's door → the scene still says `right`. **New RED — the recall during the step out** (F2): `restroom-recall-stepping-out`
-  in `fx-restroom`, the `blocked` delta landing two frames into the step out → the leaf's close must begin `D.step` after
-  the step ends (`lead + D.step`); a close timed from `opening + D.step` as today reds by the step's remaining frames.
+  halo (`1,712 − 41.75`) blocks the row to x 1,670, so the fallback walks 64 px further into the room (re-measured after
+  round 2: unchanged; and under F8's stop rule the cell at 1,676 is blocked by the door's rect, not the wall, so the
+  search STOPS and the threshold is `null` — either reading reds). **New RED — the facing from a property**: a map that
+  sets a tile property `facing: left` on the default's door → the scene still says `right`. **New RED — the anchor row**
+  (F1): count the wall rows over `[at.y, at.y + h)` instead of the tile's top → every shipped door answers `back`
+  (measured: 6 rows of 18 on the default).
 - **`TheLoungeFloorRoutesEveryWalkTest`** — re-derives the side threshold and holds the spots and every route of § 4's
   lounge row; `test_red_the_door_moved_under_a_desk` keeps its RED unchanged — it plants the door's cell inside desk 2's
   slot and reads the placement defect (*meets `desks` object id 2*), which no facing rule touches.
-- **Fixtures for the two facings this tree has none of** (F9): a `left` map — the lounge floor mirrored in x by a script
-  over its layers and `desks` objects, committed as `fixtures/maps/lounge-floor-mirrored.json`, whose threshold the
-  lounge test holds at the mirrored x (`1,784 − 1,732 − 8 = 44` px from the left face) with the mirrored spots; and a
-  `back` fixture — `restroom-corridor.json`'s door moved five columns off the wall to `furniture` (209, 81), touching no
-  wall, held by `ACharacterTakesARestroomBreakTest` to today's face-on threshold rule and the `back` plates, so the
-  `back` path stays exercised once every shipped map is a side door. Their figures are measured by the build's probe
-  before the fixtures are committed and written on the card.
+- **Fixtures for the two facings this tree has none of** (F9), both MEASURED: a `left` map — the lounge floor mirrored
+  in x by the review's `r2/mirror.mjs` over its layers and `desks` objects, committed as
+  `fixtures/maps/lounge-floor-mirrored.json`: door drawn at x 8–72, facing `left` (18 of 18 wall rows at x 0–8),
+  threshold **(52, 628)** — 44 px from the left face, the lounge's 1,732 mirrored — lane x 8–172, spots (108, 572),
+  (124, 668), (84, 500), (164, 516), each the lounge's spot mirrored, which `TheLoungeFloorRoutesEveryWalkTest` holds
+  beside the lounge's own; and a `back` fixture **derived from `restroom-corridor.json`** (round 2, F9): its door moved
+  five columns off the wall from `furniture` (214, 62) to (209, 62) — tile x 1,672–1,736, y 360–504, touching no wall
+  (right 0 rows; left 1 of 18, the fixture's x 1,664 wall crossing one row) — facing `back`, face-on threshold
+  **(1,716, 508)** (under the centre the cell is blocked and the fallback walks right), every desk routing to it at
+  `clear` (2,230 / 1,710 / 1,377 / 2,217 / 1,403 / 883 px), committed as `fixtures/maps/restroom-back.json` and held by
+  `ACharacterTakesARestroomBreakTest` to the face-on rule, the recess clip and the `back` plates, so the `back` path
+  stays exercised once every shipped map is a side door.
 - **`walk-probe.mjs`** — `restroom` and `walks` modes derive the threshold by facing (the test's restatement of § 12's
-  rule, as today's is), answer `facing`, `lane` and the draw box per door; their obstacle lists (L115–117, L478) are
-  REPLACED by an import of `map-tiles.js`'s `obstaclesOf()` — one rule, not a third copy (F5).
+  rule, as today's is), answer `facing`, `lane` and the draw box per door; EVERY construction of an obstacle list in the
+  file — the population is `git grep -n obstacles -- server/tests/Feature/Floor/walk-probe.mjs`, whose hits that build a
+  list (a `filter` on `'wall'` and `standing`) number four at this reading: `floorOf()`'s, the `snack` mode's, the
+  `restroom` mode's and the `spots` mode's — is REPLACED by an import of `map-tiles.js`'s `obstaclesOf()`, one rule and
+  no copy (round 1 F5, round 2 F7); the slice re-runs the grep and leaves none.
 - **`tools/design/verify-floor.py` G-scenery leg 4** (L2216–2280) — derives the threshold by facing (the wall column read
   off the map's `walls` layer beside the tile) and drops a side door's rect from `blocking` as `obstaclesOf()` does. The
   Python copy of the obstacle rule cannot import the module, so it gains a DRIFT CHECK: `verify-design-docs.selftest.py`
@@ -330,12 +374,17 @@ leaf x 1,778–1,782, y 598–650; doorway strip x 1,776–1,784, y 592–656. T
 - **`floor-world-probe.mjs`** — the `restroom` leg holds the lintel cells, the leaf box, the flag and the field in the
   world against the scene's rects and facing; its control still reds over scenes with no door. **New RED**: the lintel's
   `box.y` left at 0 → a wall cell stands through the doorway.
-- **`TheFloorIsTheScenesThirdRendererTest`** — its plant table (L113–115) gains *the piece placed without its turn*,
-  *the lintel left solid* and *the bubble shown inside* (F4: `thought.object.visible` following `mesh.visible` → a bubble
-  over a point past the wall).
-- **`door-view-leg.mjs`** — gains a restroom door fixture (F3): the side door's billboard stands in the wall's plane
-  (`x1 === x2`, its `z` span the doorway's) and the wall bodies over the doorway carry the lintel `y`; RED: the billboard
-  stood face-on at the tile (today's placement).
+- **`TheFloorIsTheScenesThirdRendererTest`** — its plant table (L113–115) gains *the piece placed without its turn* and
+  *the lintel left solid*; nothing for the walker or the bubble, which are unchanged (§ 3.6).
+- **`door-view-leg.mjs`** — `hrefsOf()` (L199–201) passes the `view`, and the leg gains a restroom door fixture (F3, F6):
+  the elevation billboard stands in the wall's plane (`x1 === x2`, its `z` span the doorway's, its href the theme's
+  `elevation` document), the flag billboard faces the eye at the near jamb (its href the `flag` document), the wall
+  bodies over the doorway and the footprint's side strips on those rows carry the lintel `y1`; REDs: the billboard stood
+  face-on at the tile (today's placement); the side strip left whole behind the cut; the flag's href drawn from the
+  `plan` document.
+- **`tools/floor-themes/selftest.mjs`** — for the door tile at its size, all three views per theme and seed (`plan` in
+  the draw box, `elevation` at 64 × 144, `flag` at 36 × 32), each held textless and well-formed as every scenery
+  document is (L198–204's loop gains the `view` dimension).
 - **`gen-fx-snack.mjs`** — the `restroom-corridor` variant re-cut as § 4's last row: the door kept at `furniture` (214, 81),
   the snack tables kept, `walls` painted at row 72 over cols 200–204 and 216–221 and at row 83 over cols 200–221, the left
   lamp at `furniture` (197, 82) (GID 9) removed — the variant's `from` guard holds each cell's current GID, so a wrong
@@ -347,8 +396,7 @@ leaf x 1,778–1,782, y 598–650; doorway strip x 1,776–1,784, y 592–656. T
   comparison (L506–507) reads the moves unchanged.
 - **`NoAnimationFiresWithoutItsEventTest`, `ALayoutActFiresNoAnimationTest`, `DrivesTheDeskFloor`, `AnInternRidesTheElevatorTest`,
   `AWalkerKeepsClearOfWallsAndFurnitureTest`** — read the fixtures; re-run, no edit expected.
-- **`tools/floor-themes/selftest.mjs`**, **`tools/design/door-view.selftest.mjs`**, **`door-view-leg.mjs`** — the new
-  `sceneryInput()` argument; the themes' selftest gains a side-door document per theme and holds it textless.
+- **`tools/design/door-view.selftest.mjs`** — the new `sceneryInput()` arguments at L163/193 (geometry and `view`).
 - **`tools/design/floor3d.browser.mjs`** — the `restroom` rows read the flag's field; the fixed term is unchanged.
 - **`FLOOR.md`** landing with the slices: AT-D3-33's *the visit* GREEN and seventh RED, AT-D3-35's fixture sentence,
   AT-D3-38's restroom GREEN and seventeenth RED; § 13 row 121, § 14 item 50 (§ 7's questions and their answers),
@@ -358,8 +406,8 @@ leaf x 1,778–1,782, y 598–650; doorway strip x 1,776–1,784, y 592–656. T
 
 1. **Where the flag hangs.** Context: the operator ruled a flag over the doorway; the design mounts it over the NEAR
    jamb because a centred flag covers the low snack table's top-right on the shipped default (measured, § 2). Option A,
-   near jamb: on the default the plate stands at y 502–534 over floor; a walker stepping in covers its lower half for a
-   second. Option B, centred: the plate at y 470–502 over the table's cups, always. **Recommendation: A**, as a seat
+   near jamb: on the default the plate stands at y 512–544 over floor; a walker at the threshold covers its lower half
+   while the leaf opens and as it fades. Option B, centred: the plate at y 480–512 over the table's cups, always. **Recommendation: A**, as a seat
    ruling the operator can reverse on reading the sandbox.
 2. **The leaf in 2-D.** Context: the floor's walls are plan strips, so a leaf in the wall's plane is a 4 px bar; the
    state is read off the flag's field. Option A, a sliding bar (the elevator's motion, one mechanism with 3-D): the bar
@@ -391,24 +439,26 @@ What this plan can say durably: the files slice 1 edits that the siblings have b
 `room-paint.js`, `furniture.js` (whose `placementsOf()` the snack slice moves to `furniture-placements.js`) and
 `pieces-3d.js` (whose part helpers the snack slice moves to `parts-3d.js`, which the flag's parts then use).
 
-1. **The door in the wall, in 2-D** — `map-tiles.js`'s `restroomDoorGeometry()`, `obstaclesOf()` and the `sceneryInput()`
-   argument at every caller (§ 3.1); `buildScene()`'s walls computed before its scenery, the obstacles, doors, scenery,
-   threshold, lane, legs, exit with its one leaf rule, `exitLeg()` and its four callers, pose and turn (§ 3.2);
-   `route.js`'s `pointAt()` (§ 3.3); both themes, the painter and its draw order, the stylesheet, the marker SVG and its
-   attribution row (§ 3.4); the door view's turned billboard and cut wall (§ 3.1); `walk-probe.mjs` importing the
-   obstacle rule, `ACharacterTakesARestroomBreakTest` with its measured REDs, `TheLoungeFloorRoutesEveryWalkTest`, the
-   `left` and `back` fixtures, `verify-floor.py` leg 4 with its drift check and the x 1,688 plant, `gen-fx-snack.mjs`'s
-   re-cut corridor, the recall-during-step-out run and regenerated `fx-restroom`, `gen-fx-turn-back.mjs` and
-   `fx-turn-back`, `door-view-leg.mjs`'s restroom fixture, the themes' and door view's selftests (§ 6); `FLOOR.md`'s
-   AT-D3-33, AT-D3-35, § 13 row 121, § 14 item 50 and Appendix B row 50. One slice because a side threshold under a
-   face-on picture, or a side picture with a stand-at-the-threshold `inside` leg, is a wrong floor on the sandbox; the
-   coder may stage it as two commits (geometry and drawing; the step through) in one PR.
+1. **The door in the wall, in 2-D** — `map-tiles.js`'s `restroomDoorGeometry()` (the facing from the wall bodies at the
+   tile's top), `obstaclesOf()` and `sceneryInput()`'s geometry and `view` at every caller (§ 3.1); `buildScene()`'s
+   walls computed before its scenery, the obstacles, doors, scenery, the threshold with its stop rule and the lane — no
+   leg, no exit, no pose or turn is edited (§ 3.2); `route.js` untouched (§ 3.3); both themes' three views, the painter's
+   side leaf and fade (`fadeOver()` hoisted from `laptopOver()` with its one existing caller moved), the stylesheet, the
+   marker SVG and its attribution row (§ 3.4); the door view's two billboards and cut, strips included (§ 3.1);
+   `walk-probe.mjs` on the obstacle rule, `ACharacterTakesARestroomBreakTest` with its unchanged-timeline GREEN, fade
+   GREEN and measured REDs, `TheLoungeFloorRoutesEveryWalkTest` with the mirrored map, the `back` fixture,
+   `verify-floor.py` leg 4 with its drift check and the x 1,688 plant, `gen-fx-snack.mjs`'s re-cut corridor and
+   regenerated `fx-restroom` (whose legs and leaf must come out byte-identical — the ruling's check), `gen-fx-turn-back.mjs`
+   re-run (nothing moves), `door-view-leg.mjs`'s restroom fixture, the themes' and door view's selftests (§ 6);
+   `FLOOR.md`'s AT-D3-33, AT-D3-35, § 13 row 121, § 14 item 50 and Appendix B row 50. One slice because a side threshold
+   under a face-on picture is a wrong floor on the sandbox; the coder may stage it as two commits (geometry; drawing)
+   in one PR.
 2. **The door in the wall, in 3-D** — `floor-world.js` (lintels on `box.y`, the piece's `turn` and `facing`, the leaf,
-   flag and field boxes), the furniture placements with `turn` and the `facing` grouping key, `pieces-3d.js`'s side
-   frame and flag from the shared part helpers, `room-paint.js`'s lintel placement and cut-away, side leaf and field,
-   `body-paint.js`'s clipping plane and the bubble on `where === 'floor'`, `floor-paint.js`'s `localClippingEnabled`
-   (§ 3.5, § 3.6); `floor-world-probe.mjs`, `TheFloorIsTheScenesThirdRendererTest`, `floor3d.browser.mjs` (§ 6);
-   `FLOOR.md`'s AT-D3-38 and the row markers. Lands after slice 1 and, like it, after re-reading `dev`.
+   flag and field boxes, the door's wall-column ids), the furniture placements with `turn` and the `facing` grouping key,
+   `pieces-3d.js`'s side frame and flag from the shared part helpers, `room-paint.js`'s lintel placement and its cut-away
+   with the column rule, side leaf and field (§ 3.5); `body-paint.js` and `floor-paint.js` untouched (§ 3.6);
+   `floor-world-probe.mjs`, `TheFloorIsTheScenesThirdRendererTest`, `floor3d.browser.mjs` (§ 6); `FLOOR.md`'s AT-D3-38
+   and the row markers. Lands after slice 1 and, like it, after re-reading `dev`.
 
 ## 9. What could falsify it, and what is not defended
 
@@ -422,14 +472,16 @@ What this plan can say durably: the files slice 1 edits that the siblings have b
 - **A side door whose threshold row is blocked within 120 px** (a desk slot against the wall below the doorway): no
   threshold, the door serves nobody, § 5.5's line — the existing failure, reached by `test_red_the_door_moved_under_a_desk`.
 - **The flag covered by the entering walker** for the step's seconds (§ 6.7 item 2): accepted and named.
-- **The 3-D walker visible outside the building from a camera beyond the right wall** if the clipping plane is not
-  landed: the fallback (visibility at the face) leaves a half-body in the wall for one frame; the plane is the design.
-- **Hazards with a check**: the leg off the lattice (AT-D3-38's sample excludes `inside`; a plant that samples it must
-  red); the leaf's second move timed from `inside.start` rather than `+ step_in` (the field would read occupied while the
-  walker is still in the doorway — `test_green_the_visit` holds the frame); the obstacle kept (the forecourt RED above);
-  the facing read from anywhere but the wall (the property RED above); the lane measured from the face rather than the
-  threshold (AT-D3-35 over the re-cut corridor: the second walker would wait at (1,652, 628), on the axis — the RED
-  *the lane not passed* reds it, and `test_green_the_restroom_lane_is_section_12s` holds the 164 px).
+- **The walker vanishes at a threshold 44 px from the wall.** With no step through the wall, a side-door walker fades
+  out standing in the room and reappears there; a viewer watching closely sees a person dissolve a body's half-width
+  short of the doorway rather than pass it. Accepted by the seat's ruling, named here: the alternative was the walk
+  through the wall and the five mechanisms it needed.
+- **Hazards with a check**: the facing counted from the anchor row (the anchor-row RED above); the fade on the opening's
+  frames on the way in (the fade RED above); the obstacle kept (the forecourt RED above); the facing read from anywhere
+  but the wall (the property RED above); the lane measured from the face rather than the threshold (AT-D3-35 over the
+  re-cut corridor: the second walker would wait at (1,652, 628), on the axis — the RED *the lane not passed* reds it, and
+  `test_green_the_restroom_lane_is_section_12s` holds the 164 px); a threshold found past another piece (F8's stop; the
+  RED is the kept rect, whose cell at 1,676 is not wall-blocked).
 - **What the scratch measurement does NOT cover, named**: the `restroom-one-spot` and `restroom-sealed` variants against
   the side threshold (the build measures them before regenerating); the lane-clear frame of the walker coming out
   (`laneFrame()` over the deeper lane — the build's `test_green_the_occupant_clears_the_lane_before_the_next_steps_in`
@@ -438,6 +490,27 @@ What this plan can say durably: the files slice 1 edits that the siblings have b
 
 ## 10. Seat rulings in this plan, reversible by the operator
 
-The doorway at the tile's foot end (§ 4); the flag over the near jamb (§ 7 Q1); the sliding 2-D leaf (§ 7 Q2); a
-`back` door drawn face-on wherever a door touches no side wall; `right` on a tie; the lintel from the tile's height;
-no closet (§ 7 Q3).
+The doorway at the tile's foot end (§ 4); the flag over the near jamb, 112–144 px over the foot (§ 7 Q1); the sliding
+2-D leaf (§ 7 Q2); a `back` door drawn face-on wherever a door touches no side wall; `right` on a tie; the lintel from
+the tile's height; no closet (§ 7 Q3); the walker fades at the threshold rather than walking through the wall (the
+seat's ruling after review round 2), the fade-out on the leaf's closing frames and the fade-in on its exit opening
+(§ 3.4's reading of the ruling's words).
+
+## 11. Design review round 2 — what the ruling dissolved, and what survives
+
+Round 2 of the design review returned six gating findings on `76c21dd7`; four of them (2–5) and one minor (10) were
+minted by the step-through leg or by round 1's fixes to it. The seat's ruling drops that leg; the coordinator's message
+carries the findings by number, and each is stated here by the mechanism it stood on, which this revision removes:
+
+- **2–5 dissolve.** Everything they could attack is gone: the `inside` leg's `through`, `step_in` and `step_out` and
+  `pointAt()`'s glide (§ 3.3 now says `route.js` is untouched); `exitLeg()` and the re-timed leaf rule (`restroomExit()`,
+  `restroomHome()`, `tripStart()`, `poseOf()` and `turnRound()` are not edited — § 3.2); the 2-D clip at the wall line
+  and its approach box (§ 3.4 draws a fade on today's `inside` element); the 3-D clipping plane, the per-walker material
+  clone, `localClippingEnabled` and the bubble's special case (§ 3.6: `body-paint.js` hides the inside walker as it does
+  today, and the bubble follows the mesh). A finding that named a frame, a timing, a clip or a plane of that leg has no
+  subject left.
+- **10 dissolves** with them — it concerned the same leg's drawing.
+- **1, 6, 7, 8, 9, 11, 12 survive and are folded**: the anchor row (§ 3.1, measured on every map); the door view's
+  elevation, flag, `view` contract and side strips (§ 3.1, § 3.4, § 6); `walk-probe.mjs`'s four obstacle constructions
+  (§ 6, by the grep predicate); the threshold search's stop (§ 3.2); the `back` fixture's source map and measured
+  threshold (§ 6); the lintel lowered with its column (§ 3.5); the citations (re-read on `92a8b651` throughout).
