@@ -1,11 +1,11 @@
 /**
  * THE 3-D FLOOR's VIEW LIMITS, ITS CONFINEMENT AND ITS CUT-AWAY — what the camera's controls are configured with, where
  * the eye may stand, which walls stand between the eye and what it looks at, and what of the cab its doorway lets the
- * eye see. No DOM and no Three: the renderer (`floor3d/floor-paint.js`) configures `OrbitControls` from `limits()`,
- * holds the camera to `confine()` through `confineControls()` after every update, lowers what `cutaway()` names and
- * clips the cab to `doorwayView()`. `docs/design/plan-13033-stage2-3d-floor.md` §§ 3.6–3.7; the figures are
- * `docs/design/FLOOR.md` § 12's *Floor 3-D camera* and *Floor 3-D cut-away* rows. Driven under `node` by
- * `tests/Feature/Floor/view-limits-probe.mjs`, the controls' composition over the vendored library.
+ * eye see. No DOM and no Three: the renderer (`floor3d/floor-paint.js`) configures `OrbitControls` from `limits()`
+ * through `configureControls()`, holds the camera to `confine()` through `confineControls()` after every update,
+ * lowers what `cutaway()` names and clips the cab to `doorwayView()`. `docs/design/plan-13033-stage2-3d-floor.md`
+ * §§ 3.6–3.7; the figures are `docs/design/FLOOR.md` § 12's *Floor 3-D camera* and *Floor 3-D cut-away* rows. Driven
+ * under `node` by `tests/Feature/Floor/view-limits-probe.mjs`, the controls' composition over the vendored library.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ NEVER BELOW THE FLOOR — one guard, and the arithmetic that makes a second dead: the polar limit keeps the eye above
@@ -88,6 +88,28 @@ export function limits(extent, surface, character) {
         // figures, never by a library's fit (plan § 3.6, B2).
         entry: orbitCamera({ x: 0, y: 0, z: 0 }, HOME_POLAR, 0, fit),
     });
+}
+
+/**
+ * The camera and its controls set from `view` (`limits()`): the camera's planes and field, the controls' polar and
+ * distance limits, and the pan along the floor rather than the screen. One home for the renderer and the probe; the
+ * damping is the page's (reduced motion), set where the controls are made.
+ *
+ * @param {object} controls `OrbitControls` (its `object` the perspective camera)
+ * @param {object} view `limits()`'s answer
+ */
+export function configureControls(controls, view) {
+    const camera = controls.object;
+
+    camera.near = view.near;
+    camera.far = view.far;
+    camera.fov = (view.fov * 180) / Math.PI;
+    camera.updateProjectionMatrix();
+    controls.screenSpacePanning = false;
+    controls.minPolarAngle = view.polar.min;
+    controls.maxPolarAngle = view.polar.max;
+    controls.minDistance = view.distance.min;
+    controls.maxDistance = view.distance.max;
 }
 
 const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });

@@ -73,6 +73,8 @@ class TheThreeDFloorsCameraStaysAboveTheFloorTest extends TestCase
             'an update after the clamp (the back wall\'s drop)' => [$limits, "    camera.lookAt(target);\n", "    camera.lookAt(target);\n    controls.update();\n", 'damping', 'view-limits'],
             'the damped pan kept on a slid axis' => [$limits, "            controls._panOffset[axis] = 0;\n", '', 'damping', 'view-limits'],
             'the controls\' last pose left where their update put it (a pan at the wall wakes no frame)' => [$limits, "    controls._lastPosition.copy(camera.position);\n    controls._lastQuaternion.copy(camera.quaternion);\n    controls._lastTargetPosition.copy(target);\n", '', 'wake', 'view-limits'],
+            'a walk whose slide moves the eye alone (the distance and the pitch change)' => [$limits, '    const held = add(t, slide);', '    const held = t;', 'move', 'view-limits'],
+            'a pan up the screen (the shared configuration)' => [$limits, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;', 'move', 'view-limits'],
             'the camera not turned to the held target' => [$limits, "    camera.lookAt(target);\n", '', 'turn', 'view-limits'],
             'no gap at the walls' => [$limits, '    const gap = NEAR * Math.hypot(1, half, half * aspect);', '    const gap = 0;', 'limits', 'view-limits'],
             'a gap of the near distance alone' => [$limits, '    const gap = NEAR * Math.hypot(1, half, half * aspect);', '    const gap = NEAR;', 'limits', 'view-limits'],

@@ -10,10 +10,11 @@
 //   node tools/design/floor3d.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
 //                                                      which must red
 //   node tools/design/floor3d.browser.mjs --out <dir>  also save the operator's reading pictures: the entry pose, a turned
-//                                                      pose, a close view, a view with a wall cut away, a walk into
-//                                                      the office, the cap floor, the leaves open, the cab through them,
-//                                                      a walker, the marks, a bird, the restroom door in its side wall
-//                                                      and reduced motion
+//                                                      pose, a close view, a view with a wall cut away, a walk in
+//                                                      from the entry to the back wall and one from a close view, the
+//                                                      cap floor, the leaves open, the cab through them, a walker, the
+//                                                      marks, a bird, the restroom door in its side wall and reduced
+//                                                      motion
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -446,7 +447,7 @@ const ROWS = {
     plants: [
       ['`maxPolarAngle` widened past 90°', { plant: [P('js/floor3d/view-limits.js', 'export const MAX_POLAR = (88 * Math.PI) / 180;', 'export const MAX_POLAR = (120 * Math.PI) / 180;')] }],
       ['the confinement dropped (the eye free)', { plant: [P(PAINT, '            pose = confineControls(controls, view.bound, pose);', '')] }],
-      ['screen-space panning', { plant: [P(PAINT, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
+      ['screen-space panning', { plant: [P('js/floor3d/view-limits.js', '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
       ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
       ['a rise that moves the target alone (the view turns)', { plant: [P('js/floor3d/camera-acts.js', '        position.set(position.x, position.y + h, position.z);', '')] }],
@@ -543,7 +544,8 @@ const ROWS = {
           let at = await p.inspect();
           const from = at;
           for (let k = 0; k < 12 && !until(at); k++) { await p.drag(dx, dy, { button: 'right' }); at = await rested(p); eyeOut(what, at); }
-          if (Math.abs(at.distance - from.distance) > 1e-6 || Math.abs(at.polar - from.polar) > 1e-6) d.push(`${what} changed the distance ${from.distance.toFixed(3)} → ${at.distance.toFixed(3)} or the tilt — not a move of the viewer`);
+          // rule A: a walk keeps the eye's height, its pitch, the way it faces and its distance from the target
+          if (Math.abs(at.eye[1] - from.eye[1]) > 1e-6 || Math.abs(at.distance - from.distance) > 1e-6 || Math.abs(at.polar - from.polar) > 1e-6 || Math.abs(at.azimuth - from.azimuth) > 1e-6) d.push(`${what} changed the eye's height ${from.eye[1].toFixed(3)} → ${at.eye[1].toFixed(3)}, the distance ${from.distance.toFixed(3)} → ${at.distance.toFixed(3)}, the pitch or the facing — not a walk`);
           return at;
         };
         await p.ev(`document.getElementById('floor-fit').click()`);
@@ -553,6 +555,7 @@ const ROWS = {
         f.inside = i.eye;
         if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`right-drags forward left the eye at z ${i.eye[2].toFixed(3)} — not in the office at the back wall's face (${back.toFixed(3)})`);
         if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`with the eye at the back wall the band stands ${i.band} tall — lowered`);
+        if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-walk-in.png'), await p.shot());
         for (const [dx, side] of [[p.stage.w / 2, 'min'], [-p.stage.w / 2, 'max']]) {
           const wall = i.limits.bound.eye[side].x;
           i = await walk(`a right-drag across to the ${side} side`, dx, 0, (at) => Math.abs(at.eye[0] - wall) < 1e-6);
@@ -569,14 +572,18 @@ const ROWS = {
         f.keysIn = i.eye;
         if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`Shift + ArrowUp held left the eye at z ${i.eye[2].toFixed(3)} — not at the back wall's face (${back.toFixed(3)})`);
         if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`with the eye brought to the back wall by the keys the band stands ${i.band} tall — lowered`);
-        // For a picture only: zoomed in from the entry and walked into the office with the keys.
+        // For pictures only: zoomed in from the entry and walked into the office with the keys, then on to the back wall.
         if (argOf('--out') !== null && !(c.plant ?? []).length) {
           await p.ev(`document.getElementById('floor-fit').click()`);
           await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < 9; k++) b.click(); })()`);
           await p.ev(`document.getElementById('floor-drawing').focus()`);
           for (let k = 0; k < 6; k++) await p.key('ArrowUp', 'ArrowUp', true);
-          await rested(p);
+          i = await rested(p);
           writeFileSync(join(argOf('--out'), 'floor3d-inside.png'), await p.shot());
+          // and on to the back wall
+          for (let k = 0; k < 200 && i.eye[2] > back + 1e-6; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 6 === 5) i = await rested(p); }
+          await rested(p);
+          writeFileSync(join(argOf('--out'), 'floor3d-walk-in-close.png'), await p.shot());
         }
         // a wheel out at the dolly limit: the page scrolls, the camera does not move
         await p.ev(`document.getElementById('floor-fit').click()`);

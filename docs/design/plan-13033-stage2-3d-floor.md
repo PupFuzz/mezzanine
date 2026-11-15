@@ -575,9 +575,12 @@ controls are configured with, and the probe reads it):
   it after every update: the frame, every act, a label's focus. The accepted cost: at the fit a view turned off the front
   past the angle whose sine is the floor's half-width over the eye's distance along the floor is brought in (about
   27° on the-burrow, `asin(10.05 / 21.9)`); inside the office the orbit's centre lies past the back wall, so a
-  turn there swings the eye along the walls; and since a pan keeps the tilt and the distance, the eye at the back
-  wall looks past it — at the fit's distance and tilt the room has left the frame before the eye reaches the wall,
-  and a walk in reads as one inside the room only from a closer, lower view (zoomed in, or tilted toward level);
+  turn there swings the eye along the walls; and since a pan walks — the operator's answer A on card#13033: the eye's
+  height, pitch and facing kept, no step down, no tipping to look down, the target never forced into the office —
+  the eye at the back wall from the opening view looks past it, the room having left the frame below; a walk at desk
+  level starts from an eye brought down first (zoomed in or tilted toward level, then Page Down / Page Up). A build
+  that held the target in the office instead, the eye closing in on it at the wall, was reverted on that answer.
+  `configureControls()` is the controls' and camera's one configuration, the renderer's and the probe's;
 - **A pan slides along the floor, never up the screen (M5)**: the library's `screenSpacePanning` is set explicitly to
   the floor-plane mode (to confirm in slice 4); the property — a vertical pan gesture leaves the target's `y`
   unchanged and moves it along the floor — is the browser leg's (§ 8 item 5);

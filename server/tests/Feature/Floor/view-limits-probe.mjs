@@ -19,8 +19,9 @@
  * are the library's public `pan()`, `dollyIn()` / `dollyOut()` and `rotateLeft()` — each its private step and an update,
  * which is what its pointer handlers run. The library imports the bare `three`, which the page's import map resolves;
  * here a resolve hook does the same. Legs:
- * - `move` — a right-drag pan forward from the entry carries the eye into the office and stops it at the back wall; a
- *   pan across slides it along the wall to each side; the eye passes no bound at any frame.
+ * - `move` — rule A: a right-drag walks — from the high opening view and from an eye lowered to desk level, a pan
+ *   forward carries the eye into the office with its height, pitch, facing and distance kept and stops it at the back
+ *   wall; a pan across slides it along the wall to each side; the eye passes no bound at any frame.
  * - `keys` — the same with Shift + an arrow, through the acts; and *Fit* from a pose the bound pulled in is the entry.
  * - `turn` — a turn through a full circle and the wheel in and out, from the entry and from inside the office: the eye
  *   passes no bound at any frame, the target does not move, and a side view at the fit is brought in.
@@ -235,22 +236,18 @@ const stage = { width: 1280, height: 579 };
 const EPS = 1e-9;
 
 /**
- * A camera and its controls configured as `floor3d/floor-paint.js` configures them (its construction and `reLimit()`,
- * restated here), at the entry pose, with `frame()` the renderer's frame (an update, then the clamp) and `acts` the
+ * A camera and its controls made as `floor3d/floor-paint.js` makes them — `configureControls()`, the damping the page's
+ * reduced motion — at the entry pose, with `frame()` the renderer's frame (an update, then the clamp) and `acts` the
  * keys' acts over the same controls and clamp.
  */
 function rig(over, { damping = true } = {}) {
     const view = L.limits(over, stage, character);
-    const camera = new PerspectiveCamera((view.fov * 180) / Math.PI, stage.width / stage.height, view.near, view.far);
+    const camera = new PerspectiveCamera(45, stage.width / stage.height, 0.05, 1000);
     const controls = new OrbitControls(camera);
 
     controls.domElement = { clientWidth: stage.width, clientHeight: stage.height };
-    controls.screenSpacePanning = false;
     controls.enableDamping = damping;
-    controls.minPolarAngle = 0;
-    controls.maxPolarAngle = view.polar.max;
-    controls.minDistance = view.distance.min;
-    controls.maxDistance = view.distance.max;
+    L.configureControls(controls, view);
 
     const { position, target } = view.entry;
 
@@ -289,9 +286,11 @@ function rig(over, { damping = true } = {}) {
 
 /**
  * Run `step` `n` times, a frame after each and `rest` frames at the end, `after` called after each frame; the first
- * bound broken, or `null`.
+ * bound broken, or `null` — the run goes on to its end either way, so the pose after it is the walk's.
  */
 function drive(r, n, step, rest = 400, after = () => {}) {
+    let first = null;
+
     for (let k = 0; k < n + rest; k++) {
         if (k < n) {
             step(k);
@@ -302,44 +301,70 @@ function drive(r, n, step, rest = 400, after = () => {}) {
 
         const o = r.out();
 
-        if (o !== null) {
-            return `${o} at frame ${k}`;
-        }
+        first ??= o === null ? null : `${o} at frame ${k}`;
     }
 
-    return null;
+    return first;
 }
 
 for (const damping of [true, false]) {
     const tag = damping ? 'damped' : 'with no damping';
 
-    // A right-drag forward from the entry: into the office, to the back wall.
-    {
+    // RULE A — a right-drag walks: the eye and the target move together, the eye's height, its pitch and the way it
+    // faces kept, until the eye meets the back wall, then along it to each side. From the high opening view, and from
+    // an eye at desk level (brought in, tilted to level, then raised three Page Up steps off the floor).
+    const lowered = (r) => {
+        r.acts.zoomStep(12);
+        r.acts.drag(0, -2 * stage.width);
+        r.acts.riseStep(3);
+        drive(r, 0, () => {}, 400);
+    };
+
+    for (const [from, prepare] of [['from the opening view', () => {}], ['from an eye at desk level', lowered]]) {
         const r = rig(burrow, { damping });
-        const broken = drive(r, 120, () => r.controls.pan(0, 40));
+
+        prepare(r);
+
+        const start = { y: r.eye().y, polar: r.controls.getPolarAngle(), azimuth: r.controls.getAzimuthalAngle(), distance: r.controls.getDistance() };
+        const kept = (what) => {
+            const now = { y: r.eye().y, polar: r.controls.getPolarAngle(), azimuth: r.controls.getAzimuthalAngle(), distance: r.controls.getDistance() };
+
+            if (Object.keys(start).some((k) => Math.abs(now[k] - start[k]) > 1e-6)) {
+                legs.move.push(`${tag}, ${what} ${from} changed the walk: ${JSON.stringify(start)} → ${JSON.stringify(now)} — the eye's height, pitch, facing and distance are kept`);
+            }
+        };
+        const broken = drive(r, 160, () => r.controls.pan(0, 40));
         const e = r.eye();
 
-        printed[`move_${damping}`] = [e.x, e.y, e.z];
+        printed[`move_${damping}_${from.split(' ')[1]}`] = { start, end: [e.x, e.y, e.z] };
+
+        if (from !== 'from the opening view' && !(start.y < ROOM_H_U)) {
+            legs.move.push(`CONTROL: the desk-level eye stands at y ${start.y.toFixed(3)}, above the room's height`);
+        }
 
         if (broken !== null) {
-            legs.move.push(`${tag}, a pan forward left ${broken}`);
+            legs.move.push(`${tag}, a pan forward ${from} left ${broken}`);
         }
 
         if (!(e.z < burrow.d / 2) || Math.abs(e.z - r.view.bound.eye.min.z) > 1e-6) {
-            legs.move.push(`${tag}, a long pan forward left the eye at z ${e.z.toFixed(3)} — not in the office at the back wall (${r.view.bound.eye.min.z.toFixed(3)})`);
+            legs.move.push(`${tag}, a long pan forward ${from} left the eye at z ${e.z.toFixed(3)} — not in the office at the back wall (${r.view.bound.eye.min.z.toFixed(3)})`);
         }
+
+        kept('a pan forward');
 
         // Then across, each way: along the wall to each side.
         for (const [dx, side] of [[40, 'min'], [-40, 'max']]) {
-            const across = drive(r, 120, () => r.controls.pan(dx, 0));
+            const across = drive(r, 160, () => r.controls.pan(dx, 0));
 
             if (across !== null) {
-                legs.move.push(`${tag}, a pan across left ${across}`);
+                legs.move.push(`${tag}, a pan across ${from} left ${across}`);
             }
 
             if (Math.abs(r.eye().x - r.view.bound.eye[side].x) > 1e-6 || Math.abs(r.eye().z - r.view.bound.eye.min.z) > 1e-6) {
-                legs.move.push(`${tag}, a pan across the back wall left the eye at ${[r.eye().x, r.eye().z].map((v) => v.toFixed(3))} — not in the corner`);
+                legs.move.push(`${tag}, a pan across the back wall ${from} left the eye at ${[r.eye().x, r.eye().z].map((v) => v.toFixed(3))} — not in the corner`);
             }
+
+            kept(`a pan across to the ${side} side`);
         }
     }
 

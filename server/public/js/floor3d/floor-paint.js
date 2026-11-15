@@ -14,8 +14,8 @@
  * frame: each part says when it next needs one, and the soonest is the frame's answer.
  *
  * ⛔ THE CAMERA IS `OrbitControls`, READING THE POINTER ITSELF (the operator's Q2 answer; `FLOOR.md` § 4.5): left-drag or
- * one finger turns, right-drag or two fingers pan ALONG THE FLOOR (`screenSpacePanning` off), the wheel and a pinch dolly,
- * within `limits()` — polar 0 to its maximum, distance its minimum to its maximum, both recomputed on a resize. An Alt +
+ * one finger turns, right-drag or two fingers pan ALONG THE FLOOR, the wheel and a pinch dolly, within `limits()` as
+ * `view-limits.js`'s `configureControls()` sets them — recomputed on a resize. An Alt +
  * left-drag is taken from the controls before they see it: its vertical movement raises or lowers the eye
  * (`camera-acts.js`'s `rise()`). After every update the camera is held in the office by `view-limits.js`'s
  * `confineControls()` — the one clamp, which the keys' acts, the rise and a label's focus reach through the same
@@ -58,7 +58,7 @@ import {
 } from '../vendor/three/three.module.js';
 import { OrbitControls } from '../vendor/three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer } from '../vendor/three/examples/jsm/renderers/CSS2DRenderer.js';
-import { confineControls, limits } from './view-limits.js';
+import { configureControls, confineControls, limits } from './view-limits.js';
 import { SHORTCUTS, cameraActs } from './camera-acts.js';
 import { createFurniture, loadKitMap } from './furniture.js';
 import { floorLabels } from './floor-labels.js';
@@ -106,9 +106,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         camera.layers.enable(layer);
     }
 
-    controls.screenSpacePanning = false;
     controls.enableDamping = !reduce;
-    controls.minPolarAngle = 0;
 
     let surface = { width: 1, height: 1 };
     let bounds = null;
@@ -134,13 +132,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         const fresh = view === null;
 
         view = limits(world.extent, surface, character);
-        camera.near = view.near;
-        camera.far = view.far;
-        camera.fov = (view.fov * 180) / Math.PI;
-        camera.updateProjectionMatrix();
-        controls.maxPolarAngle = view.polar.max;
-        controls.minDistance = view.distance.min;
-        controls.maxDistance = view.distance.max;
+        configureControls(controls, view);
 
         if (fresh) {
             const { position, target } = view.entry;

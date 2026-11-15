@@ -109,7 +109,7 @@ class Floor3dPageWiringTest extends TestCase
             'the 3-D entry starting the page twice' => ['floor3d/main.js', "startFloorPage(document, window, { renderer: available ? inWorld() : listOnly(), route: '3d' });", "startFloorPage(document, window, { renderer: listOnly(), route: '3d' });\nstartFloorPage(document, window, { renderer: inWorld(), route: '3d' });"],
             'the house gesture wire on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { cameraGestures } from '../wire/camera-gestures.js';\ncameraGestures(null);"],
             'the 2-D painter on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { createPainter } from '../floor/painter.js';\ncreatePainter({});"],
-            'the controls\' own key listener connected' => ['floor3d/floor-paint.js', '    controls.screenSpacePanning = false;', "    controls.screenSpacePanning = false;\n    controls.listenToKeyEvents(window);"],
+            'the controls\' own key listener connected' => ['floor3d/floor-paint.js', '    controls.enableDamping = !reduce;', "    controls.enableDamping = !reduce;\n    controls.listenToKeyEvents(window);"],
             'the keys wired a second time, in the renderer' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { cameraKeys } from '../wire/camera-keys.js';\ncameraKeys(null);"],
         ];
 
