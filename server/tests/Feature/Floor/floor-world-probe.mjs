@@ -35,11 +35,13 @@
  * height over the front edge's distance from the foot allows for the plan distance between them.
  *
  * ⛔ THE CAB IS § 12's *CAB INTERIOR* BEHIND THE DOORWAY, AND EVERY RIDER STANDS IN IT (the `cab` leg): the band's cab
- * room is `CAB`'s centimetres at the door view's `SCALE`, its top at or below the band's (its height clipped to the
- * room's), centred on the leaves' seam with its open front on the band's
- * face and as wide as the doorway at least; its kick plates, handrails, posts and light are `CAB_FITTINGS`' inside it.
+ * room is `CAB`'s fitted to the doorway as the 2-D band cab draws it — its open front the leaves' rect on the band's
+ * face, centred on their seam, its depth `CAB.d` at the door view's `SCALE`, its top at or below the band's; its kick
+ * plates, handrails, posts and light are `CAB_FITTINGS`' inside it, each measure fitted as its axis is.
  * Every walker sampled along its whole walk stands, in a cab leg, on the cab's floor in front of its far wall, and
  * everywhere else in front of the band's face — so none is drawn behind the cab's far wall or behind the band outside it.
+ * And it is shown (`walkerAt()`'s `shown`) where the 2-D floor draws it: on the floor, in the cab only inside a cab leg —
+ * an arrival as its leaves open, a boarder until they have shut — and never inside a restroom's door.
  *
  * ⚠ WHAT IT DOES NOT SEE: whether every `wall` cell of a map has a body (the walls are read off the scene, whose
  * `walls` the door view's classification answers; that classification's own coverage is `door-view.selftest.mjs`'s),
@@ -69,7 +71,7 @@ const { scenes } = JSON.parse(readFileSync(0, 'utf8'));
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
 const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [], cab: [] };
-const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0, cabs: 0, cabSamples: 0, offCabSamples: 0 };
+const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0, cabs: 0, cabSamples: 0, cabShown: { shown: 0, hidden: 0 }, offCabSamples: 0 };
 const WORLD_MEMBERS = ['band', 'desks', 'doors', 'effects', 'extent', 'labels', 'pieces', 'planes', 'restroom_doors', 'slab', 'walkers', 'walls'];
 const LABEL_ORDER = ['name', 'status', 'chip', 'facts', 'bubble'];
 const FACT_KINDS = ['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age'];
@@ -479,8 +481,13 @@ for (const { run, i, scene } of scenes) {
         const within = (b, o) => b.x > o.x - EPS && b.x + b.w < o.x + o.w + EPS && b.y > o.y - EPS && b.y + b.h < o.y + o.h + EPS && b.z > o.z - EPS && b.z + b.d < o.z + o.d + EPS;
         const leaves = world.band.leaves;
 
-        if (!near(r.w, cm(CAB.w)) || !near(r.d, cm(CAB.d)) || !near(r.h, Math.min(cm(CAB.h), W.ROOM_H_U)) || !near(r.y, 0)) {
-            legs.cab.push(`${at} the cab's room is ${r.w} × ${r.d} × ${r.h} units at y ${r.y} — not § 12's ${CAB.w} × ${CAB.d} cm at the door view's scale, ${CAB.h} cm clipped to the room's height, on the floor`);
+        // The 2-D band cab is `CAB`'s room fitted to its doorway: across and up by the doorway over `CAB`, back at the
+        // door view's scale (the landing lens's) — so the open front is the doorway, and a fitting scales as its axis does.
+        const door = { x: leaves[0].x, w: leaves[1].x + leaves[1].w - leaves[0].x, y: leaves[0].y, h: leaves[0].h };
+        const [across, up] = [door.w / CAB.w, door.h / CAB.h];
+
+        if (!near(r.x, door.x) || !near(r.w, door.w) || !near(r.y, door.y) || !near(r.h, door.h) || !near(r.d, cm(CAB.d)) || !near(r.y, 0)) {
+            legs.cab.push(`${at} the cab's room is ${r.w} × ${r.d} × ${r.h} units at x ${r.x}, y ${r.y} — not the doorway's ${door.w} × ${door.h} at x ${door.x} on the floor, ${CAB.d} cm deep at the door view's scale`);
         }
 
         if (r.y + r.h > world.band.h + EPS) {
@@ -491,20 +498,16 @@ for (const { run, i, scene } of scenes) {
             legs.cab.push(`${at} the cab's room is centred at x ${r.x + r.w / 2} with its open front at z ${r.z + r.d} — not on the leaves' seam (${seam}) at the band's face (${front}), running back`);
         }
 
-        if (leaves[0].x < r.x - EPS || leaves[1].x + leaves[1].w > r.x + r.w + EPS) {
-            legs.cab.push(`${at} the doorway (${leaves[0].x}…${leaves[1].x + leaves[1].w}) is wider than the cab behind it (${r.x}…${r.x + r.w})`);
-        }
-
-        if (!near(cab.kick, cm(CAB_FITTINGS.kick))) {
-            legs.cab.push(`${at} the kick plates are ${cab.kick} units high, not ${CAB_FITTINGS.kick} cm`);
+        if (!near(cab.kick, CAB_FITTINGS.kick * up)) {
+            legs.cab.push(`${at} the kick plates are ${cab.kick} units high, not ${CAB_FITTINGS.kick} cm of the cab's ${CAB.h} fitted to the doorway's height`);
         }
 
         // Each bar inside the room, its centre `off` from its own wall at the rail's height; each post from a wall to a bar.
         cab.rails.forEach((b, k) => {
             const wall = k === 0 ? r.x : r.x + r.w;
 
-            if (!within(b, r) || !near(Math.abs(b.x + b.w / 2 - wall), cm(CAB_FITTINGS.rail.off)) || !near(b.y + b.h / 2, cm(CAB_FITTINGS.rail.y)) || !near(b.d, r.d - 2 * cm(CAB_FITTINGS.rail.end))) {
-                legs.cab.push(`${at} a handrail stands at ${JSON.stringify(b)} — not inside the room, ${CAB_FITTINGS.rail.off} cm off its wall at ${CAB_FITTINGS.rail.y} cm, its wall's length but ${CAB_FITTINGS.rail.end} cm at each end`);
+            if (!within(b, r) || !near(Math.abs(b.x + b.w / 2 - wall), CAB_FITTINGS.rail.off * across) || !near(b.y + b.h / 2, CAB_FITTINGS.rail.y * up) || !near(b.d, r.d - 2 * cm(CAB_FITTINGS.rail.end))) {
+                legs.cab.push(`${at} a handrail stands at ${JSON.stringify(b)} — not inside the room, ${CAB_FITTINGS.rail.off} cm off its wall at ${CAB_FITTINGS.rail.y} cm (fitted), its wall's length but ${CAB_FITTINGS.rail.end} cm at each end`);
             }
         });
 
@@ -514,8 +517,8 @@ for (const { run, i, scene } of scenes) {
 
         const L = cab.light;
 
-        if (!near(L.w, cm(CAB_FITTINGS.light.w)) || !near(L.d, cm(CAB_FITTINGS.light.d)) || !near(L.x + L.w / 2, seam) || !near(L.z + L.d / 2, r.z + r.d / 2)) {
-            legs.cab.push(`${at} the ceiling's light is ${JSON.stringify(L)} — not ${CAB_FITTINGS.light.w} × ${CAB_FITTINGS.light.d} cm in the ceiling's middle`);
+        if (!near(L.w, CAB_FITTINGS.light.w * across) || !near(L.d, cm(CAB_FITTINGS.light.d)) || !near(L.x + L.w / 2, seam) || !near(L.z + L.d / 2, r.z + r.d / 2)) {
+            legs.cab.push(`${at} the ceiling's light is ${JSON.stringify(L)} — not ${CAB_FITTINGS.light.w} cm (fitted) × ${CAB_FITTINGS.light.d} cm in the ceiling's middle`);
         }
 
         // Every walker, sampled along its whole walk: in its cab legs it stands on the cab's floor, between its side walls
@@ -533,8 +536,20 @@ for (const { run, i, scene } of scenes) {
                     continue;
                 }
 
+                // Shown as the 2-D floor draws it: on the floor; in the cab only inside a cab leg, so the closing leaves
+                // cover a boarder and the opening ones reveal an arrival; never inside the restroom's door.
+                const I = w.effect.frame_interval_ms;
+                const riding = w.effect.legs.some((l) => l.kind === 'cab' && t >= l.start * I && t < (l.start + l.frames) * I);
+                const want = got.where === 'floor' || (got.where === 'cab' && riding);
+
+                if (got.shown !== want) {
+                    legs.cab.push(`${at} ${w.key} at ${Math.round(t)} ms (${got.where}) is ${got.shown ? 'shown' : 'hidden'} — the 2-D floor draws it ${want ? 'there' : 'nowhere'} then`);
+                    break;
+                }
+
                 if (got.where === 'cab') {
                     printed.cabSamples++;
+                    printed.cabShown[got.shown ? 'shown' : 'hidden']++;
 
                     if (!(got.x > r.x + EPS && got.x < r.x + r.w - EPS && got.z > r.z + EPS && got.z < front + EPS && near(got.y, 0))) {
                         legs.cab.push(`${at} ${w.key} at ${Math.round(t)} ms in the cab stands at ${got.x},${got.y},${got.z} — off the cab's floor (${r.x}…${r.x + r.w} × ${r.z}…${front})`);
@@ -781,8 +796,8 @@ if (printed.doorSpans === 0 || printed.restroomDoors === 0 || printed.birds === 
 }
 
 // The cab read with riders in it: a population of no cab sample measured no rider.
-if (printed.cabs === 0 || printed.cabSamples === 0 || printed.offCabSamples === 0) {
-    legs.cab.push(`CONTROL: the scenes hold no cab, or no walker sampled in a cab leg or out of one — ${JSON.stringify({ cabs: printed.cabs, cabSamples: printed.cabSamples, offCabSamples: printed.offCabSamples })}`);
+if (printed.cabs === 0 || printed.cabSamples === 0 || printed.offCabSamples === 0 || printed.cabShown.shown === 0 || printed.cabShown.hidden === 0) {
+    legs.cab.push(`CONTROL: the scenes hold no cab, or no walker sampled in a cab leg or out of one, or none shown or hidden in the cab — ${JSON.stringify({ cabs: printed.cabs, cabSamples: printed.cabSamples, cabShown: printed.cabShown, offCabSamples: printed.offCabSamples })}`);
 }
 
 // The seating read at the fewest and the most interns a desk seats: one, and the cap.

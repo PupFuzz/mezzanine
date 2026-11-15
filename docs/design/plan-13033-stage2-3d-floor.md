@@ -1070,7 +1070,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    row's frames (its 250 ms), the old picture on a second plane on the transient term; (g) **no pressed call plate**: the
    2-D painter draws no press on the plate (the plates are the theme's surround, the press the walker's `stand` leg), so
    the 3-D floor draws none either; (h) the band's picture is open at the elevator's doorway (cleared, and cut by `alphaTest`), and
-   behind it stands the cab's room — `FLOOR.md` § 12's *Cab interior* at the door view's scale, its height clipped to the room's, one vertex-coloured
+   behind it stands the cab's room — `FLOOR.md` § 12's *Cab interior* fitted to the doorway as the 2-D band cab is (its open front the doorway, its depth at the door view's scale) and clipped to it as that cab is (`doorwayView()`), one vertex-coloured
    mesh (revised by card#13033's cab follow-up; it was a dark box over the doorway) — the two leaves boxes in front of
    it narrowing toward the frame as the 2-D leaves do, all three on the band so the cut-away lowers them with it; the walks' door spans reach the world as a leaf timeline
    (`floorWorld()`'s `doors`, `elevatorLeaf()`) read by the scene's own `leafLevel()`, so both floors read one timeline;

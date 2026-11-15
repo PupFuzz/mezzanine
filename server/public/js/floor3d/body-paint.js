@@ -324,7 +324,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             const q = walkerAt(world.slab, s.walker, Math.max(0, Math.min(t, span) - 60));
             const pose = walkAt(characters, fx, t, running);
 
-            c.mesh.visible = p !== null && p.where === 'floor';
+            c.mesh.visible = p !== null && p.shown;
 
             if (p !== null) {
                 // An intern on its seat's step stands at the height the world lifts it to and faces the front (`walkerAt()`).
@@ -346,7 +346,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
 
             b.mark = drop(b.mark);
             thinkBody(b, p);
-            b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, pose, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
+            b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, where: p?.where ?? null, shown: c.mesh.visible, pose, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
 
             return running ? 0 : null;
         }

@@ -8,6 +8,10 @@
  * the near plane's four corners (a perspective camera's, `y` up, its vertical field of view `fov`), at every target of a
  * grid over the box, every polar from straight down to the limit and every azimuth of a turn, at the minimum distance.
  * The module states the limits; this measures whether they keep the camera, and its near plane, above the floor.
+ *
+ * ⛔ THE CAB's CLIP IS JUDGED BY LINE OF SIGHT (the `doorway` leg): `doorwayView()`'s planes keep a point behind the band's
+ * face exactly where the segment from the eye to it crosses the doorway's opening, each normal of unit length, and give no
+ * planes to an eye at or behind the face — over a grid of eyes and of points wider and taller than the opening.
  */
 
 import { dirname, join } from 'node:path';
@@ -25,7 +29,7 @@ const character = { w: SCENE_W, h: SCENE_H };
 const extent = { w: 17.84, d: 6.96 };
 const wide = { width: 1280, height: 800 };
 const tall = { width: 800, height: 1280 };
-const legs = { limits: [], above: [], cutaway: [] };
+const legs = { limits: [], above: [], cutaway: [], doorway: [] };
 const printed = {};
 const deg = (r) => (r * 180) / Math.PI;
 
@@ -182,6 +186,82 @@ const raisedClose = { ...close, y: ROOM_H_U / 4 };
 
 if (!cut(behind(raisedClose), raisedClose).includes('band')) {
     legs.cutaway.push('a target raised a quarter of the room, 1 unit in front of the band, seen from behind the room, does not cut the band');
+}
+
+// ── the cab seen only through its doorway ───────────────────────────────────────────────────
+// The truth, computed here: a point behind the face is seen where the segment from the eye to it crosses the face inside
+// the opening. Every eye of a grid in front of the face and behind it, every point of a grid over a box behind the face
+// wider and taller than the opening; a point within a hair of the pyramid's boundary is not judged.
+{
+    const door = { x: -0.42, y: 0, z: -3, w: 0.84, h: 1.44 };
+    const kept = (planes, p) => planes.map(({ normal: n, constant }) => n.x * p.x + n.y * p.y + n.z * p.z + constant);
+    const through = (eye, p) => {
+        const t = (door.z - eye.z) / (p.z - eye.z);
+        const x = eye.x + (p.x - eye.x) * t;
+        const y = eye.y + (p.y - eye.y) * t;
+
+        return { x, y, edge: Math.min(Math.abs(x - door.x), Math.abs(x - door.x - door.w), Math.abs(y - door.y), Math.abs(y - door.y - door.h)) };
+    };
+    const counts = { seen: 0, hidden: 0, behind: 0 };
+
+    for (const ex of [-4, -0.5, 0, 0.3, 3]) {
+        for (const ey of [0.2, 1, 2, 6]) {
+            for (const ez of [-3.5, -2.9, -1, 2, 5]) {
+                const eye = { x: ex, y: ey, z: ez };
+                const planes = L.doorwayView(eye, door);
+
+                if (ez <= door.z) {
+                    counts.behind++;
+
+                    if (planes !== null) {
+                        legs.doorway.push(`an eye at ${JSON.stringify(eye)}, behind the face, is given planes — no line of sight from it crosses the opening`);
+                    }
+
+                    continue;
+                }
+
+                if (planes === null || planes.length !== 4) {
+                    legs.doorway.push(`an eye at ${JSON.stringify(eye)}, in front of the face, is given ${JSON.stringify(planes)} — not four planes`);
+                    continue;
+                }
+
+                // Three moves a clipping plane into the view by its point `−constant · normal`, true of a unit normal only.
+                const long = planes.find(({ normal: n }) => Math.abs(Math.hypot(n.x, n.y, n.z) - 1) > 1e-9);
+
+                if (long !== undefined) {
+                    legs.doorway.push(`from ${JSON.stringify(eye)} a plane's normal ${JSON.stringify(long.normal)} is not of unit length`);
+                }
+
+                for (let px = -1.2; px <= 1.2; px += 0.15) {
+                    for (let py = 0; py <= 2.2; py += 0.15) {
+                        for (const pz of [-3.05, -3.5, -4]) {
+                            const p = { x: px, y: py, z: pz };
+                            const hit = through(eye, p);
+
+                            if (hit.edge < 1e-3) {
+                                continue;
+                            }
+
+                            const want = hit.x > door.x && hit.x < door.x + door.w && hit.y > door.y && hit.y < door.y + door.h;
+                            const got = kept(planes, p).every((d) => d >= 0);
+
+                            counts[want ? 'seen' : 'hidden']++;
+
+                            if (got !== want) {
+                                legs.doorway.push(`from ${JSON.stringify(eye)} the point ${JSON.stringify(p)} is ${got ? 'kept' : 'clipped'} — its line of sight crosses the face at (${hit.x.toFixed(3)}, ${hit.y.toFixed(3)}), ${want ? 'inside' : 'outside'} the opening`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    printed.doorway = counts;
+
+    if (counts.seen === 0 || counts.hidden === 0 || counts.behind === 0) {
+        legs.doorway.push(`CONTROL: the grid judged no point seen, none hidden or no eye behind the face — ${JSON.stringify(counts)}`);
+    }
 }
 
 process.stdout.write(JSON.stringify({ legs, printed }));
