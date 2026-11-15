@@ -551,7 +551,7 @@ controls are configured with, and the probe reads it):
   grid of targets, polars and the minimum distance (§ 8 item 3), and the browser leg's plant widens the polar limit
   past 90° and reads the camera's `y` under a drag that pushes down (§ 8 item 5). No collider and no third guard:
   the review's stop rule applies, and none was needed;
-- **Within the floor — the target's box clamp**: after every controls update the renderer clamps the target into
+- **Within the floor — the target's box clamp** (superseded: the clamp holds the eye, the ⭐ note at this bullet's end): after every controls update the renderer clamps the target into
   the extent box (`y` from 0 to `ROOM_H_U`, the range the eye's rise moves it through) and, if it moved, moves the
   camera by the same vector — three lines in
   `floor-paint.js`, the box `view-limits.js`'s. Why not the library's target radius: that is a sphere about a point,
@@ -566,7 +566,8 @@ controls are configured with, and the probe reads it):
   keeps only its height. A move that would carry the eye out is resolved by what moved, taken in two parts: the
   target's move with the previous offset slides the pair back by its overshoot (a pan stops at a wall and slides
   along it, distance and angles kept); then the offset's change about that target brings the eye along its line to
-  the legal distance nearest the update's, `gap` to the dolly limit (a turn or a dolly out at a wall comes in; a
+  the legal distance nearest the update's, the dolly minimum to its limit (a turn or a dolly out at a wall comes in,
+  never nearer than the minimum — nearer, the near plane's corners would dip under the floor, so the turn stops; a
   dolly toward a target past the back wall stops at the wall), or keeps the previous offset where that line has no
   legal point. `confineControls()` writes it into the controls, drops the damped pan still owed on a slid axis,
   turns the camera to the target and sets the controls' own last pose to the held one — the library tells a change,
@@ -632,7 +633,7 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
 ### 3.7 Through walls, desks and characters — occlusion and cut-away
 
 - **Nothing is a camera collider (B1).** Walls and the band are never colliders: the cut-away below is what handles
-  them, and a collider on a wall would stop the eye at a wall the cut-away has already lowered. Desks are not
+  the walls (the band it no longer lowers: the eye never stands behind it, this section's ⭐ notes), and a collider on a wall would stop the eye at a wall the cut-away has already lowered. Desks are not
   colliders either, **chosen and justified**: a camera that dollies into a desk clips it by the near plane and the
   same gesture reversed un-clips it — a transient the viewer chose, as in every orbit viewer; the minimum distance
   (1.2 units from a target that is a desk's point) keeps the eye out of the slab for every target but one chosen
@@ -648,7 +649,7 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
   `reduce`), and restored when clear. The decision is pure — `cutaway(camera, target, walls)` → the set of ids — and
   the renderer scales; the probe plants a wall on the segment and reads the set. **Walls are instanced one per wall
   run so each lowers on its own** (per-instance transforms; the two heights two instanced meshes — M1's count), to
-  confirm in slice 4. **The band is a wall for this rule**: when the ray meets it — a target near the band seen from
+  confirm in slice 4. **The band is a wall for this rule** (superseded — the ⭐ note at this bullet's end): when the ray meets it — a target near the band seen from
   behind the room — the band lowers to its foot strip **with everything on it**: the elevator's doorway and its
   leaves, the clock, the windows are the band's children and go down with it, and a ride or an A1/A2 door motion in
   flight keeps animating at the foot (nothing stops; the motion is just low), restored with the band when the camera
@@ -663,8 +664,8 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
   band's face (§ 3.6's as-built note) the eye is never behind the room, so the case above has no route; and with the
   target free past the face — where a pan into the office leaves it — the band's body would be met by every such
   segment and drop with the eye in front of it, which is the defect the operator reported. `cutaway()` tests the
-  walls alone; the band always stands, and the browser leg's `cutaway` row reads it standing at the entry, with the
-  eye at the band's face and turned there, beside a wall lowered looking level across the floor.
+  walls alone; the band always stands — nothing lowers it, so no browser leg reads its height — and the browser leg's
+  `cutaway` row lowers a wall looking level across the floor and holds the eye in front of the face turned there.
 
 - **Desks and characters are never cut away**: they are the facts; a desk between the eye and the target is a
   reason to orbit, and the labels (§ 3.9) stay readable over it because they are screen-space.
@@ -754,7 +755,7 @@ the same way, never appended; the probe plants a late-arriving desk and reads th
 | `floor/floor-walls.js` (hoist) | none | `wallBodies(maps, rooms)` — the edge/partition classification out of `door-view.js`, which calls it | `door-view.selftest.mjs` (control) |
 | `resources/characters/creatures.js` (changed, M7) | none | per species `shape` — the half-outline, the features with their anchors, the face/hat/neck/hand anchors — read by `build()` (2-D) and by `creatures-3d.js`; `faceDocument()` | `tools/characters/selftest.mjs`: the sheet pixel-equal per species before and after; `distinct.browser.mjs` unchanged |
 | `resources/characters/creatures-3d.js` (new, a manifest row) | none, no Three | `bodyParts()`, `chibiParts()`, `BONES`, `POSES`, `CLIPS` | `tools/characters/selftest.mjs` gains the 3-D legs (§ 8 item 2) |
-| `floor3d/view-limits.js` (new) | none | `limits(extent)`: the polar and distance limits, the near plane, the target's box, the entry pose; `cutaway()` | `view-limits-probe.mjs` |
+| `floor3d/view-limits.js` (new) | none | `limits(extent)`: the polar and distance limits, the near plane, the target's box (as built, card#13033: the eye's bound and the target's height, held by `confine()`; the controls set by `configureControls()`), the entry pose; `cutaway()` | `view-limits-probe.mjs` |
 | `floor3d/camera-acts.js` (new) | none (the controls injected) | the renderer contract's `keys.acts` (§ 3.6): `drag(dx, dy, modifiers)`, `zoomStep(n)`, `fit()`, `camera()` — each a call on the injected controls' public methods and an update, to confirm in slice 4 | `camera-acts-probe.mjs` with a stub controls object recording the calls |
 | `floor3d/creature-paint.js` (new) | Three | a part list → one skinned mesh over one skeleton per character (§ 3.3's two-call property), the face texture, `POSES`/`CLIPS` → stepping clips, one mixer per character with its time set per § 3.5 — the library's skinning, clip and mixer classes the starting point, to confirm in slices 3 and 5 | the browser leg; `sheet3d.browser.mjs` (slice 3) |
 | `floor3d/furniture.js` (new) | Three, `GLTFLoader` | the kit's files loaded once, the kind → file map (data, in `resources/floor/models/kenney-furniture-kit/map.js`, a manifest row), the palette recolour map, one `InstancedMesh` per (primitive, material) per theme; where each placement stands is `floor3d/furniture-placements.js`'s (pure, a dressed piece's two placements included) | the browser leg; the map's totality under node (every standing `KINDS` member and desk part maps to a file or a `piece3d`, every `DRESSED` kind to a file the house theme dresses); `snack-dressing-probe.mjs` (`TheSnackTablesAreDressedIn3dTest`) |

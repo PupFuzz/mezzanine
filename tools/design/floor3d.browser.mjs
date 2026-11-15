@@ -554,7 +554,6 @@ const ROWS = {
         i = await walk('a right-drag forward', 0, 300, (at) => at.eye[2] <= back + 1e-6);
         f.inside = i.eye;
         if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`right-drags forward left the eye at z ${i.eye[2].toFixed(3)} — not in the office at the back wall's face (${back.toFixed(3)})`);
-        if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`with the eye at the back wall the band stands ${i.band} tall — lowered`);
         if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-walk-in.png'), await p.shot());
         for (const [dx, side] of [[p.stage.w / 2, 'min'], [-p.stage.w / 2, 'max']]) {
           const wall = i.limits.bound.eye[side].x;
@@ -571,7 +570,6 @@ const ROWS = {
         eyeOut('Shift + ArrowUp held', i);
         f.keysIn = i.eye;
         if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`Shift + ArrowUp held left the eye at z ${i.eye[2].toFixed(3)} — not at the back wall's face (${back.toFixed(3)})`);
-        if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`with the eye brought to the back wall by the keys the band stands ${i.band} tall — lowered`);
         // For pictures only: zoomed in from the entry and walked into the office with the keys, then on to the back wall.
         if (argOf('--out') !== null && !(c.plant ?? []).length) {
           await p.ev(`document.getElementById('floor-fit').click()`);
@@ -607,7 +605,7 @@ const ROWS = {
   },
 
   cutaway: {
-    what: 'the cut-away: looking level across the floor from its front, a wall between the eye and the target is lowered to its foot strip, and stands again once the eye looks down from the entry; the band is never lowered — at the entry, with the eye brought to the back wall\'s face, or turned to look along it',
+    what: 'the cut-away: looking level across the floor from its front, a wall between the eye and the target is lowered to its foot strip, and stands again once the eye looks down from the entry; and the eye turned at the back wall\'s face stays in front of it',
     base: { run: quiet(), media: REDUCE },
     plants: [['the cut-away\'s segment test dropped', { plant: [P(ROOM, '        const cut = cutaway(eye, target, world);', '        const cut = new Set();')] }]],
     async run(chrome, c) {
@@ -617,11 +615,9 @@ const ROWS = {
         const d = [];
         const f = {};
         const lowered = (i) => i.walls.filter(([, h]) => Math.abs(h - L.CUTAWAY_H) < 1e-3).map(([id]) => id);
-        const bandStands = (what, i) => { if (i.band < i.limits.bound.target.max.y - 1e-6) d.push(`${what}, the band stands ${i.band} tall — lowered`); };
         await p.ev(`document.getElementById('floor-drawing').focus()`);
         let i = await rested(p);
-        f.entry = { lowered: lowered(i), band: i.band };
-        bandStands('at the entry', i);
+        f.entry = { lowered: lowered(i) };
         // level: the eye tilted down to the polar limit, then swept across the floor (Shift + an arrow) until its line to
         // the target runs through a wall in front of it
         for (let k = 0; k < 120 && i.polar < i.limits.polar.max - 1e-3; k++) { await p.key('ArrowDown', 'ArrowDown'); if (k % 8 === 7) i = await p.inspect(); }
@@ -641,16 +637,14 @@ const ROWS = {
         const back = i.limits.bound.eye.min.z;
         for (let k = 0; k < 400 && i.eye[2] > back + 1e-6; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 8 === 7) i = await rested(p); }
         i = await rested(p);
-        f.atWall = { eye: i.eye, band: i.band };
+        f.atWall = { eye: i.eye };
         if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`CONTROL: Shift + ArrowUp did not bring the eye to the back wall's face (z ${i.eye[2].toFixed(3)}, the face's bound ${back.toFixed(3)})`);
-        bandStands('with the eye at the back wall\'s face', i);
         for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowRight']) {
           for (let k = 0; k < 30; k++) await p.key(key, key);
           i = await rested(p);
-          bandStands(`turned with ${key} at the back wall (azimuth ${deg(i.azimuth).toFixed(1)}°)`, i);
           if (i.eye[2] < back - 1e-6) d.push(`turned with ${key} at the back wall, the eye stands at z ${i.eye[2].toFixed(3)} — behind the face's bound ${back.toFixed(3)}`);
         }
-        f.turned = { eye: i.eye, band: i.band, az: deg(i.azimuth).toFixed(1) };
+        f.turned = { eye: i.eye, az: deg(i.azimuth).toFixed(1) };
         return { defects: d, facts: f };
       } finally { p.close(); }
     },

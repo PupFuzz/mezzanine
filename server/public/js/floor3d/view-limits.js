@@ -20,7 +20,8 @@
  * farthest it may stand from its target, so a pan away from the room stops where the floor is still seen. A move that
  * would carry the eye out is resolved by what moved: the target's move slides the eye and the target back together,
  * so a pan stops at the wall and slides along it; a turn or a dolly about the target brings the eye along its line to
- * the target, so the bound wins over the minimum distance. The target is free across the floor and past it — at the
+ * the target, never nearer it than the dolly minimum — the header's proof above needs that distance, so at a wall a
+ * turn that would bring the eye nearer stops instead. The target is free across the floor and past it — at the
  * fit it lies far beyond an eye at the back wall — and only its height is held.
  *
  * ⛔ NOTHING IS A COLLIDER (plan § 3.7): a wall between the eye and the target is lowered, never collided with; a desk
@@ -65,11 +66,12 @@ export function limits(extent, surface, character) {
     // The near plane's corner, the farthest point of it from the eye.
     const half = Math.tan(FOV / 2);
     const gap = NEAR * Math.hypot(1, half, half * aspect);
+    // One character's height: closer than that the near plane cuts a head.
+    const distance = Object.freeze({ min: walkerSize(character).h / UNIT, max });
 
     return Object.freeze({
         polar: Object.freeze({ min: 0, max: MAX_POLAR }),
-        // One character's height: closer than that the near plane cuts a head.
-        distance: Object.freeze({ min: walkerSize(character).h / UNIT, max }),
+        distance,
         near: NEAR,
         // The room's farthest point from the farthest corner of the eye's box: as far above the target as it stands, and
         // out in front to the dolly limit.
@@ -82,7 +84,7 @@ export function limits(extent, surface, character) {
             }),
             target: Object.freeze({ min: Object.freeze({ y: 0 }), max: Object.freeze({ y: ROOM_H_U }) }),
             gap,
-            distance: max,
+            distance,
         }),
         // The extent's centre on the floor, from the front at stage 1's home tilt, at the fit — set from the spherical
         // figures, never by a library's fit (plan § 3.6, B2).
@@ -125,9 +127,10 @@ const eyeAxes = (bound) => ['x', 'z'].map((axis) => [axis, bound.eye.min[axis], 
  * `prev` it was last held at. A legal pose is returned as it is. Otherwise the move is taken in two parts. The target's
  * move first, carrying `prev`'s offset: where that eye is out, the target and the eye slide back by its overshoot on
  * each axis it is out on (`slid`). Then the offset's change, about that target: the eye on its line from the target at
- * the legal distance nearest the update's, from `gap` to `distance` — nearer in where the update stood it out past a
- * side, out to the back wall where it stood it behind (the target past the wall) — or, where that line has no legal
- * point in that range, at `prev`'s offset, which the slide left legal.
+ * the legal distance nearest the update's, from the dolly minimum to its limit (`distance`) — nearer in where the
+ * update stood it out past a side, out to the back wall where it stood it behind (the target past the wall) — or,
+ * where that line has no legal point in that range, at `prev`'s offset, which the slide left legal: so a turn whose
+ * legal stretch of line lies nearer than the minimum stops, as one with none does.
  *
  * @param {{x: number, y: number, z: number}} eye
  * @param {{x: number, y: number, z: number}} target
@@ -158,8 +161,8 @@ export function confine(eye, target, prev, bound) {
     const held = add(t, slide);
     const d = Math.hypot(offset.x, offset.y, offset.z);
     const u = scale(offset, 1 / d);
-    let near = bound.gap;
-    let far = bound.distance;
+    let near = Math.max(bound.gap, bound.distance.min);
+    let far = bound.distance.max;
 
     for (const [axis, lo, hi] of axes) {
         // A line square to an axis (the entry's and Fit's, at azimuth 0 exactly) never crosses its bounds: it is
@@ -280,7 +283,8 @@ export function cutaway(eye, target, world) {
  * `+z`). Answers the four planes of that pyramid — each `{normal, constant}`, `normal` of unit length, a point `p`
  * inside every one where `normal · p + constant ≥ 0`, the sense the renderer's clipping planes keep — or `null` for an
  * eye at or behind the face, from where no line of sight to a point behind it crosses the opening, so nothing of the cab
- * is seen.
+ * is seen. That branch is the function's domain guard: on the page `confine()` holds the eye in front of the face, so
+ * the renderer never reaches it.
  *
  * @param {{x: number, y: number, z: number}} eye
  * @param {{x: number, y: number, z: number, w: number, h: number}} door

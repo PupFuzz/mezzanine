@@ -839,8 +839,8 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             lastStep = null;
         },
 
-        /** The walls' heights now, by id, and the band's as drawn — what the browser leg reads. */
-        heights: () => ({ walls: [...walls].map(([id, w]) => [id, w.h]), band: band === null ? null : band.scale.y * world.band.h }),
+        /** The walls' heights now, by id — what the browser leg reads. */
+        heights: () => ({ walls: [...walls].map(([id, w]) => [id, w.h]) }),
 
         /**
          * What the browser leg reads of the room's moving parts and its at-rest members: each leaf's drawn width against

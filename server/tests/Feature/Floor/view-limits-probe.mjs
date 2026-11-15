@@ -28,6 +28,8 @@
  * - `damping` — a pan into the back wall is held there while its damped remainder runs out (the library's update after
  *   the clamp re-applied it: the back wall's drop), and a pan back out right after moves the eye by the pan's own
  *   length — the remainder owed into the wall is not left to cancel it.
+ * - `near` — a turn at a wall (each side, the back, a corner) from the dolly minimum looking level: every drawn frame no
+ *   nearer the target than the minimum, the near plane's corners above the floor.
  * - `wake` — a pointer's pan pushing the eye past the back wall again from where the clamp held it fires the controls'
  *   change, the renderer's wake, so a frame clamps it: the clamp leaves the controls' own last pose at the held one.
  * - `confine` — the pure rule over seeded random poses: every result legal, its target's height in range, a legal pose
@@ -62,7 +64,7 @@ const character = { w: SCENE_W, h: SCENE_H };
 const extent = { w: 17.84, d: 6.96 };
 const wide = { width: 1280, height: 800 };
 const tall = { width: 800, height: 1280 };
-const legs = { limits: [], above: [], cutaway: [], doorway: [], move: [], keys: [], turn: [], damping: [], wake: [], confine: [] };
+const legs = { limits: [], above: [], cutaway: [], doorway: [], move: [], keys: [], turn: [], damping: [], wake: [], near: [], confine: [] };
 const printed = {};
 const deg = (r) => (r * 180) / Math.PI;
 
@@ -122,7 +124,7 @@ if (!(bound.gap >= reach - 1e-12) || !(bound.gap >= L.NEAR)) {
 
 const want = { min: { x: -extent.w / 2 + bound.gap, z: -extent.d / 2 + bound.gap }, max: { x: extent.w / 2 - bound.gap, z: extent.d / 2 + a.distance.max } };
 
-if (JSON.stringify(bound.eye) !== JSON.stringify(want) || bound.target.min.y !== 0 || bound.target.max.y !== ROOM_H_U || bound.distance !== a.distance.max) {
+if (JSON.stringify(bound.eye) !== JSON.stringify(want) || bound.target.min.y !== 0 || bound.target.max.y !== ROOM_H_U || bound.distance !== a.distance) {
     legs.limits.push(`the bound is ${JSON.stringify(bound)} — not the floor's sides and back by the gap, the front to the dolly limit, the target's height 0 to the room's, the distance to the dolly limit`);
 }
 
@@ -440,6 +442,50 @@ for (const damping of [true, false]) {
     }
 }
 
+// A turn at a wall with the eye close in and level: every drawn frame no nearer the target than the dolly minimum, and
+// the near plane's corners above the floor — the header's proof holds only from the minimum distance out. The eye is
+// brought to the dolly minimum, tilted to level, walked to within `gap` of a side wall (and of the back wall, and into
+// the corner), then turned a full circle each way.
+for (const damping of [true, false]) {
+    for (const [where, dx, dy] of [['a side wall', -40, 0], ['the other side wall', 40, 0], ['the back wall', 0, 40], ['a corner', 40, 40]]) {
+        // the eye at the wall, then stood off it by each of these, units — a step the camera's own walk makes
+        for (const off of [0, 0.15, 0.3, 0.6]) {
+            const r = rig(burrow, { damping });
+            let worst = { d: Infinity, corner: Infinity };
+
+            r.acts.zoomStep(40);
+            r.acts.drag(0, -2 * stage.width);
+            drive(r, 0, () => {}, 200);
+            drive(r, 400, () => r.controls.pan(dx, dy), 200);
+
+            // the pair stood back off the wall by `off`, into the room (a pan of `dx`, `dy` walks toward `-dx`, `-dy`)
+            const back = { x: Math.sign(dx) * off, z: Math.sign(dy) * off };
+
+            r.controls.target.set(r.controls.target.x + back.x, r.controls.target.y, r.controls.target.z + back.z);
+            r.camera.position.set(r.camera.position.x + back.x, r.camera.position.y, r.camera.position.z + back.z);
+            drive(r, 0, () => {}, 50);
+
+            const sample = () => {
+                const e = r.eye();
+                const t = r.controls.target;
+                const low = Math.min(...corners(e, t, r.view.near, r.view.fov, stage.width / stage.height).map((c) => c.y));
+
+                worst = { d: Math.min(worst.d, r.controls.getDistance()), corner: Math.min(worst.corner, low) };
+            };
+
+            for (const turn of [Math.PI / 180, -Math.PI / 180]) {
+                drive(r, 400, () => r.controls.rotateLeft(turn), 100, sample);
+            }
+
+            printed[`near_${damping}_${where}_${off}`] = worst;
+
+            if (worst.d < r.view.distance.min - 1e-9 || !(worst.corner > 0)) {
+                legs.near.push(`${damping ? 'damped' : 'with no damping'}, a turn ${off} from ${where} with the eye close in and level drew the eye ${worst.d.toFixed(3)} from the target (the minimum ${r.view.distance.min}) and the near plane's lowest corner at y ${worst.corner.toFixed(4)}`);
+            }
+        }
+    }
+}
+
 // The damped remainder: one pan into the back wall, its remainder run out, then a pan back out.
 {
     const r = rig(burrow);
@@ -539,7 +585,7 @@ for (const damping of [true, false]) {
         const asked = Math.hypot(eye.x - target.x, eye.y - target.y, eye.z - target.z);
 
         if (!legal(got.eye) || got.target.y < 0 || got.target.y > ROOM_H_U || ![got.eye.x, got.eye.y, got.eye.z].every(Number.isFinite)
-            || (reach > asked + EPS && reach > view.bound.distance + EPS)) {
+            || (reach > asked + EPS && reach > view.bound.distance.max + EPS)) {
             legs.confine.push(`from ${JSON.stringify({ eye, target, prev })} the rule answered ${JSON.stringify(got)}`);
         }
 

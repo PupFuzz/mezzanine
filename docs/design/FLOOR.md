@@ -1921,7 +1921,8 @@ floor segment now names another floor opens that floor and reads this notice (op
   target: never behind the back wall's face nor past either side of the floor, each by the near plane's reach, and in
   front of the room no farther out than the dolly limit, so the entry pose stands as before. A pan that meets a wall
   stops there and slides along it; a turn or a dolly that would carry the eye out moves it along its line to the
-  target instead — so a view turned off the front at the fit comes closer —
+  target instead, never nearer it than the minimum distance (where it would have to be, the turn stops) — so a view
+  turned off the front at the fit comes closer —
   and *Fit the floor* returns to the entry pose wherever the eye stood. The target is free across the floor and past
   it (at the fit it lies far beyond an eye at the back wall), its height alone held. With the eye never behind the
   back wall the band is never cut away (*"if I get too close to the office, the back wall (containing the elevator)

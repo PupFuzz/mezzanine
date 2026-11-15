@@ -518,11 +518,11 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                     // where the doorway's centre is drawn on the stage, px — what the browser leg clicks
                     const door = world?.band?.elevator ?? null;
                     const seen = door === null ? null : new Vector3(door.x + door.w / 2, door.y + door.h / 2, door.z).project(camera);
-                    // the cab's room as the band stands now, on the stage, px: its opening's corners and all eight of its box's —
+                    // the cab's room on the stage, px: its opening's corners and all eight of its box's —
                     // what the cab row's clip check reads
                     const r = world?.band?.cab?.room ?? null;
                     const onStage = (u, v, w) => {
-                        const q = new Vector3(r.x + u * r.w, r.y + v * r.h * (heights.band / world.band.h), r.z + w * r.d).project(camera);
+                        const q = new Vector3(r.x + u * r.w, r.y + v * r.h, r.z + w * r.d).project(camera);
 
                         return { x: ((q.x + 1) / 2) * surface.width, y: ((1 - q.y) / 2) * surface.height };
                     };
@@ -544,7 +544,6 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         doorway: seen === null ? null : { x: ((seen.x + 1) / 2) * surface.width, y: ((1 - seen.y) / 2) * surface.height },
                         cab: cabSeen,
                         walls: heights.walls,
-                        band: heights.band,
                         calls: renderer.info.render.calls,
                         triangles: renderer.info.render.triangles,
                         memory: { ...renderer.info.memory },
