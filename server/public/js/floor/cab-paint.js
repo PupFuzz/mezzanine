@@ -179,6 +179,7 @@ export const CAB_STYLE = `
 .dv-skirting{fill:var(--dv-skirting,var(--house-trim));stroke:var(--dv-skirting,var(--house-trim));stroke-width:.5}.dv-shade-stop{stop-color:var(--scene-ink)}.dv-back-shade{fill:var(--scene-ink)}
 .dv-partition-cap{fill:var(--dv-partition-cap,var(--house-trim));stroke:var(--dv-partition-cap,var(--house-trim));stroke-width:.5}
 .dv-monitor{fill:var(--dv-monitor,var(--scene-paper));stroke:var(--dv-monitor,var(--scene-paper));stroke-width:.5}
+.dv-recess{fill:var(--dv-recess,var(--ground-deep));stroke:var(--dv-recess,var(--ground-deep));stroke-width:.5}
 .lobby-view-skirting{fill:var(--scene-stool)}.lobby-view-sky-stop{stop-color:var(--scene-glass)}.lobby-view-day-stop{stop-color:var(--scene-paper)}.lobby-view-shade-stop{stop-color:var(--scene-ink)}.lobby-view-back-shade{fill:var(--scene-ink)}
 .lobby-view-sun{fill:var(--scene-paper);opacity:.3}.lobby-view-mat{fill:var(--lobby-mat)}.lobby-view-door-frame{fill:var(--door-edge)}.lobby-view-handle{fill:var(--door-edge)}.lobby-view-mullion{fill:none;stroke:var(--door-frame);stroke-width:.5}
 ${unmixed(MIXED)}@supports (fill:color-mix(in srgb,currentColor 50%,transparent)){${MIXED}}
@@ -653,10 +654,11 @@ const VIEW_LIGHTS = Object.freeze({
  * `scene.ride.view`), PROJECTED into `parent` and clipped to `box` with `throughDoor()`'s lens — the floor plane, the
  * ceiling at the room's height with the bare room's lights, the accent runs flat on the plane, then every body in the order
  * the model answers it. A body whose projection lies wholly outside the doorway is culled; of a body's faces only those that
- * face the eye are drawn — its near face, its top where it is lower than the eye, its end where it lies wholly to one side
- * of the door's centre line. A standing piece is its theme's own document, an `<image>` on its foot line (§ 10.6 item 2's
- * asset shape), facing the rider (§ 14 item 48's ruling 1). A bare model — or none — is the bare room
- * (`drawOfficeView()`), in the stop's palette where the model names one.
+ * face the eye are drawn — its near face, its top where it is lower than the eye, its underside where it stands clear of
+ * the floor higher than the eye, its end where it lies wholly to one side of the door's centre line. A standing piece is
+ * its theme's own document, an `<image>` on its foot line (§ 10.6 item 2's asset shape), facing the rider (§ 14 item
+ * 48's ruling 1). A bare model — or none — is the bare room (`drawOfficeView()`), in the stop's palette where the model
+ * names one.
  *
  * ⛔ IT DECIDES NOTHING AND IS SCENERY (§ 6.3): no word, no seat, no character, no fact and no motion; no window and no
  * daylight (§ 10.6 item 3). ITS COLOURS ARE THE THEME's CARRIERS: the root group's `style` holds the model's palette as
@@ -724,7 +726,8 @@ function inDoorway(box, at, x1, x2, y1, y2, z1, z2) {
 
 /**
  * Each body kind's classes: its faces', and its top's where it is lower than the eye. A side-wall strip and a wall cell are
- * the room's wall; the far wall the bare room's back; a desk's top its desk colour over its edge, a monitor's back its own.
+ * the room's wall; the far wall the bare room's back; a desk's top its desk colour over its edge, a monitor's back its own;
+ * a side restroom door's recess strip the dark of its open doorway, in the wall's plane.
  */
 const BODY_CLASS = Object.freeze({
     'far-wall': Object.freeze({ face: 'dv-back', top: 'dv-back' }),
@@ -733,6 +736,7 @@ const BODY_CLASS = Object.freeze({
     partition: Object.freeze({ face: 'dv-partition', top: 'dv-partition-cap' }),
     'desk-top': Object.freeze({ face: 'dv-desk-edge', top: 'dv-desk' }),
     monitor: Object.freeze({ face: 'dv-monitor', top: 'dv-monitor' }),
+    doorway: Object.freeze({ face: 'dv-recess', top: 'dv-recess' }),
 });
 
 /** One body's faces that face the eye (`drawFloorView()`'s rule), or a standing piece's document on its foot line. */
@@ -757,6 +761,11 @@ function drawBody(room, at, pts, b) {
 
     if (b.z2 > b.z1 && b.x2 > b.x1 && b.y2 < CAB.eye) {
         node('polygon', { points: pts(at(b.x1, b.y2, b.z1), at(b.x2, b.y2, b.z1), at(b.x2, b.y2, b.z2), at(b.x1, b.y2, b.z2)), class: cls.top }, room);
+    }
+
+    // Its underside where it stands clear of the floor higher than the eye — a lintel over a side door's doorway.
+    if (b.z2 > b.z1 && b.x2 > b.x1 && b.y1 > CAB.eye) {
+        node('polygon', { points: pts(at(b.x1, b.y1, b.z1), at(b.x2, b.y1, b.z1), at(b.x2, b.y1, b.z2), at(b.x1, b.y1, b.z2)), class: cls.face }, room);
     }
 
     if (b.x2 > b.x1) {

@@ -467,7 +467,7 @@ own level on every frame (§ 3.4).
    approximated by an affine skew to the near jamb's height, clipped to the projected trapezoid — a new drawing primitive,
    and inexact where the wall recedes steeply, which is where the doorway sits (beside the eye's line). Option C, leave
    the door view as it is until the 3-D floor is the view the operator reads. **Recommendation: A**, as slice 3, after
-   slice 2.
+   slice 2. **Answered A; built as slice 3 (§ 8).**
 
 ## 8. The slice plan, for the coder
 
@@ -506,6 +506,16 @@ What this plan can say durably: the files slice 1 edits that the siblings have b
    with the column rule, side leaf and field (§ 3.5); `body-paint.js` and `floor-paint.js` untouched (§ 3.6);
    `floor-world-probe.mjs`, `TheFloorIsTheScenesThirdRendererTest`, `floor3d.browser.mjs` (§ 6); `FLOOR.md`'s AT-D3-38
    and the row markers. Lands after slice 1 and, like it, after re-reading `dev`.
+
+3. **The door in the wall, in the cab's door view** (§ 7 Q4's option A) — `door-view.js` reads each door's geometry off
+   the view's wall bodies, cuts § 3.1 (3)'s lintel (the column's cells and the footprint's side strips on the column's
+   OUTER face — the strip a `right` door's column backs onto, `doorway.x + T`, or a `left` door's, `doorway.x`; a
+   partition the lintel leaves nothing of dropped, as 3-D drops it) and closes the opening with a `doorway` row strip
+   per doorway row at that outer face; the flag is § 3.1 (2)'s billboard. As built, the jambs are not bodies of their
+   own: the wall cell past the doorway's far end shows its near face (the jamb the eye can see; the near jamb faces away
+   from it), and `cab-paint.js` draws a body's underside where it stands clear of the floor above the eye (the head).
+   The recess takes each theme's `restroom-door` recess colour through a `--dv-recess` carrier. The flag carries its rim
+   and no field, the door view drawing no fact (`FLOOR.md` § 6.3). The `elevation` view has no caller.
 
 ## 9. What could falsify it, and what is not defended
 

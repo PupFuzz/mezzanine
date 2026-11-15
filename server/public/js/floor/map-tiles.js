@@ -54,7 +54,10 @@ export const RESTROOM_PLATES = Object.freeze({
  */
 export const SIDE_DOOR_BOX = Object.freeze({ w: 48, h: 150, face: 40, rise: 146 });
 
-/** The views of a side door's theme document (`sceneryInput()`'s `view`): the floor page's plan, and the cab's two billboards. */
+/**
+ * The views of a side door's theme document (`sceneryInput()`'s `view`): the floor page's plan, the frame's elevation
+ * (drawn by no view: the cab's door view draws the doorway in its wall as polygons), and the cab's flag billboard.
+ */
 export const DOOR_VIEWS = Object.freeze(['plan', 'elevation', 'flag']);
 
 /**
@@ -66,8 +69,8 @@ export const DOOR_VIEWS = Object.freeze(['plan', 'elevation', 'flag']);
  * card#13033: a door's input follows its geometry (`floor-walls.js`'s `restroomDoorGeometry()`; `null`, a door no wall
  * stands against, reads as `back`). A `back` door's is the face-on picture's, whatever the view. A side door's carries its
  * `facing` and the `view` it is drawn for — `plan`, the floor page's, in the drawing box (`SIDE_DOOR_BOX`) with every
- * `side` plate mirrored for its facing; `elevation`, the cab's door view's billboard of the frame alone, at the tile's
- * size; `flag`, the door view's second billboard, the flag plate alone at its own size.
+ * `side` plate mirrored for its facing; `elevation`, the frame alone at the tile's size, which no view draws; `flag`,
+ * the door view's billboard of the flag plate alone at its own size.
  *
  * @param {{kind: string, w: number, h: number, index: number}} cell a cell of `mapTiles()`
  * @param {string} seed the grid's seed — its room's `install_id`, or the floor's key for the hallway
