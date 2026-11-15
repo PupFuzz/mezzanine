@@ -1543,7 +1543,7 @@ export function sideTable({ seat_id: seatId, seats }) {
  * part list the 3-D floor builds — `./pieces-3d.js`'s, in this theme's `PALETTE` — or `null` for a kind it does not draw.
  */
 export function piece3d(kind, inputs) {
-    return pieces3d(PALETTE, kind, inputs);
+    return pieces3d(PALETTE, kind, inputs, RULES);
 }
 
 /**

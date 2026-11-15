@@ -15,14 +15,17 @@
  * rate), narrowing toward the frame as the 2-D leaves do, in front of the cab's room, which stands behind the band's open
  * doorway (`cabGeometry()`) and does not move;
  * each restroom door's leaf over its recess and its slider's field, vacant or occupied, at the scene's rects (§ 6.7 item
- * 2: the leaf and the field are the renderer's, never the theme's); a desk's screen cross-fading from what it showed to
+ * 2: the leaf and the field are the renderer's, never the theme's) — a door set into a side wall its leaf in the wall's
+ * thickness, sliding toward the back jamb, and its field on the flag; a desk's screen cross-fading from what it showed to
  * what it shows over A5's frames (the old picture a second plane, the transient term's); and A15's replay marker sweeping
  * the screen while its held rendering moves (`clip-clock.js`'s `screen`), still at rest otherwise. Under reduced motion
  * each is drawn at its end: the leaves where the timeline leaves them, the screen with no fade.
  *
  * ⛔ THE CUT-AWAY (plan § 3.7): each frame the segment from the eye to the target is tested against the walls and the
  * band (`cutaway()`); every one it meets is lowered to `CUTAWAY_H` over `CUTAWAY_MS` (a cut under reduced motion), and
- * raised again when clear — each wall on its own, an instance of its height's mesh. A desk and a character are never cut.
+ * raised again when clear — each wall on its own, an instance of its height's mesh. A side restroom door's LINTEL (a wall
+ * box standing from the door's height, `box.y`) lowers to nothing, and whenever any wall of its column is met. A desk
+ * and a character are never cut.
  *
  * ⛔ A RASTERISED PICTURE WAKES THE FRAME when it answers (`wake`), so a room drawn before its pictures is drawn again.
  *
@@ -68,6 +71,8 @@ function textureOf(canvas) {
 const LEAF_OPEN = 0.12;
 /** How deep the elevator's leaves stand in front of the back wall's face, units. */
 const LEAF_DEPTH = 0.03;
+/** A side restroom door's field's thickness, units: a shade thicker than the theme's flag, so both its faces show it. */
+const FIELD_T = 0.012;
 
 /** How far under the cab's ceiling its light's panel hangs, units — clear of the ceiling's own face. */
 const LIGHT_DROP = 0.002;
@@ -226,7 +231,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
 
     // ── the walls and the cut-away ─────────────────────────────────────────────────────────────
     const wallBox = new BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5);
-    /** wall id → `{ mesh, index, box, h }`, `h` the height it is drawn at now */
+    /** wall id → `{ mesh, index, box, h, column }`, `h` the height it is drawn at now, `column` a lintel's door's wall ids */
     let walls = new Map();
     let wallMeshes = [];
     /** the wall ids the walls were last stood for — a map edit that moves a wall stands them again */
@@ -238,7 +243,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
     const wallMaterial = new MeshToonMaterial();
 
     const placeWall = (w) => {
-        const m = new Matrix4().makeTranslation(w.box.x, 0, w.box.z).multiply(new Matrix4().makeScale(w.box.w, w.h, w.box.d));
+        const m = new Matrix4().makeTranslation(w.box.x, w.box.y, w.box.z).multiply(new Matrix4().makeScale(w.box.w, w.h, w.box.d));
 
         w.mesh.setMatrixAt(w.index, m);
         w.mesh.instanceMatrix.needsUpdate = true;
@@ -254,9 +259,10 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         const dt = lastStep === null ? 0 : now - lastStep;
         const rate = reduce ? Infinity : dt / CUTAWAY_MS;
         let moving = false;
-        const toward = (h, full, lowered) => {
-            const goal = lowered ? CUTAWAY_H : full;
-            const step = Math.min(Math.abs(goal - h), (full - CUTAWAY_H) * rate);
+        // Toward `full`, or lowered to `low`, at the rate that covers the way between in `CUTAWAY_MS`.
+        const toward = (h, full, lowered, low = CUTAWAY_H) => {
+            const goal = lowered ? low : full;
+            const step = Math.min(Math.abs(goal - h), (full - low) * rate);
             const next = h + Math.sign(goal - h) * step;
 
             moving ||= next !== goal;
@@ -267,7 +273,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         lastStep = now;
 
         for (const [id, w] of walls) {
-            const h = toward(w.h, w.box.h, cut.has(id));
+            // A lintel stands above `CUTAWAY_H`, so a stub of it would float: it lowers to nothing, and with its whole
+            // column, so the eye through any of that wall sees the doorway open and no lintel over a lowered wall.
+            const h = w.column === null
+                ? toward(w.h, w.box.h, cut.has(id))
+                : toward(w.h, w.box.h, cut.has(id) || w.column.some((c) => cut.has(c)), 0);
 
             if (h !== w.h) {
                 w.h = h;
@@ -293,6 +303,9 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         wallMeshes = [];
         walls = new Map();
 
+        // each lintel's column: the wall a side door is set into (`floorWorld()`'s `restroom_doors[].wall`)
+        const columns = new Map(world.restroom_doors.filter((d) => d.facing !== 'back').flatMap((d) => d.wall.map((id) => [id, d.wall])));
+
         for (const kind of ['edge', 'partition']) {
             const of = world.walls.filter((w) => w.kind === kind);
 
@@ -303,7 +316,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             const mesh = onTerm(new InstancedMesh(wallBox, wallMaterial, of.length), 'walls');
 
             of.forEach((w, index) => {
-                const held = { mesh, index, box: w.box, h: w.box.h };
+                const held = { mesh, index, box: w.box, h: w.box.h, column: w.box.y > 0 ? columns.get(w.id) ?? null : null };
 
                 walls.set(w.id, held);
                 placeWall(held);
@@ -567,18 +580,35 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         }));
     };
 
-    /** Each restroom door at frame `f` of its timeline: its leaf as wide as it is shut, from its recess's left, and its field. */
+    /**
+     * Each restroom door at frame `f` of its timeline: its leaf as long as it is shut and its field, vacant or occupied. A
+     * `back` door's leaf narrows from its recess's left; a side door's stands in the wall's thickness and slides into the
+     * wall toward the back jamb (its box's least `z`), and its field lies on the flag, a shade thicker than the plate so
+     * both faces show it.
+     */
     const placeRestroom = (f) => {
         for (const { leaf, field, door } of restroom.values()) {
-            const r = door.recess;
             const shut = 1 - (1 - LEAF_OPEN) * leafLevel(door.leaf, f);
             const inside = door.occupied.some((o) => f >= o.start && f < o.start + o.frames);
+            const s = door.sign;
 
-            leaf.position.set(r.x, r.y, door.at.z + 0.006);
-            leaf.scale.set(r.w * shut, r.h, LEAF_DEPTH);
-            // in front of the theme's sign plate, which the field is drawn on
-            field.position.set(door.sign.x, door.sign.y, door.at.z + 0.034);
-            field.scale.set(door.sign.w, door.sign.h, 0.01);
+            if (door.facing === 'back') {
+                const r = door.recess;
+
+                leaf.position.set(r.x, r.y, door.at.z + 0.006);
+                leaf.scale.set(r.w * shut, r.h, LEAF_DEPTH);
+                // in front of the theme's sign plate, which the field is drawn on
+                field.position.set(s.x, s.y, door.at.z + 0.034);
+                field.scale.set(s.w, s.h, 0.01);
+            } else {
+                const b = door.bar;
+
+                leaf.position.set(b.x, b.y, b.z);
+                leaf.scale.set(b.w, b.h, b.d * shut);
+                field.position.set(s.x, s.y, s.z - FIELD_T / 2);
+                field.scale.set(s.w, s.h, FIELD_T);
+            }
+
             field.material = inside ? occupied : vacant;
         }
     };
@@ -750,7 +780,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             loopFps = sceneIn.loop_fps;
             wallMaterial.color.set(colour);
 
-            const wallKey = world.walls.map((w) => w.id).join(' ');
+            const wallKey = world.walls.map((w) => `${w.id}@${w.box.y}`).join(' ');
 
             if (wallKey !== stoodWalls) {
                 stoodWalls = wallKey;
@@ -825,7 +855,24 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
          */
         inspect: () => ({
             leaves: world === null || world.band === null ? null : leaves.map((l, k) => [l.scale.x, world.band.leaves[k].w]),
-            restroom: [...restroom.values()].map(({ leaf, field, door }) => ({ id: door.id, leaf: [leaf.scale.x, door.recess.w], occupied: field.material === occupied })),
+            restroom: [...restroom.values()].map(({ leaf, field, door }) => ({
+                id: door.id,
+                facing: door.facing,
+                at: door.at,
+                leaf: door.facing === 'back' ? [leaf.scale.x, door.recess.w] : [leaf.scale.z, door.bar.d],
+                // a side door's drawn boxes beside the world's: the leaf's and the field's min corner and size
+                drawn: door.facing === 'back' ? null : { leaf: [...leaf.position.toArray(), ...leaf.scale.toArray()], field: [...field.position.toArray(), ...field.scale.toArray()], bar: door.bar, sign: door.sign },
+                occupied: field.material === occupied,
+            })),
+            // each lintel as drawn: its foot (the instance's translation), its height now and its full height, and whether
+            // a wall of its column is lowered
+            lintels: [...walls].filter(([, w]) => w.column !== null).map(([id, w]) => {
+                const m = new Matrix4();
+
+                w.mesh.getMatrixAt(w.index, m);
+
+                return { id, foot: m.elements[13], y: w.box.y, h: w.h, full: w.box.h, column: w.column.some((c) => walls.get(c)?.column === null && walls.get(c).h < walls.get(c).box.h - 1e-6) };
+            }),
             fading: [...screens.values()].filter((x) => x.fade !== null).length,
             cab: cabRead,
             members: { planes: world === null ? 0 : world.planes.length, band: band === null ? 0 : 1, screens: screens.size, restroom: restroom.size },

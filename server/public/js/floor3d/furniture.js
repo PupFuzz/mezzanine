@@ -21,7 +21,8 @@
  *
  * ⛔ EACH PIECE STANDS WHERE THE WORLD PUTS IT AND AS BIG AS ITS 2-D PICTURE: a kit model is fitted to the drawn width
  * across and the drawn height up (its depth follows its width, so it keeps its plan), its foot on the floor and its
- * front toward `+z` — the side the 2-D floor draws; a desk is fitted to its slab, its drawers toward its sitter; a monitor
+ * front toward `+z` — the side the 2-D floor draws, or turned as its placement says (a restroom door set into a side wall
+ * faces the room from the wall's plane); a desk is fitted to its slab, its drawers toward its sitter; a monitor
  * faces its sitter (plan § 3.4, the operator's Q4 answer); a couch is fitted to the box the world lays it in, at one
  * scale up and across, as deep as that box (its row's footprint), lengthened between its arms (`lengthened()`), so its
  * seat is where the world seats its interns; a dressed piece is fitted to its dressing's top and depth, and the dressing
@@ -277,26 +278,27 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
     };
 
     /**
-     * A first-party part list over `placements`: one merged geometry per drawn size, its parts already in units, only
-     * moved into place — `partsOf(inputs)` the list, or `null` for none.
+     * A first-party part list over `placements`: one merged geometry per distinct inputs (`inputsOf()` — the drawn size,
+     * and a side door's facing and flag), its parts already in units, only turned and moved into place — `partsOf(inputs)`
+     * the list, or `null` for none.
      */
     const firstParty = (placements, partsOf, detail) => {
-        const sizes = new Map();
+        const shapes = new Map();
 
         for (const p of placements) {
-            const size = `${p.w}×${p.h}`;
+            const key = JSON.stringify(inputsOf(p));
 
-            sizes.set(size, [...(sizes.get(size) ?? []), p]);
+            shapes.set(key, [...(shapes.get(key) ?? []), p]);
         }
 
-        for (const same of sizes.values()) {
+        for (const same of shapes.values()) {
             const parts = partsOf(inputsOf(same[0]));
 
             if (parts !== null) {
                 const geometry = mergedParts(parts, detail);
 
                 built.push(geometry);
-                instanced(geometry, vertexColoured, same.map((p) => new Matrix4().makeTranslation(p.at.x, p.at.y, p.at.z)));
+                instanced(geometry, vertexColoured, same.map((p) => new Matrix4().makeTranslation(p.at.x, p.at.y, p.at.z).multiply(new Matrix4().makeRotationY(p.turn ?? 0))));
             }
         }
     };
