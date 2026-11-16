@@ -5326,7 +5326,7 @@ wall, and in 3-D as a frame standing in the room with the wall at its side. The 
   foot, so the plate's foot lies on the doorway's head and its near corner on the sill's end — y 560–592 on the shipped
   default, the doorway's head at 592 (`map-tiles.js`'s `planPlates()`; § 12's *Restroom plates*). **Why the near jamb and not the doorway's
   centre**: at the centre the plate stands at y 480–512 on the shipped default, over the low snack table's picture (its
-  rect x 1,728–1,776, y 432–496) — measured off the map; at the near jamb it stands at y 512–544, over floor. The cost,
+  rect x 1,728–1,776, y 432–496) — measured off the map; at the near jamb it stands at y 512–544 (y 560–592 in plan), over floor at either height. The cost,
   named: a walker standing at the threshold (1,732, 628), drawn 120 px tall, covers the plate's lower half while the
   leaf opens and as it fades, and the painter draws scenery under every walker; the field is readable whenever the
   doorway is clear, which is when its state is a fact to read. **What the painter draws**: the

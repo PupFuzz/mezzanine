@@ -565,7 +565,7 @@ What this plan can say durably: the files slice 1 edits that the siblings have b
 
 ## 10. Seat rulings in this plan, reversible by the operator
 
-The doorway at the tile's foot end (§ 4); the flag over the near jamb, 112–144 px over the foot (§ 7 Q1); the sliding
+The doorway at the tile's foot end (§ 4); the flag over the near jamb, 112–144 px over the foot (§ 7 Q1; lowered onto the doorway in plan, § 5); the sliding
 2-D leaf (§ 7 Q2); a `back` door drawn face-on wherever a door touches no side wall; `right` on a tie; the lintel from
 the tile's height; no closet (§ 7 Q3); the walker fades at the threshold rather than walking through the wall (the
 seat's ruling after review round 2), its opacity the leaf's own level through its `inside` legs (§ 3.4, design review
