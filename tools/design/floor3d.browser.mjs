@@ -46,6 +46,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const L = await import(pathToFileURL(join(JS, 'floor3d', 'view-limits.js')).href);
 const { HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-model.js')).href);
 const { LOOP_FPS } = await import(pathToFileURL(join(JS, 'wire', 'animation-set.js')).href);
+const { PAN_STEP_PX, turnOf } = await import(pathToFileURL(join(JS, 'wire', 'camera.js')).href);
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);
 const CLOCK = await import(pathToFileURL(join(JS, 'floor3d', 'clip-clock.js')).href);
 const { CAB_SHADE } = await import(pathToFileURL(join(JS, 'floor', 'cab-paint.js')).href);
@@ -337,7 +338,7 @@ const ROWS = {
     what: 'the page draws: no uncaught exception, a WebGL 2 canvas, the bodies, the furniture and the labels; the entry pose at the home tilt; every label one element in reading order, each name a link; the kit\'s files requested once each',
     base: { run: lateDesk() },
     plants: [
-      ['the entry pose not set from its spherical figures (the camera left at the origin)', { plant: [P(PAINT, '            camera.position.set(position.x, position.y, position.z);\n            controls.update();\n        }\n    };', '            controls.update();\n        }\n    };')] }],
+      ['the entry pose not set from its spherical figures (the camera left at the origin)', { plant: [P(PAINT, '            camera.position.set(position.x, position.y, position.z);\n            controls.update();\n            pose = { eye: position, target };', '            controls.update();\n            pose = { eye: position, target };')] }],
       ['a label appended after the render rather than inserted at its place', { plant: [P('js/floor3d/floor-labels.js', '                if (container.children[first + i] !== entry.element) {', '                if (false) {')] }],
       ['a kit file requested for every placement', { plant: [P('js/floor3d/furniture.js', '        if (!requests.has(file)) {', '        if (true) {')] }],
     ],
@@ -852,7 +853,7 @@ const ROWS = {
       ['the furniture instancing dropped (a mesh a placement)', { plant: [P('js/floor3d/furniture.js', '        const mesh = new InstancedMesh(geometry, material, placements.length);\n\n        placements.forEach((m, i) => mesh.setMatrixAt(i, m));', '        for (const m of placements.slice(1)) { const one = new InstancedMesh(geometry, material, 1); one.setMatrixAt(0, m); group.add(one); meshes.push(one); }\n        const mesh = new InstancedMesh(geometry, material, 1);\n\n        placements.slice(0, 1).forEach((m, i) => mesh.setMatrixAt(i, m));')] }],
       ['the wall instancing dropped (a mesh a wall)', { plant: [P(ROOM, "        for (const kind of ['edge', 'partition']) {\n            const of = world.walls.filter((w) => w.kind === kind);", "        for (const kind of world.walls.map((w) => w.id)) {\n            const of = world.walls.filter((w) => w.id === kind);")] }],
       ['every part\'s facets ×4 (a lathe of 96 segments)', { plant: [P('js/floor3d/part-geometry.js', 'seat: Object.freeze({ lathe: 24, sphere: [16, 10], bead: [8, 6], tube: [2, 6], cone: 8, cylinder: 20, torus: [8, 24], curve: 4, bevel: 2 }),', 'seat: Object.freeze({ lathe: 96, sphere: [64, 40], bead: [32, 24], tube: [8, 24], cone: 32, cylinder: 80, torus: [32, 96], curve: 16, bevel: 8 }),'), P('js/floor3d/part-geometry.js', 'chibi: Object.freeze({ lathe: 12, sphere: [10, 7], bead: [6, 4], tube: [1, 4], cone: 6, cylinder: 10, torus: [5, 12], curve: 2, bevel: 1 }),', 'chibi: Object.freeze({ lathe: 48, sphere: [40, 28], bead: [24, 16], tube: [4, 16], cone: 24, cylinder: 40, torus: [20, 48], curve: 8, bevel: 4 }),')] }],
-      ['a second cab room in the doorway', { plant: [P(ROOM, '    doorway.add(cab, ...leaves);', "    doorway.add(cab, onTerm(new Mesh(cab.geometry, cab.material), 'fixed'), ...leaves);")] }],
+      ['a second cab room in the doorway', { plant: [P(ROOM, '    doorway.add(cab, ...leaves, hit);', "    doorway.add(cab, onTerm(new Mesh(cab.geometry, cab.material), 'fixed'), ...leaves, hit);")] }],
       ['every face at the 512 px bucket', { plant: [P('js/floor3d/creature-paint.js', 'export const FACE_TEXTURE = 256;', 'export const FACE_TEXTURE = 512;')] }],
       ['a 3 MB file added to the kind map', { plant: [P('art:floor/models/kenney-furniture-kit/map.js', "    desk: 'desk.glb',", "    desk: 'bulky.glb',")], files: { '/art/floor/models/kenney-furniture-kit/bulky.glb': Buffer.alloc(3 * 1048576) } }],
     ],
@@ -1173,7 +1174,7 @@ const ROWS = {
   },
 
   restroom: {
-    what: 'a restroom door set into its side wall (the shipped default\'s, `right`): the wall over its doorway drawn as lintels from their box\'s foot; its leaf drawn at the world\'s box in the wall\'s thickness, as long as it is shut from the back jamb, and its field centred on the flag\'s plane; with the target at the door and the eye low outside that side wall, every lintel of a lowered column lowered to nothing with it',
+    what: 'a restroom door set into its side wall (the shipped default\'s, `right`): the wall over its doorway drawn as lintels from their box\'s foot; its leaf drawn at the world\'s box in the wall\'s thickness, as long as it is shut from the back jamb, and its field centred on the flag\'s plane; with the eye low inside the room facing that side wall and the target past it, every lintel of a lowered column lowered to nothing with it',
     base: { run: fixtureRun('idle-visit'), media: [] },
     plants: [
       ['the lintel stood on the floor, not at its box\'s foot', { plant: [P(ROOM, 'makeTranslation(w.box.x, w.box.y, w.box.z)', 'makeTranslation(w.box.x, 0, w.box.z)')] }],
@@ -1260,14 +1261,23 @@ const ROWS = {
           }
           f.pan = [...(f.pan ?? []), { goal: [goal.x, goal.z].map((v) => +v.toFixed(2)), at: i.target.map((v) => +v.toFixed(2)) }];
         };
-        // the target a unit into the room beside the door's near jamb, past its doorway: the eye's line to it crosses a
-        // full wall cell of the door's column, below its top, and no lintel
-        const beside = { x: side()[0].at.x - 1, z: side()[0].at.z + 0.6 };
-        await toDoor(beside);
-        await turnTo(Math.PI / 2);
-        await toDoor(beside);
-        // the eye lowered toward the floor, so its line to the target crosses the side wall below its top
-        for (let k = 0; k < 8; k++) await p.key('PageDown', 'PageDown');
+        // seen through the side wall from inside the room: the eye cannot stand outside a side wall (FLOOR.md § 4.5),
+        // so the view faces the door's wall from the room — the target at the door, the eye turned to the room's side of
+        // it, brought in close and low, then walked at the wall (Shift + ArrowUp) until the eye stands at its bound. The
+        // target, ahead of the eye along the floor, is then past the wall, and the eye's line to it crosses the door's
+        // column below its top.
+        const door = side()[0].at;
+        // turned from the entry to face the wall: a quarter turn in arrow presses, each the keys' own step
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        const quarter = Math.round(Math.PI / 2 / turnOf(PAN_STEP_PX, p.stage.w));
+        for (let k = 0; k < quarter; k++) { const key = door.x > 0 ? 'ArrowLeft' : 'ArrowRight'; await p.key(key, key); }
+        await sleep(1500);
+        // the target beside the door, past its jamb, so the line crosses a full wall cell of the door's column
+        await toDoor({ x: door.x, z: door.z + 0.6 });
+        for (let k = 0; k < 30 && i.distance > 1.8; k++) { await p.ev(`document.getElementById('floor-zoom-in').click()`); await sleep(300); i = await quick(); }
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        for (let k = 0, was = null; k < 60 && (was === null || Math.abs(i.eye[0] - was) > 1e-6); k++) { was = i.eye[0]; await p.key('ArrowUp', 'ArrowUp', true); await sleep(500); i = await quick(); }
         await sleep(1500);
         i = await quick();
         const lowered = i.room.lintels.filter((l) => l.column);
