@@ -529,7 +529,9 @@ const ROWS = {
         if (!(i.target[1] > at.target[1] + 1e-3)) d.push(`Alt + a drag down took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not up`);
         kept('Alt + a drag down', at, i);
         at = i;
-        await p.drag(0, -80, { modifiers: 1 });
+        // a drag up lowering the target to within a pixel's rise of the floor, so the two move together (the controls'
+        // pan rate, as `rise()` takes it) — past the floor the eye would go on alone, the carve-out above
+        await p.drag(0, -Math.floor(at.target[1] * p.stage.h / (2 * at.distance * Math.tan(Math.PI / 8))), { modifiers: 1 });
         i = await p.settle(400);
         f.altRise.push(i.target[1]);
         if (!(i.target[1] < at.target[1] - 1e-3)) d.push(`Alt + a drag up took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not down`);
