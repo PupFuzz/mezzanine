@@ -162,7 +162,7 @@ for (const dy of [PAN_STEP_PX, -PAN_STEP_PX]) {
     }
 }
 
-// *Fit the floor*: the entry pose set, the controls updated, the target clamped.
+// *Fit the floor*: the entry pose set, the controls updated, the renderer's clamp called.
 log.length = 0;
 acts.fit();
 

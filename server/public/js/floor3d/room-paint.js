@@ -21,11 +21,12 @@
  * the screen while its held rendering moves (`clip-clock.js`'s `screen`), still at rest otherwise. Under reduced motion
  * each is drawn at its end: the leaves where the timeline leaves them, the screen with no fade.
  *
- * ⛔ THE CUT-AWAY (plan § 3.7): each frame the segment from the eye to the target is tested against the walls and the
- * band (`cutaway()`); every one it meets is lowered to `CUTAWAY_H` over `CUTAWAY_MS` (a cut under reduced motion), and
+ * ⛔ THE CUT-AWAY (plan § 3.7): each frame the segment from the eye to the target is tested against the walls
+ * (`cutaway()`); every one it meets is lowered to `CUTAWAY_H` over `CUTAWAY_MS` (a cut under reduced motion), and
  * raised again when clear — each wall on its own, an instance of its height's mesh. A side restroom door's LINTEL (a wall
- * box standing from the door's height, `box.y`) lowers to nothing, and whenever any wall of its column is met. A desk
- * and a character are never cut.
+ * box standing from the door's height, `box.y`) lowers to nothing, and whenever any wall of its column is met. The band
+ * always stands: the eye is held in front of its face (`view-limits.js`'s `confine()`). A desk and a character are
+ * never cut.
  *
  * ⛔ A RASTERISED PICTURE WAKES THE FRAME when it answers (`wake`), so a room drawn before its pictures is drawn again.
  *
@@ -237,7 +238,6 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
     /** the wall ids the walls were last stood for — a map edit that moves a wall stands them again */
     let stoodWalls = null;
     let band = null;
-    let bandH = 1;
     let lastStep = null;
     // The walls in the theme's door-view partition colour (`PALETTE.view`, which every theme carries), set on each paint.
     const wallMaterial = new MeshToonMaterial();
@@ -286,8 +286,6 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         }
 
         if (band !== null) {
-            bandH = toward(bandH * world.band.h, world.band.h, cut.has('band')) / world.band.h;
-            band.scale.y = bandH;
             clipCab(eye);
         }
 
@@ -479,8 +477,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             });
             band.material.alphaTest = 0.5;
             band.position.set(world.band.x, 0, world.band.z);
-            band.scale.y = bandH;
-            // The doorway's cab and leaves stand on the band, so the cut-away lowers them with it.
+            // The doorway's cab and leaves stand on the band, in its frame.
             band.add(doorway);
             room.add(band);
             roomParts.push(band);
@@ -525,13 +522,10 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         cab.geometry = cabGeometry(world.band.cab, world.band, cabRead);
     };
 
-    /**
-     * THE CAB SEEN ONLY THROUGH ITS DOORWAY (`doorwayView()`), from `eye`: its open front as the band stands now — the
-     * cut-away lowers the cab with the band, so the opening is lowered with it — and nothing of it from behind the band.
-     */
+    /** THE CAB SEEN ONLY THROUGH ITS DOORWAY (`doorwayView()`), from `eye`: its open front, the band always standing. */
     const clipCab = (eye) => {
         const r = world.band.cab.room;
-        const view = doorwayView(eye, { x: r.x, y: r.y, z: r.z + r.d, w: r.w, h: r.h * bandH });
+        const view = doorwayView(eye, { x: r.x, y: r.y, z: r.z + r.d, w: r.w, h: r.h });
 
         cab.visible = view !== null;
 
@@ -834,7 +828,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             return real.length === 0 ? null : Math.min(...real);
         },
 
-        /** One frame's cut-away at `now` for the eye and the target; true while a wall or the band is still moving. */
+        /** One frame's cut-away at `now` for the eye and the target; true while a wall is still moving. */
         cutaway: applyCutaway,
 
         /** Whether a pointer's ray met the elevator's doorway (the header's hit area) in `object`. */
@@ -845,8 +839,8 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             lastStep = null;
         },
 
-        /** The walls' heights now, by id, and the band's — what the browser leg reads. */
-        heights: () => ({ walls: [...walls].map(([id, w]) => [id, w.h]), band: band === null ? null : bandH * world.band.h }),
+        /** The walls' heights now, by id — what the browser leg reads. */
+        heights: () => ({ walls: [...walls].map(([id, w]) => [id, w.h]) }),
 
         /**
          * What the browser leg reads of the room's moving parts and its at-rest members: each leaf's drawn width against
