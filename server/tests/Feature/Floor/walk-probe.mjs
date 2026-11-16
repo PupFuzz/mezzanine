@@ -30,7 +30,8 @@
  *                `draw`) and its threshold by the test's restatement of § 12's rule, and the obstacle list's length — the
  *                map at `map` (a repo path), mirrored in x where `mirror` is set, the door's tile carrying
  *                `door_properties` where given, its doors on a layer of their own dragged by `door_offset` ([dx, dy] px)
- *                where given; each door's `doorway` and the rows of the wall bodies in its column (`walls`).
+ *                where given; each door's `doorway` and the rows of the wall bodies in its column (`walls`), and the flag's
+ *                `plate` and `sign` the theme's `plan` document is handed (`map-tiles.js`'s `sceneryInput()`, `plan`).
  *   `spots`    — card#12793: the elevator lane and the elevator queue's spots on the shipped default with the slots
  *                `open` names left open, with the lane and without it, and the lattice they were searched on (AT-D3-34).
  *   `lattice`  — H6's tileset and registry legs at the scene: `buildScene()` over one drawn frame and its rows twice —
@@ -604,6 +605,7 @@ if (input.mode === 'snack-chain') {
 // answer is the threshold then those spots, so index `k` is the scene's spot `k` either way.
 if (input.mode === 'restroom') {
     const scene = await mod('floor/scene.js');
+    const { sceneryInput } = await mod('floor/map-tiles.js');
     const { CLEARANCE, spotsNear, cellAt, blockedFor } = await mod('floor/route.js');
     const loaded = loadMap(input.map, input.mirror === true);
     const map = input.door_offset === undefined ? loaded : doorDragged(loaded, input.door_offset);
@@ -639,8 +641,9 @@ if (input.mode === 'restroom') {
 
             // `walls`: the rows of the wall bodies in the doorway's column, which its doorway must be cut from
             const column = geometry.doorway === null ? [] : walls.filter((w) => w.x === geometry.doorway.x).map((w) => w.y);
+            const plan = sceneryInput(c, 'probe', geometry, 'plan');
 
-            return { x: c.x, y: c.y, w: c.w, h: c.h, facing: geometry.facing, face: geometry.face, doorway: geometry.doorway, draw: geometry.draw, walls: [...new Set(column)].sort((a, b) => a - b), threshold: thresholdOn(g, c, geometry, openAt) };
+            return { x: c.x, y: c.y, w: c.w, h: c.h, facing: geometry.facing, face: geometry.face, doorway: geometry.doorway, draw: geometry.draw, walls: [...new Set(column)].sort((a, b) => a - b), threshold: thresholdOn(g, c, geometry, openAt), plan: { plate: plan.plate, sign: plan.sign } };
         }),
         spots: input.from === undefined ? null : (() => {
             const lane = input.lane ?? null;

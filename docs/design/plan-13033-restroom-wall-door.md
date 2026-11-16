@@ -158,7 +158,8 @@ would have made every caller place the cell itself or closed an import cycle). `
   `draw: { x: x_w − 40, y: foot − 146, w: 48, h: 150 }`; `plates: RESTROOM_PLATES.side` — in the draw box's px: plate
   `(2, 2, 36, 32)`, sign `(9, 20, 22, 12)`, doorway `(40, 82, 8, 64)`, leaf `(42, 88, 4, 52)`; for `left`, each `x` is
   `48 − x − w`. The flag's plate stands 112–144 px over the foot line — its top at the tile's top, flush under the 3-D
-  lintel, its bottom at the head's underside — so every renderer's flag is one figure (the first draft's 122–154 stood
+  lintel, its bottom at the head's underside — so the door view's and the 3-D floor's flag are one figure (the floor
+  page's plan lowers it onto the doorway, § 5) (the first draft's 122–154 stood
   above a 144 px tile and could not be drawn in the door view's box). `RESTROOM_RECESS` stays the `back` recess and the
   leaf's 52 px span.
 - `sceneryInput(cell, seed, geometry = null, view = 'plan')` adds `facing`, the plates and `view` to a side door's input
@@ -343,7 +344,10 @@ rewrote `route.js`'s desk cells; this plan's author did not re-run that bisectio
 ## 5. The flag sign, the plates and the door motion — figures
 
 In § 12's rows. Scene px on the shipped default: flag plate x 1,738–1,774, y 512–544; field x 1,745–1,767, y 530–542;
-leaf x 1,778–1,782, y 598–650; doorway strip x 1,776–1,784, y 592–656. The leaf's motion is *Restroom door motion*'s
+leaf x 1,778–1,782, y 598–650; doorway strip x 1,776–1,784, y 592–656. Amended after the build (the operator, 2026-11-15: *"3D view is fine. for 2D view, move the flag closer to the door so
+that it is barely touching"*): the floor page's plan draws the plate and field lowered onto the doorway, plate at (2, 50)
+and sign at (9, 68) in the box — y 560–592 and 578–590 on the default — while the door view and the 3-D floor keep the
+heights above (`FLOOR.md` § 12's *Restroom plates*, `map-tiles.js`'s `planPlates()`). The leaf's motion is *Restroom door motion*'s
 4 / 1 / 4 frames unchanged, and so is every leg; a side door's walker's opacity through its `inside` legs is the leaf's
 own level on every frame (§ 3.4).
 
