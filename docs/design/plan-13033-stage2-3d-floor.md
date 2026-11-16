@@ -579,8 +579,9 @@ controls are configured with, and the probe reads it):
   turn there swings the eye along the walls; and since a pan walks — the operator's answer A on card#13033: the eye's
   height, pitch and facing kept, no step down, no tipping to look down, the target never forced into the office —
   the eye at the back wall from the opening view looks past it, the room having left the frame below; a walk at desk
-  level starts from an eye brought down first (zoomed in or tilted toward level, then Page Down / Page Up). A build
-  that held the target in the office instead, the eye closing in on it at the wall, was reverted on that answer.
+  level starts from an eye brought down first with Page Down, which once the target is on the floor lowers the eye
+  alone, tilting toward level (the operator's answer to Q4, `camera-acts.js`'s `lift()`). A build that held the
+  target in the office instead, the eye closing in on it at the wall, was reverted on that answer.
   `configureControls()` is the controls' and camera's one configuration, the renderer's and the probe's;
 - **A pan slides along the floor, never up the screen (M5)**: the library's `screenSpacePanning` is set explicitly to
   the floor-plane mode (to confirm in slice 4); the property — a vertical pan gesture leaves the target's `y`
