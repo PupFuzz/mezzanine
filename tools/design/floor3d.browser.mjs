@@ -443,7 +443,7 @@ const ROWS = {
   },
 
   camera: {
-    what: 'the camera: a drag down never takes the eye below the floor, a right-drag and Shift + ArrowUp carry the eye into the office and stop it at the back wall, a pan across stops it at each side wall, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, Page Up / Page Down and Alt + a vertical drag raise and lower the eye and the target together within the room\'s height and turn nothing, Shift + a left-drag still pans along the floor, a wheel at the dolly limit scrolls the page',
+    what: 'the camera: a drag down never takes the eye below the floor, a right-drag and Shift + ArrowUp carry the eye into the office and stop it at the back wall, a pan across stops it at each side wall, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, Page Up / Page Down and Alt + a vertical drag raise and lower the eye and the target together within the room\'s height and turn nothing, and with the target on the floor Page Down lowers the eye alone, tilting toward level, and Page Up retraces it, Shift + a left-drag still pans along the floor, a wheel at the dolly limit scrolls the page',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['`maxPolarAngle` widened past 90°', { plant: [P('js/floor3d/view-limits.js', 'export const MAX_POLAR = (88 * Math.PI) / 180;', 'export const MAX_POLAR = (120 * Math.PI) / 180;')] }],
@@ -451,7 +451,8 @@ const ROWS = {
       ['screen-space panning', { plant: [P('js/floor3d/view-limits.js', '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
       ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
-      ['a rise that moves the target alone (the view turns)', { plant: [P('js/floor3d/camera-acts.js', '        position.set(position.x, position.y + h, position.z);', '')] }],
+      ['a rise that moves the target alone (the view turns)', { plant: [P('js/floor3d/camera-acts.js', '        position.set(position.x, position.y + both + alone, position.z);', '')] }],
+      ['Page Down that stops at the floor (the eye never lowered alone)', { plant: [P('js/floor3d/camera-acts.js', '            both = Math.max(h, -target.y);', '            both = h;')] }],
       ['the Alt press left to the controls (Alt + drag turns)', { plant: [P(PAINT, '                        event.stopImmediatePropagation();\n', '')] }],
       ['the Alt drag never reaching the rise', { plant: [P(PAINT, '                        acts.rise(event.clientY - rising.y);', '')] }],
     ],
@@ -501,12 +502,25 @@ const ROWS = {
         if (Math.abs(i.target[1] - top) > 1e-6) d.push(`Page Up held left the target at y ${i.target[1].toFixed(3)}, not the room's height ${top}`);
         kept('Page Up to the top', at, i);
         at = i;
-        for (let k = 0; k < 400 && i.target[1] > 1e-6; k++) { await p.key('PageDown', 'PageDown'); if (k % 8 === 7) i = await p.inspect(); }
-        await p.key('PageDown', 'PageDown');
-        i = await p.settle(300);
+        // down to the floor, a press at a time: while the target is above it, the two move together
+        for (let k = 0; k < 400 && i.target[1] > 1e-6; k++) { await p.key('PageDown', 'PageDown'); i = await rested(p, 250); }
         f.bottom = i.target[1];
         if (Math.abs(i.target[1]) > 1e-6) d.push(`Page Down held left the target at y ${i.target[1].toFixed(4)}, not the floor`);
         kept('Page Down to the floor', at, i);
+        // THE CARVE-OUT (the operator's answer to card#13033's Q4): with the target on the floor, Page Down lowers the
+        // eye alone — the target stays, the eye comes straight down, the view tilts toward level and faces the same way —
+        // and Page Up retraces it, the eye back where it stood before the two lift together again
+        at = i;
+        for (let k = 0; k < 3; k++) await p.key('PageDown', 'PageDown');
+        i = await rested(p);
+        f.alone = { eye: [at.eye[1], i.eye[1]], polar: [deg(at.polar), deg(i.polar)], target: i.target[1] };
+        if (Math.abs(i.target[1]) > 1e-6 || !(i.eye[1] < at.eye[1] - 1e-3) || !(i.polar > at.polar + 1e-6) || Math.abs(i.azimuth - at.azimuth) > 1e-6 || Math.abs(i.eye[0] - at.eye[0]) > 1e-6 || Math.abs(i.eye[2] - at.eye[2]) > 1e-6) {
+          d.push(`three Page Downs with the target on the floor took the eye ${at.eye.map((v) => v.toFixed(3))} → ${i.eye.map((v) => v.toFixed(3))}, the target's y to ${i.target[1].toFixed(4)}, the polar ${deg(at.polar).toFixed(3)}° → ${deg(i.polar).toFixed(3)}° — not the eye alone straight down, tilting toward level`);
+        }
+        for (let k = 0; k < 3; k++) await p.key('PageUp', 'PageUp');
+        i = await rested(p);
+        f.retraced = { eye: i.eye[1], target: i.target[1] };
+        if (Math.abs(i.target[1]) > 1e-6 || Math.max(...sub(i.eye, at.eye).map(Math.abs)) > 1e-6) d.push(`three Page Ups after them left the eye at ${i.eye.map((v) => v.toFixed(3))} and the target's y at ${i.target[1].toFixed(4)} — not back at ${at.eye.map((v) => v.toFixed(3))} with the target on the floor`);
         // Alt + a drag down the stage raises, up it lowers — and turns nothing
         at = i;
         await p.drag(0, 160, { modifiers: 1 });
@@ -515,7 +529,9 @@ const ROWS = {
         if (!(i.target[1] > at.target[1] + 1e-3)) d.push(`Alt + a drag down took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not up`);
         kept('Alt + a drag down', at, i);
         at = i;
-        await p.drag(0, -80, { modifiers: 1 });
+        // a drag up lowering the target to within a pixel's rise of the floor, so the two move together (the controls'
+        // pan rate, as `rise()` takes it) — past the floor the eye would go on alone, the carve-out above
+        await p.drag(0, -Math.floor(at.target[1] * p.stage.h / (2 * at.distance * Math.tan(Math.PI / 8))), { modifiers: 1 });
         i = await p.settle(400);
         f.altRise.push(i.target[1]);
         if (!(i.target[1] < at.target[1] - 1e-3)) d.push(`Alt + a drag up took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not down`);

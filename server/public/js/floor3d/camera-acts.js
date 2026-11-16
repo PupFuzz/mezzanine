@@ -17,7 +17,10 @@
  *
  * ⛔ RISING MOVES THE TARGET AND THE EYE BY ONE VECTOR, straight up or down, so the view's direction and distance are
  * kept; the clamp holds the target's `y` within 0 to `ROOM_H_U` and moves the eye back with it, and the polar
- * limit keeps the eye above the target. A drag of `dy` px rises `dy` px of the scene at the target's distance — the
+ * limit keeps the eye above the target. ONCE THE TARGET IS ON THE FLOOR, A LOWERING GOES ON WITH THE EYE ALONE (the
+ * operator's answer to card#13033's Q4): the target stays, the eye comes straight down and the view tilts toward
+ * level, down to the polar limit and the minimum distance; a raise from that pose repays the eye's own lowering first,
+ * so Page Up retraces Page Down. A drag of `dy` px rises `dy` px of the scene at the target's distance — the
  * rate `OrbitControls` pans at (its `_pan()`), so the room follows the pointer when the eye looks level. A key's step
  * is a share of the room's height at every distance, so a press is the same climb close in and at the fit.
  */
@@ -50,14 +53,47 @@ export function cameraActs(controls, { surface, entry, clamp, bounds }) {
         return camera();
     };
     /** The target and the eye lifted `h` world units together, then clamped. */
+    /**
+     * The eye's own lowering still owed back to a raise (`h`, units), with the pose the last lift left — a raise repays
+     * it only from there, so a turn or a walk in between leaves the next raise lifting the two together.
+     */
+    let owed = null;
     const lift = (h) => {
         const { target, object: { position } } = controls;
+        // the controls' update re-derives the pose from its angles, so "where it was left" allows rounding
+        const here = owed !== null && ['x', 'y', 'z'].every((k) => Math.abs(target[k] - owed.target[k]) < 1e-6 && Math.abs(position[k] - owed.eye[k]) < 1e-6);
+        const debt = here ? owed.h : 0;
+        let alone;
+        let both;
 
-        target.set(target.x, target.y + h, target.z);
-        position.set(position.x, position.y + h, position.z);
+        if (h < 0) {
+            // the target down to the floor (y 0); the rest the eye's alone, no lower than the polar limit and the minimum
+            // distance let it stand over the target
+            both = Math.max(h, -target.y);
+            alone = 0;
+
+            if (h < both) {
+                const across = Math.hypot(position.x - target.x, position.z - target.z);
+                const lowest = Math.max(across / Math.tan(controls.maxPolarAngle), Math.sqrt(Math.max(0, controls.minDistance ** 2 - across ** 2)));
+
+                alone = Math.max(h - both, Math.min(0, lowest - (position.y - target.y)));
+            }
+        } else {
+            // a raise repays the eye's own lowering first
+            alone = Math.min(h, debt);
+            both = h - alone;
+        }
+
+        target.set(target.x, target.y + both, target.z);
+        position.set(position.x, position.y + both + alone, position.z);
         controls.update();
 
-        return settled();
+        const shown = settled();
+        const left = debt - alone;
+
+        owed = left > 0 ? { h: left, eye: { x: position.x, y: position.y, z: position.z }, target: { x: target.x, y: target.y, z: target.z } } : null;
+
+        return shown;
     };
 
     return {

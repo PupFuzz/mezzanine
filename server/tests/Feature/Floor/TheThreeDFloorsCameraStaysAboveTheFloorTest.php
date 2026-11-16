@@ -90,9 +90,13 @@ class TheThreeDFloorsCameraStaysAboveTheFloorTest extends TestCase
             'the keys wire never reaching the rise' => ['camera-keys.js', '        } else if (event.key in KEY_RISE && acts.riseStep !== undefined) {', '        } else if (false) {', 'rise', 'camera-acts'],
             'a key step scaled with the distance (a drag of PAN_STEP_PX)' => [$acts, '            return lift(steps * RISE_STEP);', '            return this.rise(steps * 48);', 'rise', 'camera-acts'],
             'a key step of a quarter of the room' => [$acts, 'export const RISE_STEP = ROOM_H_U / 8;', 'export const RISE_STEP = ROOM_H_U / 4;', 'rise', 'camera-acts'],
-            'a rise that moves the target alone, turning the view' => [$acts, '        position.set(position.x, position.y + h, position.z);', '', 'rise', 'camera-acts'],
+            'a rise that moves the target alone, turning the view' => [$acts, '        position.set(position.x, position.y + both + alone, position.z);', '', 'rise', 'camera-acts'],
             'a rise at a rate of its own' => [$acts, 'Math.tan((controls.object.fov * Math.PI) / 360)', 'Math.tan((controls.object.fov * Math.PI) / 180)', 'rise', 'camera-acts'],
-            'a rise with no clamp' => [$acts, "position.y + h, position.z);\n        controls.update();\n\n        return settled();", "position.y + h, position.z);\n        controls.update();\n\n        return camera();", 'rise', 'camera-acts'],
+            'a rise with no clamp' => [$acts, '        const shown = settled();', '        const shown = camera();', 'rise', 'camera-acts'],
+            'Page Down that stops at the floor (the eye never lowered alone)' => [$acts, '            both = Math.max(h, -target.y);', '            both = h;', 'rise', 'camera-acts'],
+            'the eye lowered alone past the polar limit' => [$acts, '                alone = Math.max(h - both, Math.min(0, lowest - (position.y - target.y)));', '                alone = h - both;', 'rise', 'camera-acts'],
+            'Page Up that lifts the two together at once (never retracing the eye\'s own lowering)' => [$acts, '            alone = Math.min(h, debt);', '            alone = 0;', 'rise', 'camera-acts'],
+            'the eye\'s lowering repaid after a turn' => [$acts, '        const debt = here ? owed.h : 0;', '        const debt = owed !== null ? owed.h : 0;', 'rise', 'camera-acts'],
             'Fit with no clamp' => [$acts, "position.y, position.z);\n            controls.update();\n\n            return settled();", "position.y, position.z);\n            controls.update();\n\n            return camera();", 'fit', 'camera-acts'],
         ];
     }

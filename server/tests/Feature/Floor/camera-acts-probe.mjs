@@ -43,13 +43,25 @@ const controls = {
     dollyOut: (s) => log.push(['dollyOut', s]),
     update: () => log.push(['update']),
     getDistance: () => distance,
+    // the limits the renderer configures them with (`configureControls()`), read by the eye's own lowering
+    maxPolarAngle: L.MAX_POLAR,
+    minDistance: 1.2,
     target: vector('target', 0.5, 0.25, -1),
     object: { position: vector('position', 0.5, 3.25, 3), fov: 45 },
 };
 const surface = { width: 1280, height: 800 };
 const entry = { position: { x: 0, y: 3, z: 4 }, target: { x: 0, y: 0, z: 0 } };
 const bounds = { min: { x: -1, y: 0, z: -1 }, max: { x: 1, y: 1.6, z: 1 } };
-const acts = cameraActs(controls, { surface: () => surface, entry: () => entry, clamp: () => log.push(['clamp']), bounds: () => bounds });
+/** The renderer's clamp as far as a rise reaches it: the target's height held at the floor, the eye moved with it. */
+const clamp = () => {
+    log.push(['clamp']);
+
+    const under = Math.min(0, controls.target.y);
+
+    controls.target.y -= under;
+    controls.object.position.y -= under;
+};
+const acts = cameraActs(controls, { surface: () => surface, entry: () => entry, clamp, bounds: () => bounds });
 
 /** A stand-in element: its listeners by type, and a dispatch that answers whether the default was prevented. */
 function element() {
@@ -143,6 +155,49 @@ for (const [where, at] of [['closest', view.distance.min], ['fit', view.distance
 
         expect('rise', `${what} at the ${where} distance (${at.toFixed(2)})`, press({ type: 'keydown', key }), want);
     }
+}
+
+// ONCE THE TARGET IS ON THE FLOOR, PAGE DOWN LOWERS THE EYE ALONE (the operator's answer to card#13033's Q4): the
+// target stays, the eye comes straight down, the view tilts toward level — no lower than the polar limit and the
+// minimum distance — and Page Up from there retraces it before it lifts the two together again. Each case sets the
+// stub's pose, then presses.
+{
+    const step = ROOM_H_U / 8;
+    const place = (t, e) => {
+        Object.assign(controls.target, t);
+        Object.assign(controls.object.position, e);
+    };
+    const key = (k) => press({ type: 'keydown', key: k });
+    const opening = { t: { x: 0, y: 0, z: 0 }, e: { x: 0, y: 16.163, z: 19.262 } };
+
+    // from the opening view: the target on the floor, the eye down a step alone
+    place(opening.t, opening.e);
+    expect('rise', 'Page Down from the opening view', key('PageDown'), [['target.set', 0, 0, 0], ['position.set', 0, 16.163 - step, 19.262], ['update'], ['clamp']]);
+    // and Page Up retraces it: the eye alone back up, then the two together
+    expect('rise', 'Page Up after it', key('PageUp'), [['target.set', 0, 0, 0], ['position.set', 0, 16.163 - step + step, 19.262], ['update'], ['clamp']]);
+    expect('rise', 'a second Page Up', key('PageUp'), [['target.set', 0, step, 0], ['position.set', 0, 16.163 + step, 19.262], ['update'], ['clamp']]);
+
+    // the target a little over the floor: it comes down to the floor, the eye the whole step
+    place({ x: 0, y: step / 2, z: 0 }, { x: 0, y: 3, z: 3 });
+    expect('rise', 'Page Down with the target half a step up', key('PageDown'), [['target.set', 0, 0, 0], ['position.set', 0, 3 - step, 3], ['update'], ['clamp']]);
+
+    // at the polar limit: the eye no lower than the limit lets it stand over the target
+    const across = 1.3;
+    const floor = across / Math.tan(L.MAX_POLAR);
+
+    place({ x: 0, y: 0, z: 0 }, { x: 0, y: floor + 0.01, z: across });
+    expect('rise', 'Page Down a hundredth over the polar limit', key('PageDown'), [['target.set', 0, 0, 0], ['position.set', 0, floor, across], ['update'], ['clamp']]);
+
+    // at the minimum distance: the eye no nearer the target than it
+    place({ x: 0, y: 0, z: 0 }, { x: 0, y: 0.8, z: 1 });
+    expect('rise', 'Page Down above the minimum distance', key('PageDown'), [['target.set', 0, 0, 0], ['position.set', 0, Math.sqrt(1.2 ** 2 - 1), 1], ['update'], ['clamp']]);
+
+    // the camera moved between: the next Page Up lifts the two together
+    place(opening.t, opening.e);
+    key('PageDown');
+    place(opening.t, { ...opening.e, x: 1 });
+    expect('rise', 'Page Up after a turn', key('PageUp'), [['target.set', 0, step, 0], ['position.set', 1, 16.163 + step, 19.262], ['update'], ['clamp']]);
+    place({ x: 0.5, y: 0.25, z: -1 }, { x: 0.5, y: 3.25, z: 3 });
 }
 
 // Alt + a vertical drag (`rise(dy)`, which the renderer hands the pointer's movement): `dy` px of the scene at the
