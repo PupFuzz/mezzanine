@@ -1273,8 +1273,9 @@ const ROWS = {
         const quarter = Math.round(Math.PI / 2 / turnOf(PAN_STEP_PX, p.stage.w));
         for (let k = 0; k < quarter; k++) { const key = door.x > 0 ? 'ArrowLeft' : 'ArrowRight'; await p.key(key, key); }
         await sleep(1500);
-        // the target beside the door, past its jamb, so the line crosses a full wall cell of the door's column
-        await toDoor({ x: door.x, z: door.z + 0.6 });
+        // the target along the door's wall a unit and a half from its centre, clear of the doorway, so the line crosses a
+        // full wall cell of the door's column, not its opening
+        await toDoor({ x: door.x, z: door.z - 1.5 });
         for (let k = 0; k < 30 && i.distance > 1.8; k++) { await p.ev(`document.getElementById('floor-zoom-in').click()`); await sleep(300); i = await quick(); }
         await p.ev(`document.getElementById('floor-drawing').focus()`);
         for (let k = 0, was = null; k < 60 && (was === null || Math.abs(i.eye[0] - was) > 1e-6); k++) { was = i.eye[0]; await p.key('ArrowUp', 'ArrowUp', true); await sleep(500); i = await quick(); }
