@@ -33,7 +33,7 @@ export const RESTROOM_DOOR = Object.freeze({ kind: 'restroom-door', w: 64, h: 14
  * plates. `back`, in the tile's px from its top-left (a door drawn face-on); `side`, in the 2-D drawing box's px
  * (`SIDE_DOOR_BOX`) of a door set into the wall on its RIGHT — the flag `plate` and its `sign`, the `doorway` (the wall
  * strip over the span) and the `leaf` the painter slides over it; a `left` door mirrors each `x` in the box's width
- * (`restroomDoorGeometry()`).
+ * (`restroomDoorGeometry()`), and the floor page's plan lowers the flag onto the doorway (`planPlates()`).
  */
 export const RESTROOM_PLATES = Object.freeze({
     back: Object.freeze({
@@ -55,6 +55,22 @@ export const RESTROOM_PLATES = Object.freeze({
 export const SIDE_DOOR_BOX = Object.freeze({ w: 48, h: 150, face: 40, rise: 146 });
 
 /**
+ * card#13033 — a side door's plates AS THE FLOOR PAGE's PLAN DRAWS THEM (§ 12's *Restroom plates*, its plan drop): the flag
+ * `plate` and its `sign` lowered until the plate's foot meets the doorway's head, the rest as handed. The `side` rects
+ * stand the flag at its heights over the foot line, where the 3-D floor and the cab's door view stand it; the plan draws
+ * the doorway as a strip along the wall rather than upright, so at those heights its flag would hang clear of the door.
+ * The theme's `plan` document (`sceneryInput()`) and the painter's field (the scene's `field`) both read this.
+ *
+ * @param {object} plates a side door's plates, `RESTROOM_PLATES.side` or its `left` mirror
+ */
+export function planPlates(plates) {
+    const drop = plates.doorway.y - (plates.plate.y + plates.plate.h);
+    const down = (r) => Object.freeze({ ...r, y: r.y + drop });
+
+    return Object.freeze({ ...plates, plate: down(plates.plate), sign: down(plates.sign) });
+}
+
+/**
  * The views of a side door's theme document (`sceneryInput()`'s `view`): the floor page's plan and the cab's flag
  * billboard. The cab's door view draws the doorway in its wall as polygons, from no theme document.
  */
@@ -69,7 +85,8 @@ export const DOOR_VIEWS = Object.freeze(['plan', 'flag']);
  * card#13033: a door's input follows its geometry (`floor-walls.js`'s `restroomDoorGeometry()`; `null`, a door no wall
  * stands against, reads as `back`). A `back` door's is the face-on picture's, whatever the view. A side door's carries its
  * `facing` and the `view` it is drawn for — `plan`, the floor page's, in the drawing box (`SIDE_DOOR_BOX`) with every
- * `side` plate mirrored for its facing; `flag`, the door view's billboard of the flag plate alone at its own size.
+ * `side` plate mirrored for its facing and the flag lowered onto the doorway (`planPlates()`); `flag`, the door view's
+ * billboard of the flag plate alone at its own size.
  *
  * @param {{kind: string, w: number, h: number, index: number}} cell a cell of `mapTiles()`
  * @param {string} seed the grid's seed — its room's `install_id`, or the floor's key for the hallway
@@ -94,7 +111,7 @@ export function sceneryInput(cell, seed, geometry = null, view = 'plan') {
         return { ...side, w: plate.w, h: plate.h, plate: { x: 0, y: 0, w: plate.w, h: plate.h }, sign: { x: sign.x - plate.x, y: sign.y - plate.y, w: sign.w, h: sign.h } };
     }
 
-    return { ...side, w: SIDE_DOOR_BOX.w, h: SIDE_DOOR_BOX.h, ...geometry.plates };
+    return { ...side, w: SIDE_DOOR_BOX.w, h: SIDE_DOOR_BOX.h, ...planPlates(geometry.plates) };
 }
 
 /**

@@ -1343,7 +1343,7 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
             const field = node('g', { class: 'restroom-field', 'aria-hidden': 'true' }, tiles);
             const vacant = node('g', { class: 'restroom-vacant' }, field);
             const occupied = node('g', { class: 'restroom-occupied' }, field);
-            const r = d.sign;
+            const r = d.field;
 
             if (side) {
                 node('rect', { x: d.bar.x, y: d.bar.y, width: d.bar.w, height: d.bar.h, rx: 1 }, leaf);

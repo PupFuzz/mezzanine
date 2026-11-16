@@ -32,7 +32,7 @@
 import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';
 import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf } from './floor-layout.js';
 import { floorTheme } from './floor-theme.js';
-import { PLANE_KINDS, RESTROOM_DOOR, mapTiles, obstaclesOf, sceneryInput } from './map-tiles.js';
+import { PLANE_KINDS, RESTROOM_DOOR, mapTiles, obstaclesOf, planPlates, sceneryInput } from './map-tiles.js';
 import { deskSlabs, floorCell, restroomDoorGeometry, wallBodies } from './floor-walls.js';
 import { tilesetUrl } from './tileset.js';
 import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, couchFootprints, deskRects, fit, furnitureAsset, internKey, internSolid, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
@@ -2049,7 +2049,9 @@ function restroomDoor(doors, snack, walking, input, box) {
     const at = (o, r) => Object.freeze({ x: o.x + r.x, y: o.y + r.y, w: r.w, h: r.h });
     // Each door's rects in scene px: a `back` door's on its tile; a side door's on its drawing box (§ 12's *Restroom
     // plates*), its leaf the painter's bar over the doorway. `recess` is the tile's face-on recess on every door: a back
-    // door's leaf stands in it, and a side door's leaf in 3-D takes its heights (`floor-world.js`).
+    // door's leaf stands in it, and a side door's leaf in 3-D takes its heights (`floor-world.js`). A side door's `sign`
+    // and `plate` stand its flag at its heights over the foot line, which the 3-D floor lifts; `field` is where this page's
+    // painter draws the slider's field, on the plan's flag lowered onto the doorway (`planPlates()`) — a back door's `sign`.
     const placed = ordered.map(({ geometry, ...d }) => {
         const p = geometry.plates;
         const box = geometry.draw ?? d;
@@ -2061,6 +2063,7 @@ function restroomDoor(doors, snack, walking, input, box) {
             threshold,
             sign: at(box, p.sign),
             plate: at(box, p.plate),
+            field: at(box, geometry.facing === 'back' ? p.sign : planPlates(p).sign),
             recess: at(d, RESTROOM_RECESS),
             ...(geometry.facing === 'back' ? {} : { face: geometry.face, doorway: geometry.doorway, bar: at(box, p.leaf) }),
             lane: restroomLane({ ...d, ...geometry }, threshold, character),

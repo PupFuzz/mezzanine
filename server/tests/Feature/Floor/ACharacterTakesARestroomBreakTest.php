@@ -233,6 +233,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         $p = $read('/^\| \*\*Restroom plates\*\* \| `back`: sign \*\*(\d+) × (\d+) px at \((\d+), (\d+)\)\*\*, plate \*\*(\d+) × (\d+) px at \((\d+), (\d+)\)\*\*/m', '*Restroom plates*');
         // card#13033: the side door's rects, in its drawing box's px (`right`)
         $sp = $read('/^\| \*\*Restroom plates\*\* \|[^|]*flag \*\*plate (\d+) × (\d+) at \((\d+), (\d+)\)\*\*, \*\*sign (\d+) × (\d+) at \((\d+), (\d+)\)\*\*, \*\*doorway (\d+) × (\d+) at \((\d+), (\d+)\)\*\*, \*\*leaf (\d+) × (\d+) at \((\d+), (\d+)\)\*\*/mu', '*Restroom plates* side door');
+        // the side door's flag and sign as the floor page's plan draws them, lowered onto the doorway
+        $pp = $read('/^\| \*\*Restroom plates\*\* \|[^|]*\*\*in plan\*\*[^|]*\*\*plate (\d+) × (\d+) at \((\d+), (\d+)\)\*\*, \*\*sign (\d+) × (\d+) at \((\d+), (\d+)\)\*\*/mu', '*Restroom plates* side door in plan');
         $rect = static fn (array $m, int $at): array => ['x' => (int) $m[$at + 2], 'y' => (int) $m[$at + 3], 'w' => (int) $m[$at], 'h' => (int) $m[$at + 1]];
         $l = $read('/^\| \*\*Restroom line\*\* \| the one string \*([^*]+)\* \|/m', '*Restroom line*');
         $e = $read('/^\| \*\*Elevator leaves: opening \/ step \/ closing\*\* \| \*\*(\d+) \/ (\d+) \/ (\d+) frames\*\* \|/m', '*Elevator leaves*');
@@ -251,6 +253,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
             'sign' => ['x' => (int) $p[3], 'y' => (int) $p[4], 'w' => (int) $p[1], 'h' => (int) $p[2]],
             'plate' => ['x' => (int) $p[7], 'y' => (int) $p[8], 'w' => (int) $p[5], 'h' => (int) $p[6]],
             'side' => ['plate' => $rect($sp, 1), 'sign' => $rect($sp, 5), 'doorway' => $rect($sp, 9), 'leaf' => $rect($sp, 13)],
+            'plan' => ['plate' => $rect($pp, 1), 'sign' => $rect($pp, 5)],
             'line' => $l[1],
             'leaves' => ['open' => (int) $e[1], 'step' => (int) $e[2], 'close' => (int) $e[3]],
             'motion' => ['open' => (int) $m[1], 'step' => (int) $m[2], 'close' => (int) $m[3]],
@@ -466,6 +469,29 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         foreach (['plate' => 'plate', 'sign' => 'sign', 'bar' => 'leaf'] as $field => $plate) {
             if (($door[$field] ?? null) != $in($f['side'][$plate])) {
                 $defects[] = "the door's {$field} ".json_encode($door[$field] ?? null).' is not § 12\'s *Restroom plates* '.$plate.' in the drawing box';
+            }
+        }
+
+        // The floor page's plan: the flag lowered until its foot meets the doorway's head, and the painter's field on it.
+        $doorway = $f['side']['doorway'];
+
+        if ($f['plan']['plate']['y'] + $f['plan']['plate']['h'] !== $doorway['y']) {
+            $defects[] = '§ 12\'s plan flag '.json_encode($f['plan']['plate']).' does not meet the doorway\'s head at y '.$doorway['y'];
+        }
+
+        if (($door['field'] ?? null) != $in($f['plan']['sign'])) {
+            $defects[] = "the door's field ".json_encode($door['field'] ?? null).' is not § 12\'s *Restroom plates* plan sign in the drawing box';
+        }
+
+        $mirror = static fn (array $r): array => ['x' => $f['box']['w'] - $r['x'] - $r['w']] + $r;
+
+        // Both facings: the lounge floor's door and its mirror (no committed map sets a door into a left wall).
+        foreach ([false, true] as $mirrored) {
+            $placed = $this->probe(['mode' => 'restroom', 'map' => __DIR__.'/fixtures/maps/lounge-floor.json', 'mirror' => $mirrored], $dir, __DIR__.'/walk-probe.mjs')['placed'][0];
+            $owed = $mirrored ? array_map($mirror, $f['plan']) : $f['plan'];
+
+            if ($placed['facing'] !== ($mirrored ? 'left' : 'right') || $placed['plan'] != $owed) {
+                $defects[] = "the {$placed['facing']} door's theme plan is handed the flag ".json_encode($placed['plan']).', not § 12\'s plan rects '.json_encode($owed);
             }
         }
 
@@ -2063,6 +2089,24 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
         $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'threshold')),
             'the side door\'s tile kept as an obstacle and the threshold guard saw nothing');
+    }
+
+    /** card#13033 RED — the plan's flag at the world's heights: the floor page draws it 48 px clear of the doorway again. */
+    public function test_red_the_plan_flag_left_at_the_worlds_heights(): void
+    {
+        $dir = $this->planted([self::MAP_TILES, '    const drop = plates.doorway.y - (plates.plate.y + plates.plate.h);', '    const drop = 0;']);
+        $defects = $this->wallDoorDefects($dir);
+
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'theme plan')), 'the plan flag left at the world\'s heights and the plan guard saw nothing');
+        $this->assertNotSame([], array_filter($defects, static fn ($d) => str_contains($d, 'field')), 'the field left at the world\'s heights and the field guard saw nothing');
+    }
+
+    /** card#13033 RED — the field off the flag: the painter's field drawn at the world's sign while the theme lowers the flag. */
+    public function test_red_the_field_off_the_plan_flag(): void
+    {
+        $dir = $this->planted([self::SCENE, "            field: at(box, geometry.facing === 'back' ? p.sign : planPlates(p).sign),", '            field: at(box, p.sign),']);
+
+        $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'field')), 'the field drawn off the plan flag and the field guard saw nothing');
     }
 
     /** card#13033 RED — the facing counted from the foot cell: the tile's rows read down from its painted foot cell, not up from it. */

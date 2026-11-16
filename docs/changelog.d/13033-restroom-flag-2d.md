@@ -1,0 +1,1 @@
+- **card#13033** — **On the 2-D floor the restroom door's flag sign sits against the door.** A restroom door set into a side wall now draws its flag sign, with its vacant or occupied field, right at the end of the doorway, just touching it, where it used to hang well clear of the door. The 3-D floor and the view through the elevator's doors show the sign where they did.
