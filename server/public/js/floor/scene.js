@@ -33,7 +33,7 @@ import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-se
 import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf } from './floor-layout.js';
 import { floorTheme } from './floor-theme.js';
 import { PLANE_KINDS, RESTROOM_DOOR, mapTiles, obstaclesOf, planPlates, sceneryInput } from './map-tiles.js';
-import { deskSlabs, floorCell, restroomDoorGeometry, wallBodies } from './floor-walls.js';
+import { deskSlabs, floorCell, restroomDoorGeometry, standingAgainst, wallBodies, wallKeys } from './floor-walls.js';
 import { tilesetUrl } from './tileset.js';
 import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, couchFootprints, deskRects, fit, furnitureAsset, internKey, internSolid, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
@@ -1376,6 +1376,8 @@ export function buildScene(frame, input) {
     const wallGrids = [...wallGridOf.values()];
     const wallCell = wallGrids.some((g) => g.room) ? floorCell(wallGrids) : null;
     const walls = wallCell === null ? [] : wallBodies(wallGrids, (g) => g.cells, wallCell, deskSlabs(wallGrids, wallCell));
+    // The same bodies as keys, which rule W reads each standing piece's wall off (`standingAgainst()`).
+    const wallSet = wallKeys(walls);
     // card#13033 (§ 6.7 item 2): each restroom door's geometry from the wall it is set into, once per door, read by the
     // obstacles, the door, its scenery and the painter. A floor with no room grid stands no wall, so its doors face `back`.
     const doorGeometry = new Map(grids.flatMap((g) => (cellsByGrid.get(g) ?? []).filter((c) => c.kind === RESTROOM_DOOR.kind).map((c) => {
@@ -1454,8 +1456,13 @@ export function buildScene(frame, input) {
             // card#13033: a side door's document is drawn at its drawing box over the wall (`draw`); the cell rect stays the
             // piece's, which the 3-D floor stands.
             const side = door !== null && door.facing !== 'back' ? { facing: door.facing, draw: door.draw } : {};
+            // Rule W (plan § 15.3): the wall a piece stands against, which the 3-D floor turns and stands it by; the snack
+            // tables (their visitors stand at the tile's corners) and the door (its own geometry) keep their placement.
+            const standsBy = cell.kind !== RESTROOM_DOOR.kind && SNACK_TABLES[cell.kind] === undefined
+                ? standingAgainst(cell, wallGridOf.get(g), wallSet, wallCell ?? mapGrid(g.map).tileheight)
+                : {};
 
-            scenery.push(Object.freeze({ room: g.install_id, kind: cell.kind, x: cell.x, y: cell.y, w: cell.w, h: cell.h, decoration, doc, ...side }));
+            scenery.push(Object.freeze({ room: g.install_id, kind: cell.kind, x: cell.x, y: cell.y, w: cell.w, h: cell.h, decoration, doc, ...side, ...standsBy }));
 
             // § 6.3's decorative glow — a floor lamp's — the painter's, inside the tile of the piece it lights.
             if (decoration !== null) {

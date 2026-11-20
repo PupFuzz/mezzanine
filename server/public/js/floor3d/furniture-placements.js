@@ -3,10 +3,12 @@
  * kind, for `floor3d/furniture.js` to instance. Pure, no DOM and no Three, so `snack-dressing-probe.mjs` reads it under
  * node. `docs/design/plan-13033-stage2-3d-floor.md` § 3.4.
  *
- * A placement is `{ at, w, h, d?, turn? }`: centred across and in depth on `at`, its foot at `at.y`, `w` across and `h`
- * up (`d` deep, or as deep as its model's plan keeps it at `w`), turned `turn` radians about `y`. A restroom door set into
- * a side wall (`floor-world.js`'s piece) also carries its `facing`, the wall's thickness (`wall`) and its `flag`, which
- * its theme's part list is drawn from.
+ * A placement is `{ at, w, h, d?, turn?, anchor?, plan? }`: centred across on `at`, its foot at `at.y`, `w` across and
+ * `h` up (`d` deep, or as deep as its model's plan keeps it at `w`), turned `turn` radians about `y`; in depth its back
+ * (`anchor: 'back'`) or its front (`'front'`) on `at`, or centred on it with no `anchor`; and with an anchor, its body
+ * shrunk in plan, never in height, to fit inside `plan` (`{ w, d }`, across and deep in its own frame) where it would
+ * not — rule W's placement (`floor-world.js`'s piece; plan § 15.3). A restroom door set into a side wall also carries
+ * its `facing`, the wall's thickness (`wall`) and its `flag`, which its theme's part list is drawn from.
  *
  * ⛔ A DRESSED PIECE STANDS AS TWO PLACEMENTS: the kit's piece fitted to the height and depth its dressing gives — the
  * theme's 2-D table top, not the tile's height, which holds what stands on it too — and the dressing under
@@ -42,7 +44,14 @@ export function placementsOf(world, dressed, dressing) {
     const add = (kind, p) => by.set(kind, [...(by.get(kind) ?? []), p]);
 
     for (const piece of world.pieces) {
-        const p = { at: piece.at, w: piece.w, h: piece.h, ...(piece.turn === undefined ? {} : { turn: piece.turn, facing: piece.facing, wall: piece.wall, flag: piece.flag }) };
+        const p = {
+            at: piece.at,
+            w: piece.w,
+            h: piece.h,
+            ...(piece.turn === undefined ? {} : { turn: piece.turn }),
+            ...(piece.anchor === undefined ? {} : { anchor: piece.anchor, plan: piece.plan }),
+            ...(piece.facing === undefined ? {} : { facing: piece.facing, wall: piece.wall, flag: piece.flag }),
+        };
         const dress = dressed.includes(piece.kind) && dressing !== null ? dressing(piece.kind, inputsOf(p)) : null;
 
         if (dress === null) {

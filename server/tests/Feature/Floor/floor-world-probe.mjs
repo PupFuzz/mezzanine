@@ -49,6 +49,15 @@
  * And it is shown (`walkerAt()`'s `shown`) where the 2-D floor draws it: on the floor, in the cab only inside a cab leg —
  * an arrival as its leaves open, a boarder until they have shut — and never inside a restroom's door.
  *
+ * ⛔ A PIECE STANDS AGAINST THE WALL ITS TILE TOUCHES (the `standing` leg, rule W — `docs/design/plan-13033-stage2-3d-floor.md`
+ * § 15.3): every standing piece but the snack tables and the restroom door carries the scene's reading of its wall, the
+ * plan's § 15.4 reading of the shipped default pinned row by row; each such piece's model — the kit's file through
+ * `furniture.js`'s `fitted()`, or every theme's part list through `placedParts()` — lies in plan inside its obstacle rect
+ * reaching to its wall's face, its back on that face (a free piece's front on its foot line), a free piece unturned. A
+ * fixture map with one piece against each wall (the band, also under a picture taller than the room reaches; a partition
+ * behind, one the picture crosses and one in front; the left wall flush, the right a cell off) and one in open floor is
+ * read through `standingAgainst()` here, as the scene reads it, and lifted.
+ *
  * ⚠ WHAT IT DOES NOT SEE: whether every `wall` cell of a map has a body (the walls are read off the scene, whose
  * `walls` the door view's classification answers; that classification's own coverage is `door-view.selftest.mjs`'s),
  * and whether a route avoids other desks' slots (the scene's walk tests own the route; this probe holds that the world
@@ -56,6 +65,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { registerHooks } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -64,21 +74,38 @@ const floor = join(wire, '..', 'floor');
 const W = await import(pathToFileURL(join(floor, 'floor-world.js')).href);
 const { pointAt } = await import(pathToFileURL(join(floor, 'route.js')).href);
 const { deskSlab } = await import(pathToFileURL(join(floor, 'desk-geometry.js')).href);
-const { ELEVATOR_DOOR, leafLevel } = await import(pathToFileURL(join(floor, 'scene.js')).href);
+const { ELEVATOR_DOOR, SNACK_TABLES, leafLevel } = await import(pathToFileURL(join(floor, 'scene.js')).href);
 const { BIRD_LIFT } = await import(pathToFileURL(join(floor, 'bird.js')).href);
 const { keyOf } = await import(pathToFileURL(join(wire, 'seat-key.js')).href);
 const { COUCH_FOOTPRINT, STOOL_CAP, STOOL_FRAME, couchFootprint } = await import(pathToFileURL(join(floor, 'desk-layout.js')).href);
 const KIT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'resources', 'floor', 'models', 'kenney-furniture-kit');
-const { FILES } = await import(pathToFileURL(join(KIT, 'map.js')).href);
+const { DRESSED, FILES, PIECE3D } = await import(pathToFileURL(join(KIT, 'map.js')).href);
 const { CAB, CAB_FITTINGS } = await import(pathToFileURL(join(floor, 'cab-paint.js')).href);
 const { SCALE } = await import(pathToFileURL(join(floor, 'door-view.js')).href);
-const { obstaclesOf } = await import(pathToFileURL(join(floor, 'map-tiles.js')).href);
+const { RESTROOM_DOOR, mapTiles, obstaclesOf } = await import(pathToFileURL(join(floor, 'map-tiles.js')).href);
+const { standingAgainst, wallBodies, wallKeys } = await import(pathToFileURL(join(floor, 'floor-walls.js')).href);
+const { readTileset, tilesetUrl } = await import(pathToFileURL(join(floor, 'tileset.js')).href);
+// The vendored Three's examples import it as the bare `three` (the page's import map); here, the same file.
+const THREE = pathToFileURL(join(wire, '..', 'vendor', 'three', 'three.module.js')).href;
+
+registerHooks({ resolve: (specifier, context, next) => (specifier === 'three' ? { url: THREE, shortCircuit: true } : next(specifier, context)) });
+
+const { Box3, Vector3 } = await import(THREE);
+const { GLTFLoader } = await import(pathToFileURL(join(wire, '..', 'vendor', 'three', 'examples', 'jsm', 'loaders', 'GLTFLoader.js')).href);
+const { fitted, placedParts } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'furniture.js')).href);
+const { placementsOf } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'furniture-placements.js')).href);
+const { DETAIL, partGeometry } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'part-geometry.js')).href);
+const THEMES = join(KIT, '..', '..', 'themes');
+const registry = await import(pathToFileURL(join(THEMES, 'index.js')).href);
+/** Every theme's own `piece3d()` — a theme that exports none is drawn in another's, so it adds no part list here. */
+const PIECE3DS = (await Promise.all(registry.THEMES.map((t) => import(pathToFileURL(join(THEMES, t, 'theme.js')).href))))
+    .map((m) => m.piece3d).filter((f) => typeof f === 'function');
 
 const { scenes } = JSON.parse(readFileSync(0, 'utf8'));
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
-const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [], cab: [] };
-const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, sideDoorPieces: 0, sideDoors: 0, backDoors: 0, lintels: 0, thresholds: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0, cabs: 0, cabSamples: 0, cabShown: { shown: 0, hidden: 0 }, offCabSamples: 0 };
+const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], standing: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [], cab: [] };
+const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, standing: {}, standingRows: 0, shrunk: {}, sideDoorPieces: 0, sideDoors: 0, backDoors: 0, lintels: 0, thresholds: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0, cabs: 0, cabSamples: 0, cabShown: { shown: 0, hidden: 0 }, offCabSamples: 0 };
 const WORLD_MEMBERS = ['band', 'desks', 'doors', 'effects', 'extent', 'labels', 'pieces', 'planes', 'restroom_doors', 'slab', 'walkers', 'walls'];
 const LABEL_ORDER = ['name', 'status', 'chip', 'facts', 'bubble'];
 const FACT_KINDS = ['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age'];
@@ -462,7 +489,7 @@ for (const { run, i, scene } of scenes) {
             if (p.facing !== side.facing || !near(p.wall, side.doorway.w / W.UNIT) || p.flag === undefined || Object.keys(flag).some((key) => !near(p.flag[key], flag[key]))) {
                 legs.pieces.push(`${at} the side door at ${s.x},${s.y} hands its theme ${JSON.stringify({ facing: p.facing, wall: p.wall, flag: p.flag })}, not its ${side.facing} facing, the wall's thickness and its plate ${JSON.stringify(flag)}`);
             }
-        } else if (p !== undefined && !same(p.at, X(s.x + s.w / 2), Z(s.y + s.h))) {
+        } else if (p !== undefined && s.against === undefined && !same(p.at, X(s.x + s.w / 2), Z(s.y + s.h))) {
             legs.pieces.push(`${at} ${s.kind} at ${s.x},${s.y} stands at ${JSON.stringify(p.at)}, not at its cell's foot line`);
         }
 
@@ -899,6 +926,248 @@ for (const { run, i, scene } of scenes) {
             }
         }
     }
+}
+
+// ── rule W (plan § 15.3): each piece stands against the wall its tile touches, its back on it, or behind its foot line ──
+// The kit's boxes, as the furniture fits them: each file the kind map names, loaded by Three's own loader.
+const kitBoxes = new Map(await Promise.all(Object.entries(FILES).map(async ([kind, file]) => {
+    const b = readFileSync(join(KIT, file));
+    const gltf = await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.length), '');
+
+    return [kind, new Box3().setFromObject(gltf.scene)];
+})));
+/** A first-party part list's box, as the furniture merges it: every part built at the floor's facets. */
+const partsBox = (parts) => parts.reduce((box, part) => {
+    const g = partGeometry(part, DETAIL.seat);
+
+    g.computeBoundingBox();
+    box.union(g.boundingBox);
+    g.dispose();
+
+    return box;
+}, new Box3());
+/** Whether rule W covers a kind: every standing kind but the snack tables and the restroom door, which keep their place. */
+const covered = (kind) => SNACK_TABLES[kind] === undefined && kind !== RESTROOM_DOOR.kind;
+
+/**
+ * § 15.4's reading of the shipped default (`resources/floor/default.tmj`), each piece by its kind and its rect's top-left
+ * in map px: the wall it stands against. A scene room drawn over the default carries every row.
+ */
+const DEFAULT_MAP = Object.freeze({
+    'armchair@1064,32': 'back',
+    'aquarium@536,24': 'back',
+    'floor-lamp@1144,8': 'back',
+    'globe@1184,48': 'back',
+    'water-cooler@1224,16': 'back',
+    'bookcase@1704,16': 'back',
+    'plant@1744,192': 'right',
+    'plant@8,384': 'left',
+    'bookcase@16,520': 'left',
+    'floor-lamp@1576,536': null,
+    'armchair@16,632': 'left',
+});
+
+/**
+ * Rule W's three checks over one scene's world (`at` names it): every covered piece's 3-D plan inside its obstacle rect
+ * extended to its wall's face, its wall side on that face (a free piece's front on its foot line), and a free piece
+ * unturned; `expect(s)` is the wall a piece must read (`undefined` where nothing pins it).
+ */
+function standingLeg(scene, world, at, expect) {
+    const top = scene.band === null ? scene.extent.y : scene.band.y + scene.band.h;
+    const D = (scene.extent.y + scene.extent.h - top) / W.UNIT;
+    const Wd = scene.extent.w / W.UNIT;
+    // World units back to scene px, the inverse of the probe's own frame.
+    const px = (x) => (x + Wd / 2) * W.UNIT + scene.extent.x;
+    const py = (z) => (z + D / 2) * W.UNIT + top;
+    const placed = placementsOf(world, DRESSED, null);
+    const queue = new Map([...placed].map(([kind, ps]) => [kind, [...ps]]));
+
+    scene.scenery.forEach((s, k) => {
+        const piece = world.pieces[k];
+        // The placement made of this piece: the kind's next, in the world's order.
+        const p = queue.get(s.kind)?.shift();
+        const where = `${at} ${s.kind} at ${s.x},${s.y}`;
+
+        if (!covered(s.kind)) {
+            if (s.against !== undefined || piece.anchor !== undefined) {
+                legs.standing.push(`${where} is read for a wall (${s.against}, anchor ${piece.anchor}), where rule W leaves it as it stood`);
+            }
+
+            return;
+        }
+
+        printed.standing[String(s.against)] = (printed.standing[String(s.against)] ?? 0) + 1;
+
+        if (s.against === undefined) {
+            legs.standing.push(`${where} carries no rule-W reading`);
+
+            return;
+        }
+
+        const want = expect(s);
+
+        if (want !== undefined) {
+            printed.standingRows++;
+
+            if (s.against !== want) {
+                legs.standing.push(`${where} reads ${s.against}, not the ${want} it stands against`);
+            }
+        }
+
+        // The model's plan through the furniture's own matrix: a kit file's box fitted, or every theme's part list placed.
+        const boxes = FILES[s.kind] !== undefined
+            ? [kitBoxes.get(s.kind).clone().applyMatrix4(fitted(kitBoxes.get(s.kind), p))]
+            : PIECE3D.includes(s.kind) ? PIECE3DS.map((piece3d) => piece3d(s.kind, { w: p.w, h: p.h, px: 1 / W.UNIT })).filter((parts) => parts !== null)
+                .map((parts) => { const b = partsBox(parts); return b.applyMatrix4(placedParts(b, p)); }) : [];
+
+        // How far a kit body was shrunk in plan to fit its rect (its width across the turn, over its tile's): printed, the
+        // figure the plan's § 15.3 as-built note derives from here rather than restates.
+        if (FILES[s.kind] !== undefined) {
+            const m = fitted(kitBoxes.get(s.kind), p).elements;
+            const k = (Math.hypot(m[0], m[1], m[2]) * kitBoxes.get(s.kind).getSize(new Vector3()).x) / p.w;
+
+            if (k < 1 - 1e-9) {
+                printed.shrunk[`${s.kind}@${s.x},${s.y}`] = Number(k.toFixed(3));
+            }
+        }
+
+        if (boxes.length === 0) {
+            legs.standing.push(`${where} has no model this probe can measure`);
+        }
+
+        // The obstacle rect, reaching to the wall's face on the walled side (the strip between them is closed at the wall).
+        const r = { x0: s.x, y0: s.y, x1: s.x + s.w, y1: s.y + s.h };
+
+        if (s.against === 'back') r.y0 = Math.min(r.y0, s.face);
+        if (s.against === 'left') r.x0 = Math.min(r.x0, s.face);
+        if (s.against === 'right') r.x1 = Math.max(r.x1, s.face);
+
+        const E = 1e-6;
+
+        for (const b of boxes) {
+            const plan = { x0: px(b.min.x), x1: px(b.max.x), y0: py(b.min.z), y1: py(b.max.z) };
+            const fmt = (q) => `x ${q.x0.toFixed(2)}–${q.x1.toFixed(2)}, y ${q.y0.toFixed(2)}–${q.y1.toFixed(2)}`;
+
+            if (plan.x0 < r.x0 - E || plan.x1 > r.x1 + E || plan.y0 < r.y0 - E || plan.y1 > r.y1 + E) {
+                legs.standing.push(`${where} (${s.against}) stands its body over ${fmt(plan)}, outside its obstacle rect to the wall, ${fmt(r)}`);
+            }
+
+            const side = { back: plan.y0, front: plan.y1, left: plan.x0, right: plan.x1, null: plan.y1 }[String(s.against)];
+            const face = s.against === null ? s.y + s.h : s.face;
+
+            if (!(Math.abs(side - face) < 1e-6)) {
+                legs.standing.push(`${where} (${s.against}) has its ${s.against === null ? 'front' : 'back'} at ${side.toFixed(3)}, not on ${s.against === null ? 'its foot line' : 'the wall\'s face'} ${face}`);
+            }
+        }
+
+        if (s.against === null && piece.turn !== undefined) {
+            legs.standing.push(`${where} stands free and is turned ${piece.turn}`);
+        }
+    });
+}
+
+for (const { run, i, scene } of scenes) {
+    const planes = new Map(scene.planes.map((q) => [q.install_id, q]));
+
+    standingLeg(scene, W.floorWorld(scene), `[${run} #${i}]`, (s) => {
+        const q = planes.get(s.room);
+        const key = `${s.kind}@${s.x - q.x},${s.y - q.y}`;
+
+        return Object.hasOwn(DEFAULT_MAP, key) ? DEFAULT_MAP[key] : undefined;
+    });
+}
+
+// The fixture: one piece against each wall a room offers — the band (a picture's top on the footprint's top row, and one
+// above it), a partition behind it and one its picture crosses (`back`), a partition under its foot line (`front`), the
+// left wall flush and the right wall a cell off (`left`, `right`) — and one in open floor, read through
+// `standingAgainst()` over `mapTiles()` and the wall bodies, as the scene reads them, and lifted by the world.
+{
+    const T = 8;
+    const cols = 40;
+    const rows = 40;
+    // Each kind's tile id in `floor-plane.tsx` past its `firstgid`: the low bookcase, the narrow plant.
+    const gid = { wall: 3, armchair: 10, globe: 25, bookcase: 5, 'water-cooler': 17, plant: 8, aquarium: 23 };
+    const walls = new Array(cols * rows).fill(0);
+    const furniture = new Array(cols * rows).fill(0);
+    const put = (layer, col, row, g) => { layer[row * cols + col] = g; };
+
+    for (let c = 0; c < cols; c++) {
+        put(walls, c, 0, gid.wall);
+        put(walls, c, rows - 1, gid.wall);
+    }
+
+    for (let r = 0; r < rows; r++) {
+        put(walls, 0, r, gid.wall);
+        put(walls, cols - 1, r, gid.wall);
+    }
+
+    for (let c = 10; c <= 24; c++) {
+        put(walls, c, 20, gid.wall);
+    }
+
+    // A partition the low bookcase's picture crosses, below the armchair's foot.
+    for (let c = 12; c <= 20; c++) {
+        put(walls, c, 31, gid.wall);
+    }
+
+    // [kind, the column of its left edge, the row of its foot cell, the wall it must read, that wall's face]
+    const pieces = [
+        ['aquarium', 3, 12, 'back', 0],
+        // a picture taller than the room reaches above it: its top above the band's row
+        ['water-cooler', 6, 8, 'back', 0],
+        // a picture crossing a partition: the body stands in front of the wall nearest its foot, not the band beyond it
+        ['bookcase', 12, 36, 'back', 256],
+        ['armchair', 12, 28, 'back', 168],
+        ['globe', 14, 19, 'front', 160],
+        ['bookcase', 29, 34, 'right', 312],
+        ['water-cooler', 1, 37, 'left', 8],
+        ['plant', 30, 20, null, null],
+    ];
+
+    for (const [kind, col, row] of pieces) {
+        put(furniture, col, row, gid[kind]);
+    }
+
+    const map = {
+        width: cols, height: rows, tilewidth: T, tileheight: T, orientation: 'orthogonal',
+        tilesets: [{ firstgid: 1, source: 'tiles/floor-plane.tsx' }],
+        layers: [
+            { type: 'tilelayer', name: 'walls', width: cols, height: rows, data: walls, visible: true, opacity: 1 },
+            { type: 'tilelayer', name: 'furniture', width: cols, height: rows, data: furniture, visible: true, opacity: 1 },
+        ],
+    };
+    const TSX = readFileSync(join(KIT, '..', '..', 'tiles', 'floor-plane.tsx'), 'utf8');
+    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
+    const g = { map, origin: { x: 0, y: 0 }, footprint: { x: 0, y: 0, width: cols * T, height: rows * T }, room: true, seed: 'standing' };
+    const cells = mapTiles(map, g.origin, () => tileset, 'standing');
+    const bodies = wallKeys(wallBodies([g], () => cells, T, []));
+    const scenery = cells.filter((c) => c.kind !== 'wall').map((c) => Object.freeze({
+        room: 'standing', kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, decoration: null, doc: null, ...standingAgainst(c, g, bodies, T),
+    }));
+    const scene = {
+        extent: { x: 0, y: 0, w: cols * T, h: rows * T }, band: null, desks: [], effects: [], planes: [], walls: [], restroom_doors: [],
+        doors: [], slot_feet: {}, scenery,
+    };
+    const expected = new Map(pieces.map(([kind, col, row, against, face]) => [`${kind}@${col * T}`, { against, face }]));
+
+    if (scenery.length !== pieces.length) {
+        legs.standing.push(`[fixture] the fixture map stands ${scenery.length} pieces, not its ${pieces.length}`);
+    }
+
+    for (const s of scenery) {
+        const want = expected.get(`${s.kind}@${s.x}`);
+
+        if (want !== undefined && s.face !== want.face) {
+            legs.standing.push(`[fixture] ${s.kind} at ${s.x},${s.y} reads its wall's face at ${s.face}, not ${want.face}`);
+        }
+    }
+
+    standingLeg(scene, W.floorWorld(scene), '[fixture]', (s) => expected.get(`${s.kind}@${s.x}`)?.against);
+}
+
+// Rule W read over every wall it reads and over open floor, and § 15.4's pinned rows each read.
+if (['back', 'left', 'right', 'front', 'null'].some((k) => !(printed.standing[k] > 0)) || printed.standingRows < Object.keys(DEFAULT_MAP).length) {
+    legs.standing.push(`CONTROL: the scenes and the fixture hold no piece against some wall, none free, or not every pinned row — ${JSON.stringify({ standing: printed.standing, rows: printed.standingRows })}`);
 }
 
 // The controls: a population this probe reads nothing of is a pass that measured nothing.
