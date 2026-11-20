@@ -26,6 +26,7 @@ use Tests\TestCase;
 class ACharacterTakesARestroomBreakTest extends TestCase
 {
     use ReadsTheDrawnScenes;
+    use ReadsTheWalkersThought;
     use DrivesTheFloorScreen;
 
     private const IMPL_1 = 'aimla-impl-1';
@@ -49,6 +50,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     private const FLOOR_WALLS = '../floor/floor-walls.js';
 
     private const PAINTER = '../floor/painter.js';
+
+    private const BODIES = '../floor3d/body-paint.js';
 
     private const LINE = 'no open route between its desk and the restroom door — drawn without the trip';
 
@@ -378,6 +381,17 @@ class ACharacterTakesARestroomBreakTest extends TestCase
         }
 
         return null;
+    }
+
+    /**
+     * card#13521 — the return line of `$key`'s restroom break beginning at `$start`, re-derived: `return-lines.js`'s restroom
+     * list at `draw(key, 'restroom-return-line:' + start)` mod its length.
+     */
+    private function returnLineAt(string $key, int $start): string
+    {
+        $lines = $this->restroom()['return_lines'];
+
+        return $lines[$this->seedDraw($key, "restroom-return-line:{$start}") % count($lines)];
     }
 
     /** The first restroom break of `$key` after second `$after`, re-derived. */
@@ -951,6 +965,11 @@ class ACharacterTakesARestroomBreakTest extends TestCase
                 $defects[] = "at {$r['at']} ms the walker does not carry *{$f['line']}*";
             }
 
+            // card#13521: and its break's return line for the walk home, beside it.
+            if ($walking && ($this->visits($r['frame'], self::IMPL_2)[0]['return_thought']['text'] ?? null) !== $this->returnLineAt(self::IMPL_2, $start)) {
+                $defects[] = "at {$r['at']} ms the walker does not carry its break's return line";
+            }
+
             if (($desk['bubble']['text'] ?? null) === $f['line']) {
                 $defects[] = "at {$r['at']} ms the desk carries the restroom line";
             }
@@ -977,6 +996,87 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     public function test_green_the_visit(): void
     {
         $this->assertSame([], $this->visitDefects());
+    }
+
+    // ── card#13521 — GREEN — the walk home's line ──────────────────────────────────────────────────────────────────
+
+    /**
+     * The return lines `return-lines.js` holds for the restroom: some, each listed once, unpadded, none the restroom line,
+     * and short enough for the bubble's two lines — no longer than the longest food line, the walkers' other list.
+     */
+    public function test_green_the_restroom_return_lines(): void
+    {
+        $lines = $this->restroom()['return_lines'];
+        $food = $this->probe(['mode' => 'snack', 'spots' => []], null, __DIR__.'/walk-probe.mjs')['lines'];
+
+        $this->assertNotSame([], $lines, 'return-lines.js holds no restroom return line');
+        $this->assertSame($lines, array_values(array_unique($lines)), 'a return line is listed twice');
+        $this->assertNotContains($this->section12()['line'], $lines, 'the restroom line is listed as its own return line');
+
+        foreach ($lines as $line) {
+            $this->assertMatchesRegularExpression('/^\S.*\S$/u', $line, 'a return line is empty or padded');
+            $this->assertLessThanOrEqual(max(array_map('mb_strlen', $food)), mb_strlen($line), "*{$line}* is longer than any food line");
+        }
+    }
+
+    /**
+     * idle-visit's walker, painted on both floors: the restroom line through its walk out, at the door and inside, its
+     * break's return line from the first frame of its walk home, and no bubble on the frame that seats it.
+     *
+     * @return list<string>
+     */
+    private function returnPaintDefects(?string $dir = null): array
+    {
+        $run = $this->restroomRun('idle-visit');
+        [$frame, $visit, $at] = $this->anyVisit($run, self::IMPL_2) ?? [null, null, null];
+        $seated = null;
+
+        foreach ($frame === null ? [] : $this->drawn($run) as $r) {
+            if ($r['at'] > $at && $this->visits($r['frame'], self::IMPL_2) === []) {
+                $seated = $r['frame'];
+
+                break;
+            }
+        }
+
+        if ($seated === null) {
+            return ['idle-visit draws no visit, or no frame with its walker back at its desk'];
+        }
+
+        return $this->thoughtPaintDefects('idle-visit', $frame, $visit, $seated, $dir);
+    }
+
+    public function test_green_the_walk_home_carries_the_return_line_on_both_floors(): void
+    {
+        $this->assertSame([], $this->returnPaintDefects());
+    }
+
+    /** card#13521 RED — the return line drawn under the dwell's key: another line than the break's. */
+    public function test_red_the_return_line_drawn_under_another_key(): void
+    {
+        $dir = $this->planted([self::SCENE, '        return_line: draw(key, `restroom-return-line:${start}`) % RESTROOM_RETURN_LINES.length,',
+            '        return_line: draw(key, `restroom-dwell:${start}`) % RESTROOM_RETURN_LINES.length,']);
+
+        $this->assertNotSame([], array_filter($this->visitDefects($dir), static fn ($d) => str_contains($d, "does not carry its break's return line")),
+            'a return line drawn under another key and the visit guard saw nothing');
+    }
+
+    /** card#13521 RED — the 2-D walker keeps the restroom line home. */
+    public function test_red_the_2d_walk_home_keeps_the_restroom_line(): void
+    {
+        $dir = $this->planted([self::PAINTER, '            const thought = thoughtAt(fx, (walk?.start ?? 0) * I);', '            const thought = fx.thought ?? null;']);
+
+        $this->assertNotSame([], array_filter($this->returnPaintDefects($dir), static fn ($d) => str_contains($d, 'the 2-D glide')),
+            'the 2-D walk home kept the restroom line and the paint guard saw nothing');
+    }
+
+    /** card#13521 RED — the 3-D walker keeps the restroom line home. */
+    public function test_red_the_3d_walk_home_keeps_the_restroom_line(): void
+    {
+        $dir = $this->planted([self::BODIES, '        const lines = thoughtAt(b.spec.walker.effect, t)?.lines ?? null;', '        const lines = b.spec.walker.effect.thought?.lines ?? null;']);
+
+        $this->assertNotSame([], array_filter($this->returnPaintDefects($dir), static fn ($d) => str_contains($d, 'the 3-D walker at frame')),
+            'the 3-D walk home kept the restroom line and the paint guard saw nothing');
     }
 
     // ── GREEN — the busy visit ──────────────────────────────────────────────────────────────
@@ -1006,8 +1106,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
                 $seen = true;
                 $kinds[] = $v['leg_kind'];
 
-                if (($v['thought']['text'] ?? null) !== $line) {
-                    $defects[] = "at {$r['at']} ms busy-visit's walker does not carry the line";
+                if (($v['thought']['text'] ?? null) !== $line || ($v['return_thought']['text'] ?? null) !== $this->returnLineAt(self::IMPL_1, $v['start_s'])) {
+                    $defects[] = "at {$r['at']} ms busy-visit's walker does not carry the line, or its break's return line";
                 }
 
                 $desk = $this->desk($r['frame'], self::IMPL_1);
@@ -1387,7 +1487,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
 
         if ($home === null || $home['leg_kind'] !== 'restroom-home' || $prior === null
             || $home['legs'][0]['points'][0] != $this->pointIn($prior[0], $prior[1], $at) || end($home['legs'][0]['points']) != $prior[0]['anchor']
-            || $r['frame']['desks']['desks'][self::IMPL_1]['render_state']['value'] !== 'blocked' || ($home['thought'] ?? null) !== null) {
+            || $r['frame']['desks']['desks'][self::IMPL_1]['render_state']['value'] !== 'blocked' || ($home['thought'] ?? null) !== null
+            || ($home['return_thought'] ?? null) !== null) {
             $defects[] = 'recall-waiting\'s walker does not walk home from its spot, with no line, its desk blocked';
         }
 
@@ -2274,8 +2375,8 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** Eleventh RED — a silent idle walker: the line drawn only on a busy one. */
     public function test_red_a_silent_idle_walker(): void
     {
-        $dir = $this->planted([self::SCREEN, "fx.leg_kind === 'restroom' ? plain.restroom.thought(fx) : null",
-            "fx.leg_kind === 'restroom' && walkers.get(fx.walker_key)?.busy === true ? plain.restroom.thought(fx) : null"]);
+        $dir = $this->planted([self::SCREEN, "fx.leg_kind === 'restroom' ? plain.restroom.thoughts(fx) : NO_THOUGHTS",
+            "fx.leg_kind === 'restroom' && walkers.get(fx.walker_key)?.busy === true ? plain.restroom.thoughts(fx) : NO_THOUGHTS"]);
 
         $this->assertNotSame([], array_filter($this->visitDefects($dir), static fn ($d) => str_contains($d, 'does not carry')), 'an idle walker with no line and the visit guard saw nothing');
     }

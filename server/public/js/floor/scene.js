@@ -41,6 +41,7 @@ import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, po
 import { perchPoint } from './bird.js';
 import { keyOf } from '../wire/seat-key.js';
 import { SNACK_LINES } from './snack-lines.js';
+import { RESTROOM_RETURN_LINES, SNACK_RETURN_LINES } from './return-lines.js';
 
 // The pure readers a page without this module's scene machinery also needs (the cab's door view, card#12987) live
 // in modules that import no animation; each name stays readable from here.
@@ -406,27 +407,31 @@ export function snackDay(draw, key, day, chain = SNACK_CHAIN) {
 /**
  * card#12785 — ONE BREAK (§ 6.6 item 4): the break of walker `key` that begins at absolute second `start` — its dwell,
  * `45 + draw(key, 'snack-dwell:' + start) mod 31` seconds, and its food line, `draw(key, 'snack-line:' + start) mod` the
- * length of `snack-lines.js`'s list (drawn only for a busy walker, § 6.6 item 4) — the character tree's one seeded draw over
- * the walker's key (the seat's, or the intern's `<seat key>~<call_id>`) and the break's own second, so every viewer and
- * every reload draw one break, one dwell and one line.
+ * length of `snack-lines.js`'s list (drawn only for a busy walker, § 6.6 item 4), and its return line (card#13521),
+ * `draw(key, 'snack-return-line:' + start) mod` the length of `return-lines.js`'s snack list — the character tree's one
+ * seeded draw over the walker's key (the seat's, or the intern's `<seat key>~<call_id>`) and the break's own second, so
+ * every viewer and every reload draw one break, one dwell and one line each way.
  */
 export function snackBreak(draw, key, start) {
     return Object.freeze({
         start_s: start,
         dwell_s: SNACK_DWELL_S.min + (draw(key, `snack-dwell:${start}`) % (SNACK_DWELL_S.max - SNACK_DWELL_S.min + 1)),
         line: draw(key, `snack-line:${start}`) % SNACK_LINES.length,
+        return_line: draw(key, `snack-return-line:${start}`) % SNACK_RETURN_LINES.length,
     });
 }
 
 /**
  * card#12786 — ONE RESTROOM BREAK (§ 6.7 item 4): the break of walker `key` that begins at absolute second `start` — its
- * dwell inside, `90 + draw(key, 'restroom-dwell:' + start) mod 61` seconds (§ 12's *Restroom dwell*). Its line is the one
- * fixed string (`RESTROOM_LINE`), so it draws none.
+ * dwell inside, `90 + draw(key, 'restroom-dwell:' + start) mod 61` seconds (§ 12's *Restroom dwell*). Its line out is the
+ * one fixed string (`RESTROOM_LINE`), so it draws none; its return line (card#13521) is `draw(key, 'restroom-return-line:'
+ * + start) mod` the length of `return-lines.js`'s restroom list.
  */
 export function restroomBreak(draw, key, start) {
     return Object.freeze({
         start_s: start,
         dwell_s: RESTROOM_DWELL_S.min + (draw(key, `restroom-dwell:${start}`) % (RESTROOM_DWELL_S.max - RESTROOM_DWELL_S.min + 1)),
+        return_line: draw(key, `restroom-return-line:${start}`) % RESTROOM_RETURN_LINES.length,
     });
 }
 
@@ -1727,9 +1732,9 @@ export function buildScene(frame, input) {
  * still drawn at its desk (`recalled`: the held field left `SNACK_HELD` — a recall walks it home, § 6.6 item 5), and
  * whether it is BUSY (`busy`: its held state is `working` — the seat's `render_state`, the intern's `activity_state` —
  * card#12785, whose walker carries a food thought); `schedule(key, fromS, toS)`, `snackBreaks()` over the scene's seeded
- * draw; `thought(line, effect)`, the food thought's bubble laid out for `snack-lines.js`'s line `line` over a trip's
- * walker; and `plan(walker, break,
- * taken)`, the trip itself.
+ * draw; `thoughts(effect)`, a trip's two bubbles over its walker (`tripThoughts()`) — its food line from
+ * `snack-lines.js` and its return line from `return-lines.js` (card#13521); and `plan(walker, break, taken)`, the trip
+ * itself.
  *
  * `plan()` answers `null` where the floor holds no table of the walker's height (a plain floor, nothing to narrate),
  * `{ no_route }` where no such table can be reached (narrated once by the screen for a desk inside a room's grid),
@@ -1895,8 +1900,10 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 start_s: schedule.start_s,
                 dwell_s: schedule.dwell_s,
                 // card#12785: the break's food line, an index into `snack-lines.js`'s list — drawn only while the walker
-                // is busy, which the screen reads off the walker each render (`thought` on the effect it hands the painter).
+                // is busy, which the screen reads off the walker each render (`thought` on the effect it hands the painter);
+                // card#13521: its return line, an index into `return-lines.js`'s snack list, under the same condition.
                 line: schedule.line,
+                return_line: schedule.return_line,
                 table: best.t.id,
                 table_kind: best.t.kind,
                 spot: Object.freeze({ table: best.t.id, index: k, at: s.at, spacing }),
@@ -1919,7 +1926,7 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
         tables: Object.freeze(ordered),
         walkers: Object.freeze(walkers),
         schedule: (key, fromS, toS) => (draw === null ? [] : snackBreaks(draw, key, fromS, toS)),
-        thought: (line, effect) => snackThought(SNACK_LINES[line], input.measure, effect),
+        thoughts: (effect) => tripThoughts(SNACK_LINES[effect.line], SNACK_RETURN_LINES[effect.return_line], input.measure, effect),
         plan,
         spot: (tableId, k) => {
             const t = ordered.find((x) => x.id === tableId);
@@ -1944,10 +1951,11 @@ const NO_SPOT = Object.freeze({ full: true });
 /**
  * card#12786 — THE RESTROOM DOOR OF ONE SCENE (FLOOR.md § 6.7 items 2–5): `doors`, the map's restroom doors, each with its
  * threshold (`null` where none is open) and the rects the painter draws its leaf, its field and its occupant at; `schedule
- * (key, fromS, toS)`, the walker's restroom chain (`snackBreaks()` under `RESTROOM_CHAIN`); `thought(effect)`, the restroom
- * line's bubble over a visit's walker; `spot(doorId, k)`; and `plan(walker, break, { from, taken, turn, clear })`, the
- * visit — `turn(doorId)` the frame, from the visit's start, the door is free for it, and `clear(doorId)` (card#12841) the
- * frame every walker who came out of it before is clear of its lane (§ 12's *Restroom lane*, each door's `lane`).
+ * (key, fromS, toS)`, the walker's restroom chain (`snackBreaks()` under `RESTROOM_CHAIN`); `thoughts(effect)`, a visit's
+ * two bubbles over its walker (`tripThoughts()`) — the restroom line and its return line (card#13521); `spot(doorId, k)`;
+ * and `plan(walker, break, { from, taken, turn, clear })`, the visit — `turn(doorId)` the frame, from the visit's start,
+ * the door is free for it, and `clear(doorId)` (card#12841) the frame every walker who came out of it before is clear of
+ * its lane (§ 12's *Restroom lane*, each door's `lane`).
  *
  * The walkers are the snack corner's (`snack.walkers`), each with its `restroom_eligible` hold. `plan()` answers `null`
  * where the floor holds no door (or reduced motion, or no seeded draw), `{ no_route }` where no door's threshold can be
@@ -2185,6 +2193,8 @@ function restroomDoor(doors, snack, walking, input, box) {
             leg_kind: 'restroom',
             start_s: brk.start_s,
             dwell_s: brk.dwell_s,
+            // card#13521: the walk back's line, an index into `return-lines.js`'s restroom list.
+            return_line: brk.return_line,
             restroom: d.id,
             threshold: thr,
             // card#12841: the door's lane, which the holder reads this walker's way out of (`laneFrame()`).
@@ -2219,7 +2229,7 @@ function restroomDoor(doors, snack, walking, input, box) {
     return Object.freeze({
         doors: Object.freeze(placed),
         schedule: (key, fromS, toS) => (draw === null ? [] : snackBreaks(draw, key, fromS, toS, RESTROOM_CHAIN)),
-        thought: (effect) => snackThought(RESTROOM_LINE, input.measure, effect),
+        thoughts: (effect) => tripThoughts(RESTROOM_LINE, RESTROOM_RETURN_LINES[effect.return_line], input.measure, effect),
         plan,
         spot: (doorId, k) => {
             const d = placed.find((x) => x.id === doorId);
@@ -2227,6 +2237,27 @@ function restroomDoor(doors, snack, walking, input, box) {
             return d === undefined ? null : spots(d)(k);
         },
     });
+}
+
+/**
+ * card#13521 — A TRIP's TWO BUBBLES (FLOOR.md § 6.6 item 4, § 6.7 item 4): `thought`, the one its walker carries out and
+ * at its spot or door (`out`), and `return_thought`, the one it carries on its walk home (`back`), each laid out by
+ * `snackThought()`. The painters choose between them by the walker's time (`thoughtAt()`).
+ */
+function tripThoughts(out, back, measure, effect) {
+    return Object.freeze({ thought: snackThought(out, measure, effect), return_thought: snackThought(back, measure, effect) });
+}
+
+/**
+ * card#13521 — THE BUBBLE A WALKER CARRIES `ms` INTO ITS EFFECT (FLOOR.md § 6.6 item 4, § 6.7 item 4): its `return_thought`
+ * from the first frame of its walk home — a trip's last leg — and its `thought` before it; `null` for an effect that
+ * carries neither. The one reading both painters make: the 2-D painter at each glide's walk's first frame, the 3-D floor
+ * at the walker's time each frame.
+ */
+export function thoughtAt(effect, ms) {
+    const home = effect.legs[effect.legs.length - 1];
+
+    return (ms >= home.start * effect.frame_interval_ms ? effect.return_thought : effect.thought) ?? null;
 }
 
 /**

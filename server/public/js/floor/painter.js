@@ -49,7 +49,7 @@
 
 import { BUBBLE_PAD, FONT, FONT_NAME, FONT_SCREEN, STOOL_GLYPH, TYPE_ROLES, walkerCharacter } from './desk-layout.js';
 import { SKY_PAINT } from './floor-layout.js';
-import { ELEVATOR_DOOR, leafLevel } from './scene.js';
+import { ELEVATOR_DOOR, leafLevel, thoughtAt } from './scene.js';
 import { cabSpan, cabStep, floorStackOrder, pointAt } from './route.js';
 import { BIRD_LIFT, HOP_SCALE, arcPath, birdShapes, birdhouseShapes, envelopeShapes, legShapes, ringShapes, standingLegShapes, stillNotes } from './bird.js';
 import { RENDER_STATES } from '../lobby/render-state.js';
@@ -1078,22 +1078,27 @@ export function createPainter({ host = document.getElementById('floor-drawing'),
             }
         }
 
-        // card#12785 (FLOOR.md § 6.6 item 4): a busy walker's food thought, which the scene laid out relative to the
-        // walker's feet — drawn inside every glide, so it travels with the walker on each leg and stands with it at the
-        // table: the trail, smallest first, then the cloud, then the line or two of the break's food line.
-        if ((fx.thought ?? null) !== null) {
-            for (const { glide } of segments) {
-                const g = node('g', { class: 'snack-thought' }, glide);
+        // card#12785 (FLOOR.md § 6.6 item 4): a walker's thought, which the scene laid out relative to the walker's feet —
+        // drawn inside every glide, so it travels with the walker on each leg and stands with it at the table: the trail,
+        // smallest first, then the cloud, then the line or two of its text. card#13521: each glide carries the bubble its
+        // walk begins under (`thoughtAt()`), so the walk home's glide carries the return line.
+        for (const { walk, glide } of segments) {
+            const thought = thoughtAt(fx, (walk?.start ?? 0) * I);
 
-                for (const c of fx.thought.trail) {
-                    node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);
-                }
+            if (thought === null) {
+                continue;
+            }
 
-                node('path', { d: fx.thought.cloud.d, class: 'bubble' }, g);
+            const g = node('g', { class: 'snack-thought' }, glide);
 
-                for (const line of fx.thought.lines) {
-                    text(g, { x: line.x, y: line.y, text: line.text, id: `${fx.walker_key}:thought` }, 'bubble-text snack-thought-text');
-                }
+            for (const c of thought.trail) {
+                node('circle', { cx: c.x, cy: c.y, r: c.r, class: 'bubble-trail' }, g);
+            }
+
+            node('path', { d: thought.cloud.d, class: 'bubble' }, g);
+
+            for (const line of thought.lines) {
+                text(g, { x: line.x, y: line.y, text: line.text, id: `${fx.walker_key}:thought` }, 'bubble-text snack-thought-text');
             }
         }
 

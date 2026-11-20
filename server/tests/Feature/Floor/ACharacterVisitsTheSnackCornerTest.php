@@ -34,6 +34,7 @@ use Tests\TestCase;
 class ACharacterVisitsTheSnackCornerTest extends TestCase
 {
     use ReadsTheDrawnScenes;
+    use ReadsTheWalkersThought;
     use DrivesTheFloorScreen;
 
     private const IMPL_1 = 'aimla-impl-1';
@@ -45,6 +46,10 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     private const REVIEW = 'aimla-review';
 
     private const SCENE = '../floor/scene.js';
+
+    private const PAINTER = '../floor/painter.js';
+
+    private const BODIES = '../floor3d/body-paint.js';
 
     private const IN_FLIGHT = '../floor/in-flight.js';
 
@@ -279,7 +284,10 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
         })();
     }
 
-    /** The break of `$key` beginning at `$start`, re-derived — its dwell and its line's index — or `null` if no break does. */
+    /**
+     * The break of `$key` beginning at `$start`, re-derived — its dwell, its line's index and its return line's (card#13521)
+     * — or `null` if no break does.
+     */
     private function breakAt(string $key, int $start): ?array
     {
         $f = $this->section12();
@@ -291,6 +299,7 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
                     'start_s' => $start,
                     'dwell_s' => $f['dwell'][0] + $this->seedDraw($key, "snack-dwell:{$start}") % ($f['dwell'][1] - $f['dwell'][0] + 1),
                     'line' => $this->seedDraw($key, "snack-line:{$start}") % count($this->corner()['lines']),
+                    'return_line' => $this->seedDraw($key, "snack-return-line:{$start}") % count($this->corner()['return_lines']),
                 ];
             }
         }
@@ -522,8 +531,9 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
                 $defects[] = "at {$r['at']} ms the desk draws its sleeper while its walker is on the floor";
             }
 
-            // An idle walker thinks of no food (card#12785).
-            if ($walking && ($this->trips($r['frame'], self::IMPL_2)[0]['thought'] ?? null) !== null) {
+            // An idle walker thinks of no food (card#12785), and so of nothing on its way back (card#13521).
+            if ($walking && (($this->trips($r['frame'], self::IMPL_2)[0]['thought'] ?? null) !== null
+                || ($this->trips($r['frame'], self::IMPL_2)[0]['return_thought'] ?? null) !== null)) {
                 $defects[] = "at {$r['at']} ms the idle walker carries a food thought";
             }
 
@@ -1145,6 +1155,7 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     {
         $defects = [];
         $lines = $this->corner()['lines'];
+        $returns = $this->corner()['return_lines'];
         $applied = 35000;
 
         // busy-trip: aimla-impl-1, `working`, goes with its break's line over its head, its desk drawing its facts at the
@@ -1181,6 +1192,11 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
 
             if (($now[0]['thought']['text'] ?? null) !== $lines[$break['line'] ?? -1]) {
                 $defects[] = "at {$r['at']} ms busy-trip's walker does not carry its break's line";
+            }
+
+            // card#13521: and its break's return line for the walk back, beside it.
+            if (($now[0]['return_thought']['text'] ?? null) !== $returns[$break['return_line'] ?? -1]) {
+                $defects[] = "at {$r['at']} ms busy-trip's walker does not carry its break's return line";
             }
 
             $desk = $this->desk($r['frame'], self::IMPL_1);
@@ -1221,9 +1237,10 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
             foreach ($this->trips($r['frame'], self::IMPL_2) as $wt) {
                 $kinds[] = $wt['leg_kind'];
                 $want = $r['at'] >= $applied ? $lines[$wbreak['line']] : null;
+                $wantBack = $r['at'] >= $applied ? $returns[$wbreak['return_line']] : null;
 
-                if (($wt['thought']['text'] ?? null) !== $want) {
-                    $defects[] = "at {$r['at']} ms wakes-mid-trip's walker's thought is not ".($want === null ? 'none' : 'its break\'s line');
+                if (($wt['thought']['text'] ?? null) !== $want || ($wt['return_thought']['text'] ?? null) !== $wantBack) {
+                    $defects[] = "at {$r['at']} ms wakes-mid-trip's walker's thoughts are not ".($want === null ? 'none' : 'its break\'s lines');
                 }
             }
         }
@@ -1244,7 +1261,7 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
         // intern-trip: an idle intern carries none.
         foreach ($this->drawn($this->snackRun('intern-trip', $dir)) as $r) {
             foreach ($this->trips($r['frame']) as $it) {
-                if (($it['thought'] ?? null) !== null) {
+                if (($it['thought'] ?? null) !== null || ($it['return_thought'] ?? null) !== null) {
                     $defects[] = "at {$r['at']} ms intern-trip's idle intern carries a food thought";
                 }
             }
@@ -1256,6 +1273,59 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
     public function test_green_the_busy_break(): void
     {
         $this->assertSame([], $this->busyDefects());
+    }
+
+    // ── card#13521 — GREEN — the walk back's line ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * The return lines `return-lines.js` holds for the snack corner: some, each listed once, unpadded, short enough for the
+     * bubble's two lines as the food lines are, and none of them a food line.
+     */
+    public function test_green_the_snack_return_lines(): void
+    {
+        $c = $this->corner();
+        $lines = $c['return_lines'];
+
+        $this->assertNotSame([], $lines, 'return-lines.js holds no snack return line');
+        $this->assertSame($lines, array_values(array_unique($lines)), 'a return line is listed twice');
+        $this->assertSame([], array_values(array_intersect($lines, $c['lines'])), 'a return line is a food line');
+
+        foreach ($lines as $line) {
+            $this->assertMatchesRegularExpression('/^\S.*\S$/u', $line, 'a return line is empty or padded');
+            $this->assertLessThanOrEqual(max(array_map('mb_strlen', $c['lines'])), mb_strlen($line), "*{$line}* is longer than any food line");
+        }
+    }
+
+    /**
+     * busy-trip's walker, painted on both floors: its food line through its walk out and its dwell, its break's return
+     * line from the first frame of its walk home, and no bubble on the frame that seats it.
+     *
+     * @return list<string>
+     */
+    private function returnPaintDefects(?string $dir = null): array
+    {
+        $busy = $this->snackRun('busy-trip');
+        [$frame, $trip, $at] = $this->firstTrip($busy, self::IMPL_1);
+        $seated = null;
+
+        foreach ($this->drawn($busy) as $r) {
+            if ($r['at'] > $at && $this->trips($r['frame'], self::IMPL_1) === []) {
+                $seated = $r['frame'];
+
+                break;
+            }
+        }
+
+        if ($seated === null) {
+            return ['busy-trip draws no frame with its walker back at its desk'];
+        }
+
+        return $this->thoughtPaintDefects('busy-trip', $frame, $trip, $seated, $dir);
+    }
+
+    public function test_green_the_walk_back_carries_the_return_line_on_both_floors(): void
+    {
+        $this->assertSame([], $this->returnPaintDefects());
     }
 
     // ── card#12785 — GREEN — the chain ───────────────────────────────────────────────────────────────────────────────
@@ -1388,6 +1458,36 @@ class ACharacterVisitsTheSnackCornerTest extends TestCase
 
         $this->assertNotSame([], array_filter($this->chainDefects($dir), static fn ($d) => str_contains($d, "outside § 12's *Snack gap*")),
             'a gap outside the range at the anchor and the chain guard saw nothing');
+    }
+
+    // ── card#13521 — REDs ───────────────────────────────────────────────────────────────────────────────────────────
+
+    /** The return line drawn under the food line's key: another line than the break's. */
+    public function test_red_the_return_line_drawn_under_another_key(): void
+    {
+        $dir = $this->planted([self::SCENE, '        return_line: draw(key, `snack-return-line:${start}`) % SNACK_RETURN_LINES.length,',
+            '        return_line: draw(key, `snack-line:${start}`) % SNACK_RETURN_LINES.length,']);
+
+        $this->assertNotSame([], array_filter($this->busyDefects($dir), static fn ($d) => str_contains($d, "does not carry its break's return line")),
+            'a return line drawn under another key and the busy guard saw nothing');
+    }
+
+    /** The 2-D walker keeps its food line home: every glide carries the line out. */
+    public function test_red_the_2d_walk_home_keeps_the_food_line(): void
+    {
+        $dir = $this->planted([self::PAINTER, '            const thought = thoughtAt(fx, (walk?.start ?? 0) * I);', '            const thought = fx.thought ?? null;']);
+
+        $this->assertNotSame([], array_filter($this->returnPaintDefects($dir), static fn ($d) => str_contains($d, 'the 2-D glide')),
+            'the 2-D walk home kept its food line and the paint guard saw nothing');
+    }
+
+    /** The 3-D walker keeps its food line home: the label reads the line out at every instant. */
+    public function test_red_the_3d_walk_home_keeps_the_food_line(): void
+    {
+        $dir = $this->planted([self::BODIES, '        const lines = thoughtAt(b.spec.walker.effect, t)?.lines ?? null;', '        const lines = b.spec.walker.effect.thought?.lines ?? null;']);
+
+        $this->assertNotSame([], array_filter($this->returnPaintDefects($dir), static fn ($d) => str_contains($d, 'the 3-D walker at frame')),
+            'the 3-D walk home kept its food line and the paint guard saw nothing');
     }
 
     /** Sixteenth RED — the walkers' order: breaks due on one pass decided in the desks' order, not their start seconds. */
