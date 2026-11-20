@@ -24,16 +24,20 @@
 // the long directory, the same installs repeated under new keys.
 //
 // ⛔ WHAT IS RENDERED — every run `RUNS` names, so this sentence is never wider than they cover: BOARD runs, which must
-// stand the boxes on the board (a desktop window and a tall laptop window, the short directory and the long one, at fit,
-// zoomed in and brought to the board); DOCKED runs, which must dock them (three phones upright and one sideways, a
-// tablet, a short window and the two real laptops' page viewports, each with the short and the long directory); and
-// UN-DRAWN runs, before any room is drawn — one with script execution disabled before the module runs at all, one after
-// a fetch that answers no snapshot — at a desktop and a phone width. And one TRANSITION run (`TRANSITION`): loaded at a
-// phone, resized to the desktop window, back, to the desktop again, and its root font size then set to 28 px there.
+// stand the boxes on the board (desktop windows and a tall laptop window at the page's text size, at fit, zoomed in and
+// brought to the board; and, with the text shrunk, the two real laptops' page viewports, short laptop-browser windows, a
+// short window, a tablet upright and a window just over the floor — each with the short and the long directory); DOCKED
+// runs, which must dock them (three phones upright and one sideways, and a window just under the floor, each with the
+// short and the long directory); and UN-DRAWN runs, before any room is drawn — one with script execution disabled before
+// the module runs at all, one after a fetch that answers no snapshot — at a desktop and a phone width. And one TRANSITION
+// run (`TRANSITION`): loaded at a phone, resized to the desktop window, back, to the desktop again, to a short window, to
+// the desktop again, and its root font size then set to 40 px there.
 //
 // ⛔ WHAT IS MEASURED — per run, the checks that apply to its kind:
-//   **size** (every run) — every text element in the two faces is drawn at the page's own `1rem` on the screen: its
-//   computed font size times the face's on-screen scale (its bounding width over its layout width), within half a px.
+//   **size** (every run) — every text element in the two faces is drawn at the size § 12's *Directory dock width* owes on
+//   the screen: its computed font size times the face's on-screen scale (its bounding width over its layout width),
+//   within half a px of the page's `1rem` off the board, and on the board of `1rem` times the text share this tool derives
+//   on its own from the surface it measures (`owedShare()`) — `1` on a face that holds the board face at the room's fit.
 //   **board** (board runs) — both boxes carry `data-home="board"` and stand in the camera's layer, and the directory's box
 //   stands on the board's inner rectangle under the camera (the scene rect through the camera's transform, to a px), its
 //   face filling its box, to a px.
@@ -51,8 +55,8 @@
 //   **undrawn** (un-drawn runs) — both boxes carry `data-home="flow"` — with script disabled, from the markup alone — and
 //   their text meets the contrast check on the page's own ground.
 //   **transition** (the transition run) — after each step, the boxes' `data-home`, the surface's computed `touch-action`
-//   and whether each face is counter-scaled are the step's owed home's: `dock` at the phone and at 28 px, `board` at the
-//   desktop window.
+//   and whether each face is counter-scaled are the step's owed home's: `dock` at the phone and at 40 px, `board` at the
+//   desktop and the short window.
 //   **clip** (every run) — no element of the two faces, the faces included, hides part of what it holds: none is wider
 //   than its box (`scrollWidth > clientWidth`) under an overflow that is not `visible` — a line cut at its end, or a list
 //   scrolling sideways — and none is taller than its box under one that only hides (`hidden`, `clip`), but for the
@@ -73,12 +77,12 @@
 // and the title each one line cut at its end (clip; the name row's old shrinking rooms line and agents and desks are
 // no longer planted here: since card#12187 no face is narrow enough for them to cut anything, so no render can red on
 // them, and `TheLobbyIsADrawnRoomTest`'s sheet check refuses those rules by name); for card#12187's,
-// the bound set to nothing (dock) and to 30 em (board), the docked list left a scroller (flow), the readings left side by
-// side (dock), `touch-action: none` left on the docked list, `pan-y` on the docked list and the surface, and the board's
-// `none` rule removed (touch), a link's minimum height removed (tap), the un-drawn colours keyed back on `#lobby-room` and
-// the markup's `data-home="flow"` removed (undrawn), and the `ResizeObserver` on the `1rem` probe removed and the entry's
-// surface rewrite skipped (transition). Each check's predicate is also run against the shipped render, a no-op plant,
-// and must NOT catch there.
+// the floor set to nothing (dock) and to the page's own size (board), the docked list left a scroller (flow), the
+// readings left side by side (dock), `touch-action: none` left on the docked list, `pan-y` on the docked list and the
+// surface, and the board's `none` rule removed (touch), a link's minimum height removed (tap), the un-drawn colours keyed
+// back on `#lobby-room` and the markup's `data-home="flow"` removed (undrawn), and the `ResizeObserver` on the `1rem`
+// probe removed and the entry's surface rewrite skipped (transition); for card#13519's, the text never shrunk on a small
+// board (size). Each check's predicate is also run against the shipped render, a no-op plant, and must NOT catch there.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -105,11 +109,12 @@ const TAP_PX = 24;
  */
 const PLANTS = {
   contrast: { edits: [{ file: ['css', 'mezzanine.css'], anchor: '    --lobby-plaque-ink: #3b2f2a;', replacement: '    --lobby-plaque-ink: #e9dccd;' }] },
-  size: { edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: "            transform: drawn ? 'scale(var(--lobby-scale, 1))' : '',", replacement: "            transform: '',"}] },
+  size: { edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: '            transform: drawn ? `scale(var(--lobby-scale, 1)) scale(${text})` : \'\',', replacement: "            transform: '',"}] },
+  'size (the text never shrunk on a small board)': { check: 'size', edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: '            const styles = boxStyles(rect, text);', replacement: "            const styles = boxStyles(rect, next === 'board' ? 1 : null);" }] },
   board: { edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: '            left: drawn ? `${rect.x}px` : \'\',', replacement: '            left: drawn ? `${rect.x + 60}px` : \'\',' }] },
-  'board (the bound set to 30 em — the 1,440 × 780 board docked)': { check: 'board', edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: 'export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });', replacement: 'export const DOCK_BOUND = Object.freeze({ w: 30, h: 15 });' }] },
+  "board (the floor raised to the page's own size — the 1,200 × 560 board docked)": { check: 'board', edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: 'export const TEXT_FLOOR = 0.6;', replacement: 'export const TEXT_FLOOR = 1;' }] },
   scroll: { edits: [{ file: ['css', 'mezzanine.css'], anchor: '.lobby [data-home="board"] .lobby-plaques {\n    overflow-y: auto;', replacement: '.lobby [data-home="board"] .lobby-plaques {\n    overflow-y: hidden;' }] },
-  'dock (the bound set to nothing — the box back on the board at a phone)': { check: 'dock', edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: 'export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });', replacement: 'export const DOCK_BOUND = Object.freeze({ w: 0, h: 0 });' }] },
+  'dock (the floor set to nothing — the box back on the board at a phone)': { check: 'dock', edits: [{ file: ['js', 'lobby', 'directory.js'], anchor: 'export const TEXT_FLOOR = 0.6;', replacement: 'export const TEXT_FLOOR = 0;' }] },
   'dock (the readings left side by side)': { check: 'dock', edits: [{ file: ['css', 'mezzanine.css'], anchor: '.lobby :not([data-home="board"]) > .lobby-readings-face {\n    grid-template-columns: minmax(0, 1fr);', replacement: '.lobby :not([data-home="board"]) > .lobby-readings-face {\n    grid-template-columns: repeat(2, minmax(0, 1fr));' }] },
   'flow (the docked list left a scroller)': { check: 'flow', edits: [{ file: ['css', 'mezzanine.css'], anchor: '.lobby [data-home="dock"] .lobby-plaque-name {', replacement: '.lobby [data-home="dock"] .lobby-plaques {\n    overflow-y: auto;\n    max-height: 160px;\n}\n\n.lobby [data-home="dock"] .lobby-plaque-name {' }] },
   'touch (touch-action: none left on the docked list)': { check: 'touch', edits: [{ file: ['css', 'mezzanine.css'], anchor: '.lobby .lobby-plaques {\n    flex: 1 1 auto;', replacement: '.lobby .lobby-plaques {\n    touch-action: none;\n    flex: 1 1 auto;' }] },
@@ -372,24 +377,29 @@ const MEASURE = (a, b, spans, area) => `(async () => {
 
 /**
  * The runs: a viewport, a directory's length, a camera (or, for the un-drawn runs, a mode), and its KIND — which home the
- * boxes must take there (§ 4.1 claim 14), and so which checks apply. The docked viewports are the phones', a sideways
- * phone's, a tablet's, a short window's and the two real laptops' PAGE viewports (a screen less the browser's bars);
- * the board's are the windows tall enough for a 15 em face.
+ * boxes must take there (§ 4.1 claim 14), and so which checks apply. The board's viewports at the page's text size are
+ * the windows whose fitted face holds the 24 × 15 em board face; with the text shrunk, the two real laptops' PAGE
+ * viewports (a screen less the browser's bars), short laptop-browser windows, a short window, a tablet's and one just
+ * over the floor (700 × 700); the docked are the phones', a sideways phone's and one just under the floor (600 × 700).
  */
 const RUNS = [
   ...[3, 12].map((floors) => ({ kind: 'board', w: 1440, h: 900, floors, camera: 'fit' })),
   { kind: 'board', w: 1440, h: 900, floors: 3, camera: 'zoom' },
+  { kind: 'board', w: 1400, h: 1000, floors: 3, camera: 'fit' },
   { kind: 'board', w: 1440, h: 780, floors: 3, camera: 'fit' },
   { kind: 'board', w: 1366, h: 768, floors: 3, camera: 'fit' },
   { kind: 'board', w: 1366, h: 768, floors: 12, camera: 'board' },
-  ...[[360, 640], [390, 844], [430, 932], [932, 430], [768, 1024], [1100, 700], [1366, 657], [1280, 690]]
+  ...[[1366, 657], [1280, 690], [1200, 560], [1000, 560], [970, 560], [1100, 700], [768, 1024], [700, 700]]
+    .flatMap(([w, h]) => [3, 12].map((floors) => ({ kind: 'board', w, h, floors, camera: 'fit' }))),
+  { kind: 'board', w: 1200, h: 560, floors: 12, camera: 'board' },
+  ...[[360, 640], [390, 844], [430, 932], [932, 430], [600, 700]]
     .flatMap(([w, h]) => [3, 12].map((floors) => ({ kind: 'dock', w, h, floors, camera: 'fit' }))),
   ...[[1440, 900], [390, 844]].flatMap(([w, h]) => ['noscript', 'nosnapshot'].map((mode) => ({ kind: 'undrawn', w, h, floors: 0, mode }))),
 ];
 
 /**
  * THE TRANSITION RUN: loaded at a phone, each later step a resize of the window or a change of the root font size, each
- * with the home it owes. The font size is changed at the desktop window, where a 28 px rem puts the face under the bound —
+ * with the home it owes. The font size is changed at the desktop window, where a 40 px rem puts the face under the bound —
  * a change the browser fires no `resize` for, so only the entry's `1rem` probe can see it (review F3).
  */
 const TRANSITION = [
@@ -397,14 +407,28 @@ const TRANSITION = [
   { act: 'resize', w: 1440, h: 900, owed: 'board' },
   { act: 'resize', w: 390, h: 844, owed: 'dock' },
   { act: 'resize', w: 1440, h: 900, owed: 'board' },
-  { act: 'font', px: 28, owed: 'dock' },
+  { act: 'resize', w: 1200, h: 560, owed: 'board' },
+  { act: 'resize', w: 1440, h: 900, owed: 'board' },
+  { act: 'font', px: 40, owed: 'dock' },
 ];
 
 /**
  * ACCEPTED RESIDUALS, each declared by the run it is in, the line it sits on and a band of y, with the measured count as
- * its cap — anything else under the ratio reds. None is declared: the shipped render measured clean.
+ * its cap — anything else under the ratio reds.
  */
-const RESIDUALS = [];
+const RESIDUALS = [
+  {
+    what: 'the first plaque\'s numeral "1" on a 560 px tall window: a ring sample past its disc\'s top edge',
+    reason: 'measured, not inferred: at the board\'s 0.74 text share the four glyph pixels of the numeral\'s top row '
+      + '(y 170, x 371-374 at 1,200 × 560) stand on the disc (rgb(59,47,74)); the ring\'s 2 px sample straight above '
+      + 'them, y 168, is the disc\'s anti-aliased top edge against the plaque\'s cream, which is still inside the '
+      + 'numeral\'s line box. At the 700 × 700 and 768 × 1,024 shares the glyph lands a pixel lower and measures clean',
+    match: (run) => run.h === 560 && [1200, 1000, 970].includes(run.w) && run.camera === 'fit',
+    text: '1',
+    yBand: [170, 170],
+    cap: 4,
+  },
+];
 
 /**
  * ACCEPTED CUTS, each declared by the run it is in and the element it is. card#12187 emptied the list: the title's
@@ -423,11 +447,23 @@ function residualSplit(run, under) {
 /** Off the board: neither `none` nor `pan-y`, and the browser's pinch-zoom allowed. */
 const offBoardTouch = (v) => v !== 'none' && !v.includes('pan-y') && (v === 'auto' || v === 'manipulation' || v.includes('pinch-zoom'));
 
+/**
+ * § 12's *Directory dock width*, derived here from its own figures and the surface the page measured: the share of the
+ * page's `1rem` the board's text reads at — `1` where the directory's face at the room's fit (the room 1,440 × 772, the
+ * board 488 × 308 scene px) holds 24 × 15 em at a 16 px rem, the share at which it does otherwise. The camera's zoom never
+ * enters it.
+ */
+const owedShare = (surface) => {
+  const zoom = Math.min(surface.w / 1440, surface.h / 772);
+  return Math.min(1, (488 * zoom) / (24 * 16), (308 * zoom) / (15 * 16));
+};
+
 /** Every check that applies to a run of its kind, over what the page read. Each verdict is a list of what failed. */
 function verdicts(run, r, contrastOk) {
   const near = (x, y) => Math.abs(x - y) <= 1;
   const out = {};
-  out.size = r.texts.filter((t) => Math.abs(t.px - 16) > 0.5).map((t) => `${t.text} ${t.px.toFixed(2)}px`);
+  const owedPx = 16 * (r.homes.every((h) => h === 'board') ? owedShare(r.surface) : 1);
+  out.size = r.texts.filter((t) => Math.abs(t.px - owedPx) > 0.5).map((t) => `${t.text} ${t.px.toFixed(2)}px, owed ${owedPx.toFixed(2)}px`);
   out.clip = r.cut.filter((c) => !CLIP_RESIDUALS.some((res) => res.match(run) && c.el === res.el)).map((c) => `${c.el} "${c.text}" ${c.sw}/${c.cw}w ${c.sh}/${c.ch}h`);
   out.contrast = contrastOk ? [] : ['under the ratio'];
   const touched = [['the list', r.touch.list], ...r.touch.panels.map((v, i) => [`readings panel ${i + 1}`, v]), ['the surface', r.touch.surface]];
@@ -570,7 +606,7 @@ const report = (x) => {
   }
   const failing = Object.entries(x.v).filter(([, f]) => f.length > 0);
   return `${x.ok ? 'PASS' : 'FAIL'}  ${x.run.kind.padEnd(7)} ${x.run.w}x${x.run.h} ${String(x.run.floors).padStart(2)} floors ${(x.run.camera ?? x.run.mode).padEnd(10)}  `
-    + `${x.texts} texts, ${x.glyphs} glyph px, min ${x.min?.toFixed(2)}:1; home ${x.r.homes.join('/')}, touch ${x.r.touch.list}/${x.r.touch.panels.join('/')}/${x.r.touch.surface}; `
+    + `${x.texts} texts at ${x.r.texts[0]?.px.toFixed(2)}px, ${x.glyphs} glyph px, min ${x.min?.toFixed(2)}:1; home ${x.r.homes.join('/')}, touch ${x.r.touch.list}/${x.r.touch.panels.join('/')}/${x.r.touch.surface}; `
     + `checks ${Object.keys(x.v).join(' ')}${x.measured ? '' : '  — NOT MEASURED'}`
     + `${failing.length ? `  failing: ${JSON.stringify(Object.fromEntries(failing.map(([k, f]) => [k, f.slice(0, 4)])))}` : ''}`
     + `${x.unexplained.length ? `  under e.g. ${JSON.stringify(x.unexplained.slice(0, 4))}` : ''}`;

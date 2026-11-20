@@ -96,8 +96,9 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     /**
      * § 4.1 claim 14 (card#12187, decision 72): `directory.js`'s docking entry against § 12's *Directory dock width* — the
      * boxes flow with no room drawn, stand on the board above the bound and dock under it, re-asked on a paint, a resize
-     * and a change of the page's text size; and it alone writes their `data-home`, their counter-scale and the surface's
-     * `touch-action`.
+     * and a change of the page's text size; on the board the faces' text at the page's size on a face that holds the board
+     * face and shrunk to fit a smaller one, never under the floor; and it alone writes their `data-home`, their
+     * counter-scale and text share and the surface's `touch-action`.
      */
     public function test_green_the_docking_entry_docks_the_boxes_under_the_bound(): void
     {
@@ -187,7 +188,7 @@ class TheLobbyIsADrawnRoomTest extends TestCase
 
     public function test_red_a_face_that_is_not_its_box_on_the_screen(): void
     {
-        $dir = $this->mutatedModules(['../lobby/directory.js', "            width: drawn ? `calc(\${rect.w}px * var(--lobby-zoom, 1))` : '',", "            width: drawn ? `\${rect.w}px` : '',"]);
+        $dir = $this->mutatedModules(['../lobby/directory.js', "            width: drawn ? `calc(\${rect.w / text}px * var(--lobby-zoom, 1))` : '',", "            width: drawn ? `\${rect.w / text}px` : '',"]);
 
         $this->assertNotSame([], $this->scaleDefects($this->paint([], [], dirname($dir))['directory']), 'RED (a face not sized to its box on the screen) did not bite');
     }
@@ -233,13 +234,17 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     public function test_red_each_docking_entry_defect(): void
     {
         foreach ([
-            'the bound set to nothing (the box back on the board at a phone)' => ['export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });', 'export const DOCK_BOUND = Object.freeze({ w: 0, h: 0 });'],
-            'the bound set to 30 em (a 1,440 × 780 board docked)' => ['export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });', 'export const DOCK_BOUND = Object.freeze({ w: 30, h: 15 });'],
+            'the floor set to nothing (the box back on the board at a phone)' => ['export const TEXT_FLOOR = 0.6;', 'export const TEXT_FLOOR = 0;'],
+            "the floor raised to the page's own size (a 1,200 × 560 board docked)" => ['export const TEXT_FLOOR = 0.6;', 'export const TEXT_FLOOR = 1;'],
+            'the board face set to 30 em' => ['export const BOARD_FACE = Object.freeze({ w: 24, h: 15 });', 'export const BOARD_FACE = Object.freeze({ w: 30, h: 15 });'],
+            'the text never shrunk on a small board' => ['const styles = boxStyles(rect, text);', "const styles = boxStyles(rect, next === 'board' ? 1 : null);"],
+            'the text share read at the camera, not the fit' => ['    return Math.min(1, (scene.directory.w * zoom) / (BOARD_FACE.w * rem), (scene.directory.h * zoom) / (BOARD_FACE.h * rem));', '    return Math.min(1, scene.directory.w / (BOARD_FACE.w * rem), scene.directory.h / (BOARD_FACE.h * rem));'],
+            "the face's size not divided by the share" => ['            width: drawn ? `calc(${rect.w / text}px * var(--lobby-zoom, 1))` : \'\',', '            width: drawn ? `calc(${rect.w}px * var(--lobby-zoom, 1))` : \'\','],
             'the ResizeObserver on the 1rem probe removed' => ["    new win.ResizeObserver(() => place()).observe(probe);\n", ''],
             'the resize listener removed' => ["    win.addEventListener('resize', () => place());\n", ''],
             "the entry's surface rewrite skipped" => ["        building.style.touchAction = next === 'board' ? 'none' : 'auto';\n", ''],
             'a box moved on every placing' => ['                if (box.parentElement !== layer) {', '                if (true) {'],
-            'the counter-scale kept on the dock' => ["boxStyles(rect, next === 'board')", 'boxStyles(rect, true)'],
+            'the counter-scale kept on the dock' => ['const styles = boxStyles(rect, text);', 'const styles = boxStyles(rect, 1);'],
             "the box's home left unwritten" => ["            box.setAttribute('data-home', next);\n", ''],
         ] as $what => [$from, $to]) {
             $dir = $this->mutatedModules(['../lobby/directory.js', $from, $to]);
@@ -286,47 +291,77 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         return $renders[count($renders) - 1]['frame']['summary']['floors'];
     }
 
-    /** § 12's *Directory dock width*, read from the document: the least face, in em, across and down. @return array{0: int, 1: int} */
+    /**
+     * § 12's *Directory dock width*, read from the document: the board face, in em of its own text, across and down, and
+     * the least share of the page's text size the board's text may shrink to. @return array{0: int, 1: int, 2: float}
+     */
     private function dockBound(): array
     {
-        $this->assertSame(1, preg_match('/^\| \*\*Directory dock width\*\* \| the fitted board\'s face under \*\*(\d+) em\*\* wide or \*\*(\d+) em\*\* tall/m', $this->floorMd(), $m),
+        $this->assertSame(1, preg_match('/^\| \*\*Directory dock width\*\* \| the board\'s text at the page\'s own size on a fitted face of at least \*\*(\d+) em\*\* wide and \*\*(\d+) em\*\* tall, and shrunk to fit a smaller face down to \*\*([\d.]+)\*\* of the page\'s text size/m', $this->floorMd(), $m),
             '§ 12 carries no *Directory dock width* row in the form this test reads');
 
-        return [(int) $m[1], (int) $m[2]];
+        return [(int) $m[1], (int) $m[2], (float) $m[3]];
+    }
+
+    /**
+     * The board's text share § 12's row owes over a surface — this test's own derivation, from the scene the probe reads:
+     * `1` where the face at the room's fit holds the board face, the share at which it does otherwise.
+     *
+     * @param  array{width: float|int, height: float|int}  $surface
+     */
+    private static function owedText(array $surface, float $rem, array $scene, int $bw, int $bh): float
+    {
+        $zoom = min($surface['width'] / $scene['extent']['w'], $surface['height'] / $scene['extent']['h']);
+
+        return min(1.0, $scene['directory']['w'] * $zoom / ($bw * $rem), $scene['directory']['h'] * $zoom / ($bh * $rem));
     }
 
     /**
      * The docking entry driven through a page's sequence — undrawn, drawn on a desktop surface, painted again, resized to a
-     * phone, back, and the text size raised — and the predicate at faces a pixel either side of each figure of the bound.
+     * short window and to a phone, back, and the text size raised a little and a lot — and the predicate at faces a pixel
+     * either side of each figure of the bound and of the board face, and at the windows card#13519 names.
      */
     private function dockRun(?string $jsRoot = null): array
     {
-        [$bw, $bh] = $this->dockBound();
+        [$bw, $bh, $floor] = $this->dockBound();
         // The room's extent and the directory's rect, the probe's own (`lobbyScene()`), so the faces are drawn at the bound.
         $scene = $this->paint([], [], $jsRoot)['room']['scene'];
         [$ew, $eh, $dw, $dh] = [$scene['extent']['w'], $scene['extent']['h'], $scene['directory']['w'], $scene['directory']['h']];
-        // The surface at which the face is exactly `$bw` em wide at a 16 px rem (height unbounding); and the height at which a
-        // height-limited fit first holds both figures — the board's 488 : 308 is narrower than 24 : 15, so on a short
-        // surface the width figure is the one that binds first.
-        $wAt = $bw * 16 / $dw * $ew;
-        $hAt = max($bw * 16 / $dw, $bh * 16 / $dh) * $eh;
+        // The surface at which the face is exactly `$em` × the board face wide at a 16 px rem (height unbounding); and the
+        // height at which a height-limited fit first holds both figures — the board's 488 : 308 is narrower than 24 : 15,
+        // so on a short surface the width figure is the one that binds first. At `$em = 1` the text starts to shrink; at
+        // `$em = $floor` the boxes dock.
+        $wAt = static fn (float $em): float => $em * $bw * 16 / $dw * $ew;
+        $hAt = static fn (float $em): float => $em * max($bw * 16 / $dw, $bh * 16 / $dh) * $eh;
+        // A window's surface: its width less the section's 8 px margins, its height the room's aspect capped at 80 vh.
+        $window = static fn (int $w, int $h): array => ['width' => $w - 16, 'height' => min(($w - 16) * $eh / $ew, 0.8 * $h)];
         $faces = [
-            ['why' => 'just wide enough', 'surface' => ['width' => $wAt + 1, 'height' => 2000], 'rem' => 16, 'owed' => 'board'],
-            ['why' => 'just too narrow', 'surface' => ['width' => $wAt - 1, 'height' => 2000], 'rem' => 16, 'owed' => 'dock'],
-            ['why' => 'just tall enough', 'surface' => ['width' => 4000, 'height' => $hAt + 1], 'rem' => 16, 'owed' => 'board'],
-            ['why' => 'just too short', 'surface' => ['width' => 4000, 'height' => $hAt - 1], 'rem' => 16, 'owed' => 'dock'],
-            ['why' => '1,440 × 780 (B\'s board run)', 'surface' => ['width' => 1424, 'height' => 624], 'rem' => 16, 'owed' => 'board'],
+            ['why' => 'just wide enough for the page\'s own size', 'surface' => ['width' => $wAt(1) + 1, 'height' => 2000], 'rem' => 16, 'owed' => 'board'],
+            ['why' => 'just too narrow for the page\'s own size', 'surface' => ['width' => $wAt(1) - 1, 'height' => 2000], 'rem' => 16, 'owed' => 'board'],
+            ['why' => 'just wide enough', 'surface' => ['width' => $wAt($floor) + 1, 'height' => 2000], 'rem' => 16, 'owed' => 'board'],
+            ['why' => 'just too narrow', 'surface' => ['width' => $wAt($floor) - 1, 'height' => 2000], 'rem' => 16, 'owed' => 'dock'],
+            ['why' => 'just tall enough', 'surface' => ['width' => 4000, 'height' => $hAt($floor) + 1], 'rem' => 16, 'owed' => 'board'],
+            ['why' => 'just too short', 'surface' => ['width' => 4000, 'height' => $hAt($floor) - 1], 'rem' => 16, 'owed' => 'dock'],
+            ['why' => '1,440 × 780 (B\'s board run)', 'surface' => $window(1440, 780), 'rem' => 16, 'owed' => 'board'],
+            ['why' => '1,400 × 1,000, at the page\'s own size', 'surface' => $window(1400, 1000), 'rem' => 16, 'owed' => 'board', 'full' => true],
+            ['why' => '1,200 × 560, a laptop browser', 'surface' => $window(1200, 560), 'rem' => 16, 'owed' => 'board'],
+            ['why' => '970 × 560', 'surface' => $window(970, 560), 'rem' => 16, 'owed' => 'board'],
+            ['why' => '1,366 × 657, a 1,366 × 768 laptop\'s page', 'surface' => $window(1366, 657), 'rem' => 16, 'owed' => 'board'],
+            ['why' => '390 × 844, a phone', 'surface' => $window(390, 844), 'rem' => 16, 'owed' => 'dock'],
         ];
         $desk = ['width' => 1424, 'height' => 720];
+        $short = $window(1200, 560);
         $phone = ['width' => 374, 'height' => 200];
         $steps = [
             ['drawn' => false, 'surface' => $desk, 'rem' => 16, 'via' => 'place', 'owed' => 'flow'],
             ['drawn' => true, 'surface' => $desk, 'rem' => 16, 'via' => 'place', 'owed' => 'board'],
             ['drawn' => true, 'surface' => $desk, 'rem' => 16, 'via' => 'place', 'owed' => 'board', 'still' => true],
+            ['surface' => $short, 'rem' => 16, 'via' => 'resize', 'owed' => 'board', 'still' => true],
             ['surface' => $phone, 'rem' => 16, 'via' => 'resize', 'owed' => 'dock'],
             ['drawn' => true, 'surface' => $phone, 'rem' => 16, 'via' => 'place', 'owed' => 'dock', 'still' => true],
             ['surface' => $desk, 'rem' => 16, 'via' => 'resize', 'owed' => 'board'],
-            ['surface' => $desk, 'rem' => 28, 'via' => 'text', 'owed' => 'dock'],
+            ['surface' => $desk, 'rem' => 22, 'via' => 'text', 'owed' => 'board', 'still' => true],
+            ['surface' => $desk, 'rem' => 40, 'via' => 'text', 'owed' => 'dock'],
             ['surface' => $desk, 'rem' => 16, 'via' => 'text', 'owed' => 'board'],
             ['drawn' => false, 'surface' => $phone, 'rem' => 16, 'via' => 'place', 'owed' => 'flow'],
         ];
@@ -335,7 +370,7 @@ class TheLobbyIsADrawnRoomTest extends TestCase
         exec('echo '.$payload.' | node '.escapeshellarg(self::PROBE).($jsRoot === null ? '' : ' --js '.escapeshellarg($jsRoot)).' 2>&1', $out, $rc);
         $this->assertSame(0, $rc, "the room probe failed:\n".implode("\n", $out));
 
-        return json_decode(implode("\n", $out), true)['dock'] + ['bound_read' => [$bw, $bh]];
+        return json_decode(implode("\n", $out), true)['dock'] + ['bound_read' => [$bw, $bh, $floor], 'scene' => $scene];
     }
 
     /** @return list<string> */
@@ -343,13 +378,25 @@ class TheLobbyIsADrawnRoomTest extends TestCase
     {
         $defects = [];
 
-        if ($dock['bound'] !== ['w' => $dock['bound_read'][0], 'h' => $dock['bound_read'][1]]) {
+        [$bw, $bh, $floor] = $dock['bound_read'];
+
+        if (($dock['bound']['face'] ?? null) !== ['w' => $bw, 'h' => $bh] || abs((float) ($dock['bound']['floor'] ?? -1) - $floor) > 1e-9) {
             $defects[] = 'the entry\'s bound is not § 12\'s *Directory dock width*: '.json_encode($dock['bound']).' against '.json_encode($dock['bound_read']);
         }
 
         foreach ($dock['predicate'] as $f) {
+            $owedText = self::owedText($f['surface'], (float) $f['rem'], $dock['scene'], $bw, $bh);
+
             if ($f['home'] !== $f['owed']) {
                 $defects[] = "the face {$f['why']} ".json_encode($f['surface'])." at a {$f['rem']} px rem is `{$f['home']}`, not `{$f['owed']}`";
+            }
+
+            if (abs((float) ($f['text'] ?? -1) - $owedText) > 1e-9) {
+                $defects[] = "the face {$f['why']} reads its text at ".json_encode($f['text'] ?? null)." of the page's size, not {$owedText}";
+            }
+
+            if (($f['full'] ?? false) && $owedText !== 1.0) {
+                $defects[] = "the face {$f['why']} is not at the page's own text size ({$owedText}) — a window the board always served";
             }
         }
 
@@ -382,6 +429,26 @@ class TheLobbyIsADrawnRoomTest extends TestCase
 
             if ($scaled !== [$owed === 'board', $owed === 'board']) {
                 $defects[] = "{$at}: the faces' counter-scale is ".json_encode($s['face_transform']).' — set on the board and unset everywhere else';
+            }
+
+            // On the board each face is its box over the text share, counter-scaled and then scaled by the share.
+            if ($owed === 'board') {
+                $text = self::owedText($s['step']['surface'], (float) $s['step']['rem'], $dock['scene'], $bw, $bh);
+
+                foreach (['directory', 'readings'] as $i => $box) {
+                    $rect = $dock['scene'][$box];
+                    $read = preg_match('/^scale\(var\(--lobby-scale, 1\)\) scale\(([\d.e-]+)\)$/', (string) $s['face_transform'][$i], $t) === 1
+                        && preg_match('/^calc\(([\d.e-]+)px \* var\(--lobby-zoom, 1\)\)$/', (string) $s['face_size'][$i][0], $w) === 1
+                        && preg_match('/^calc\(([\d.e-]+)px \* var\(--lobby-zoom, 1\)\)$/', (string) $s['face_size'][$i][1], $h) === 1;
+
+                    if (! $read || abs((float) $t[1] - $text) > 1e-9 || abs((float) $w[1] * $text - $rect['w']) > 1e-6 || abs((float) $h[1] * $text - $rect['h']) > 1e-6) {
+                        $defects[] = "{$at}: the {$box}'s face is ".json_encode([$s['face_transform'][$i], $s['face_size'][$i]])." — not its box over the text share {$text}, scaled by it";
+                    }
+                }
+
+                if ($text < $floor) {
+                    $defects[] = "{$at}: the board's text is at {$text} of the page's size, under the floor {$floor}";
+                }
             }
 
             if ($s['touch_action'] !== ($owed === 'board' ? 'none' : 'auto')) {
