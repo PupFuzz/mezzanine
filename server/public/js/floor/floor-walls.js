@@ -188,10 +188,12 @@ export function wallKeys(walls) {
  * § 15.3): read once per piece, here beside `restroomDoorGeometry()`, from the PLACED cell as that reads a door (`at`,
  * `top` the tile's top row, `foot` its foot line), over the cell grid's columns the tile covers. A cell is wall where
  * `bodies` holds it or it lies on the footprint's top row, which the band stands in for. The first that holds:
- * - `back`: the NEAREST row above the foot line that is wall across the tile's width, searched from the foot row up to
- *   `T + CENTRING.reach` above the tile's top (or above the footprint's top row, for a picture taller than its room
- *   reaches) — a strip shallower than a walk keeps from a walkway's edge is no walkway, and a wall the picture crosses is
- *   the one the body stands in front of; its face the floor's back edge for the band's row, else the row's foot;
+ * - `back`: the NEAREST row that is wall across the tile's width, searched from the row above the tile's foot cell up to
+ *   `T + CENTRING.reach` above the tile's top or to the footprint's top row, whichever is lower down (a picture taller
+ *   than its room reaches above that row) — a strip shallower than a walk keeps from a walkway's edge is no walkway, and
+ *   a wall the picture crosses is the one the body stands in front of; its face the floor's back edge for the band's
+ *   row, else the row's foot. The foot cell's own row is never read: a face there would leave the body no depth, so a
+ *   piece painted with its foot on a wall run stands free;
  * - `left` / `right`: the column against that edge of the tile, or one cell past it, is wall over the tile's foot strip
  *   (`min(w, h)` deep, where a turned piece stands) — a cell clear of the wall is how the shipped default stands its
  *   left-wall pieces; its face the wall's own;
@@ -220,7 +222,7 @@ export function standingAgainst(cell, g, bodies, T) {
     const down = (x) => Array.from({ length: strip / T }, (_, k) => foot - strip + k * T).every((y) => wallAt(x, y));
     const answer = (against, face) => Object.freeze({ against, face });
 
-    for (let y = foot - T; y >= Math.max(top, f.y) - T - CENTRING.reach; y -= T) {
+    for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {
         if (across(y)) {
             return answer('back', y === f.y ? f.y : y + T);
         }

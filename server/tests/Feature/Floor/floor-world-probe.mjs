@@ -55,8 +55,8 @@
  * `furniture.js`'s `fitted()`, or every theme's part list through `placedParts()` — lies in plan inside its obstacle rect
  * reaching to its wall's face, its back on that face (a free piece's front on its foot line), a free piece unturned. A
  * fixture map with one piece against each wall (the band, also under a picture taller than the room reaches; a partition
- * behind, one the picture crosses and one in front; the left wall flush, the right a cell off) and one in open floor is
- * read through `standingAgainst()` here, as the scene reads it, and lifted.
+ * behind, one the picture crosses and one in front; the left wall flush, the right a cell off), one in open floor and one
+ * with its foot on a wall run (free) is read through `standingAgainst()` here, as the scene reads it, and lifted.
  *
  * ⚠ WHAT IT DOES NOT SEE: whether every `wall` cell of a map has a body (the walls are read off the scene, whose
  * `walls` the door view's classification answers; that classification's own coverage is `door-view.selftest.mjs`'s),
@@ -1079,7 +1079,8 @@ for (const { run, i, scene } of scenes) {
 
 // The fixture: one piece against each wall a room offers — the band (a picture's top on the footprint's top row, and one
 // above it), a partition behind it and one its picture crosses (`back`), a partition under its foot line (`front`), the
-// left wall flush and the right wall a cell off (`left`, `right`) — and one in open floor, read through
+// left wall flush and the right wall a cell off (`left`, `right`) — and one in open floor and one with its foot on a
+// wall run (free: never against that run with no depth behind its back), read through
 // `standingAgainst()` over `mapTiles()` and the wall bodies, as the scene reads them, and lifted by the world.
 {
     const T = 8;
@@ -1110,6 +1111,11 @@ for (const { run, i, scene } of scenes) {
         put(walls, c, 31, gid.wall);
     }
 
+    // A partition run under a water cooler's own foot cell.
+    for (let c = 26; c <= 31; c++) {
+        put(walls, c, 24, gid.wall);
+    }
+
     // [kind, the column of its left edge, the row of its foot cell, the wall it must read, that wall's face]
     const pieces = [
         ['aquarium', 3, 12, 'back', 0],
@@ -1117,6 +1123,8 @@ for (const { run, i, scene } of scenes) {
         ['water-cooler', 6, 8, 'back', 0],
         // a picture crossing a partition: the body stands in front of the wall nearest its foot, not the band beyond it
         ['bookcase', 12, 36, 'back', 256],
+        // its foot painted on a wall run: free, never against the run with no depth left behind its back
+        ['water-cooler', 26, 24, null, null],
         ['armchair', 12, 28, 'back', 168],
         ['globe', 14, 19, 'front', 160],
         ['bookcase', 29, 34, 'right', 312],
