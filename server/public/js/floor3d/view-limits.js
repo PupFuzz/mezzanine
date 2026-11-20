@@ -28,7 +28,7 @@
  * or a character is never cut away. The band is never lowered: the eye never stands behind its face.
  */
 
-import { FOV, HOME_POLAR, fitDistance, orbitCamera } from '../building/stack-model.js';
+import { FOV, HOME_POLAR, fitDistance, framingDistance, orbitCamera, stageInset } from '../building/stack-model.js';
 import { ROOM_H_U, UNIT } from '../floor/floor-world.js';
 import { walkerSize } from '../floor/scene.js';
 
@@ -38,8 +38,18 @@ export const MAX_POLAR = (88 * Math.PI) / 180;
 /** The camera's near plane, world units — the largest that keeps its corners above the plane (the header's figures). */
 export const NEAR = 0.05;
 
-/** How far past the fit the eye may dolly: 1.5 × the fit distance (§ 12's *Floor 3-D camera*). */
+/**
+ * How far out the eye may dolly: 1.5 × the farther of the entry's distance and the room's bounding-sphere fit
+ * (`fitDistance()`) — § 12's *Floor 3-D camera*.
+ */
 export const MAX_FIT_SHARE = 1.5;
+
+/**
+ * How far inside the stage the room's corners stand at the entry, CSS px a side (`stageInset()`'s margin). Small, so the
+ * floor spans the stage's width; nonzero, so the side walls' outer edges are drawn whole rather than on the canvas's last
+ * pixel (§ 12's *Floor 3-D camera*).
+ */
+export const ENTRY_MARGIN = 8;
 
 /** A wall the cut-away lowers stands this tall, world units, reached over `CUTAWAY_MS` (§ 12's *Floor 3-D cut-away*). */
 export const CUTAWAY_H = 0.15;
@@ -56,13 +66,20 @@ export const CUTAWAY_MS = 150;
  * @returns {object} `polar` (`min`, `max`), `distance` (`min`, `max`), `near`, `far`, `fov`, `bound` — `confine()`'s:
  *          the eye's (`eye.min` and `eye.max`, each `x` and `z`), the target's height (`target.min.y`, `target.max.y`),
  *          `gap` and `distance` (the farthest the eye stands from the target) — and `entry`, the camera
- *          `{ position, target, fov }` the floor opens at and *Fit* returns to
+ *          `{ position, target, fov }` the floor opens at and *Fit* returns to, the room box framed edge to edge
  */
 export function limits(extent, surface, character) {
     const bounds = { w: extent.w, h: ROOM_H_U, d: extent.d };
     const aspect = surface.width / surface.height;
-    const fit = fitDistance(bounds, FOV, aspect);
-    const max = MAX_FIT_SHARE * fit;
+    const origin = { x: 0, y: 0, z: 0 };
+    // The room box's eight corners: the floor's extent, from the plane to the room's height.
+    const corners = [-1, 1].flatMap((sx) => [0, ROOM_H_U].flatMap((y) => [-1, 1].map((sz) => ({ x: (sx * extent.w) / 2, y, z: (sz * extent.d) / 2 }))));
+    const fit = framingDistance(origin, HOME_POLAR, corners, surface, stageInset(surface, { x: ENTRY_MARGIN, y: ENTRY_MARGIN }));
+    // The reach is from the room's bounding-sphere fit, well past the whole room on a wide stage. That sphere is about the
+    // box's centre while the entry aims at the floor and keeps its margin, so on a narrow stage (a phone held upright) or
+    // a small floor the entry stands farther out than the sphere's fit: the limit is then taken from the entry, so the
+    // entry is never past it.
+    const max = MAX_FIT_SHARE * Math.max(fit, fitDistance(bounds, FOV, aspect));
     // The near plane's corner, the farthest point of it from the eye.
     const half = Math.tan(FOV / 2);
     const gap = NEAR * Math.hypot(1, half, half * aspect);
@@ -86,9 +103,10 @@ export function limits(extent, surface, character) {
             gap,
             distance,
         }),
-        // The extent's centre on the floor, from the front at stage 1's home tilt, at the fit — set from the spherical
-        // figures, never by a library's fit (plan § 3.6, B2).
-        entry: orbitCamera({ x: 0, y: 0, z: 0 }, HOME_POLAR, 0, fit),
+        // The extent's centre on the floor, from the front at stage 1's home tilt, at the least distance at which the room
+        // box projects inside the stage less the margin — its width spans the stage unless the stage is too short for
+        // that — set from the spherical figures, never by a library's fit (plan § 3.6, B2).
+        entry: orbitCamera(origin, HOME_POLAR, 0, fit),
     });
 }
 

@@ -45,7 +45,7 @@ const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i +
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const L = await import(pathToFileURL(join(JS, 'floor3d', 'view-limits.js')).href);
-const { HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-model.js')).href);
+const { FOV, HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-model.js')).href);
 const { LOOP_FPS } = await import(pathToFileURL(join(JS, 'wire', 'animation-set.js')).href);
 const { PAN_STEP_PX, turnOf } = await import(pathToFileURL(join(JS, 'wire', 'camera.js')).href);
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);
@@ -55,6 +55,13 @@ const { LOOK, poolShows } = await import(pathToFileURL(join(JS, 'floor3d', 'look
 const { skyPhase } = await import(pathToFileURL(join(JS, 'floor', 'floor-layout.js')).href);
 const CHARACTERS = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
 const REDUCE = [{ name: 'prefers-reduced-motion', value: 'reduce' }];
+/**
+ * The face row's patch, a strip along the eyes' line through the face's point: a share of the body's height each side
+ * across (the eyes' centres stand about 0.08 of it either side, the desk's monitor farther) and a third of that up and
+ * down (the nose, a body part drawn whatever the face atlas holds, stands below it) — so the strip reaches the eyes
+ * however close the zoom came, and holds no ink without the face.
+ */
+const FACE_PATCH = 0.1;
 /** How late the kit's files answer in the loop row's restart leg, ms — after the page has drawn and settled. */
 const LATE_KIT_MS = 15000;
 /** How long the loop row counts frames at rest with held loops running, s (a paint or two may land in it). */
@@ -265,8 +272,16 @@ async function open(chrome, c, { path = '/floor/aimla/3d', w = 1280, h = 800, ki
   const mouse = (type, x, y, extra = {}) => b.page('Input.dispatchMouseEvent', { type, x, y, ...extra });
   const stage = await ev(`(() => { const r = document.getElementById('floor-drawing').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
   const mid = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
+  // The stage point nearest its centre where the canvas itself takes the pointer — where a person grabs the floor, not a
+  // label lying over it (a label takes its own pointer events, and a drag begun on it never reaches the controls).
+  const grab = async () => {
+    const at = await ev(`(() => { const r = document.getElementById('floor-drawing').getBoundingClientRect(); const canvas = document.getElementById('floor3d-canvas'); for (let k = 0; k <= Math.min(r.width, r.height) / 2; k += 8) for (let a = 0; a < 16; a++) { const x = r.left + r.width / 2 + k * Math.cos((a * Math.PI) / 8), y = r.top + r.height / 2 + k * Math.sin((a * Math.PI) / 8); if (document.elementFromPoint(x, y) === canvas) return { x, y }; } return null; })()`);
+    if (at === null) throw new Error('no point of the stage near its centre shows the canvas — every one is under a label');
+    return at;
+  };
   // `modifiers` is the protocol's bit field: 1 Alt, 2 Ctrl, 4 Meta, 8 Shift.
-  const drag = async (dx, dy, { button = 'left', steps = 12, at = mid, modifiers = 0 } = {}) => {
+  const drag = async (dx, dy, { button = 'left', steps = 12, at = null, modifiers = 0 } = {}) => {
+    at ??= await grab();
     const buttons = button === 'left' ? 1 : 2;
     await mouse('mouseMoved', at.x, at.y, { modifiers });
     await mouse('mousePressed', at.x, at.y, { button, buttons, clickCount: 1, modifiers });
@@ -347,6 +362,7 @@ const ROWS = {
     base: { run: lateDesk() },
     plants: [
       ['the entry pose not set from its spherical figures (the camera left at the origin)', { plant: [P(PAINT, '            camera.position.set(position.x, position.y, position.z);\n            controls.update();\n            pose = { eye: position, target };', '            controls.update();\n            pose = { eye: position, target };')] }],
+      ['the entry fitted to the stage before its first measure', { plant: [P(PAINT, '        view = limits(world.extent, surface, character);', '        view = limits(world.extent, { width: 1, height: 1 }, character);')] }],
       ['a label appended after the render rather than inserted at its place', { plant: [P('js/floor3d/floor-labels.js', '                if (container.children[first + i] !== entry.element) {', '                if (false) {')] }],
       ['a kit file requested for every placement', { plant: [P('js/floor3d/furniture.js', '        if (!requests.has(file)) {', '        if (true) {')] }],
     ],
@@ -363,6 +379,12 @@ const ROWS = {
         if (webgl !== 'ready') d.push(`the page reads data-webgl=${webgl}, not a WebGL 2 canvas`);
         if (!i.desks.some((x) => x.key === LATE)) d.push('CONTROL: the late desk never arrived — the order after a late desk was not measured');
         if (Math.abs(deg(i.polar) - deg(HOME_POLAR)) > 0.5 || Math.abs(i.azimuth) > 1e-3) d.push(`the entry pose is polar ${deg(i.polar).toFixed(2)}°, azimuth ${deg(i.azimuth).toFixed(2)}° — not ${deg(HOME_POLAR)}° from the front`);
+        // the entry's distance the one that frames the room on this stage as measured (the floor's extent is the eye's
+        // bound's sides and back less the gap), not one fitted before the stage was
+        const extent = { w: -2 * (i.limits.bound.eye.min.x - i.limits.bound.gap), d: -2 * (i.limits.bound.eye.min.z - i.limits.bound.gap) };
+        const { position: ep, target: et } = L.limits(extent, { width: p.stage.w, height: p.stage.h }, { w: CHARACTERS.SCENE_W, h: CHARACTERS.SCENE_H }).entry;
+        const fits = Math.hypot(ep.x - et.x, ep.y - et.y, ep.z - et.z);
+        if (Math.abs(i.distance - fits) > 1e-6 * fits) d.push(`the entry stands ${i.distance.toFixed(4)} from its target — not ${fits.toFixed(4)}, the distance that frames the room on the ${p.stage.w} × ${p.stage.h} stage`);
         const labels = await p.ev(LABELS);
         d.push(...orderDefects(labels, i.desks));
         const ids = labels.map(([k, kind]) => `${k}/${kind}`);
@@ -385,7 +407,7 @@ const ROWS = {
           await p.settle(2500);
           writeFileSync(join(argOf('--out'), 'floor3d-close.png'), await p.shot());
         }
-        return { defects: d, facts: { bodies: i.bodies, labels: labels.length, glb: p.glb.size, polar: deg(i.polar).toFixed(2), late: labels.findIndex(([k]) => k === LATE) } };
+        return { defects: d, facts: { bodies: i.bodies, labels: labels.length, glb: p.glb.size, polar: deg(i.polar).toFixed(2), distance: i.distance.toFixed(3), late: labels.findIndex(([k]) => k === LATE) } };
       } finally { p.close(); }
     },
   },
@@ -853,10 +875,12 @@ const ROWS = {
         await p.ev(`for (const id of ['floor3d-labels', 'floor3d-marks']) document.getElementById(id).style.visibility = 'hidden'`);
         await sleep(200);
         const img = png(await p.shot());
-        const r = 6;
+        // the patch at the face's own scale (`FACE_PATCH`), measured at the target's distance, where the face lies — so how
+        // close the zoom came scales the patch with the face rather than leaving it between the features
+        const r = Math.max(1, Math.round((FACE_PATCH * face.h * p.stage.h) / (2 * i.distance * Math.tan(FOV / 2))));
         const at = { x: Math.round(p.stage.x + face.x), y: Math.round(p.stage.y + face.y) };
         let ink = 0;
-        for (let y = at.y - r; y <= at.y + r; y++) {
+        for (let y = at.y - Math.round(r / 3); y <= at.y + Math.round(r / 3); y++) {
           for (let x = at.x - r; x <= at.x + r; x++) {
             const o = (y * img.width + x) * 4;
             if (0.299 * img.rgba[o] + 0.587 * img.rgba[o + 1] + 0.114 * img.rgba[o + 2] < 90) ink++;
@@ -864,7 +888,7 @@ const ROWS = {
         }
         if (ink === 0) d.push(`${first}'s face patch at ${at.x},${at.y} holds no ink — the face is blank`);
         if (argOf('--out') !== null) writeFileSync(join(argOf('--out'), `floor3d-face${(c.plant ?? []).length ? '-planted' : ''}.png`), await p.shot());
-        return { defects: d, facts: { desk: first, at, distance: i.distance.toFixed(2), ink } };
+        return { defects: d, facts: { desk: first, at, r, distance: i.distance.toFixed(2), ink } };
       } finally { p.close(); }
     },
   },

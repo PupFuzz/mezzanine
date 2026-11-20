@@ -19,6 +19,10 @@
  * are the library's public `pan()`, `dollyIn()` / `dollyOut()` and `rotateLeft()` — each its private step and an update,
  * which is what its pointer handlers run. The library imports the bare `three`, which the page's import map resolves;
  * here a resolve hook does the same. Legs:
+ * - `entry` — the opening view: the room box's eight corners projected through Three's own camera at the entry, every
+ *   one inside the stage less `ENTRY_MARGIN` and one on that margin (the width's on a wide stage, the height's on a short
+ *   one), on wide, short, portrait, phone and square stages; the margin small; the dolly limit no nearer than 1.5 × the
+ *   room's bounding-sphere fit.
  * - `move` — rule A: a right-drag walks — from the high opening view and from an eye lowered to desk level, a pan
  *   forward carries the eye into the office with its height, pitch, facing and distance kept and stops it at the back
  *   wall; a pan across slides it along the wall to each side; the eye passes no bound at any frame.
@@ -55,6 +59,7 @@ const { cameraActs } = await import(pathToFileURL(join(JS, 'floor3d', 'camera-ac
 const { PAN_STEP_PX } = await import(pathToFileURL(join(wire, 'camera.js')).href);
 const L = await import(pathToFileURL(join(wire, '..', 'floor3d', 'view-limits.js')).href);
 const { ROOM_H_U, UNIT } = await import(pathToFileURL(join(wire, '..', 'floor', 'floor-world.js')).href);
+const { fitDistance } = await import(pathToFileURL(join(wire, '..', 'building', 'stack-model.js')).href);
 const { CHARACTER_SCALE } = await import(pathToFileURL(join(wire, '..', 'floor', 'desk-layout.js')).href);
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const { SCENE_W, SCENE_H } = await import(pathToFileURL(join(repo, 'resources', 'characters', 'index.js')).href);
@@ -64,7 +69,9 @@ const character = { w: SCENE_W, h: SCENE_H };
 const extent = { w: 17.84, d: 6.96 };
 const wide = { width: 1280, height: 800 };
 const tall = { width: 800, height: 1280 };
-const legs = { limits: [], above: [], cutaway: [], doorway: [], move: [], keys: [], turn: [], damping: [], wake: [], near: [], confine: [] };
+/** The-burrow's floor below its band, in units (the sandbox's). */
+const burrow = { w: 20.24, d: 8.16 };
+const legs = { limits: [], entry: [], above: [], cutaway: [], doorway: [], move: [], keys: [], turn: [], damping: [], wake: [], near: [], confine: [] };
 const printed = {};
 const deg = (r) => (r * 180) / Math.PI;
 
@@ -92,7 +99,7 @@ const a = L.limits(extent, wide, character);
 const b = L.limits(extent, tall, character);
 const height = (SCENE_H * CHARACTER_SCALE) / UNIT;
 
-printed.limits = { polar_max_deg: deg(a.polar.max), distance: a.distance, near: a.near, far: a.far, fit_wide: a.distance.max / L.MAX_FIT_SHARE, fit_tall: b.distance.max / L.MAX_FIT_SHARE };
+printed.limits = { polar_max_deg: deg(a.polar.max), distance: a.distance, near: a.near, far: a.far };
 
 if (!(a.polar.min === 0 && a.polar.max < Math.PI / 2)) {
     legs.limits.push(`the polar range is ${deg(a.polar.min)}°–${deg(a.polar.max)}° — from straight down to under 90°`);
@@ -150,6 +157,85 @@ printed.entry_polar_deg = polar;
 
 if (Math.abs(polar - 50) > 0.5 || Math.abs(rel.x) > 1e-9 || !(rel.z > 0) || e.target.x !== 0 || e.target.y !== 0 || e.target.z !== 0) {
     legs.limits.push(`the entry stands at ${polar}° from vertical, ${JSON.stringify(rel)} from ${JSON.stringify(e.target)} — not the centre from the front at 50°`);
+}
+
+// ── the entry frames the room box edge to edge ─────────────────────────────────────────────
+// Each corner of the room box (the extent, from the floor to the room's height) projected through Three's own
+// perspective camera at the entry: every one inside the stage less the margin, and one ON that edge — the width's on a
+// wide stage, the height's on one too short for that — so the entry is the least distance that frames the room.
+{
+    const room = (over) => [-1, 1].flatMap((sx) => [0, ROOM_H_U].flatMap((y) => [-1, 1].map((sz) => new Vector3((sx * over.w) / 2, y, (sz * over.d) / 2))));
+    const TOL = 1e-6;
+    const cases = [
+        [extent, { width: 1920, height: 1080 }, 'x'],
+        [extent, { width: 1920, height: 400 }, 'y'],
+        [extent, { width: 800, height: 1280 }, 'x'],
+        [extent, { width: 1000, height: 1000 }, 'x'],
+        [burrow, { width: 1920, height: 1080 }, 'x'],
+        // a phone held upright: the entry stands farther out than the room's bounding-sphere fit
+        [extent, { width: 320, height: 568 }, 'x'],
+        [{ w: 2, d: 1 }, { width: 1920, height: 1080 }, 'y'],
+        // the walls standing taller than the floor is wide: the box frames farther out than its bounding sphere's fit
+        [{ w: 1, d: 1 }, { width: 1920, height: 1080 }, 'y'],
+    ];
+
+    printed.entry = [];
+
+    for (const [over, surface, binds] of cases) {
+        const view = L.limits(over, surface, character);
+        const { position, target } = view.entry;
+        const cam = new PerspectiveCamera((view.fov * 180) / Math.PI, surface.width / surface.height, view.near, view.far);
+        const tag = `${over.w} × ${over.d} at ${surface.width} × ${surface.height}`;
+
+        cam.position.set(position.x, position.y, position.z);
+        cam.lookAt(target.x, target.y, target.z);
+        cam.updateMatrixWorld();
+
+        // CSS px from the stage's left and top edges, each corner's nearest of either side, and its depth in front.
+        const px = room(over).map((c) => {
+            const ahead = c.clone().applyMatrix4(cam.matrixWorldInverse).z < 0;
+            const n = c.clone().project(cam);
+
+            return { ahead, x: ((1 - Math.abs(n.x)) * surface.width) / 2, y: ((1 - Math.abs(n.y)) * surface.height) / 2 };
+        });
+        const inset = { x: Math.min(...px.map((p) => p.x)), y: Math.min(...px.map((p) => p.y)) };
+        const margin = { x: Math.min(L.ENTRY_MARGIN, surface.width / 4), y: Math.min(L.ENTRY_MARGIN, surface.height / 4) };
+        const touching = ['x', 'y'].filter((axis) => Math.abs(inset[axis] - margin[axis]) < TOL * surface.width);
+        const distance = Math.hypot(position.x - target.x, position.y - target.y, position.z - target.z);
+
+        printed.entry.push({ case: tag, distance, inset, binds: touching });
+
+        if (px.some((p) => !p.ahead) || inset.x < margin.x - TOL || inset.y < margin.y - TOL) {
+            legs.entry.push(`${tag}: at the entry (${distance.toFixed(3)} from the target) a corner of the room stands ${inset.x.toFixed(2)} px from the side and ${inset.y.toFixed(2)} px from the top or bottom — past the ${margin.x} × ${margin.y} px margin, or behind the eye`);
+        } else if (touching.length === 0) {
+            legs.entry.push(`${tag}: at the entry (${distance.toFixed(3)} from the target) the room stands ${inset.x.toFixed(2)} px in from the sides and ${inset.y.toFixed(2)} px from the top or bottom — touching neither margin, so not the least distance that frames it`);
+        } else if (!touching.includes(binds)) {
+            legs.entry.push(`${tag}: the entry is bound by ${touching.join(' and ')}, not ${binds === 'x' ? 'the width' : 'the height'}`);
+        }
+
+        if (!(distance <= view.distance.max)) {
+            legs.entry.push(`${tag}: the entry stands ${distance.toFixed(3)} from the target, past the dolly limit ${view.distance.max.toFixed(3)}`);
+        }
+    }
+
+    // The margin is small and nonzero: the room spans nearly the whole width of a 1920 px stage (the first case), its
+    // walls drawn whole.
+    const opening = printed.entry[0];
+    const span = 1 - (2 * opening.inset.x) / 1920;
+
+    if (!(opening.inset.x >= 1 && span >= 0.98)) {
+        legs.entry.push(`at 1920 × 1080 the room spans ${(100 * span).toFixed(2)}% of the width, ${opening.inset.x.toFixed(2)} px in from each side — not edge to edge within a small nonzero margin`);
+    }
+
+    // The dolly's reach: never inside 1.5 × the room's bounding-sphere fit.
+    for (const surface of [wide, tall]) {
+        const view = L.limits(extent, surface, character);
+        const sphere = L.MAX_FIT_SHARE * fitDistance({ w: extent.w, h: ROOM_H_U, d: extent.d }, view.fov, surface.width / surface.height);
+
+        if (view.distance.max < sphere - 1e-9) {
+            legs.entry.push(`at ${surface.width} × ${surface.height} the dolly limit ${view.distance.max.toFixed(3)} is inside 1.5 × the room's bounding-sphere fit, ${sphere.toFixed(3)}`);
+        }
+    }
 }
 
 // ── never below the floor: the eye and the near plane's corners, over a grid ────────────────
@@ -232,8 +318,7 @@ if (!L.cutaway(level(floored), floored, low).has('low')) {
 }
 
 // ── the confinement, through the vendored controls ───────────────────────────────────────────
-/** The-burrow's floor below its band, in units (the sandbox's), on the 1,280 × 579 stage the defect was seen on. */
-const burrow = { w: 20.24, d: 8.16 };
+/** The 1,280 × 579 stage the confinement's defect was seen on, with the-burrow's floor. */
 const stage = { width: 1280, height: 579 };
 const EPS = 1e-9;
 
@@ -354,9 +439,10 @@ for (const damping of [true, false]) {
 
         kept('a pan forward');
 
-        // Then across, each way: along the wall to each side.
+        // Then across, each way: along the wall to each side — a pan's step is a share of the eye's distance, so the
+        // desk-level eye, close in, crosses in more frames than the opening view's.
         for (const [dx, side] of [[40, 'min'], [-40, 'max']]) {
-            const across = drive(r, 160, () => r.controls.pan(dx, 0));
+            const across = drive(r, 400, () => r.controls.pan(dx, 0));
 
             if (across !== null) {
                 legs.move.push(`${tag}, a pan across ${from} left ${across}`);
@@ -434,7 +520,9 @@ for (const damping of [true, false]) {
             legs.turn.push(`${tag}, a turn and the wheel ${where} moved the target ${r.controls.target.distanceTo(t0)} — the bound slid the pair`);
         }
 
-        if (!inside && !(nearest < r.view.distance.max / L.MAX_FIT_SHARE - 1)) {
+        const { position: ep, target: et } = r.view.entry;
+
+        if (!inside && !(nearest < Math.hypot(ep.x - et.x, ep.y - et.y, ep.z - et.z) - 1)) {
             legs.turn.push(`${tag}, a turn at the fit was never brought in (nearest ${nearest.toFixed(2)}) — CONTROL: the bound was not met`);
         }
 

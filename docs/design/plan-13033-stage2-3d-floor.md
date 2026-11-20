@@ -601,7 +601,12 @@ controls are configured with, and the probe reads it):
   1's home tilt, so the floor opens as the slab showed it — at the fit distance: set directly from those spherical
   figures, never by a library fit (`camera-controls`'s fit rounds to an axis view; `OrbitControls` has none). *Fit the
   floor* is the same pose, re-derived on resize; a setting, no glide (§ 6.5). The browser leg asserts the polar angle
-  is 50° ± 0.5° at entry and after *Fit*;
+  is 50° ± 0.5° at entry and after *Fit*. ⚠ **As built (card#13033, the operator's *"fit the entire floor in the full
+  available width of the browser"*): the entry's distance is not the sphere's fit** but the least at which the room
+  box's eight corners project inside the stage less `ENTRY_MARGIN` (8 px) — `stack-model.js`'s `framingDistance()`,
+  the focus pose's search — so the floor spans the stage's width, or its height on a stage too short for that; the
+  `maxDistance` above keeps the sphere's reach, 1.5 × the farther of that fit and the entry's distance (`FLOOR.md`
+  § 12's *Floor 3-D camera*);
 - **Smoothing**: damping on with motion, **off under `prefers-reduced-motion`** (read once at construction,
   `floor/main.js`'s rule) so every move is a cut; the loop of § 3.5 runs while the view settles.
 
@@ -1308,7 +1313,8 @@ Waits for a slice, with its reason:
    depth/height split is `anchor3d()` — no new figure.
 2. `maxPolarAngle` 88° from vertical; `minDistance` one character height; `maxDistance` 1.5 × the fit; the camera's
    near plane 0.05 units (derived in § 3.6 so the near plane's corners stay above the floor); the entry pose at the
-   home tilt from the front at the fit distance, set from the spherical figures; `enableDamping` on with the library's
+   home tilt from the front at the fit distance, set from the spherical figures (as built: the room box framed edge to
+   edge, § 3.6's *Entry*); `enableDamping` on with the library's
    factor, off under `reduce` (§ 3.6).
 3. **The keyboard map**: arrows rotate and tilt, Shift+arrows pan, Page Up / Page Down raise and lower the eye (as
    Alt + a vertical drag does), `+`/`−` dolly, *Fit* the entry pose; the keys wire
