@@ -10,12 +10,12 @@
  *
  * ⛔ THE POPULATION: each still body (`floor3d/body-paint.js`'s `still()`); each piece of furniture standing on the floor
  * — a footprint `floor3d/furniture.js` stood at `y` 0 that is not set into a wall (`facing`); each wall RUN at the floor
- * (`wallRuns()`); the band's foot, a line; and, in the phases `LOOK.shade.pool` names, a pool round each floor lamp.
+ * (`wallRuns()`); the band's foot, a line; and, in a phase `look.js`'s `poolShows()` lights, a pool round each floor lamp.
  * `world.walls` holds no cell along the band (`floor/floor-walls.js`: the band stands in for the footprint's top row),
  * so the band's own line is the only shade at its foot.
  */
 
-import { LOOK } from './look.js';
+import { LOOK, poolShows } from './look.js';
 
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
@@ -106,7 +106,7 @@ export function shadeRects(world, footprints, still, phase) {
         out.push({ kind: 'band', x: world.band.x + world.band.w / 2, y: 0, z: world.band.z, hw: world.band.w / 2, hd: 0, turn: 0, ...wall });
     }
 
-    if (S.pool.phases.includes(phase)) {
+    if (poolShows(phase)) {
         for (const p of world.pieces.filter((piece) => piece.kind === S.pool.kind)) {
             out.push({ kind: 'pool', x: p.at.x, y: p.at.y, z: p.at.z, hw: 0, hd: 0, turn: 0, round: S.pool.round, soft: S.pool.soft, strength: S.pool.strength, glow: true });
         }

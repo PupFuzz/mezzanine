@@ -1442,7 +1442,11 @@ ground-shade decal** that replaces the bodies' discs and also lies under the fur
 **(a) One home for the figures — new `server/public/js/floor3d/look.js`, pure (no Three, no DOM).** Exports a frozen
 `LOOK` holding every figure of § 12's four rows, and `upFace(phase)` — the up-facing face's light,
 `(sun.intensity × sunColour + hemi.intensity × skyColour) / π` per channel in linear light. Nothing else in
-`floor3d/` writes one of these figures.
+`floor3d/` writes one of these figures. The character tools' stage (`tools/characters/stage3d.js`) lights from it too,
+in the windowless `unset` phase, so the 3-D sheet and `distinct.browser.mjs --source 3d` judge a body under the light
+the floor draws it in, not a light of their own. Under this light the cat's grey-blue colourway and the raccoon's
+mauve-grey one read layout ΔE 9.4 apart at silhouette IoU 0.84 — under the distinctness bar — so the raccoon's fifth
+colourway is a deeper plum, `#7d6878` (from `#857a84`), which reads 11.1 apart.
 
 **(b) The lights — `floor-paint.js`'s `worldRenderer()`, the `hemi` and `sun` it already makes.**
 
@@ -1499,7 +1503,7 @@ away 0 — in linear light 1.00 / 0.82 / 0.66 / 0.50 of the colour once the hemi
   | a piece of furniture standing on the floor (`at.y === 0`, no `facing`), turned as it is | half its fitted footprint | 0.35 | 0.12 | 0.26 |
   | a wall run at the floor | half the run's rect | 0 | 0.28 | 0.20 |
   | the band's foot, a line (`hd` 0) along `world.band` | `band.w / 2`, 0 | 0 | 0.28 | 0.20 |
-  | a floor lamp's pool, only when `phase` is `night`, `dawn` or `dusk` | 0, 0 | 1 | 1.1 | 0.16, `glow` |
+  | a floor lamp's pool, only in a phase whose `SKY_PAINT` lights the city's windows (`city_lit` above 0: `night`, `dawn` and `dusk`; `look.js`'s `poolShows()`) | 0, 0 | 1 | 1.1 | 0.16, `glow` |
 
   A **wall run** is the cells of `world.walls` with `box.y === 0` joined: consecutive cells of one row into a run
   along `x`, then the cells left over joined along `z`; a cell is in one run. Runs overlap only where two meet, which

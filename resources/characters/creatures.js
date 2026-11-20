@@ -1110,7 +1110,7 @@ const APPROVED = {
   },
   raccoon: {
     kind: 'animal', label: 'raccoon-ish', added: 'card#12796',
-    pals: [['#8a7f78', '#efe9e2', '#3a3236'], ['#9a8a7a', '#f2ebe0', '#45362e'], ['#7a7470', '#e9e6e2', '#2e2a2c'], ['#a89a86', '#f6efe2', '#4f4034'], ['#857a84', '#efe8ee', '#3a3040']],
+    pals: [['#8a7f78', '#efe9e2', '#3a3236'], ['#9a8a7a', '#f2ebe0', '#45362e'], ['#7a7470', '#e9e6e2', '#2e2a2c'], ['#a89a86', '#f6efe2', '#4f4034'], ['#7d6878', '#efe8ee', '#3a3040']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
     shape: {
       profiles: {

@@ -13,7 +13,12 @@
  *
  * ⛔ THE RAMP IS SAMPLED AS THE SHADER SAMPLES IT: `dot(N, L)` maps to `dot · 0.5 + 0.5` across the texels with nearest
  * filtering, so texel `i` covers `dot` from `-1 + i/8` (16 texels); `rampAt()` is that lookup.
+ *
+ * ⛔ NO PHASE IS NAMED HERE: which hour is which phase is `floor/floor-layout.js`'s `skyPhase()`, and whether a phase is
+ * dark enough for a lamp's pool is its `SKY_PAINT` (`poolShows()`).
  */
+
+import { SKY_PAINT } from '../floor/floor-layout.js';
 
 const freeze = (o) => Object.freeze(o);
 
@@ -36,7 +41,7 @@ export const LOOK = freeze({
     pixelRatio: 2,
     /**
      * The ground shade: plum, and the warm pool's colour; each kind's half extents, corner rounding, fade (units, or a
-     * share of a body's height `h`) and strength; the decal's lift over what it lies on; and the phases a pool shows in.
+     * share of a body's height `h`) and strength; and the decal's lift over what it lies on.
      */
     shade: freeze({
         plum: '#3d2b3c',
@@ -45,7 +50,7 @@ export const LOOK = freeze({
         body: freeze({ radius: 0.16, round: 1, soft: 0.14, strength: 0.3 }),
         furniture: freeze({ round: 0.35, soft: 0.12, strength: 0.26 }),
         wall: freeze({ round: 0, soft: 0.28, strength: 0.2 }),
-        pool: freeze({ kind: 'floor-lamp', round: 1, soft: 1.1, strength: 0.16, phases: freeze(['night', 'dawn', 'dusk']) }),
+        pool: freeze({ kind: 'floor-lamp', round: 1, soft: 1.1, strength: 0.16 }),
     }),
 });
 
@@ -54,6 +59,11 @@ export function phaseOf(sceneIn) {
     const sky = sceneIn?.band?.windows?.[0]?.sky ?? null;
 
     return Object.hasOwn(LOOK.phases, sky ?? '') ? sky : 'unset';
+}
+
+/** Whether a floor lamp throws its pool in `phase`: when the sky's paint lights the city's windows (`city_lit`). */
+export function poolShows(phase) {
+    return SKY_PAINT[phase].city_lit > 0;
 }
 
 /** The ramp's value at `dot(N, L)`, as the shader's nearest lookup reads it. */

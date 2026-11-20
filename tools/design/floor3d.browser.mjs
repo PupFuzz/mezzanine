@@ -51,7 +51,7 @@ const { PAN_STEP_PX, turnOf } = await import(pathToFileURL(join(JS, 'wire', 'cam
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);
 const CLOCK = await import(pathToFileURL(join(JS, 'floor3d', 'clip-clock.js')).href);
 const { CAB_SHADE } = await import(pathToFileURL(join(JS, 'floor', 'cab-paint.js')).href);
-const { LOOK } = await import(pathToFileURL(join(JS, 'floor3d', 'look.js')).href);
+const { LOOK, poolShows } = await import(pathToFileURL(join(JS, 'floor3d', 'look.js')).href);
 const { skyPhase } = await import(pathToFileURL(join(JS, 'floor', 'floor-layout.js')).href);
 const CHARACTERS = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
 const REDUCE = [{ name: 'prefers-reduced-motion', value: 'reduce' }];
@@ -951,7 +951,7 @@ const ROWS = {
           if (k.shade.furniture !== pop.standing) d.push(`${phase}: ${k.shade.furniture} furniture shades for ${pop.standing} placements standing on the floor`);
           if (Math.abs(k.shade.wallArea - pop.wallArea) > 1e-6) d.push(`${phase}: the wall shades cover ${k.shade.wallArea.toFixed(4)} square units, the wall cells at the floor ${pop.wallArea.toFixed(4)}`);
           if (k.shade.band !== pop.band) d.push(`${phase}: ${k.shade.band} band lines for ${pop.band} band`);
-          const pools = LOOK.shade.pool.phases.includes(phase) ? pop.lamps : 0;
+          const pools = poolShows(phase) ? pop.lamps : 0;
           if (k.shade.pool !== pools) d.push(`${phase}: ${k.shade.pool} lamp pools, not ${pools}`);
           if (k.shade.drawn !== k.shade.body + k.shade.furniture + k.shade.wall + k.shade.band + k.shade.pool) d.push(`${phase}: the decal draws ${k.shade.drawn} instances for its ${JSON.stringify(k.shade)}`);
           if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
