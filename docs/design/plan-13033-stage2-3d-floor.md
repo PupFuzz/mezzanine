@@ -736,12 +736,13 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
 § 10.4 item 6's *labels over the scene* are, in 3-D, **HTML elements positioned by `CSS2DRenderer`**: per desk a
 **name** (`<a>` to the drill-down, `FONT_NAME`), the **status** (the operator's Q4 answer, comment 17086: the
 monitor's glyph word and action line — the strings `desk-render.js` decides for the screen, `monitor: 'off'`
-drawing the label's *off* form — computed by `floor-world.js` as a label of kind `status` anchored over the monitor's
-top, `anchor3d` height `MONITOR_TOP` over `SCALE` plus a line, so it floats above the desk and, being screen-space,
-faces the camera from every angle), a **state chip**, the **facts card** (the plated facts the painter draws:
+drawing the label's *off* form — computed by `floor-world.js` as a label of kind `status` at the height `MONITOR_TOP`
+over `SCALE` plus a line, and, being screen-space, facing the camera from every angle; since the operator's ruling of
+2026-11-19 it hangs beside its sitter on the viewer's right from that height rather than over the monitor, the bubble
+standing on the same point — `FLOOR.md` § 12's *3-D thought plaques*), a **state chip**, the **facts card** (the plated facts the painter draws:
 label, currency, lag, gauge, badges, flag, quiet age — the same strings `desk-render.js` decides, the same
 `.visually-hidden` rule for culled ones), and the **bubble** (the task title, `task-bubble.js`'s layout), each at
-§ 3.1's `anchor3d` height; **within one desk the labels' order is fixed — name, status, chip, facts, bubble — and
+§ 3.1's `anchor3d` height (the bubble beside its sitter, over the status); **within one desk the labels' order is fixed — name, status, chip, facts, bubble — and
 the desks are in `readingOrder()`**, so the container's document order is that sequence per desk in that desk
 order, the status label second so a screen reader hears the desk's state right after its name; per floor the **notices** and the **overflow strip** as a flowed list under the stage (a
 strip is a list of desks without a slot; in 3-D they stand on a bench past the floor's front edge, as the 2-D strip

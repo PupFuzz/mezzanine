@@ -11,6 +11,12 @@
  * off the frame and reds; everything else — the strings, the walkers' points, the heights — is compared with the
  * scene's own elements and `route.js`'s `pointAt()`, which the module must reproduce and does not own.
  *
+ * ⛔ THE STATUS AND THE BUBBLE STAND BESIDE THEIR SITTER (the `beside` leg): each on its sitter's line, reaching the
+ * character's half-width, and stood by `anchorPoint()` that far along the camera's right — on the viewer's right, at its
+ * height — at every twelfth of a turn of the camera; a desk's two at one point above its monitor's top, the status
+ * hanging from it and the bubble standing on it (`PIN`), so neither covers the other; every other label centred on its
+ * point at its desk's depth.
+ *
  * ⛔ A WALKER's POINT IS LEGAL (slice 5, the AT-D3-23/-31/-32/-33/-36 replays): every sampled point a walker stands at
  * on the floor, and every restroom threshold a visitor stands at, lifts inside the floor and on OPEN lattice — in none of
  * the walkable model's obstacles, by its one rule (`map-tiles.js`'s `obstaclesOf()`, imported, never copied) over the
@@ -104,10 +110,62 @@ const PIECE3DS = (await Promise.all(registry.THEMES.map((t) => import(pathToFile
 const { scenes } = JSON.parse(readFileSync(0, 'utf8'));
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
-const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], standing: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [], cab: [] };
-const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, standing: {}, standingRows: 0, shrunk: {}, sideDoorPieces: 0, sideDoors: 0, backDoors: 0, lintels: 0, thresholds: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0, cabs: 0, cabSamples: 0, cabShown: { shown: 0, hidden: 0 }, offCabSamples: 0 };
+const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], standing: [], walls: [], walkers: [], lattice: [], labels: [], beside: [], status: [], doors: [], restroom: [], effects: [], birds: [], cab: [] };
+const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, standing: {}, standingRows: 0, shrunk: {}, sideDoorPieces: 0, sideDoors: 0, backDoors: 0, lintels: 0, thresholds: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, beside: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0, cabs: 0, cabSamples: 0, cabShown: { shown: 0, hidden: 0 }, offCabSamples: 0 };
 const WORLD_MEMBERS = ['band', 'desks', 'doors', 'effects', 'extent', 'labels', 'pieces', 'planes', 'restroom_doors', 'slab', 'walkers', 'walls'];
 const LABEL_ORDER = ['name', 'status', 'chip', 'facts', 'bubble'];
+/** The labels that stand beside their sitter, on the viewer's right, rather than centred on their desk, each with the
+ *  corner of its box it stands on its point by: the status hangs from the point, the bubble stands on it. */
+const BESIDE = ['status', 'bubble'];
+const BESIDE_PIN = { status: { x: 0, y: 0 }, bubble: { x: 0, y: 1 } };
+/** The camera's azimuths the `beside` leg stands each such label at: a full turn, in twelfths. */
+const AZIMUTHS = Array.from({ length: 12 }, (_, k) => (k * Math.PI) / 6);
+
+/**
+ * What keeps a status or bubble label `l` of the scene's desk `d` (the world's `w`) from standing beside its sitter on the
+ * viewer's right, clear of its body, from every side: its anchor on the sitter's centre line and at its depth, reaching
+ * the character's half-width (none at a desk that draws no character), above the monitor's top, standing on its point
+ * by its kind's corner (`BESIDE_PIN`), and — at each of `AZIMUTHS`, the camera's right an orbit camera's `x` axis there —
+ * its world point that reach along the camera's right from the sitter, at its height.
+ */
+function besideDefects(l, d, w, character, slab, X, Z) {
+    const defects = [];
+    const reach = character === undefined ? 0 : character.w / 2;
+    const seat = w.sitter?.at ?? null;
+    const pin = BESIDE_PIN[l.kind];
+
+    if (l.anchor.beside !== reach) {
+        defects.push(`${d.key}'s ${l.kind} reaches ${l.anchor.beside} px beside its sitter, not the character's half-width ${reach}`);
+    }
+
+    if (l.anchor.pin?.x !== pin.x || l.anchor.pin?.y !== pin.y) {
+        defects.push(`${d.key}'s ${l.kind} stands on its point by ${JSON.stringify(l.anchor.pin)}, not ${JSON.stringify(pin)}`);
+    }
+
+    if (!(l.anchor.height > W.MONITOR_TOP_U * W.UNIT)) {
+        defects.push(`${d.key}'s ${l.kind} stands at ${l.anchor.height} px, not above the monitor's top`);
+    }
+
+    if (seat === null ? !(Z(l.anchor.depth) < w.slab.back) : !near(Z(l.anchor.depth), seat.z) || !near(X(l.anchor.x), seat.x)) {
+        defects.push(`${d.key}'s ${l.kind} stands at x ${X(l.anchor.x)}, z ${Z(l.anchor.depth)} — not on its sitter's line ${seat === null ? 'behind its slab' : `at x ${seat.x}, z ${seat.z}`}`);
+
+        return defects;
+    }
+
+    for (const azimuth of AZIMUTHS) {
+        const right = { x: Math.cos(azimuth), z: -Math.sin(azimuth) };
+        const p = W.anchorPoint(slab, l.anchor, right);
+        const off = { x: p.x - X(l.anchor.x), z: p.z - Z(l.anchor.depth) };
+        const along = off.x * right.x + off.z * right.z;
+        const across = off.x * right.z - off.z * right.x;
+
+        if (!near(along, reach / W.UNIT) || !near(across, 0) || !near(p.y, l.anchor.height / W.UNIT)) {
+            defects.push(`${d.key}'s ${l.kind} seen at azimuth ${azimuth.toFixed(2)} stands ${along} along the camera's right and ${across} across it, ${p.y} up — not ${reach / W.UNIT} to the viewer's right at ${l.anchor.height / W.UNIT}`);
+        }
+    }
+
+    return defects;
+}
 const FACT_KINDS = ['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age'];
 
 /**
@@ -402,8 +460,11 @@ for (const { run, i, scene } of scenes) {
         for (const l of own) {
             printed.labels[l.kind] = (printed.labels[l.kind] ?? 0) + 1;
 
-            if (l.anchor.depth !== d.depth_y) {
-                legs.labels.push(`${at} ${d.key}'s ${l.kind} label stands at depth ${l.anchor.depth}, not its desk's ${d.depth_y}`);
+            if (BESIDE.includes(l.kind)) {
+                besideDefects(l, d, w, character, world.slab, X, Z).forEach((defect) => legs.beside.push(`${at} ${defect}`));
+                printed.beside[l.kind] = (printed.beside[l.kind] ?? 0) + 1;
+            } else if (l.anchor.depth !== d.depth_y || l.anchor.beside !== null || l.anchor.pin?.x !== 0.5 || l.anchor.pin?.y !== 0.5) {
+                legs.labels.push(`${at} ${d.key}'s ${l.kind} label stands at depth ${l.anchor.depth}${l.anchor.beside === null ? '' : `, ${l.anchor.beside} px beside`} by ${JSON.stringify(l.anchor.pin)}, not centred at its desk's ${d.depth_y}`);
             }
 
             const el = element[l.kind];
@@ -411,7 +472,7 @@ for (const { run, i, scene } of scenes) {
             if (el !== undefined && el !== null) {
                 const height = Math.max(0, foot - (el.y + el.h / 2));
 
-                if (!near(l.anchor.height, height) || !near(l.anchor.x, el.x + el.w / 2)) {
+                if (!BESIDE.includes(l.kind) && (!near(l.anchor.height, height) || !near(l.anchor.x, el.x + el.w / 2))) {
                     legs.labels.push(`${at} ${d.key}'s ${l.kind} label stands ${l.anchor.height} px up at x ${l.anchor.x}, not its element's ${height} at ${el.x + el.w / 2}`);
                 }
 
@@ -431,6 +492,19 @@ for (const { run, i, scene } of scenes) {
 
         if (JSON.stringify(factLabel?.model?.map((f) => f.text) ?? []) !== JSON.stringify(facts.map((e) => e.text))) {
             legs.labels.push(`${at} ${d.key}'s facts label reads ${JSON.stringify(factLabel?.model?.map((f) => f.text) ?? [])}, the painter's ${JSON.stringify(facts.map((e) => e.text))}`);
+        }
+
+        // A desk's status and bubble at one point, so the status hanging from it and the bubble standing on it never meet.
+        const words = own.filter((l) => BESIDE.includes(l.kind));
+
+        if (words.length === 2) {
+            const [a, b] = words.map((l) => l.anchor);
+
+            printed.beside.pairs = (printed.beside.pairs ?? 0) + 1;
+
+            if (a.x !== b.x || a.depth !== b.depth || a.height !== b.height || a.beside !== b.beside) {
+                legs.beside.push(`${at} ${d.key}'s status stands at ${JSON.stringify(a)} and its bubble at ${JSON.stringify(b)} — not one point`);
+            }
         }
 
         // The status (the operator's Q4 answer): the monitor's own strings, the off form for a dark one.
@@ -1176,6 +1250,11 @@ for (const { run, i, scene } of scenes) {
 // Rule W read over every wall it reads and over open floor, and § 15.4's pinned rows each read.
 if (['back', 'left', 'right', 'front', 'null'].some((k) => !(printed.standing[k] > 0)) || printed.standingRows < Object.keys(DEFAULT_MAP).length) {
     legs.standing.push(`CONTROL: the scenes and the fixture hold no piece against some wall, none free, or not every pinned row — ${JSON.stringify({ standing: printed.standing, rows: printed.standingRows })}`);
+}
+
+// The labels beside their sitters read at both kinds and as a desk's pair: scenes with none measured none of it.
+if (BESIDE.some((kind) => !(printed.beside[kind] > 0)) || !(printed.beside.pairs > 0)) {
+    legs.beside.push(`CONTROL: the scenes hold no ${BESIDE.join(' or ')} label to stand beside its sitter, or no desk with both — ${JSON.stringify(printed.beside)}`);
 }
 
 // The controls: a population this probe reads nothing of is a pass that measured nothing.

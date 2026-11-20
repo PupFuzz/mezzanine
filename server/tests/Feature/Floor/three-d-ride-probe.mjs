@@ -99,7 +99,7 @@ const document = { createElement: (name) => new Element(document, name), default
 const { floorLabels } = await import(pathToFileURL(join(JS, 'floor3d', 'floor-labels.js')).href);
 const { rideLeaves, rideLeafLevel } = await import(pathToFileURL(join(JS, 'floor', 'cab-paint.js')).href);
 const { ridePhase } = await import(pathToFileURL(join(JS, 'wire', 'ride.js')).href);
-const { floorSlab } = await import(pathToFileURL(join(JS, 'floor', 'floor-world.js')).href);
+const { PIN, floorSlab } = await import(pathToFileURL(join(JS, 'floor', 'floor-world.js')).href);
 const { Group } = await import(pathToFileURL(join(JS, 'vendor', 'three', 'three.module.js')).href);
 
 const legs = { control: [], leaves: [] };
@@ -126,7 +126,7 @@ const read = {};
         band,
         desks: [desk],
         effects: [],
-        labels: [{ key: desk.key, kind: 'name', text: 'aimla-pm', anchor: { x: 0, depth: 0, height: 0 } }],
+        labels: [{ key: desk.key, kind: 'name', text: 'aimla-pm', anchor: { x: 0, depth: 0, height: 0, beside: null, pin: PIN.centre } }],
     });
 
     labels.sync(world({ elevator: ELEVATOR }));

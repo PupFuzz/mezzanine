@@ -16,6 +16,12 @@
  * file writes them and decides none. The name is a link to the desk's drill-down, and a plain click opens the panel in
  * place, as the 2-D floor's desks do; focusing it is handed to the renderer, which moves the camera's target to it.
  *
+ * ⛔ THE STATUS AND THE BUBBLE STAND BESIDE THEIR SITTER, ON THE VIEWER's RIGHT: each anchor carries a reach
+ * (`floor-world.js`'s `anchorPoint()`), its point is moved that far along the camera's right on every frame (`place()`),
+ * and its element stands on the point by the corner the anchor's `pin` names — the status hanging from it, the bubble
+ * standing on it — so each begins clear of the body from every side the camera orbits to and the two never cover each
+ * other. Every other label is centred on its point.
+ *
  * ⛔ LABELS THAT WOULD OVERLAP ARE CULLED, NEVER REMOVED (plan § 3.7: stage 1's `cullOverlaps()`, reused): after each
  * render the drawn labels' boxes are read off the stage and the cull keeps, in `PRIORITY`'s order and the desks' reading
  * order within it, each label that overlaps none already kept; a culled label is made transparent and lets the pointer
@@ -83,6 +89,8 @@ export function floorLabels(container, group, { select, link, focused, ride }) {
     const held = new Map();
     /** the held labels' ids in document order */
     let order = [];
+    /** the slab the labels' anchors stand on, the world's */
+    let slab = null;
 
     container.addEventListener('pointerdown', (event) => event.stopPropagation());
 
@@ -128,14 +136,17 @@ export function floorLabels(container, group, { select, link, focused, ride }) {
 
         const object = new CSS2DObject(element);
 
+        // the point of its box the world stands on the anchor's point (`PIN`)
+        object.center.set(label.anchor.pin.x, label.anchor.pin.y);
+
         group.add(object);
 
-        return { object, element, lines: null, desk, kind: label.kind, raised: null };
+        return { object, element, lines: null, desk, kind: label.kind, raised: null, anchor: label.anchor };
     };
 
     const write = (entry, label) => {
         const lines = linesOf(label);
-        const sig = JSON.stringify([lines, label.lit ?? null, label.render_state ?? null]);
+        const sig = JSON.stringify([lines, label.render_state ?? null]);
 
         if (sig === entry.lines) {
             return;
@@ -157,10 +168,6 @@ export function floorLabels(container, group, { select, link, focused, ride }) {
 
                 return line;
             }));
-        }
-
-        if (label.kind === 'status') {
-            element.dataset.lit = label.lit;
         }
 
         if (label.kind === 'chip') {
@@ -188,11 +195,13 @@ export function floorLabels(container, group, { select, link, focused, ride }) {
 
     return {
         /**
-         * The world's labels, held: each written, stood at its anchor and in its place in the container's order — after
-         * the elevator's control, while the world has a band; a label the world no longer carries is removed.
+         * The world's labels, held: each written, given its anchor (stood there by `place()`, each frame) and in its place
+         * in the container's order — after the elevator's control, while the world has a band; a label the world no longer
+         * carries is removed.
          */
         sync(world) {
             doorway = world.band?.elevator ?? null;
+            slab = world.slab;
 
             if (doorway === null) {
                 group.remove(elevatorObject);
@@ -242,17 +251,27 @@ export function floorLabels(container, group, { select, link, focused, ride }) {
                 const entry = held.get(id);
 
                 entry.desk = desk;
+                entry.anchor = label.anchor;
                 write(entry, label);
 
                 if (label.kind === 'facts') {
                     raise(entry, label, raises.get(label.key));
                 }
-                entry.object.position.copy(anchorPoint(world.slab, label.anchor));
 
                 if (container.children[first + i] !== entry.element) {
                     container.insertBefore(entry.element, container.children[first + i] ?? null);
                 }
             });
+        },
+
+        /**
+         * Every label stood at its anchor as the camera whose right is `right` sees it (`anchorPoint()`) — each frame,
+         * before the labels are rendered, so a label beside its sitter stays on the viewer's right as the camera turns.
+         */
+        place(right) {
+            for (const entry of held.values()) {
+                entry.object.position.copy(anchorPoint(slab, entry.anchor, right));
+            }
         },
 
         /** The overlap cull over the labels the last render drew (the header's rule). */
