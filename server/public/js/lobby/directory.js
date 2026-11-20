@@ -16,13 +16,19 @@
  * `flow`) — and the drawing surface's `touch-action`, `none` only while the boxes stand on the board, where the gesture
  * wire listens. Every style that depends on where a box stands is keyed on its own `data-home` (`mezzanine.css`).
  *
- * ⛔ THE TEXT IS AT THE PAGE's OWN SIZE AND IS NEVER SCALED BY THE CAMERA (§ 4.1, decision 37). On the board the
- * directory's box and the readings' box stand in the camera's layer at their rects in scene px (`building-scene.js`'s
- * `lobbyScene()`), so they stay on the board at every zoom and pan; inside each, a FACE is counter-scaled — its size the box's at the
- * camera's zoom, `scale()` by the zoom's inverse — so its text lays out at `1rem` on the screen. ONE WRITER:
- * `showDirectory()` sets the two custom properties every face reads (`--lobby-zoom`, `--lobby-scale`), called by the
- * page's camera hook (`lobby/main.js`'s `view()`) on every camera the page shows and never from a render, so a face can
- * never go stale between a render and the camera moves that follow it.
+ * ⛔ THE TEXT IS NEVER SCALED BY THE CAMERA (§ 4.1, decision 37). On the board the directory's box and the readings' box
+ * stand in the camera's layer at their rects in scene px (`building-scene.js`'s `lobbyScene()`), so they stay on the board
+ * at every zoom and pan; inside each, a FACE is counter-scaled — its size the box's at the camera's zoom, `scale()` by the
+ * zoom's inverse — so its text lays out at `1rem` on the screen. ONE WRITER: `showDirectory()` sets the two custom
+ * properties every face reads (`--lobby-zoom`, `--lobby-scale`), called by the page's camera hook (`lobby/main.js`'s
+ * `view()`) on every camera the page shows and never from a render, so a face can never go stale between a render and the
+ * camera moves that follow it.
+ *
+ * ⛔ A SMALL BOARD SHRINKS ITS TEXT, FACE AND ALL, AND THE WINDOW DECIDES BY HOW MUCH, NEVER THE CAMERA (§ 4.1, decision
+ * 72; card#13519). A fitted face smaller than `BOARD_FACE` lays out as a face of `BOARD_FACE` at `1rem` and is scaled
+ * down by `boardText()` to fit its box, so every line, gap and marker shrinks together and the face wraps as it does at
+ * full size; under `TEXT_FLOOR` the boxes dock instead. The share is the window's and the page's text size's, so the
+ * docking entry writes it with the home, and a zoom or a pan leaves it as it is.
  *
  * ⛔ ON THE BOARD THE DIRECTORY SCROLLS INSIDE ITS BOX, AND DECLARES IT (§ 4.1). The plaques' list is `overflow-y: auto`
  * and carries `data-camera-scrolls`, the declaration `wire/camera-gestures.js` reads to give a wheel or a drag begun over
@@ -64,15 +70,19 @@ export function showDirectory(layer, camera) {
 
 /**
  * A box's style for its home — at its rect in scene px while it stands on the board, and nothing while it is docked or
- * flows with no room drawn, so it stands in the page; its face's, on the board, sized to the box on the screen and
- * counter-scaled by the two properties `showDirectory()` writes, and docked or flowing at the page's text size with no
+ * flows with no room drawn, so it stands in the page; its face's, on the board, sized to the box on the screen over the
+ * board's text share and counter-scaled by the two properties `showDirectory()` writes and then by that share, so it
+ * fills its box with its text at `text` of the page's size; docked or flowing at the page's text size with no
  * counter-scale. Every member is set either way. Written by `dockingEntry()` alone.
  *
  * @param {{x: number, y: number, w: number, h: number}} rect the box's rect, in scene px
- * @param {boolean} drawn whether the box stands on the board (`data-home="board"`)
+ * @param {number|null} text the board's text share (`boardText()`) while the box stands on the board
+ *   (`data-home="board"`), and `null` everywhere else
  * @returns {{box: object, face: object}}
  */
-export function boxStyles(rect, drawn) {
+export function boxStyles(rect, text) {
+    const drawn = text !== null;
+
     return {
         box: {
             position: drawn ? 'absolute' : '',
@@ -83,24 +93,42 @@ export function boxStyles(rect, drawn) {
             overflow: drawn ? 'hidden' : '',
         },
         face: {
-            width: drawn ? `calc(${rect.w}px * var(--lobby-zoom, 1))` : '',
-            height: drawn ? `calc(${rect.h}px * var(--lobby-zoom, 1))` : '',
-            transform: drawn ? 'scale(var(--lobby-scale, 1))' : '',
+            width: drawn ? `calc(${rect.w / text}px * var(--lobby-zoom, 1))` : '',
+            height: drawn ? `calc(${rect.h / text}px * var(--lobby-zoom, 1))` : '',
+            transform: drawn ? `scale(var(--lobby-scale, 1)) scale(${text})` : '',
             transformOrigin: drawn ? '0 0' : '',
         },
     };
 }
 
 /**
- * § 12's *Directory dock width*: the least the directory's face may be at the room's fit — in `em` of the page's own
- * text size — for the boxes to stand on the board. Under either figure the lobby docks them under the room.
+ * § 12's *Directory dock width*: the face, in `em` of its own text, the board's text lays out in. A directory's face at
+ * the room's fit that holds it reads at the page's own text size; a smaller one shrinks its text until it does.
  */
-export const DOCK_BOUND = Object.freeze({ w: 24, h: 15 });
+export const BOARD_FACE = Object.freeze({ w: 24, h: 15 });
+
+/** § 12's *Directory dock width*: the least share of the page's `1rem` the board's text may shrink to; under it, dock. */
+export const TEXT_FLOOR = 0.6;
 
 /**
- * Where the boxes stand (§ 4.1, decision 72): `flow` with no room drawn; with it drawn, `dock` when the directory's
- * face at the room's fit — the camera's fit zoom over the room's extent, times the box's rect — is narrower than
- * `DOCK_BOUND.w` or shorter than `DOCK_BOUND.h` at the page's `rem`, and `board` otherwise.
+ * The share of the page's `1rem` the board's text reads at over `surface`: `1` where the directory's face at the room's
+ * fit — the camera's fit zoom over the room's extent, times the box's rect — holds `BOARD_FACE` at `rem`, and otherwise
+ * the share at which it holds it, the narrower of its two figures. The camera's zoom never enters it: the fit's does.
+ *
+ * @param {{width: number, height: number}} surface the drawing surface in CSS px
+ * @param {number} rem the page's `1rem` in CSS px
+ * @param {{extent: object, directory: object}} scene `building-scene.js`'s `lobbyScene()`
+ * @returns {number}
+ */
+export function boardText(surface, rem, scene) {
+    const zoom = fitZoom(surface, scene.extent);
+
+    return Math.min(1, (scene.directory.w * zoom) / (BOARD_FACE.w * rem), (scene.directory.h * zoom) / (BOARD_FACE.h * rem));
+}
+
+/**
+ * Where the boxes stand (§ 4.1, decision 72): `flow` with no room drawn; with it drawn, `dock` when the board's text
+ * over the surface (`boardText()`) would be under `TEXT_FLOOR` of the page's `rem`, and `board` otherwise.
  *
  * @param {boolean} drawn whether the room is drawn
  * @param {{width: number, height: number}} surface the drawing surface in CSS px
@@ -113,21 +141,20 @@ export function homeFor(drawn, surface, rem, scene) {
         return 'flow';
     }
 
-    const zoom = fitZoom(surface, scene.extent);
-
-    return scene.directory.w * zoom < DOCK_BOUND.w * rem || scene.directory.h * zoom < DOCK_BOUND.h * rem ? 'dock' : 'board';
+    return boardText(surface, rem, scene) < TEXT_FLOOR ? 'dock' : 'board';
 }
 
 /**
  * ⭐ THE DOCKING ENTRY — the ONE writer of every state the dock changes (§ 4.1, decision 72; canon #5: one writer, so no
  * second module derives the predicate). `place(drawn)` asks `homeFor()` over the surface as it measures now and the
- * page's `1rem` as a probe measures it, and then, for each box in order: moves it — into the camera's layer for
- * `board`, into the page's flow after the surface (the directory first) otherwise — only when its parent is not already
- * the right one, so a render that keeps the home moves nothing; writes its `data-home`; and writes its box's and its
- * face's styles (`boxStyles()`). Last it writes the surface's `touch-action`: `none` on the board, where the gesture
- * wire reads the drags, and `auto` docked and with no room drawn, where the browser owns every touch. The home is
+ * page's `1rem` as a probe measures it — and, for `board`, `boardText()` — and then, for each box in order: moves it —
+ * into the camera's layer for `board`, into the page's flow after the surface (the directory first) otherwise — only
+ * when its parent is not already the right one, so a render that keeps the home moves nothing; writes its `data-home`;
+ * and writes its box's and its face's styles (`boxStyles()`), the faces at the board's text share. Last it writes the
+ * surface's `touch-action`: `none` on the board, where the gesture wire reads the drags, and `auto` docked and with no
+ * room drawn, where the browser owns every touch. The home is
  * re-asked on every `resize` and on every change of the page's text size — which fires no `resize` — through a
- * `ResizeObserver` on a hidden `1rem` probe, so an `em` bound never goes stale.
+ * `ResizeObserver` on a hidden `1rem` probe, so neither an `em` bound nor the text share goes stale.
  *
  * @param {Window} win the page's window (its `ResizeObserver` and its `resize`)
  * @param {Document} doc the page's document
@@ -147,7 +174,10 @@ export function dockingEntry(win, doc, { building, layer, boxes, scene }) {
 
     const place = (isDrawn = drawn) => {
         drawn = isDrawn;
-        const next = homeFor(drawn, { width: building.clientWidth, height: building.clientHeight }, probe.getBoundingClientRect().height, scene);
+        const surface = { width: building.clientWidth, height: building.clientHeight };
+        const rem = probe.getBoundingClientRect().height;
+        const next = homeFor(drawn, surface, rem, scene);
+        const text = next === 'board' ? boardText(surface, rem, scene) : null;
         let after = building;
 
         for (const [box, rect] of boxes) {
@@ -165,7 +195,7 @@ export function dockingEntry(win, doc, { building, layer, boxes, scene }) {
 
             box.setAttribute('data-home', next);
 
-            const styles = boxStyles(rect, next === 'board');
+            const styles = boxStyles(rect, text);
 
             Object.assign(box.style, styles.box);
             Object.assign(box.firstElementChild.style, styles.face);

@@ -391,9 +391,9 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
  * `#lobby-room` the camera's layer: its size, its clip and its transform are `public/js/lobby/main.js`'s (from
  * `building-scene.js`'s `surfaceStyle()` and the camera), never this sheet's, so a placeholder page before the first
  * snapshot flows as text. The directory's and the readings' FACES are counter-scaled by `--lobby-zoom` /
- * `--lobby-scale`, which `directory.js`'s `showDirectory()` alone writes on the layer, so their text is the page's own
- * size at every zoom. ⛔ The plaque's face is a surface `tools/design/state-chip-colours.py` measures the state chips
- * over (`--lobby-plaque`).
+ * `--lobby-scale`, which `directory.js`'s `showDirectory()` alone writes on the layer, so their text is one size at every
+ * zoom — the page's own, or less on a small board (`directory.js`'s `boardText()`). ⛔ The plaque's face is a surface
+ * `tools/design/state-chip-colours.py` measures the state chips over (`--lobby-plaque`).
  */
 main > section.lobby {
     margin-inline: 8px;
@@ -417,8 +417,9 @@ main > section.lobby {
     color: var(--dim);
 }
 
-/* The two faces: the page's own text size, and every line read whole — a line wider than its box wraps, breaking inside a
-   word only where a word alone is wider (FLOOR.md § 4.1), so a plaque grows taller rather than hiding a figure. */
+/* The two faces: the page's own text size — which a small board scales down, face and all (`directory.js`) — and every
+   line read whole: a line wider than its box wraps, breaking inside a word only where a word alone is wider (FLOOR.md
+   § 4.1), so a plaque grows taller rather than hiding a figure. */
 .lobby .lobby-face {
     box-sizing: border-box;
     font-size: 1rem;

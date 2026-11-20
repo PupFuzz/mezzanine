@@ -23,8 +23,8 @@
  * drawing only while the room is drawn (`building-scene.js`'s `surfaceStyle()`) — and `#lobby-room` the camera's layer
  * in it: the room's drawing (`building-paint.js`'s `roomDrawing()`) and, while the room is drawn and the board's fitted
  * face is not under § 12's *Directory dock width*, the directory's box at the board's rect and the readings' box under
- * it, all moved and scaled by the camera's one transform. Under the bound — a phone, a tablet, a laptop — the boxes dock
- * in the page's flow under the surface. Where the boxes stand, their `data-home` and the surface's `touch-action` are
+ * it, all moved and scaled by the camera's one transform, their text shrunk on a small board. Under the bound — a phone,
+ * or a window far smaller than a laptop's — the boxes dock in the page's flow under the surface. Where the boxes stand, their `data-home` and the surface's `touch-action` are
  * `directory.js`'s `dockingEntry()`'s alone, which this file calls on every paint (decision 72). The
  * camera hook, `view()`, is the one place a camera is shown — fit, wheel, pinch, key, drag, every glide step, resize —
  * and it calls `directory.js`'s `showDirectory()`, the one writer of the directory's counter-scale, on every camera it

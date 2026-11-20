@@ -64,7 +64,7 @@ globalThis.document = {
 const url = (file) => pathToFileURL(join(JS, file)).href;
 const { ELEVATOR_NAME, paintRoom, roomDrawing, themeRoomCab } = await import(url('lobby/building-paint.js'));
 const { CEILING_GRID, INK, ROOM, lobbyScene, roomArt, surfaceStyle, windowArt } = await import(url('lobby/building-scene.js'));
-const { DOCK_BOUND, boxStyles, dockingEntry, homeFor, plaqueRow, renderDirectory, showDirectory, unclaimedRow } = await import(url('lobby/directory.js'));
+const { BOARD_FACE, TEXT_FLOOR, boardText, boxStyles, dockingEntry, homeFor, plaqueRow, renderDirectory, showDirectory, unclaimedRow } = await import(url('lobby/directory.js'));
 const { createCamera, frameOn, unframe } = await import(url('wire/camera.js'));
 
 /** Every node under `n`, depth first. */
@@ -197,7 +197,7 @@ const directoryOut = {
     unclaimed,
     empty: tree(emptyList),
     shown: { framed: scaled(framed), zoomed: scaled({ ...framed, zoom: framed.zoom * 2 }), unframed: scaled(unframe(framed)), zoom: framed.zoom },
-    boxes: { drawn: boxStyles(lobbyScene().directory, true), undrawn: boxStyles(lobbyScene().directory, false) },
+    boxes: { drawn: boxStyles(lobbyScene().directory, 1), undrawn: boxStyles(lobbyScene().directory, null) },
 };
 
 // ── The docking entry (§ 4.1, decision 72; card#12187) ───────────────────────────────────────
@@ -206,7 +206,7 @@ const directoryOut = {
 // page's `1rem` the probe reads at that step, and how the entry is asked — `place` (a paint), `resize` (the window's
 // event) or `text` (the `1rem` probe's ResizeObserver, a change of the text size the browser fires no resize for). After
 // each step: each box's home as its parent says it (`layer`, `page` — the section, after the surface — or elsewhere), its `data-home`,
-// its face's counter-scale, the surface's `touch-action`, and how many moves the entry made.
+// its face's counter-scale and size, the surface's `touch-action`, and how many moves the entry made.
 
 /** A stand-in element: a parent, ordered children, attributes, a style object, a measured size. */
 class Box {
@@ -288,6 +288,7 @@ if (payload.dock !== undefined) {
             after_surface: section.children.indexOf(directory) === section.children.indexOf(building) + 1,
             data_home: [directory, readings].map((b) => b.getAttribute('data-home')),
             face_transform: [directory, readings].map((b) => b.firstElementChild.style.transform ?? null),
+            face_size: [directory, readings].map((b) => [b.firstElementChild.style.width ?? null, b.firstElementChild.style.height ?? null]),
             box_position: [directory, readings].map((b) => b.style.position ?? null),
             touch_action: building.style.touchAction ?? null,
             moves: moves.count - before,
@@ -296,13 +297,14 @@ if (payload.dock !== undefined) {
     }
 
     dockOut = {
-        bound: DOCK_BOUND,
+        bound: { face: BOARD_FACE, floor: TEXT_FLOOR },
         probe: probe === null ? null : { parent: probe.parentElement === section, style: { ...probe.style }, hidden: probe.getAttribute('aria-hidden') },
         observes_probe: observed.some((o) => o.el === probe),
         listens_resize: (win.listeners.resize ?? []).length > 0,
         steps,
-        // The predicate alone, at the faces the bound is drawn between (`homeFor()`), for the test to hold against § 12.
-        predicate: (payload.dock_faces ?? []).map((f) => ({ ...f, home: homeFor(true, f.surface, f.rem, lobbyScene()) })),
+        // The predicate and the board's text share alone, at the faces the bound is drawn between (`homeFor()`,
+        // `boardText()`), for the test to hold against § 12.
+        predicate: (payload.dock_faces ?? []).map((f) => ({ ...f, home: homeFor(true, f.surface, f.rem, lobbyScene()), text: boardText(f.surface, f.rem, lobbyScene()) })),
         // The surface's own style writes no `touch-action`: the entry is its one writer (review round 1's F9).
         surface_keys: [...new Set([...Object.keys(surfaceStyle(lobbyScene())), ...Object.keys(surfaceStyle(null))])],
     };
