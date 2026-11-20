@@ -45,11 +45,11 @@ import {
     Matrix4,
     Mesh,
     MeshBasicMaterial,
-    MeshToonMaterial,
     Plane,
     PlaneGeometry,
     SRGBColorSpace,
 } from '../vendor/three/three.module.js';
+import { toon } from './toon.js';
 import { CUTAWAY_H, CUTAWAY_MS, cutaway, doorwayView } from './view-limits.js';
 import { rasterise } from './svg-texture.js';
 import { REPLAY_LOOP, heldAt } from './clip-clock.js';
@@ -240,7 +240,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
     let band = null;
     let lastStep = null;
     // The walls in the theme's door-view partition colour (`PALETTE.view`, which every theme carries), set on each paint.
-    const wallMaterial = new MeshToonMaterial();
+    const wallMaterial = toon();
 
     const placeWall = (w) => {
         const m = new Matrix4().makeTranslation(w.box.x, w.box.y, w.box.z).multiply(new Matrix4().makeScale(w.box.w, w.h, w.box.d));
@@ -349,7 +349,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         picture.height = height;
 
         const texture = textureOf(picture);
-        const mesh = onTerm(new Mesh(geometry, new MeshToonMaterial({ map: texture })), 'fixed');
+        const mesh = onTerm(new Mesh(geometry, toon({ map: texture })), 'fixed');
 
         draw(picture).then(() => {
             texture.needsUpdate = true;
@@ -486,7 +486,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
 
     // ── the elevator's leaves and the cab behind them ─────────────────────────────────────────
     const doorBox = new BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5);
-    const leafMaterial = new MeshToonMaterial({ color: cssColour('--door') || '#dbe5ee' });
+    const leafMaterial = toon({ color: cssColour('--door') || '#dbe5ee' });
     // The cab is lit by its own light, not the floor's: unlit, as the 2-D cab's flat fills and overlays are. It is clipped
     // to what its doorway shows (`clipCab()`), so it never stands over or beside the band, which it lies behind.
     const cabClip = [new Plane(), new Plane(), new Plane(), new Plane()];

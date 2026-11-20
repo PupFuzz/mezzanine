@@ -15,9 +15,9 @@
  * number of placements.
  *
  * ⛔ THE KIT IS RECOLOURED BY REPLACING ITS MATERIALS, NEVER BY TINTING THEM. Its files declare `KHR_materials_unlit`,
- * so `GLTFLoader` builds a `MeshBasicMaterial` for each — unshaded. Every primitive is drawn in a `MeshToonMaterial` of
- * the colour the kind map's `PAINT` gives its material in the floor's theme, the creatures' material, so the two sources
- * shade alike under the room's lights; the loaded materials and textures are disposed of at once.
+ * so `GLTFLoader` builds a `MeshBasicMaterial` for each — unshaded. Every primitive is drawn in a toon material
+ * (`toon.js`) of the colour the kind map's `PAINT` gives its material in the floor's theme, the creatures' material, so the
+ * two sources shade alike under the room's lights; the loaded materials and textures are disposed of at once.
  *
  * ⛔ EACH PIECE STANDS WHERE THE WORLD PUTS IT AND AS BIG AS ITS 2-D PICTURE: a kit model is fitted to the drawn width
  * across and the drawn height up (its depth follows its width, so it keeps its plan), its foot on the floor and its
@@ -40,13 +40,14 @@ import {
     Float32BufferAttribute,
     InstancedMesh,
     Matrix4,
-    MeshToonMaterial,
     Quaternion,
     Vector3,
 } from '../vendor/three/three.module.js';
 import { mergeGeometries } from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { DETAIL, partGeometry } from './part-geometry.js';
+import { standsOnFloor } from './shade-rects.js';
+import { toon } from './toon.js';
 import { dressingOf, inputsOf, placementsOf } from './furniture-placements.js';
 import { COUCH } from '../floor/floor-world.js';
 
@@ -105,13 +106,26 @@ function primitivesOf(gltf) {
  * across and `h` up (`d` deep, or as deep as `w` scales it), turned `turn` radians about `y`.
  */
 function fitted(box, { at, w, h, d = null, turn = 0 }) {
-    const size = box.getSize(new Vector3());
-    const sx = w / size.x;
-    const sz = d === null ? sx : d / size.z;
+    const { size, sx, sz } = fitScale(box, { w, d });
     const centre = new Matrix4().makeTranslation(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
     const place = new Matrix4().compose(new Vector3(at.x, at.y, at.z), new Quaternion().setFromAxisAngle(Y, turn), new Vector3(sx, h / size.y, sz));
 
     return place.multiply(centre);
+}
+
+/** The scale `fitted()` applies across (`sx`) and in depth (`sz`), and the box's size. */
+function fitScale(box, { w, d = null }) {
+    const size = box.getSize(new Vector3());
+    const sx = w / size.x;
+
+    return { size, sx, sz: d === null ? sx : d / size.z };
+}
+
+/** What a placement fitted from `box` covers of the floor: its half width and half depth, centred on `at`, turned `turn`. */
+function footprintOf(kind, box, p) {
+    const { size, sz } = fitScale(box, p);
+
+    return { kind, at: p.at, hw: p.w / 2, hd: (sz * size.z) / 2, turn: p.turn ?? 0 };
 }
 
 /**
@@ -173,7 +187,8 @@ function mergedParts(parts, detail) {
  *        `PIECE3D`, `DRESSED`, `PAINT`), the floor's theme and its `PALETTE`, the `piece3d()` that draws the first-party
  *        kinds and the `dressing3d()` that dresses the `DRESSED` ones (each the theme's, or the house theme's), what is
  *        called when a kit file has answered, and how a file's bytes are fetched
- * @returns {{rebuild: function(object): void, requested: function(): list<string>, dispose: function(): void}}
+ * @returns {{rebuild: function(object): void, footprints: function(): list<object>, requested: function(): list<string>,
+ *           dispose: function(): void}}
  */
 export function createFurniture(group, { map, theme, palette, piece3d, dressing3d, ready, fetch = (url) => window.fetch(url).then((r) => r.arrayBuffer()) }) {
     const loader = new GLTFLoader();
@@ -185,12 +200,14 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
     const materials = new Map();
     /** a dressing's placement key → the kind it dresses (placed only where `dressing3d` is given) */
     const dressings = new Map(map.DRESSED.map((kind) => [dressingOf(kind), kind]));
-    const vertexColoured = new MeshToonMaterial({ vertexColors: true });
-    const placeholder = new MeshToonMaterial({ color: new Color(PLACEHOLDER) });
+    const vertexColoured = toon({ vertexColors: true });
+    const placeholder = toon({ color: new Color(PLACEHOLDER) });
     const slabGeometry = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
     /** the meshes the last rebuild stood, and the first-party geometries it built */
     let meshes = [];
     let built = [];
+    /** what the last stand covers of the floor: `{ kind, at, hw, hd, turn, facing? }` a placement drawn */
+    let footprints = [];
     let last = null;
     /** what the last stand placed, and how many files had answered — a paint that changes neither rebuilds nothing */
     let stood = null;
@@ -201,7 +218,7 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
         if (!materials.has(key)) {
             const path = map.PAINT[kind]?.[name]?.[theme];
 
-            materials.set(key, new MeshToonMaterial({ color: new Color(colourAt(palette, path)) }));
+            materials.set(key, toon({ color: new Color(colourAt(palette, path)) }));
         }
 
         return materials.get(key);
@@ -275,14 +292,15 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
 
         meshes = [];
         built = [];
+        footprints = [];
     };
 
     /**
      * A first-party part list over `placements`: one merged geometry per distinct inputs (`inputsOf()` — the drawn size,
      * and a side door's facing and flag), its parts already in units, only turned and moved into place — `partsOf(inputs)`
-     * the list, or `null` for none.
+     * the list, or `null` for none. A standing piece's (`kind`) footprint is its merged geometry's plan; a dressing has none.
      */
-    const firstParty = (placements, partsOf, detail) => {
+    const firstParty = (placements, partsOf, detail, kind = null) => {
         const shapes = new Map();
 
         for (const p of placements) {
@@ -298,6 +316,19 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
                 const geometry = mergedParts(parts, detail);
 
                 built.push(geometry);
+
+                if (kind !== null) {
+                    geometry.computeBoundingBox();
+                    const { min, max } = geometry.boundingBox;
+                    const mid = new Vector3((min.x + max.x) / 2, 0, (min.z + max.z) / 2);
+
+                    for (const p of same) {
+                        const at = mid.clone().applyAxisAngle(Y, p.turn ?? 0).add(new Vector3(p.at.x, p.at.y, p.at.z));
+
+                        footprints.push({ kind, at: { x: at.x, y: p.at.y, z: at.z }, hw: (max.x - min.x) / 2, hd: (max.z - min.z) / 2, turn: p.turn ?? 0, ...(p.facing === undefined ? {} : { facing: p.facing }) });
+                    }
+                }
+
                 instanced(geometry, vertexColoured, same.map((p) => new Matrix4().makeTranslation(p.at.x, p.at.y, p.at.z).multiply(new Matrix4().makeRotationY(p.turn ?? 0))));
             }
         }
@@ -319,6 +350,7 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
 
             if (kind === 'placeholder') {
                 instanced(slabGeometry, placeholder, placements.map((p) => fitted(SLAB_BOX, p)));
+                footprints.push(...placements.map((p) => footprintOf(kind, SLAB_BOX, p)));
             } else if (file !== undefined) {
                 request(file);
                 const model = models.get(file);
@@ -328,10 +360,12 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
                         for (const p of shape.primitives) {
                             instanced(p.geometry, materialOf(kind, p.material), same.map((q) => fitted(shape.box, q)));
                         }
+
+                        footprints.push(...same.map((q) => footprintOf(kind, shape.box, q)));
                     }
                 }
             } else if (map.PIECE3D.includes(kind) && piece3d !== null) {
-                firstParty(placements, (size) => piece3d(kind, size), DETAIL.seat);
+                firstParty(placements, (size) => piece3d(kind, size), DETAIL.seat, kind);
             } else if (dressings.has(kind)) {
                 // What a theme stands on a kit piece: small things, drawn at an intern's facets.
                 firstParty(placements, (size) => dressing3d(dressings.get(kind), size)?.parts ?? null, DETAIL.chibi);
@@ -345,6 +379,16 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
             last = world;
             stand(world);
         },
+
+        /** What the last stand covers of the floor, a footprint a placement drawn (a dressing's none). */
+        footprints: () => footprints,
+
+        /**
+         * How many placements the world stands on the floor — at `y` 0 and not set into a wall, a dressing not one —
+         * whether drawn yet or not: the population the browser leg holds the ground shade's furniture rects to.
+         */
+        standing: () => (last === null ? 0 : [...placementsOf(last, map.DRESSED, dressing3d)].filter(([kind]) => !dressings.has(kind))
+            .flatMap(([, placements]) => placements).filter(standsOnFloor).length),
 
         /** The kit files requested so far — each once (the browser leg's *requested once each*). */
         requested: () => [...requests.keys()],

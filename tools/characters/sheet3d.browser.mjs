@@ -48,7 +48,7 @@ const PLANTS = {
   // the laptop's parts each a group (and a material) of their own: the intern is more than two calls
   'laptop-unmerged': [
     ['        groups.push(mergeGeometries(laptop, false));', '        groups.push(...laptop);'],
-    ['        materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));'],
+    ['        materials.push(toon({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(toon({ map: open, vertexColors: true, transparent: true, opacity: 1 }));'],
   ],
 };
 
@@ -145,10 +145,7 @@ async function planted(name) {
     if (!src.includes(from)) throw new Error(`plant ${name}: its anchor is not in creature-paint.js — ${from.slice(0, 60)}`);
     src = src.replace(from, to);
   }
-  return src.replace("from '../vendor/three/three.module.js'", "from '/server/public/js/vendor/three/three.module.js'")
-    .replace("from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js'", "from '/server/public/js/vendor/three/examples/jsm/utils/BufferGeometryUtils.js'")
-    .replace("from './svg-texture.js'", "from '/server/public/js/floor3d/svg-texture.js'")
-    .replace("from './part-geometry.js'", "from '/server/public/js/floor3d/part-geometry.js'");
+  return src.replaceAll("from '../", "from '/server/public/js/").replaceAll("from './", "from '/server/public/js/floor3d/");
 }
 const server = createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);

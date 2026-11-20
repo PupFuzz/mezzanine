@@ -594,7 +594,7 @@ controls are configured with, and the probe reads it):
   farther scrolls the page instead — to confirm in slice 4 against the library's wheel handling; the test: a wheel at
   the limit changes `scrollY` and not the distance;
 - **Far plane and decals**: the far plane is past the fit's maximum distance with a margin, and the face patch, the
-  contact disc and the status's surfaces stand off the geometry they lie on by enough that no z-fighting shows at any
+  ground shade (§ 14) and the status's surfaces stand off the geometry they lie on by enough that no z-fighting shows at any
   distance the limits allow — a property read by eye on the sandbox at slice 4 (a z-fight is a shimmer no node probe
   sees) with the near and far figures printed by the leg;
 - **Entry (B2)**: the target at the extent's centre, the camera at azimuth 0 (in front) and **polar 50°** — stage
@@ -805,7 +805,7 @@ prints the per-desk cost, and an authored floor past the cap is read against it,
 
 | Figure | Budget | Derivation at the cap | Plant (seen red) |
 |---|---|---|---|
-| Draw calls (`renderer.info.render.calls`) — **asserted per term, then as a total** | **≤ 260** | **characters** — a seat ≤ 1 call (body and face one material, § 3.3), an intern ≤ 2 (its laptop): asserted as `≤ S + 2 I` over the S seats and I interns drawn — 6 + 96 = 102 at the cap; **furniture** — one instanced mesh per (primitive, material): the 17 standing kinds + the 5 desk parts (the side table with its stools one of them), times the primitives per file the slice-1 record counts (`k`, ≤ 3 expected): asserted as `≤ 22 k` with `k` read off the loaded files (the side table's couch is one mesh per primitive per couch length the floor stands — § 9 slice 5's *Amended*), **plus one call for each `DRESSED` kind's dressing** (card#13033's snack tables: `≤ 22 k + |DRESSED|`, the leg reading `DRESSED` off the kind map); **walls** — instanced per run, one mesh per height, **the lighter cap sharing the run's material** (a vertex tone, not a second material): `≤ 2`; **the fixed at-rest terms** — plane 1 per grid (1), the band's wall 1, the windows' glazing instanced 1, the window sky 1, the clock's dial and two hands 3, the elevator's two leaves 2, its frame and call plates instanced 1, the cab's room 1 (one vertex-coloured mesh), the restroom's leaf 1, the birdhouse 1, the contact discs instanced 1, the screens 6 — `≤ 20`, each counted from the world's own members; **the transient term**, bounded — A20's ring ≤ 1, each bird in flight 2 (its merged body and its envelope) for at most one bird per desk of the floor (A19 sends one per destination desk; A22 one per crossing) ≤ 2 × 6, A5's cross-fade a second screen texture per swapping desk ≤ 6 — `≤ 19` (**re-derived to `≤ 20` at slice 5**, A20's singing bird counted: § 9 slice 5's *As built* (k)); **labels, markers, z's, the status**: 0 (DOM) — **the honest sum is 102 + 22 k + 2 + 20 + 19 = 143 + 22 k, 209 at k = 3; the budget is that sum plus a margin of a quarter, 260**, so a regression in any one term reds against its own bound whatever `k` is, and the total catches a term the derivation forgot; the leg prints every term beside its bound | per term: the character merge dropped → characters > S + 2I; furniture instancing dropped → > 22 k; wall instancing dropped, or the cap a second material → > 2; a second cab room → the at-rest terms > 20; a bird drawn as four meshes → the transient term > 19 on a fixture with a post to every desk; and the total |
+| Draw calls (`renderer.info.render.calls`) — **asserted per term, then as a total** | **≤ 260** | **characters** — a seat ≤ 1 call (body and face one material, § 3.3), an intern ≤ 2 (its laptop): asserted as `≤ S + 2 I` over the S seats and I interns drawn — 6 + 96 = 102 at the cap; **furniture** — one instanced mesh per (primitive, material): the 17 standing kinds + the 5 desk parts (the side table with its stools one of them), times the primitives per file the slice-1 record counts (`k`, ≤ 3 expected): asserted as `≤ 22 k` with `k` read off the loaded files (the side table's couch is one mesh per primitive per couch length the floor stands — § 9 slice 5's *Amended*), **plus one call for each `DRESSED` kind's dressing** (card#13033's snack tables: `≤ 22 k + |DRESSED|`, the leg reading `DRESSED` off the kind map); **walls** — instanced per run, one mesh per height, **the lighter cap sharing the run's material** (a vertex tone, not a second material): `≤ 2`; **the fixed at-rest terms** — plane 1 per grid (1), the band's wall 1, the windows' glazing instanced 1, the window sky 1, the clock's dial and two hands 3, the elevator's two leaves 2, its frame and call plates instanced 1, the cab's room 1 (one vertex-coloured mesh), the restroom's leaf 1, the birdhouse 1, the ground shade instanced 1 (§ 14, in place of the contact discs), the screens 6 — `≤ 20`, each counted from the world's own members; **the transient term**, bounded — A20's ring ≤ 1, each bird in flight 2 (its merged body and its envelope) for at most one bird per desk of the floor (A19 sends one per destination desk; A22 one per crossing) ≤ 2 × 6, A5's cross-fade a second screen texture per swapping desk ≤ 6 — `≤ 19` (**re-derived to `≤ 20` at slice 5**, A20's singing bird counted: § 9 slice 5's *As built* (k)); **labels, markers, z's, the status**: 0 (DOM) — **the honest sum is 102 + 22 k + 2 + 20 + 19 = 143 + 22 k, 209 at k = 3; the budget is that sum plus a margin of a quarter, 260**, so a regression in any one term reds against its own bound whatever `k` is, and the total catches a term the derivation forgot; the leg prints every term beside its bound | per term: the character merge dropped → characters > S + 2I; furniture instancing dropped → > 22 k; wall instancing dropped, or the cap a second material → > 2; a second cab room → the at-rest terms > 20; a bird drawn as four meshes → the transient term > 19 on a fixture with a post to every desk; and the total |
 | Triangles (`renderer.info.render.triangles`) | **≤ 150,000** | a seat's creature ≤ 2,500 (a lathe of 24 × 16 plus features), a chibi ≤ 1,200, a kit piece ≤ 800 (read per file at slice 1), a desk set ≤ 2,000: 6 × 2,500 + 48 × 1,200 + 17 × 800 + 6 × 2,000 ≈ 98,200, plus walls and the plane under 1,000. **Read at slice 3 and held at slice 4:** the interns read a median of 2,296 at slice 3 — 48 of them alone over 110,000 — so slice 4 coarsens an intern's facets (`floor3d/part-geometry.js`'s `DETAIL.chibi`; a seat's are unchanged), and `node tools/characters/sheet3d.browser.mjs --calls` reads them at a median of 1,236, inside the 1,200-a-chibi derivation's margin; the leg asserts the total at the cap | the facets ×4 in a served copy of `part-geometry.js` → the characters alone past the budget |
 | Texture memory (the leg **walks the scene's textures** — every room and screen map, each creature's own (`textures()`: its two face atlases and its paint) and each skeleton's bone texture — and sums width × height × 4 bytes (16 for a float bone texture) × 4/3 for the mipmaps — not the renderer's texture count, which is a count) | **≤ 128 MB** | **Re-derived at slice 4 (2026-11-12), the slice-3 handoff's missing term added:** one plane texture per room grid and one for a hallway — the cap floor has one grid — **rasterised at one texel per scene px up to the texture cap** (stage 1's rule, `textureSize()`): at the cap 4,096 × 1,984 → ≈ 43 MB (the default's 1,784 × 696 is ≈ 6.6 MB; a planned floor of N rooms counts N), the band 4,096 × 160 → ≈ 3.5 MB; **the faces with their blink frame — two atlases per character** (m4): 54 × 2 at the 256 px bucket ≈ 37.7 MB; **the body's paint, one per character** (slice 3's (i)), as tall as the face atlas and as wide as its rectangle's aspect — `node tools/characters/sheet3d.browser.mjs --calls` prints each creature's (read: 134 × 256 a seat) — 54 × ≈ 0.18 MB ≈ 9.9 MB; the bone textures, one 8 × 8 float texture a skeleton, ≈ 0.06 MB over all 54; 6 screens at 256 × 160 ≈ 1.3 MB (the status label is DOM and holds no texture) — **≈ 95.5 MB built**, and the nearest desk's faces at the 512 px bucket, 9 × 2 ≈ 25.2 MB, kept as headroom for § 3.3's bucket, which slice 4 does not build — ≈ 121 MB, under the budget | every face at the 512 px bucket → over 128 MB (the faces alone ≈ 151 MB) |
 | `.glb` transfer | **≤ 2 MB** for the cap floor's files | the sum of the mapped files' bytes, read at slice 1 | a 3 MB dummy `.glb` added to the kind map → over |
@@ -1378,3 +1378,218 @@ screen's text is still read by orbiting to the front. The sitter's side is alrea
 state at every angle; the operator's answer is B's facings plus a status label, and slice 4 builds it.
 
 The building-in-volume slice (8) returns to the operator with its own questions before it starts.
+
+## 14. The look pass — light, ramp and ground shade (card#13033, 2026-11-20)
+
+**What this section is.** A design for ONE pass over the 3-D floor's look, sized to about half an hour of coding,
+written from the sandbox as it stood on 2026-11-20 (`/floor/sola/3d`, `/floor/aimla/3d`, and the 2-D floor beside
+each). It builds nothing the operator has already ruled and another branch is building (the opening fit, the thought
+bubble, the building view's removal, the cab's handrail). Its figures are `FLOOR.md` § 12's *Floor 3-D light*,
+*Floor 3-D ramp*, *Floor 3-D ground shade* and *Floor 3-D pixel ratio* rows; this section owns the derivation.
+
+### 14.1 The audit — what makes the floor read flat, ranked
+
+Each cause is read from the code and re-derivable; the screenshots are the sandbox's, taken with the UAT shot
+script at 1400 × 1000 and not committed (the repo holds no real floor's content).
+
+1. **Every lit face is the same brightness, and the floor is clipped.** `floor-paint.js` lights the scene with a
+   hemisphere light at 1.7 and a directional light at 2.2. A toon material's face is its colour times
+   `(sun × ramp + hemisphere) / π`: an up-facing face is `(2.2 + 1.7) / π ≈ 1.24` — past 1, so the floor's painted
+   boards clip to near-white (the 3-D floor's boards are paler than the same theme's on the 2-D floor) — and the
+   library's default ramp has two values, 0.7 and 1.0, split at `dot(N, L) = 0.4`, which the sun at `(-4, 8, 6)`
+   puts BOTH a top (0.74) and a front (0.56) above. A desk's top and its front are therefore one colour, and the
+   faces turned away are ≥ 0.9. Seen: a desk, a couch and the tank each read as one flat silhouette.
+2. **Nothing touches the floor.** Furniture, walls and the band meet the plane with no shade at the foot; only the
+   bodies have a mark (`body-paint.js`'s disc — a hard-edged black circle at 0.18), which reads as a hole, not a
+   shadow. Seen: desks and couches look pasted on; the partitions look like paper strips.
+3. **The room pays no attention to the hour.** The windows show A17's sky (night, with a moon), and the room is lit
+   as at noon; the 2-D floor has the same gap, but the 2-D art carries its own painted light and the 3-D kit does not.
+4. **The room floats in a flat field.** The clear colour is one flat `--house-trim`; nothing grounds the slab the
+   floor stands on. (Not in this pass — § 14.6.)
+5. **Furniture is one flat fill per part.** The kit is recoloured per material with no texture, edge or rim; § 10.4's
+   cream rim and inked line have no 3-D counterpart. (Not in this pass — § 14.6.)
+6. **The walls are bare slabs.** No cap tone, skirting or rail on the partitions and side walls, beside a band that
+   has all three. (Not in this pass — § 14.6.)
+
+Items 1–3 are one pass — the light rig, the ramp and one ground decal — and outrank the rest because they change
+every pixel of every object for one small module each. Characters are already real geometry (`creature-paint.js`'s
+skinned mesh), so "real 3-D characters" is not a pass that is owed.
+
+### 14.2 The shape, and what was rejected
+
+**Chosen: a balanced light rig that never clips, a four-value ramp shared by every toon material, and ONE instanced
+ground-shade decal** that replaces the bodies' discs and also lies under the furniture, along the walls' feet and
+(after dark) under the floor lamps. No shadow maps, no tone mapping, no post-processing.
+
+- **Rejected — shadow maps from the sun (PCF soft).** The mechanism costs what this floor budgets against: the
+  shadow pass draws every caster a second time, and `renderer.info.render.calls` counts it, so § 6's characters term
+  (`S + 2 I`, 102 at the cap) and furniture term double and the 260 budget reds; the creatures' face material is
+  `alphaTest` and a second, transparent material during a fade, each needing a depth material of its own; the
+  cut-away lowers walls, so shadows would sweep the room as the camera turns; and a shadow edge across a toon ramp's
+  hard step bands and acnes on the kit's low-poly faces. What it would buy over decals — furniture shading furniture
+  — is not what the audit found missing. A decal is also § 10.6's own rule, *"a contact shadow is a soft plum
+  ellipse at the foot"*.
+- **Rejected — ACES / AgX / Reinhard tone mapping.** Tone mapping exists to compress a scene whose light exceeds 1.
+  This rig is fixed, so the excess is removed at its cause (the sum of the lights) rather than compressed; and a
+  tone curve shifts every palette colour and the painted plane and band away from the 2-D floor's, and reaches the
+  screens' and the cab's `MeshBasicMaterial` too. `NoToneMapping` is pinned explicitly so a library default cannot
+  change it.
+- **Rejected — baking the corner darkening into the plane's canvas.** The plane is the theme's 2-D document, and a
+  wall's foot is the world's; drawing one into the other couples the texture's key to the walls.
+
+### 14.3 The spec
+
+**(a) One home for the figures — new `server/public/js/floor3d/look.js`, pure (no Three, no DOM).** Exports a frozen
+`LOOK` holding every figure of § 12's four rows, and `upFace(phase)` — the up-facing face's light,
+`(sun.intensity × sunColour + hemi.intensity × skyColour) / π` per channel in linear light. Nothing else in
+`floor3d/` writes one of these figures. The character tools' stage (`tools/characters/stage3d.js`) lights from it too,
+in the windowless `unset` phase, so the 3-D sheet and `distinct.browser.mjs --source 3d` judge a body under the light
+the floor draws it in, not a light of their own. Under this light the cat's grey-blue colourway and the raccoon's
+mauve-grey one read layout ΔE 9.4 apart at silhouette IoU 0.84 — under the distinctness bar — so the raccoon's fifth
+colourway is a deeper plum, `#7d6878` (from `#857a84`), which reads 11.1 apart.
+
+**(b) The lights — `floor-paint.js`'s `worldRenderer()`, the `hemi` and `sun` it already makes.**
+
+| | value |
+|---|---|
+| sun direction (from the target) | `(-0.24, 0.80, 0.55)` — still § 10.4 item 5's top-left; `sun.position.set(-2.4, 8, 5.5)` |
+| sun intensity | **1.1** |
+| hemisphere intensity | **2.04** (so `1.1 + 2.04 = π`: a white up-facing face is exactly its own colour) |
+| hemisphere ground colour | `#c9b8c4`, every phase |
+
+The phase is A17's sky as the scene already carries it for the windows: `sceneIn.band?.windows[0]?.sky ?? 'unset'`
+(`room-paint.js` reads the same member for `SKY_PAINT`). Set in `paint()`, a cut — nothing tweens, so reduced motion
+has nothing to turn off, and a snapshot paints the phase it holds.
+
+| phase | hemisphere sky | sun |
+|---|---|---|
+| `day`, `unset` | `#ffffff` | `#fff6e6` |
+| `dawn` | `#fff0ea` | `#ffe6cf` |
+| `dusk` | `#f8ecfb` | `#ffe2c2` |
+| `night` | `#dfe4ff` | `#ffe9c4` |
+
+The tint changes hue, never legibility: `upFace()` stays between 0.75 and 1 on every channel in every phase.
+
+Also in `worldRenderer()`: `renderer.toneMapping = NoToneMapping`, `renderer.outputColorSpace = SRGBColorSpace`
+(both the library's defaults, now stated), and `renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))`.
+
+**(c) The ramp — new `server/public/js/floor3d/toon.js`.** Exports `toon(params)`: a `MeshToonMaterial` with
+`gradientMap` the one shared ramp — a 16 × 1 `DataTexture`, `RedFormat`, `NearestFilter` both ways, no mipmaps,
+texel `i` covering `dot(N, L)` from `-1 + i/8`:
+
+| `dot(N, L)` | texels | value |
+|---|---|---|
+| below 0 | 0–7 | 0 |
+| 0 to 0.5 | 8–11 | 0.45 |
+| 0.5 to 0.75 | 12–13 | 0.90 |
+| 0.75 and up | 14–15 | 1.0 |
+
+With (b)'s sun a top is 1.0, a face toward the viewer's side 0.90, a face toward the left 0.45 and a face turned
+away 0 — in linear light 1.00 / 0.82 / 0.66 / 0.50 of the colour once the hemisphere is added, about 100 / 91 / 83 /
+74 % as displayed. **Every `new MeshToonMaterial(` in `floor3d/` becomes `toon(`** — the population is
+`grep -n "new MeshToonMaterial" server/public/js/floor3d/`, and after the change that grep prints `toon.js` alone.
+`floor-paint.js`'s `webglcontextrestored` handler flags `gradientMap` beside `map`.
+
+**(d) The ground shade — new `server/public/js/floor3d/ground-shade.js` (Three) over new pure
+`server/public/js/floor3d/shade-rects.js`.** This REPLACES `body-paint.js`'s `discGeometry`, `discMaterial`,
+`standDiscs()` and `DISC`; it does not sit beside them.
+
+- `shadeRects(world, footprints, still, phase)` (pure) returns a list of
+  `{ x, y, z, hw, hd, turn, round, soft, strength, glow }`:
+
+  | what | `hw`, `hd` (units) | `round` | `soft` | `strength` |
+  |---|---|---|---|---|
+  | a still body (the population `standDiscs()` drew: `wantedBodies()` with `at !== null`), at `at.y` | `0.16 × h` both | 1 | `0.14 × h` | 0.30 |
+  | a piece of furniture standing on the floor (`at.y === 0`, no `facing`), turned as it is | half its fitted footprint | 0.35 | 0.12 | 0.26 |
+  | a wall run at the floor | half the run's rect | 0 | 0.28 | 0.20 |
+  | the band's foot, a line (`hd` 0) along `world.band` | `band.w / 2`, 0 | 0 | 0.28 | 0.20 |
+  | a floor lamp's pool, only in a phase whose `SKY_PAINT` lights the city's windows (`city_lit` above 0: `night`, `dawn` and `dusk`; `look.js`'s `poolShows()`) | 0, 0 | 1 | 1.1 | 0.16, `glow` |
+
+  A **wall run** is the cells of `world.walls` with `box.y === 0` joined: consecutive cells of one row into a run
+  along `x`, then the cells left over joined along `z`; a cell is in one run. Runs overlap only where two meet, which
+  darkens the corner — wanted. A **footprint** is what `furniture.js`'s `fitted()` already computes: `w / 2`
+  across, and `d / 2` or `w / size.x × size.z / 2` deep; `createFurniture()` returns them from the same loop that
+  calls `fitted()`, as `footprints()`, with each one's kind; a first-party piece (`piece3d()`'s, which `fitted()` does
+  not place — the tank, the copier, the cooler) contributes the plan of its merged geometry, and a dressing none.
+  `body-paint.js` returns its still bodies as `still()`. The lamp is the kind the kit map stands `lampRoundFloor` for:
+  `floor-lamp` (`look-probe.mjs`'s `pool` leg holds it to the map). `world.walls` holds no cell along the band's foot
+  (`floor/floor-walls.js` leaves the footprint's top row out, the band standing in for it — the probe's `band` leg
+  holds that on the shipped default), so the band's own line is kept.
+- `groundShade({ group })` draws them as ONE `InstancedMesh` of a unit quad lying on the floor, on the `fixed` term,
+  `0.003` above each rect's `y` (the discs' lift), with one `ShaderMaterial`: `transparent`, `depthWrite: false`,
+  `premultipliedAlpha: true`. Per instance: the matrix (translation and `turn` only), `extent` (`hw`, `hd`, `round`)
+  and `falloff` (`soft`, `strength`, `glow`). The vertex stage scales the quad to `hw + soft`, `hd + soft`; the
+  fragment stage takes the rounded-box distance `d` (corner radius `round × min(hw, hd)`), and
+  `a = strength × (1 − smoothstep(−0.5 × soft, soft, d))`. Shade writes `vec4(plum × a, a)`, plum `#3d2b3c` (§ 10.6's
+  shade); a pool writes `vec4(warm × a, 0)`, warm `#ffd9a0` — under premultiplied blending the first darkens and the
+  second adds, in one draw. A fragment outside the planes' union box (a uniform, from `world.planes`) is discarded,
+  so a side wall's shade never hangs over the edge of the floor. The colour goes through `#include <colorspace_fragment>`
+  BEFORE it is multiplied by `a`: the sRGB transfer of an already premultiplied colour would lighten the shade (by the
+  transfer's arithmetic a plum at 0.3 would be about 1.7× too light in red), so the stage writes the colour, converts it, then
+  premultiplies. The quad is scaled in the vertex stage, so the mesh is not frustum-culled by the unit quad's bounds.
+- `floor-paint.js`'s `paint()` calls it after `standFurniture()` and `bodies.paint()`, and the kit's `ready` calls it
+  again; it rebuilds only when the rect list or the planes changed (their JSON, as `standRoom()` keys the room).
+
+**(e) What does not change.** No material's colour, no texture, no geometry, no camera figure, no animation row. The
+cab stays unlit. The screens, the restroom flags and the ring stay `MeshBasicMaterial`.
+
+### 14.4 The population, the budget, and what is capped
+
+- **Materials:** the `grep` in (c). **Shade rects:** printed by `inspect().look.shade` — a count by kind; on the cap
+  floor it equals the still bodies plus the floor-standing placements plus the wall runs plus one (plus a pool a lamp
+  after dark). `inspect().look.population` prints the world's side: the still bodies, the placements standing on the
+  floor (`furniture.js`'s `standing()`, counted from the placements, not the footprints), the wall cells' area at the
+  floor, the band and the lamps.
+- **Draw calls:** the shade is one call and the discs it replaces were one — § 6's fixed term and the 260 total are
+  unchanged. No pass is added: one render of the scene per frame, as now.
+- **Fill:** the decals are small alpha quads; the largest is a side wall's run, `(d + 0.56) × 0.66` units.
+- **Capped:** the pixel ratio at 2 (a 3× phone draws 2.25× fewer pixels; a laptop at 1 or 2 is unchanged). The frame
+  loop still runs only while something moves; nothing in this pass asks for a frame.
+- **No WebGL 2 / no WebGL:** nothing here needs WebGL 2 (a `RedFormat` data texture, `fwidth`-free shader, one
+  instanced mesh — the scene instances already). No WebGL is § 7's fallback, unchanged.
+- **Reduced motion:** nothing in this pass moves.
+
+### 14.5 The checks, each seen red once
+
+Checks 1, 2 and 5 are `TheThreeDFloorsLightNeverClipsTest` over `tests/Feature/Floor/look-probe.mjs` (with the `band`
+and `pool` legs of (d)); check 3 is a leg of `Floor3dPageWiringTest`'s wiring; check 4 is `floor3d.browser.mjs`'s
+`look` row, run at night and by day on the cap floor (the phase forced by the browser's zone), which also holds the
+light's colours, its π sum, the absent tone curve and the pixel ratio's cap, and red under a second plant, the light
+never tinted for the phase.
+
+1. **No face clips** — a node test over `LOOK`: for every phase, every channel of `upFace(phase)` is at most 1 and
+   at least 0.75. Plant: the old 2.2 and 1.7 in a copy → 1.24, red.
+2. **The ramp separates the three faces a viewer sees** — the same test: with `LOOK`'s sun direction the ramp's
+   value at the up, the `+z` and the `−x` normals are three different numbers. Plant: the old `(-4, 8, 6)`
+   direction → two equal, red.
+3. **One ramp** — the `grep` in (c) as a lint leg beside the others. Plant: one `new MeshToonMaterial(` left in
+   `furniture.js`.
+4. **The shade covers its population** — `tools/design/floor3d.browser.mjs` reads `inspect().look.shade` against
+   the world's own counts; the walls by area, since a run count is the join's own answer. Plant: the furniture's
+   footprints dropped.
+5. **`shadeRects()` joins runs** — a node test: a straight wall of *n* cells is one rect of *n* cells' length; an L
+   is two. Plant: the join removed → *n* rects.
+6. **By eye, on the sandbox, before the PR:** `/floor/sola/3d` zoomed to a desk — its top, front and side three
+   tones; a soft plum pool under every desk, couch and body; the boards the 2-D floor's colour.
+
+### 14.6 Not defended, unverified, and the next passes
+
+- **Not defended:** a floor whose planes leave a gap inside their union box (the shade would cross the gap; no
+  shipped map has one — `world.planes` on the default map is one grid). A piece of furniture turned by other than a
+  quarter turn is drawn correctly (the quad turns with it).
+- **Settled in the build:** `world.walls` holds no cell along the band's foot, so the band's rect stays; the floor
+  lamp's kind is `floor-lamp`. **Unverified in this pass:** the figures by eye on the sandbox — every strength and colour here is derived, none has been seen
+  rendered, and the coder's reading at check 6 may move them inside § 12's rows.
+- **A smell, outside this pass:** `grep -rn lighting server/public/js/floor3d/` prints nothing, while the 2-D floor
+  dims a degraded desk by `desk.lighting` (`painter.js`'s `lighting-*` classes) and `floor-world.js` carries the
+  member. Whether the 3-D floor renders § 7's dimming another way was not traced here.
+
+**The next passes, ranked, one line each — the operator's to choose:**
+
+1. A backdrop: a soft vertical gradient and a floor slab with a dropped shade under the room, in place of the flat field.
+2. Wall dress: a lighter cap, a skirting and the band's rail carried round the side walls and partitions.
+3. Furniture surface: a cream rim and an inked edge on the kit (an outline pass or inverted hulls), § 10.4's line in 3-D.
+4. Lit things: a monitor's and a lamp's faint glow on the desk top after dark; the tank's water lit.
+5. A walking body's shade, moving with it (this pass keeps the discs' population: still bodies).
+6. The 3-D rendering of a degraded desk's dimming, if the smell above is confirmed.
+7. Real shadow maps, only if the operator wants furniture to shade furniture — with § 6's budget re-derived first.

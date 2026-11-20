@@ -1,5 +1,7 @@
 // THE 3-D CREATURES' STAGE — a browser module the character tools share (card#13033 stage 2 slice 3): one WebGL renderer
-// over a transparent ground, the house's two lights, and a camera that frames a creature's frame rect from a named view.
+// over a transparent ground, the floor's light rig (`floor3d/look.js`'s figures, in the windowless `unset` phase, as
+// `floor3d/floor-paint.js` lights a room without windows), and a camera that frames a creature's frame rect from a named
+// view — so the tools judge a body under the light it is seen in.
 // `sheet3d.browser.mjs` captures the operator's reading sheet and the draw-call leg through it, and
 // `distinct.browser.mjs --source 3d` its front silhouettes, so the three read one drawing.
 //
@@ -9,6 +11,7 @@
 import {
   Box3, Color, DirectionalLight, HemisphereLight, OrthographicCamera, Scene, Vector3, WebGLRenderer,
 } from '/server/public/js/vendor/three/three.module.js';
+import { LOOK } from '/server/public/js/floor3d/look.js';
 
 /** The views a creature is read from: the camera's direction toward the creature, and which way is up in the picture. */
 export const VIEWS = Object.freeze({
@@ -20,7 +23,7 @@ export const VIEWS = Object.freeze({
 
 /**
  * A stage of `width × height` px: its renderer (drawing buffer kept, so a picture can be copied off it after a render),
- * its scene with a sky-and-ground light and one light from the top left, and `shoot()`.
+ * its scene with the floor's hemisphere and sun, and `shoot()`.
  */
 export function stage(width, height, { canvas = document.createElement('canvas') } = {}) {
   const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -28,9 +31,9 @@ export function stage(width, height, { canvas = document.createElement('canvas')
   renderer.setSize(width, height, false);
   renderer.setClearColor(new Color(0, 0, 0), 0);
   const scene = new Scene();
-  scene.add(new HemisphereLight('#fff6e6', '#8f7a6a', 1.7));
-  const sun = new DirectionalLight('#ffffff', 2.2);
-  sun.position.set(-1.2, 2.2, 2);
+  scene.add(new HemisphereLight(LOOK.phases.unset.sky, LOOK.hemi.ground, LOOK.hemi.intensity));
+  const sun = new DirectionalLight(LOOK.phases.unset.sun, LOOK.sun.intensity);
+  sun.position.set(...LOOK.sun.direction);
   scene.add(sun);
   const camera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 5000);
 

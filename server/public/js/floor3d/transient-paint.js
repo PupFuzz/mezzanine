@@ -26,11 +26,11 @@ import {
     Float32BufferAttribute,
     Mesh,
     MeshBasicMaterial,
-    MeshToonMaterial,
     RingGeometry,
     SphereGeometry,
 } from '../vendor/three/three.module.js';
 import { mergeGeometries } from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js';
+import { toon } from './toon.js';
 import { onTerm } from './terms.js';
 import { UNIT, birdAt } from '../floor/floor-world.js';
 import { PALETTE } from '../floor/bird.js';
@@ -92,8 +92,8 @@ function birdGeometry(wing) {
 export function floorTransients({ group }) {
     const wings = { up: birdGeometry('up'), down: birdGeometry('down') };
     const envelopeGeometry = new BoxGeometry(ENVELOPE.w, ENVELOPE.h, ENVELOPE.d);
-    const birdMaterial = new MeshToonMaterial({ vertexColors: true });
-    const envelopeMaterial = new MeshToonMaterial({ color: PALETTE.envelope });
+    const birdMaterial = toon({ vertexColors: true });
+    const envelopeMaterial = toon({ color: PALETTE.envelope });
     const ringGeometry = new RingGeometry(0.94, 1, 64).rotateX(-Math.PI / 2);
     let world = null;
     let paintedAt = 0;

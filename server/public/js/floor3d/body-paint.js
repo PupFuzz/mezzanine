@@ -1,8 +1,9 @@
 /**
  * THE 3-D FLOOR's BODIES — every character the floor world (`floor/floor-world.js`) draws a body for: each sitter, each
- * intern, each walker, built by `floor3d/creature-paint.js`, with a contact disc under each still one, and the clock that
- * chooses each body's pose at the instant a frame is drawn. One of the renderer's parts, composed by
- * `floor3d/floor-paint.js`, which owns the frame; `docs/design/plan-13033-stage2-3d-floor.md` §§ 3.3 and 3.5.
+ * intern, each walker, built by `floor3d/creature-paint.js`, and the clock that chooses each body's pose at the instant a
+ * frame is drawn; the still ones are handed to the ground shade (`floor3d/ground-shade.js`) as `still()`. One of the
+ * renderer's parts, composed by `floor3d/floor-paint.js`, which owns the frame; `docs/design/plan-13033-stage2-3d-floor.md`
+ * §§ 3.3 and 3.5.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE CLOCK (plan § 3.5) IS `floor3d/clip-clock.js`'s, ASKED WHEN THE FRAME RUNS: a seated body's form `since` the paint
@@ -23,7 +24,7 @@
  * and a body the world no longer draws is disposed.
  */
 
-import { CircleGeometry, InstancedMesh, Matrix4, MeshBasicMaterial, Vector3 } from '../vendor/three/three.module.js';
+import { Vector3 } from '../vendor/three/three.module.js';
 import { CSS2DObject } from '../vendor/three/examples/jsm/renderers/CSS2DRenderer.js';
 import { createCreature } from './creature-paint.js';
 import { heldAt, inFlightAt, walkAt } from './clip-clock.js';
@@ -35,32 +36,27 @@ const MARK_RISE = 1.08;
 /** Where a walker's thought bubble floats: this share of its height above its feet. */
 const THOUGHT_RISE = 1.45;
 
-/** The contact disc under each character: its radius as a share of the character's height. */
-const DISC = 0.22;
-
 /**
  * The bodies.
  *
  * @param {object} ctx
  * @param {Document} ctx.document
  * @param {object} ctx.creatures the group the bodies stand in
- * @param {object} ctx.room the group the contact discs stand in (the `fixed` term)
  * @param {function(): void} ctx.wake the frame loop's wake: a body built is drawn
  * @param {function(): object} ctx.art the art modules, once the page has them
  * @param {function(string[]): void} ctx.failed § 9 F14's report of an asset that could not be drawn
  * @param {function(): number} ctx.now the clock a body built between frames is placed at (`performance.now()`)
  * @param {object} ctx.marks the group the marks' label objects stand in (the marks layer's scene)
  */
-export function floorBodies({ document, creatures, room, wake, art, failed, now: clock, marks }) {
+export function floorBodies({ document, creatures, wake, art, failed, now: clock, marks }) {
     let world = null;
     let paintedAt = 0;
     /** key → `{ creature | null, spec, dead, mark, thought, read }` — `read` the clock's last answer, for `inspect()` */
     const bodies = new Map();
     /** intern key → its A24 fade in flight this paint (the world's desk rows) */
     let fades = new Map();
-    const discGeometry = new CircleGeometry(1, 20).rotateX(-Math.PI / 2);
-    const discMaterial = new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.18, depthWrite: false });
-    let discs = null;
+    /** the bodies standing still at the last paint — each its foot and height, what the ground shade lies under */
+    let still = [];
 
     // A walker away from its desk stands as tall as the floor's seated bodies of its kind (the scene draws all alike).
     const seatHeight = () => world.desks.find((d) => d.sitter !== null)?.sitter.h ?? 1.2;
@@ -93,24 +89,6 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
         }
 
         return out;
-    };
-
-    const standDiscs = (wanted) => {
-        if (discs !== null) {
-            room.remove(discs);
-            discs.dispose();
-        }
-
-        const still = [...wanted.values()].filter((s) => s.at !== null);
-
-        discs = onTerm(new InstancedMesh(discGeometry, discMaterial, Math.max(1, still.length)), 'fixed');
-        discs.count = still.length;
-        still.forEach((s, i) => {
-            discs.setMatrixAt(i, new Matrix4().makeTranslation(s.at.x, s.at.y + 0.003, s.at.z).multiply(new Matrix4().makeScale(s.h * DISC, 1, s.h * DISC)));
-        });
-        discs.instanceMatrix.needsUpdate = true;
-        discs.computeBoundingSphere();
-        room.add(discs);
     };
 
     const standBodies = () => {
@@ -166,7 +144,7 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             bodies.get(key).spec = spec;
         }
 
-        standDiscs(wanted);
+        still = [...wanted.values()].filter((s) => s.at !== null).map((s) => ({ at: s.at, h: s.h }));
     };
 
     /** A label over the scene in the marks layer: an element and its object. */
@@ -383,6 +361,9 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             fades = new Map(world.effects.filter((e) => e.kind === 'desk' && e.effect.animation_id === 'A24').map((e) => [e.key, e.effect]));
             standBodies();
         },
+
+        /** The bodies standing still at the last paint (a walker is not one): `[{ at, h }]`. */
+        still: () => still,
 
         /** Every body at `now`; when the next frame is needed — `0`, a delay in ms, or `null` (every body still). */
         place(now) {
