@@ -13,12 +13,14 @@ use Tests\TestCase;
  * the interns' cap, a planned floor with a hallway, and the intern-walk, snack and turn-back runs whose walkers are in
  * flight — and `floor-world-probe.mjs` reads the world off each, the interns' seats on their couches included (the
  * couch measured off the kit's file, at one intern and at the cap), and each intern walker's rise onto its seat as it
- * steps back and fall off it as it steps off (card#13033).
+ * steps back and fall off it as it steps off (card#13033), and each piece stood against the wall its tile touches, its
+ * model's plan inside its obstacle rect (rule W, the plan's § 15.3).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SCENES ARE BUILT ONCE PER TREE. The world is a pure function of a scene, so a plant in `floor-world.js` is read
  * over the shipped scenes; a plant in the scene's walls (`floor-walls.js`) rebuilds the scenes over the planted tree,
- * because that is where it moves what the world reads.
+ * because that is where it moves what the world reads — except rule W's reading, which the probe's own fixture reads
+ * through the planted `floor-walls.js` directly.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: a drawing. The renderer that draws the world is slice 4's, and its browser leg owns what a
  * viewer sees; the character half of AT-D3-38 (the bodies, the clock) is slices 3 and 5's.
@@ -105,7 +107,23 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
             'a desk\'s chair stood in front of its slab, not behind it with its sitter' => ['../floor/floor-world.js',
                 "chair: part('chair', () => sitterZ),", "chair: part('chair', () => plan.y + plan.h * 2),", 'parts', false],
             'a standing piece placed at its cell\'s top, not its foot' => ['../floor/floor-world.js',
-                'return { at: at({ x: s.x + s.w / 2, y: s.y + s.h }) };', 'return { at: at({ x: s.x + s.w / 2, y: s.y }) };', 'pieces', false],
+                'return { at: at({ x: cx, y: foot }) };', 'return { at: at({ x: cx, y: s.y }) };', 'pieces', false],
+            'rule W\'s anchor ignored, every piece centred on its line (the front-row armchair over the floor\'s edge)' => ['../floor3d/furniture.js',
+                "return anchor === 'back' ? -box.min.z : anchor === 'front' ? -box.max.z : null;", 'return null;', 'standing', false],
+            'a side piece turned its back to the room' => ['../floor/floor-world.js',
+                'turn: left ? Math.PI / 2 : -Math.PI / 2,', 'turn: left ? -Math.PI / 2 : Math.PI / 2,', 'standing', false],
+            'a turned body not fitted inside its plan (the side-wall plant and armchair out of their rects)' => ['../floor3d/furniture.js',
+                'return plan === null ? 1 : Math.min(1, plan.w / w, plan.d / d);', 'return 1;', 'standing', false],
+            'the band\'s row dropped from the walls rule W reads (a top-row piece read free)' => ['../floor/floor-walls.js',
+                'const wallAt = (x, y) => y === f.y || bodies.has(`${x}:${y}`);', 'const wallAt = (x, y) => bodies.has(`${x}:${y}`);', 'standing', false],
+            'rule W\'s reach widened to the room\'s depth (a free piece read against the band)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = foot - 2 * T; y >= f.y; y -= T) {', 'standing', false],
+            'rule W\'s scan from the foot cell\'s own row (a piece painted with its foot on a wall run read against it, no depth left)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = foot - T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'standing', false],
+            'rule W\'s scan from the picture\'s top (a picture above the band\'s row read free)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = top; y >= top - T - CENTRING.reach; y -= T) {', 'standing', false],
+            'rule W\'s scan from the picture\'s top down, not from the foot up (a picture across a partition stood past it)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = Math.max(top, f.y); y >= Math.max(top, f.y) - T - CENTRING.reach; y -= T) {', 'standing', false],
             'a side restroom door\'s piece placed without its turn, its front to the floor\'s front beside the wall' => ['../floor/floor-world.js',
                 "turn: d.facing === 'right' ? -Math.PI / 2 : Math.PI / 2,", 'turn: 0,', 'pieces', false],
             'a side restroom door\'s lintel left solid, a wall cell standing through the doorway' => ['../floor/floor-world.js',

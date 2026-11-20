@@ -20,13 +20,15 @@
  * two sources shade alike under the room's lights; the loaded materials and textures are disposed of at once.
  *
  * ⛔ EACH PIECE STANDS WHERE THE WORLD PUTS IT AND AS BIG AS ITS 2-D PICTURE: a kit model is fitted to the drawn width
- * across and the drawn height up (its depth follows its width, so it keeps its plan), its foot on the floor and its
- * front toward `+z` — the side the 2-D floor draws, or turned as its placement says (a restroom door set into a side wall
- * faces the room from the wall's plane); a desk is fitted to its slab, its drawers toward its sitter; a monitor
- * faces its sitter (plan § 3.4, the operator's Q4 answer); a couch is fitted to the box the world lays it in, at one
- * scale up and across, as deep as that box (its row's footprint), lengthened between its arms (`lengthened()`), so its
- * seat is where the world seats its interns; a dressed piece is fitted to its dressing's top and depth, and the dressing
- * stands on it at the piece's foot.
+ * across and the drawn height up (its depth follows its width, so it keeps its plan), its foot on the floor, its front
+ * toward `+z` — the side the 2-D floor draws — or turned as its placement says, and in depth centred on its placement or
+ * with the face its `anchor` names on it: a piece against a wall turned to face the room, its back on the wall's face,
+ * and a free one behind its foot line, each shrunk in plan where its model would not fit its tile (rule W,
+ * `floor-world.js`); a restroom door set into a side wall faces the room from the wall's plane; a desk is fitted to its
+ * slab, its drawers toward its sitter; a monitor faces its sitter (plan § 3.4, the operator's Q4 answer); a couch is
+ * fitted to the box the world lays it in, at one scale up and across, as deep as that box (its row's footprint),
+ * lengthened between its arms (`lengthened()`), so its seat is where the world seats its interns; a dressed piece is
+ * fitted to its dressing's top and depth, and the dressing stands on it at the piece's foot.
  *
  * ⛔ IT DECIDES NOTHING ABOUT WHAT STANDS WHERE: `rebuild(world)` places what the world carries, and a file that has not
  * answered yet draws nothing until it does — `ready()` is called then, so the page draws the floor again (plan § 3.5's
@@ -102,30 +104,62 @@ function primitivesOf(gltf) {
 }
 
 /**
- * The matrix that fits a model's box to a placement: centred across and in depth on `at`, its foot at `at.y`, `w`
- * across and `h` up (`d` deep, or as deep as `w` scales it), turned `turn` radians about `y`.
+ * Where a placement's `anchor` puts a model's box in depth (`furniture-placements.js`): the shift in `z`, in the box's own
+ * frame, that brings its back (`'back'`, `−z`) or its front (`'front'`) to the origin — or `null` for no anchor.
  */
-function fitted(box, { at, w, h, d = null, turn = 0 }) {
-    const { size, sx, sz } = fitScale(box, { w, d });
-    const centre = new Matrix4().makeTranslation(-(box.min.x + box.max.x) / 2, -box.min.y, -(box.min.z + box.max.z) / 2);
+function anchored(box, anchor) {
+    return anchor === 'back' ? -box.min.z : anchor === 'front' ? -box.max.z : null;
+}
+
+/**
+ * How much a body `w` across and `d` deep shrinks in plan to fit inside a placement's `plan` (`{ w, d }`): 1 where it
+ * fits, or where there is no plan.
+ */
+function inside(plan, w, d) {
+    return plan === null ? 1 : Math.min(1, plan.w / w, plan.d / d);
+}
+
+/**
+ * The matrix that fits a model's box to a placement: centred across on `at`, its foot at `at.y`, in depth centred on it
+ * or its `anchor`'s face on it, `w` across and `h` up (`d` deep, or as deep as `w` scales it) — shrunk in plan to its
+ * `plan` where it would not fit — turned `turn` radians about `y`. Exported for `floor-world-probe.mjs`'s `standing` leg,
+ * which reads a kit piece's plan through it.
+ */
+export function fitted(box, { at, w, h, d = null, turn = 0, anchor, plan = null }) {
+    const { size, sx, sz } = fitScale(box, { w, d, plan });
+    const centre = new Matrix4().makeTranslation(-(box.min.x + box.max.x) / 2, -box.min.y, anchored(box, anchor) ?? -(box.min.z + box.max.z) / 2);
     const place = new Matrix4().compose(new Vector3(at.x, at.y, at.z), new Quaternion().setFromAxisAngle(Y, turn), new Vector3(sx, h / size.y, sz));
 
     return place.multiply(centre);
 }
 
-/** The scale `fitted()` applies across (`sx`) and in depth (`sz`), and the box's size. */
-function fitScale(box, { w, d = null }) {
+/** The scale `fitted()` applies across (`sx`) and in depth (`sz`) — shrunk to its `plan` where given — and the box's size. */
+function fitScale(box, { w, d = null, plan = null }) {
     const size = box.getSize(new Vector3());
-    const sx = w / size.x;
+    const deep = d === null ? w / size.x : d / size.z;
+    const k = inside(plan, w, deep * size.z);
 
-    return { size, sx, sz: d === null ? sx : d / size.z };
+    return { size, sx: (w / size.x) * k, sz: deep * k };
 }
 
-/** What a placement fitted from `box` covers of the floor: its half width and half depth, centred on `at`, turned `turn`. */
-function footprintOf(kind, box, p) {
-    const { size, sz } = fitScale(box, p);
+/**
+ * What a placement covers of the floor, read off the matrix that stands its mesh (`fitted()`'s or `placedParts()`'s) —
+ * so the ground shade lies under the body wherever its anchor, turn and plan put it: the plan centre of `box` through
+ * `m`, its half width and half depth at `m`'s scale across and in depth, turned `turn`; `facing` a side door's.
+ */
+function footprintOf(kind, box, m, p) {
+    const e = m.elements;
+    const centre = new Vector3((box.min.x + box.max.x) / 2, box.min.y, (box.min.z + box.max.z) / 2).applyMatrix4(m);
+    const size = box.getSize(new Vector3());
 
-    return { kind, at: p.at, hw: p.w / 2, hd: (sz * size.z) / 2, turn: p.turn ?? 0 };
+    return {
+        kind,
+        at: { x: centre.x, y: p.at.y, z: centre.z },
+        hw: (Math.hypot(e[0], e[1], e[2]) * size.x) / 2,
+        hd: (Math.hypot(e[8], e[9], e[10]) * size.z) / 2,
+        turn: p.turn ?? 0,
+        ...(p.facing === undefined ? {} : { facing: p.facing }),
+    };
 }
 
 /**
@@ -152,6 +186,21 @@ function lengthened(model, stretch) {
     box.max.x += stretch;
 
     return { primitives, box };
+}
+
+/**
+ * The matrix that stands a first-party part list (`piece3d()`'s frame: units, its foot centre at the origin, its front
+ * toward `+z`) at a placement: turned `turn` about `y` and moved to `at`, its `anchor`'s face — read off the merged
+ * geometry's `box` — on `at` where it has one, shrunk in plan to its `plan` as `fitted()` shrinks a kit piece. Exported
+ * for `floor-world-probe.mjs`'s `standing` leg.
+ */
+export function placedParts(box, { at, turn = 0, anchor, plan = null }) {
+    const k = inside(plan, box.max.x - box.min.x, box.max.z - box.min.z);
+
+    return new Matrix4().makeTranslation(at.x, at.y, at.z)
+        .multiply(new Matrix4().makeRotationY(turn))
+        .multiply(new Matrix4().makeScale(k, 1, k))
+        .multiply(new Matrix4().makeTranslation(0, 0, anchored(box, anchor) ?? 0));
 }
 
 /** A part list merged into one geometry at `detail`'s facets, each part's colour on its vertices. */
@@ -297,8 +346,9 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
 
     /**
      * A first-party part list over `placements`: one merged geometry per distinct inputs (`inputsOf()` — the drawn size,
-     * and a side door's facing and flag), its parts already in units, only turned and moved into place — `partsOf(inputs)`
-     * the list, or `null` for none. A standing piece's (`kind`) footprint is its merged geometry's plan; a dressing has none.
+     * and a side door's facing and flag), its parts already in units, stood by `placedParts()` — `partsOf(inputs)` the
+     * list, or `null` for none. A standing piece's (`kind`) footprint is its merged geometry's plan through that same
+     * matrix; a dressing has none.
      */
     const firstParty = (placements, partsOf, detail, kind = null) => {
         const shapes = new Map();
@@ -315,21 +365,16 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
             if (parts !== null) {
                 const geometry = mergedParts(parts, detail);
 
+                geometry.computeBoundingBox();
                 built.push(geometry);
 
+                const matrices = same.map((p) => placedParts(geometry.boundingBox, p));
+
                 if (kind !== null) {
-                    geometry.computeBoundingBox();
-                    const { min, max } = geometry.boundingBox;
-                    const mid = new Vector3((min.x + max.x) / 2, 0, (min.z + max.z) / 2);
-
-                    for (const p of same) {
-                        const at = mid.clone().applyAxisAngle(Y, p.turn ?? 0).add(new Vector3(p.at.x, p.at.y, p.at.z));
-
-                        footprints.push({ kind, at: { x: at.x, y: p.at.y, z: at.z }, hw: (max.x - min.x) / 2, hd: (max.z - min.z) / 2, turn: p.turn ?? 0, ...(p.facing === undefined ? {} : { facing: p.facing }) });
-                    }
+                    footprints.push(...same.map((p, i) => footprintOf(kind, geometry.boundingBox, matrices[i], p)));
                 }
 
-                instanced(geometry, vertexColoured, same.map((p) => new Matrix4().makeTranslation(p.at.x, p.at.y, p.at.z).multiply(new Matrix4().makeRotationY(p.turn ?? 0))));
+                instanced(geometry, vertexColoured, matrices);
             }
         }
     };
@@ -349,19 +394,23 @@ export function createFurniture(group, { map, theme, palette, piece3d, dressing3
             const file = map.FILES[kind];
 
             if (kind === 'placeholder') {
-                instanced(slabGeometry, placeholder, placements.map((p) => fitted(SLAB_BOX, p)));
-                footprints.push(...placements.map((p) => footprintOf(kind, SLAB_BOX, p)));
+                const matrices = placements.map((p) => fitted(SLAB_BOX, p));
+
+                instanced(slabGeometry, placeholder, matrices);
+                footprints.push(...placements.map((p, i) => footprintOf(kind, SLAB_BOX, matrices[i], p)));
             } else if (file !== undefined) {
                 request(file);
                 const model = models.get(file);
 
                 if (model !== undefined) {
                     for (const [shape, same] of shapesOf(kind, model, placements)) {
+                        const matrices = same.map((q) => fitted(shape.box, q));
+
                         for (const p of shape.primitives) {
-                            instanced(p.geometry, materialOf(kind, p.material), same.map((q) => fitted(shape.box, q)));
+                            instanced(p.geometry, materialOf(kind, p.material), matrices);
                         }
 
-                        footprints.push(...same.map((q) => footprintOf(kind, shape.box, q)));
+                        footprints.push(...same.map((q, i) => footprintOf(kind, shape.box, matrices[i], q)));
                     }
                 }
             } else if (map.PIECE3D.includes(kind) && piece3d !== null) {

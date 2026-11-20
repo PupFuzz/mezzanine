@@ -9,7 +9,9 @@ use Tests\TestCase;
  * **The 3-D floor's light never clips, its ramp parts a top from a front from a side, and its ground shade covers the
  * walls once** — `docs/design/plan-13033-stage2-3d-floor.md` § 14.5 checks 1, 2 and 5 (card#13033), `FLOOR.md` § 12's
  * *Floor 3-D light*, *Floor 3-D ramp* and *Floor 3-D ground shade* rows. `look-probe.mjs` reads `floor3d/look.js` and
- * `floor3d/shade-rects.js` under node, and the wall runs over the floor screen's own scenes of the shipped default.
+ * `floor3d/shade-rects.js` under node, and the wall runs over the floor screen's own scenes of the shipped default —
+ * where it also stands the furniture through `floor3d/furniture.js` and holds each shade, and each lamp's pool, under the
+ * body rule W stood (§ 15.3).
  *
  * ⚠ WHAT A GREEN HERE IS NOT: a drawing. That the page lights the scene with these figures and draws the shade over its
  * whole population is `tools/design/floor3d.browser.mjs`'s `look` row; that ONE ramp is built is
@@ -51,6 +53,13 @@ class TheThreeDFloorsLightNeverClipsTest extends TestCase
                 'if (last !== undefined && last.line === line && near(last.end, b[along])) {', 'if (false) {', 'runs'],
             'the pool round a kind the kit map does not stand the floor lamp for' => [$look,
                 "pool: freeze({ kind: 'floor-lamp',", "pool: freeze({ kind: 'lamp',", 'pool'],
+            'a piece\'s shade centred on its placement\'s `at`, not under its body (rule W\'s back face on the wall)' => ['../floor3d/furniture.js',
+                'const centre = new Vector3((box.min.x + box.max.x) / 2, box.min.y, (box.min.z + box.max.z) / 2).applyMatrix4(m);',
+                'const centre = new Vector3(p.at.x, 0, p.at.z);', 'furniture'],
+            'a turned body\'s shade at its unshrunk size (the side-wall plant and armchair shaded past their rects)' => ['../floor3d/furniture.js',
+                'const k = inside(plan, w, deep * size.z);', 'const k = 1;', 'furniture'],
+            'a lamp\'s pool round its placement\'s `at`, not its body' => ['../floor3d/shade-rects.js',
+                'for (const f of footprints.filter((p) => p.kind === S.pool.kind)) {', 'for (const f of world.pieces.filter((p) => p.kind === S.pool.kind)) {', 'furniture'],
         ];
     }
 

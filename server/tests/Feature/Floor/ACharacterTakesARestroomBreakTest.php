@@ -2213,7 +2213,7 @@ class ACharacterTakesARestroomBreakTest extends TestCase
     /** card#13033 RED — the facing counted from the foot cell: the tile's rows read down from its painted foot cell, not up from it. */
     public function test_red_the_facing_counted_from_the_foot_cell(): void
     {
-        $dir = $this->planted([self::FLOOR_WALLS, '    const top = at.y + T - cell.h;', '    const top = at.y;']);
+        $dir = $this->planted([self::FLOOR_WALLS, "    const top = at.y + T - cell.h;\n    const rows = (x) =>", "    const top = at.y;\n    const rows = (x) =>"]);
 
         $this->assertNotSame([], array_filter($this->wallDoorDefects($dir), static fn ($d) => str_contains($d, 'not `right`')),
             'the facing counted over the rows under the foot cell and the facing guard saw nothing');

@@ -32,6 +32,16 @@
  * monitor faces its sitter and an intern's laptop its intern. A sitter stands half the slab's depth behind the slab's
  * back edge: its chair's centre, chosen (no figure in the scene places a chair in plan).
  *
+ * ⛔ A PIECE STANDS AGAINST THE WALL ITS TILE TOUCHES, ITS BACK TO IT (rule W, plan § 15.3): a standing tile's rect is a
+ * picture, its foot line a picture-height in front of the wall an author drew it against. So a piece the scene read a
+ * wall for (`floor-walls.js`'s `standingAgainst()`, the entry's `against` and `face`) stands with its back on that wall's
+ * face, turned to face the room — `π` off a wall in front of it, `±π/2` off a side wall, along the tile's foot strip —
+ * and one the scene read none for stands behind its foot line, its front on it. Its `anchor` names the face on `at`, and
+ * its `plan` the box its body is fitted inside — its obstacle rect reaching to the wall's face — so a model deeper than
+ * its tile allows, once turned, shrinks in plan rather than standing in a lane or in its neighbour. The snack tables and
+ * the restroom door carry no reading and stand centred on their foot line as they always have; obstacles and routes
+ * read the rects, which rule W leaves alone.
+ *
  * `tests/Feature/Floor/floor-world-probe.mjs` drives it over the harness's scenes (`TheFloorIsTheScenesThirdRendererTest`).
  */
 
@@ -555,6 +565,38 @@ export function floorWorld(scene) {
             wall: Object.freeze(columnOf(d)),
         });
     });
+    // Rule W: a piece the scene read a wall for (`against`) stands with its back on that wall's face, turned to face the
+    // room; one it read none for stands behind its foot line, its front on it; a piece the rule leaves out (no `against`
+    // on its entry) stands centred on its foot line, as it always has. `plan` is the box, across and deep in the piece's
+    // own frame (units), its body is fitted inside: its obstacle rect, reaching to the wall's face — a side piece along
+    // its tile's foot strip, `min(w, h)` long.
+    const standing = (s) => {
+        const cx = s.x + s.w / 2;
+        const foot = s.y + s.h;
+        const plan = (w, d) => Object.freeze({ w: w / UNIT, d: d / UNIT });
+
+        switch (s.against) {
+            case undefined:
+                return { at: at({ x: cx, y: foot }) };
+            case null:
+                return { at: at({ x: cx, y: foot }), anchor: 'front', plan: plan(s.w, s.h) };
+            case 'back':
+                return { at: at({ x: cx, y: s.face }), anchor: 'back', plan: plan(s.w, foot - s.face) };
+            case 'front':
+                return { at: at({ x: cx, y: s.face }), turn: Math.PI, anchor: 'back', plan: plan(s.w, s.h) };
+            default: {
+                const strip = Math.min(s.w, s.h);
+                const left = s.against === 'left';
+
+                return {
+                    at: at({ x: s.face, y: foot - strip / 2 }),
+                    turn: left ? Math.PI / 2 : -Math.PI / 2,
+                    anchor: 'back',
+                    plan: plan(strip, left ? s.x + s.w - s.face : s.face - s.x),
+                };
+            }
+        }
+    };
     // A side door's piece by its cell: the frame turned into the wall's plane, its front toward the room, standing at the
     // doorway; its inputs the wall's thickness and the flag in the piece's frame — out from the wall face (`gap` to the
     // plate, `out` across it) and its heights over the foot — so the theme's flag stands where the world's plate does.
@@ -563,7 +605,7 @@ export function floorWorld(scene) {
         const side = sideDoors.get(`${s.room}#${s.x}:${s.y}`);
 
         if (s.kind !== RESTROOM_DOOR.kind || side === undefined) {
-            return { at: at({ x: s.x + s.w / 2, y: s.y + s.h }) };
+            return standing(s);
         }
 
         const [d, w] = side;

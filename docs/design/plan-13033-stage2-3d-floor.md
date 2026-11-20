@@ -390,7 +390,9 @@ curve); one mesh per part (§ 6's budget).
   heights § 3.1 names; a doorway is a gap in the run (`wallRuns()` in `themes/paint.js` already finds straight
   stretches and free ends, and is reused).
 - **Standing scenery** (the 17 standing kinds) and **the desk set** (`desk`, `chair`, `monitorFrame`, `sideTable`,
-  `deskProps`) come from the Kenney kit by the slice-1 mapping where it has a piece, each `.glb` loaded once and
+  `deskProps`) come from the Kenney kit by the slice-1 mapping where it has a piece — each standing piece turned and
+  stood against the wall its tile touches, its back to it, or behind its foot line in open floor (§ 15.3's rule W) —
+  each `.glb` loaded once and
   **instanced** per placement — one `InstancedMesh` per **(primitive, material)** pair a file carries, so a file of
   three primitives is three instanced meshes (§ 6 counts them so) — **recoloured from the theme's `PALETTE`**: the
   renderer maps each piece's colour slots — its named materials, or the entries of its palette texture, whichever
@@ -1513,10 +1515,12 @@ away 0 — in linear light 1.00 / 0.82 / 0.66 / 0.50 of the colour once the hemi
 
   A **wall run** is the cells of `world.walls` with `box.y === 0` joined: consecutive cells of one row into a run
   along `x`, then the cells left over joined along `z`; a cell is in one run. Runs overlap only where two meet, which
-  darkens the corner — wanted. A **footprint** is what `furniture.js`'s `fitted()` already computes: `w / 2`
-  across, and `d / 2` or `w / size.x × size.z / 2` deep; `createFurniture()` returns them from the same loop that
-  calls `fitted()`, as `footprints()`, with each one's kind; a first-party piece (`piece3d()`'s, which `fitted()` does
-  not place — the tank, the copier, the cooler) contributes the plan of its merged geometry, and a dressing none.
+  darkens the corner — wanted. A **footprint** is read off the matrix that stands the body (`furniture.js`'s
+  `footprintOf()`, as built with § 15.3's rule W): the plan centre of its box through `fitted()`'s matrix — or, for a
+  first-party piece (`piece3d()`'s: the tank, the copier, the cooler), its merged geometry's through `placedParts()`'s
+  — with its half width and depth at that matrix's scale, so it lies under the body wherever its anchor, turn and plan
+  put it; `createFurniture()` returns them as `footprints()`, with each one's kind, and a dressing none. A lamp's pool
+  is centred on its lamp's footprint.
   `body-paint.js` returns its still bodies as `still()`. The lamp is the kind the kit map stands `lampRoundFloor` for:
   `floor-lamp` (`look-probe.mjs`'s `pool` leg holds it to the map). `world.walls` holds no cell along the band's foot
   (`floor/floor-walls.js` leaves the footprint's top row out, the band standing in for it — the probe's `band` leg
@@ -1558,10 +1562,11 @@ cab stays unlit. The screens, the restroom flags and the ring stay `MeshBasicMat
 ### 14.5 The checks, each seen red once
 
 Checks 1, 2 and 5 are `TheThreeDFloorsLightNeverClipsTest` over `tests/Feature/Floor/look-probe.mjs` (with the `band`
-and `pool` legs of (d)); check 3 is a leg of `Floor3dPageWiringTest`'s wiring; check 4 is `floor3d.browser.mjs`'s
-`look` row, run at night and by day on the cap floor (the phase set by the run's clock, the page held in UTC), which
-also holds the light's colours, its π sum, the absent tone curve and the pixel ratio's cap, and red under a second
-plant, the light never tinted for the phase.
+and `pool` legs of (d), and its `furniture` leg — added with § 15.3's rule W — which holds each piece's shade inside its
+obstacle rect reaching to its wall and each lamp's pool on its lamp); check 3 is a leg of `Floor3dPageWiringTest`'s
+wiring; check 4 is `floor3d.browser.mjs`'s `look` row, run at night and by day on the cap floor (the phase set by the
+run's clock, the page held in UTC), which also holds the light's colours, its π sum, the absent tone curve and the pixel
+ratio's cap, and red under a second plant, the light never tinted for the phase.
 
 1. **No face clips** — a node test over `LOOK`: for every phase, every channel of `upFace(phase)` is at most 1 and
    at least 0.75. Plant: the old 2.2 and 1.7 in a copy → 1.24, red.
@@ -1599,3 +1604,132 @@ plant, the light never tinted for the phase.
 5. A walking body's shade, moving with it (this pass keeps the discs' population: still bodies).
 6. The 3-D rendering of a degraded desk's dimming, if the smell above is confirmed.
 7. Real shadow maps, only if the operator wants furniture to shade furniture — with § 6's budget re-derived first.
+
+## 15. Placement review — where each floor's objects stand, 2-D and 3-D (2026-11-20)
+
+**The request (the operator, 2026-11-20, card#13033):** *"Also have Fable look at the placement of objects on each floor. Currently some objects are placed in ways that don't make sense. for example, the couch faces towards the viewer , and the sola PM office has a water coolor at the entrance instead of against a wall"*.
+
+**The result in one paragraph.** Both of the operator's examples are CODE rules, and neither is map data. The water cooler is placed sensibly in the map — it is in the back-wall row of the PM office — and the 3-D floor stands it, and every other tall piece on every floor, a tile-height in front of the wall it is drawn against (§ 15.2). One rule in the wall reader fixes that for every floor, and no map is edited. The couch faces the viewer because the operator's own decision 86 (`FLOOR.md` § 13 row 86, *"Couch A"*) drew it under and behind a row of interns who face the viewer; turning it is a change to that ratified layout and is put to the operator in § 15.5 — nothing about the couch is handed to the coder here.
+
+### 15.1 What was read, and how to re-read it
+
+- **The maps.** `GET /api/building/rooms/{install_id}/map` for each room `GET /api/building` lists under `layout.floors[].rooms[]`, as the logged-in UAT account, read-only. `source` says which are authored: `aimla` (`map_version` 1) and `solo-agents` (The Burrow, `map_version` 3). `sola`, `nook` and `treehouse` answer `source: "default"` — the shipped `resources/floor/default.tmj`, and the document the sandbox served for all three is equal to the one in this tree (compared as parsed JSON). So a change for the sola floor's furniture is a change to a repository file, and it lands on all three floors; the console's save path (`Admin\FloorController::update()`, a `map` string validated by `TiledMap`, stored as a `Revisions::ROOM_MAP` revision) is only for the two authored rooms.
+- **The population:** every cell of a map's tile layers whose tile's `kind` is a standing kind (`mapTiles()`; the kinds are `resources/floor/tiles/floor-plane.tsx`'s less `PLANE_KINDS`), and every desk's couches (`floor-world.js`'s `couchesOf()`). Re-derive it per map from `mapTiles()` — the lists below are that walk's output on the date above, not a figure to trust later.
+- **The pictures** (the session's scratch directory, not in the repository): `aimla-2d.png`, `aimla-3d-close.png`, `sola-2d.png`, `sola-3d-close.png`, `the-burrow-2d.png`, `the-burrow-3d.png`, `the-nook-2d.png`, `the-nook-3d.png`, `the-treehouse-2d.png`, `the-treehouse-3d.png`. The 3-D pictures are the opening view and one zoomed view; **no picture was taken from inside a room or from behind a piece**, so every 3-D statement below about a face or a gap is derived from the placement arithmetic (§ 15.2) and confirmed only as far as those two views show.
+
+### 15.2 The cause — a tile's rect is a PICTURE, and the 3-D floor stands the piece on the picture's bottom edge
+
+A standing tile's cell rect is `w` across and its picture's HEIGHT down (`mapTiles()`: `y = (row + 1) × tileheight − h`), and that whole rect is the piece's obstacle (`obstaclesOf()`). An author who wants a piece against the back wall puts the picture's TOP at the wall — `aimla`'s bookcase, plant, aquarium and snack table all have `y = 0` — so the foot line is a picture-height in front of the wall. The 3-D floor stands every piece **centred in depth on its foot line** (`floor-world.js`'s `pieceOf()`: `at({ x: s.x + s.w / 2, y: s.y + s.h })`; `furniture.js`'s `fitted()` centres the model's box on `at`), its front toward `+z`, whatever it stands beside. Three defects follow, on every floor:
+
+1. **A piece drawn against the back wall stands in the room.** The default map's water cooler: rect `x 1224, y 16, 40 × 120`, foot line `y = 136` — 1.36 units in front of the band in an office 3.12 units deep (the partition is row 39). The armchair (foot 96), floor lamp (136) and globe (136) beside it make a row across the office just inside its doorway (the gap in row 39 is columns 133–144). This is the operator's water cooler.
+2. **A piece beside a side wall stands with its SIDE to that wall and its front to the viewer**, and one against the wall in front of it faces that wall.
+3. **Half of every piece's depth is in front of its foot line** — outside its obstacle rect, so in a walker's lane; a piece on the map's last row overhangs the floor's front edge (`aimla`'s tall bookcase, foot 696, in `aimla-3d-close.png`; the default's front-left armchair, in `sola-3d-close.png`).
+
+The 2-D floor is not wrong by its own convention: its pictures are face-on symbols (`FLOOR.md` § 10.6 item 6 draws every tile unrotated), and a tall picture whose top meets the band reads as standing against it. **Nothing in the 2-D floor changes.**
+
+### 15.3 The fix — rule W: a piece stands against the wall its tile touches, its back to it
+
+One reading of the map, made once where the walls are already read (`floor/floor-walls.js`, beside `restroomDoorGeometry()`, which makes this same kind of reading for a door), carried by the scene, lifted by the world, and fitted by the furniture. It applies to every standing kind **except** `restroom-door` (its own geometry stands it) and the two `SNACK_TABLES` kinds (`scene.js` stands a visitor at the tile's front corners, `snackSpotOffset()`, so a table that moved off its foot line would leave its visitors standing short of it) — those keep today's placement exactly.
+
+**(a) `floor/floor-walls.js` — new export `standingAgainst(cell, g, bodies, T)`** → `{ against, face }`, scene px, from the PLACED cell as `restroomDoorGeometry()` reads it (`at = cellOf(cell, g, T)`, `top = at.y + T − cell.h`, `foot = at.y + T`, `f` the grid's footprint). `wallAt(x, y)` is true where `bodies` — the floor's `wallBodies()` as `x:y` keys, built once per scene by `wallKeys()` — holds that cell, **or** `y === f.y` — the footprint's top row, which the band stands in for and `wallBodies()` therefore leaves out. The first branch that holds wins:
+
+| `against` | holds when | `face` |
+|---|---|---|
+| `back` | for the nearest row `y_w`, searched from the row above the foot cell (`foot − 2T`) upward to `max(top − T − CENTRING.reach, f.y)`, `wallAt(x, y_w)` for every cell column `x` of the tile's width (as built — see below) | `f.y` where `y_w === f.y` (the band's face is the floor's back edge), else `y_w + T` |
+| `left` | for the nearer of the two columns `x_w ∈ { at.x − T, at.x − 2T }` that qualifies, `wallAt(x_w, y)` for every cell row `y` of the foot strip `[foot − min(cell.w, cell.h), foot)` | `x_w + T` — the wall's own face |
+| `right` | the same for `x_w ∈ { at.x + cell.w, at.x + cell.w + T }` | `x_w` |
+| `front` | `wallAt(x, foot)` for every cell column `x` of the tile's width | `foot` |
+| `null` | none | `null` |
+
+`CENTRING.reach` (`route.js`, 48 px) is reused as the reach: a strip shallower than the distance a walk keeps from a walkway's edge is not a walkway, so a piece that close to the wall above it is against it. The default map's largest such gap is the globe's (`y = 48`). A side wall is read up to one cell off the tile because the shipped default stands its left-wall pieces at `x = 16`, a cell clear of the wall in column 0 (its bookcase and armchair), where `aimla`'s stand at `x = 8`; so the piece's back goes to the wall's face, not the tile's edge, and its body may reach one cell outside its obstacle rect on that side — against a wall, where no walk passes. `back` is tried before the sides so a piece in a back corner keeps facing the room's front, as its picture shows it. `restroomDoorGeometry()`'s own read stays as it is: a doorway needs wall over the tile's whole HEIGHT, a piece over its plan depth — two properties, not one to merge.
+
+**(b) `floor/scene.js`** — where a scenery entry is pushed (the `scenery.push(...)` in the standing-kind loop), add `against` and `face` from `standingAgainst()` for the kinds rule W covers. Nothing else in the scene reads them; obstacles, the lattice and every 2-D document are untouched.
+
+**(c) `floor/floor-world.js` — `pieceOf(s)`**, for a piece that is not a side door, with `cx = s.x + s.w / 2`, `foot = s.y + s.h`:
+
+| `against` | `at` | `turn` | `anchor` |
+|---|---|---|---|
+| `null` (and the excluded kinds) — rule W off | `at({ x: cx, y: foot })` | — | covered kinds: `'front'`; excluded kinds: none (today's centre) |
+| `back` | `at({ x: cx, y: face })` | — | `'back'` |
+| `front` | `at({ x: cx, y: face })` | `Math.PI` | `'back'` |
+| `left` | `at({ x: face, y: foot − s.w / 2 })` | `Math.PI / 2` | `'back'` |
+| `right` | `at({ x: face, y: foot − s.w / 2 })` | `−Math.PI / 2` | `'back'` |
+
+`anchor` names the model face that lies on `at`: `'back'` its back (`−z` in the model's frame), `'front'` its front, absent its centre. So a free-standing piece stands BEHIND its foot line (defect 3), and a walled one with its back on the wall, facing the room (the signs match a side door's: `right` is `−π/2`).
+
+**(d) `floor3d/furniture-placements.js` — `placementsOf()`** passes `turn` and `anchor` through for every piece. Today `turn` travels only together with the side door's `facing`, `wall` and `flag`; split them, so a turned bookcase carries no door fields and `inputsOf()` is unchanged. A dressed kind is excluded from rule W, so its two placements are untouched.
+
+**(e) `floor3d/furniture.js`** — `fitted()` takes `anchor`: its centring translation in `z` is `−box.min.z` for `'back'`, `−box.max.z` for `'front'`, and the box's middle as today otherwise. `firstParty()` composes `translation(at) × rotationY(turn)` over a part list's merged geometry; it must honour `anchor` the same way, from that geometry's bounding box. *Unverified: whether a first-party part list is authored centred on its foot — the coder reads `piece3d()`'s frame before choosing where the shift goes.*
+
+**(f) Docs in the same change:** § 3.4's and `furniture.js`'s header sentence *"its foot on the floor and its front toward `+z`"*, `furniture-placements.js`'s placement shape (`anchor`), `floor-world.js`'s header (a new ⛔ paragraph for rule W), and `FLOOR.md` § 10.6 item 6 (one sentence: the 3-D floor turns and stands a piece by the wall its tile touches; the 2-D floor still draws every tile unrotated).
+
+**Why the walks stay clear.** Rule W reads no obstacle and writes none: the lattice is built from the same rects as today. It moves the 3-D body only (i) back, into the strip between a tile and the wall above it, which is at most `CENTRING.reach` deep and closed at the wall, and (ii) for a free or side-walled piece, to the span `[foot − depth, foot]`, inside the tile's own obstacle rect where the model's depth at the tile's width is no more than `min(w, h)`. That last condition is a property of each kit file and is **not verified here** — the probe leg below is what holds it.
+
+**The check (`floor-world-probe.mjs`, a new `standing` leg, each seen to fail first):** for every piece rule W covers, over the shipped default and a fixture carrying one piece of each `against` value — (1) its 3-D plan box (the model's box through `fitted()`'s matrix) lies inside its obstacle rect extended to `face` on the walled side; plant: restore the centred anchor, and the default's front-row armchair reds. (2) A `back` piece's back face is at `face`; plant: drop the band row from `wallAt()`, and `aimla`'s top row reads `null`. (3) A piece with open floor on every side reads `null` and keeps `turn` undefined; plant: widen the reach to the room's depth.
+
+**As built (2026-11-20), two departures, each forced by the `standing` leg's first check over the shipped default.** The kit's plant and armchair do not fit their tiles once turned to a side wall: the large plant (`8, 384, 80 × 128`) is 91 px deep at its 80-px width, 11 px past its rect into the room, and the armchair (`16, 632, 72 × 64`) is 72 px long along a 64-px foot strip, 8 px into the bookcase standing on the wall above it. So (i) a side piece stands centred on its foot strip, `foot − min(w, h) / 2` (the table's `foot − s.w / 2` where `w ≤ h`), and (ii) every covered piece carries a `plan` — its obstacle rect reaching to its wall's face, across and deep in its own frame — and `fitted()` and `placedParts()` shrink a body that would not fit it, in plan only, never in height (by `inside()`'s `min(1, plan.w / w, plan.d / d)`; `floor-world-probe.mjs` prints each shrunk piece's factor as `printed.shrunk` — on the shipped default the plant and the armchair, and no other). The obstacle and the walks stay as designed.
+
+**As built at review (2026-11-20), the `back` search reads from the foot up.** Searched from the picture's top, as first written, it missed two cases: a picture taller than its room reaches above it has its top above the band's row, so the band was never reached and the piece read free (a 120-px water cooler with its foot on row 8); and a picture crossing a partition read the wall beyond it, so the body stood on the far side of the partition (a 112-px bookcase with its foot at `y = 168` and a partition at `y = 120` read the band). So the search takes the NEAREST wall row from the row above the foot cell up to `max(top − T − CENTRING.reach, f.y)` (rows above the footprint's top row are no wall). It starts one row above the foot cell, not at it: a face on the foot cell's row would be the foot line itself, leaving the body no depth to stand in, so a piece painted with its foot on a wall run reads free rather than vanishing. The `standing` leg's fixture holds all three cases. The ground shade (§ 14.3 (d)) is laid from the matrix that stands each body (`furniture.js`'s `footprintOf()` over `fitted()` or `placedParts()`), so it follows the anchor, turn and plan, and a lamp's pool is centred on its lamp's body; `look-probe.mjs`'s `furniture` leg holds both.
+
+**Rejected — move the pieces in the maps so each foot line is at the wall.** A water cooler whose foot is 40 px from the wall has a rect starting 80 px ABOVE the room (`y = foot − h`), over the band. Whether a save admits it, how the 2-D floor layers it against the band, and what the obstacle rule and `tools/design/verify-floor.py`'s G-scenery leg make of a rect outside the grid were not established; it would also have to be repeated by hand in every authored map, and by every author afterwards. **Rejected — make a piece's obstacle its plan footprint instead of its picture** (the upstream change that would make the foot line mean one thing in both views): it is right in principle and moves every route on every floor, the 2-D layering of every piece near the band, `obstaclesOf()` and its Python copy. It is the change to propose if rule W's strip-behind-the-tile ever draws a walker through a body; nothing found here does.
+
+### 15.4 Per floor — what does not make sense, and what rule W does to it
+
+Rects are map px, `x, y, w × h`, foot = `y + h`. "W: back" means § 15.3's branch.
+
+**sola, The Nook, The Treehouse** (one document: `resources/floor/default.tmj`). Pictures: `sola-2d.png`, `sola-3d-close.png`.
+
+| piece (tile id) | rect | what is wrong | fix |
+|---|---|---|---|
+| water cooler (16) | 1224, 16, 40 × 120 | 3-D: 1.36 units off the PM office's back wall, in the row a visitor meets inside the doorway — the operator's example | W: back |
+| floor lamp (8) | 1144, 8, 40 × 128 | the same row, behind the doorway's own columns (133–144) | W: back |
+| globe (24) | 1184, 48, 40 × 88 | the same row | W: back |
+| armchair (9) | 1064, 32, 72 × 64 | 0.96 off the back wall, beside the partition | W: back — it faces the office |
+| aquarium (22) | 536, 24, 80 × 104 | 1.28 off the back wall, between two desks | W: back |
+| bookcase (5) | 1704, 16, 72 × 144 | 1.6 off the back wall in the office's back-right corner | W: back |
+| bookcase (4) | 16, 520, 72 × 112 | its side to the left wall, its shelves to the viewer | W: left — shelves face the room |
+| armchair (9) | 16, 632, 72 × 64 | on the last row: faces out of the room and overhangs the front edge | W: left — faces along the front of the room, inside the floor |
+| plant (12), plant (7) | 8, 384, 80 × 128; 1744, 192, 28 × 72 | none (round; beside a wall) | W turns them; no visible change |
+| floor lamp (8) | 1576, 536, 40 × 128 | none — it stands at the end of the inventory desk's couch, clear of the restroom doorway (rows 74–81 of column 222) | W: none; it steps behind its foot line |
+| snack tables (13, 14), restroom door (15) | — | none found | untouched |
+
+**aimla** (authored, revision 1). Pictures: `aimla-2d.png`, `aimla-3d-close.png`.
+
+| piece (tile id) | rect | what is wrong | fix |
+|---|---|---|---|
+| bookcase (5), plant (12), aquarium (22) | 208, 0, 72 × 144; 288, 0, 80 × 128; 376, 0, 80 × 104 | 1.04–1.44 off the back wall, a row standing in the lounge | W: back |
+| bookcase (5) | 8, 552, 72 × 144 | PM office, last row: side to the left wall, overhangs the front edge | W: left |
+| bookcase (4) | 8, 416, 72 × 112 | PM office: side to the left wall | W: back — corrected at review: a wall row lies within the reach above its picture, and `back` is read before the sides, so it faces the office's front with its back to that wall rather than to the left wall |
+| water cooler (16) | 1736, 200, 40 × 120 | side to the right wall | W: right |
+| coat rack (20), plant (6) | 8, 232, 40 × 136; 1712, 376, 56 × 104 | none (round; beside a wall) | W turns them; no visible change |
+| armchair (9) ×2, bean bag (23), floor lamp (8) | 216, 192; 304, 216; 376, 192; 464, 136 | **accepted, not changed:** the lounge's seats stand in a row facing the PM office's partition 1.2 units in front of them, rather than each other. They are free-standing, so no wall says which way they face, and a rule that guessed a "social centre" would be a second placement decision beside the map's. If the operator wants a facing here it is a map property (§ 15.5, question 2) | W: none; each steps behind its foot line |
+| snack tables, restroom door | — | none found | untouched |
+
+**The Burrow** (`solo-agents`, authored, revision 3). Pictures: `the-burrow-2d.png`, `the-burrow-3d.png` (the opening view only — the least-examined floor).
+
+| piece (tile id) | rect | what is wrong | fix |
+|---|---|---|---|
+| bookcase (5) | 640, 256, 72 × 144 | foot on the partition in front of it (row 50): its shelves face that wall | W: right (column 89) — shelves face the room |
+| armchair (9) | 640, 408, 72 × 64 | none of substance (0.28 off the partition behind it) | W: back |
+| bookcase (4), plant (6) | 1232, 408, 72 × 112; 1840, 408, 56 × 104 | 1.04–1.12 off the partition behind them | W: back |
+| plant (12), floor lamp (8) | 1224, 272, 80 × 128; 1856, 272, 40 × 128 | none (round; in a front corner) | W: right; no visible change |
+
+No piece on any floor stands in a doorway or overlaps another in plan, by the rects above against each map's wall gaps (default: row 39, columns 133–144; `aimla`: row 47, columns 64–75; The Burrow: the gaps in rows 12 and 88). **No map is edited by this review, so there is no document to save through the console.**
+
+### 15.5 For the operator — the couch, and one optional question
+
+**1. The couch.** It is a code rule: `placementsOf()` stands every couch with no turn (`add('sideTable', { at, w, h, d })`), the kit's front is `+z`, and `couchesOf()` lays one couch along each ROW of the side table's seats — the layout `FLOOR.md` § 13 row 86 records as the operator's choice of 2026-10-27 (*"Couch A"*: a sofa under and behind each row of interns, who face the viewer as the desk's sitter does by the ruling of 2026-10-06). A couch in a row along `x` can only face the viewer or the band. Options:
+- **A — keep it, as a bench beside the desk facing the room.** Example: the back row's couches face the aisle between the rows; the front row's face the open front of the room, which is what reads as "towards the viewer". No cost.
+- **B — turn each couch a quarter-turn so it runs back from the desk's end and faces its sitter.** Example: at `sola-pm` the couch stands along the desk's right end, its interns in a line from front to back, looking across at the bear. Cost: the 2-D desk box is re-laid (`desk-layout.js`'s `stoolSlots()`, `couchFootprint()`, the side table's art in side view, the interns' sprites in profile or three-quarter, the interns' walk to their seats), and row 86 is amended — a slice of its own.
+- **C — the 3-D floor alone turns the couch and its interns to face the band.** Example: from the opening view you see sofa backs and the backs of heads. Rejected here: the two floors would disagree about which way the same intern faces.
+
+*Recommendation: B, as its own slice after rule W ships* — it is the only option in which the seating faces something, and it is a layout decision the operator made once already, so it is not the coder's to take from this review.
+
+**2. Optional — a facing for free-standing seats.** `aimla`'s lounge chairs (and any armchair an author stands away from a wall) face `+z`. If that is wanted otherwise, the place for it is a `facing` property on the TILE (four armchair tiles in `floor-plane.tsx`, as the bookcase already comes in two), read where rule W reads the wall — not a guess from the room's shape. *Recommendation: not now; decide it with question 1.*
+
+### 15.6 What could falsify this, and what is not defended
+
+- **A kit model deeper than its tile is wide or tall** would stand out of its obstacle rect once turned or stood behind its foot — the `standing` leg's first check is the catch. Not measured here.
+- **Anything that reads a piece's `at` as its centre** — a label, or a floor lamp's light on the lighting branch that is open beside this one — moves by up to half the piece's depth. Named for that branch's owner; not examined here.
+- **A piece an author stands within the reach of a wall on purpose but means free-standing** reads `back`. Not defended: no shipped map has one, and the reach is one named constant.
+- **Not validated:** rule W is designed from the code and the maps, not built; no 3-D picture shows a turned piece. The first build's screenshots from inside the PM office are the real check.
