@@ -115,12 +115,10 @@ const expectedFrame = (r, ms) => {
 };
 const LONG_TASK_MS = 1500;
 
-/** A fixed-offset zone whose civil hour is `hour` now — how the look row puts the windows' sky in a phase (A17 reads the
- *  viewer's own clock). An `Etc/GMT` zone's sign is the reverse of its offset. */
-const zoneAt = (hour) => {
-  const off = ((hour - new Date().getUTCHours() + 36) % 24) - 12;
-  return off === 0 ? 'Etc/GMT' : `Etc/GMT${off > 0 ? '-' : '+'}${Math.abs(off)}`;
-};
+/** `run` with the viewer's clock at `hour`:00 — how the look row puts the windows' sky in a phase. A17 reads the page's
+ *  civil hour, and the page's `Date` is the run's (`served-pages.mjs`: `floor.local_hours:local_minutes` on 2026-08-23,
+ *  in UTC), so the hour is set in the run and the page opened in UTC; nothing reads the host's clock. */
+const atHour = (run, hour) => ({ ...run, floor: { ...run.floor, local_hours: hour, local_minutes: 0 } });
 
 /** For a picture only: the camera's target moved to a desk (its name focused) and the eye zoomed in `notches` steps. */
 const closeUp = async (p, key, notches) => {
@@ -932,7 +930,7 @@ const ROWS = {
       const facts = {};
       for (const hour of [23, 12]) {
         const phase = skyPhase(hour);
-        const p = await open(chrome, c, { w: 1400, h: 1000, timezone: zoneAt(hour) });
+        const p = await open(chrome, { ...c, run: atHour(c.run, hour) }, { w: 1400, h: 1000, timezone: 'UTC' });
         if (p.failed) return { defects: [p.failed], facts };
         try {
           await sleep(4000);

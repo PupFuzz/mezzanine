@@ -1553,9 +1553,9 @@ cab stays unlit. The screens, the restroom flags and the ring stay `MeshBasicMat
 
 Checks 1, 2 and 5 are `TheThreeDFloorsLightNeverClipsTest` over `tests/Feature/Floor/look-probe.mjs` (with the `band`
 and `pool` legs of (d)); check 3 is a leg of `Floor3dPageWiringTest`'s wiring; check 4 is `floor3d.browser.mjs`'s
-`look` row, run at night and by day on the cap floor (the phase forced by the browser's zone), which also holds the
-light's colours, its π sum, the absent tone curve and the pixel ratio's cap, and red under a second plant, the light
-never tinted for the phase.
+`look` row, run at night and by day on the cap floor (the phase set by the run's clock, the page held in UTC), which
+also holds the light's colours, its π sum, the absent tone curve and the pixel ratio's cap, and red under a second
+plant, the light never tinted for the phase.
 
 1. **No face clips** — a node test over `LOOK`: for every phase, every channel of `upFace(phase)` is at most 1 and
    at least 0.75. Plant: the old 2.2 and 1.7 in a copy → 1.24, red.
