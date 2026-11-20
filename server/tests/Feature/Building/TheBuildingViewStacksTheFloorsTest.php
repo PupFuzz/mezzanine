@@ -271,7 +271,7 @@ class TheBuildingViewStacksTheFloorsTest extends TestCase
     /** Ninth RED — the pose that cannot be read: the focus distance doubled. */
     public function test_red_the_pose_that_cannot_be_read(): void
     {
-        $legs = $this->modelProbe($this->buildingDir(dirname($this->mutatedModules([self::MODEL, '    return orbitCamera(target, FOCUS_POLAR, 0, far);', '    return orbitCamera(target, FOCUS_POLAR, 0, far * 2);']))))['legs'];
+        $legs = $this->modelProbe($this->buildingDir(dirname($this->mutatedModules([self::MODEL, '    return orbitCamera(target, FOCUS_POLAR, 0, distance);', '    return orbitCamera(target, FOCUS_POLAR, 0, distance * 2);']))))['legs'];
 
         $this->assertNotSame([], array_filter($legs['focus'], static fn (string $d): bool => str_contains($d, '(4)')), 'the ninth RED (the pose that cannot be read) did not bite');
     }

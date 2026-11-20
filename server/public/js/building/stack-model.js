@@ -62,7 +62,7 @@ export const LABEL_H = 20;
 /** How far inside the stage the focused face's corners must project: half the widest label across, a label's height down. */
 export const LABEL_MARGIN = Object.freeze({ x: LABEL_MAX / 2, y: LABEL_H });
 
-/** How many times the focus search may double its distance before it is a defect, never a loop (`focusPose()`). */
+/** How many times the framing search may double its distance before it is a defect, never a loop (`framingDistance()`). */
 const FOCUS_SEARCH_BOUND = 64;
 
 /** The longest texture side drawn, whatever the GPU allows above it (§ 12's *Building view texture cap*). */
@@ -246,30 +246,34 @@ function faceCorners(slab) {
 }
 
 /**
- * How far inside the stage a focused face's corners must project: `LABEL_MARGIN`, or a quarter of the stage on an axis
- * too short to hold two margins — any browser size is reachable (FLOOR § 13 row 14), and a stage under two label widths
- * across could frame no face inside the full margins at any distance.
+ * How far inside the stage a framing's corners must project: `margin` (CSS px a side, `{x, y}`), or a quarter of the
+ * stage on an axis too short to hold two margins — any browser size is reachable (FLOOR § 13 row 14), and a stage under
+ * two margins across could frame nothing inside them at any distance (`framingDistance()`).
  */
+export function stageInset(surface, margin) {
+    return { x: Math.min(margin.x, surface.width / 4), y: Math.min(margin.y, surface.height / 4) };
+}
+
+/** How far inside the stage a focused face's corners must project: `LABEL_MARGIN`, as `stageInset()` holds it. */
 export function focusInset(surface) {
-    return { x: Math.min(LABEL_MARGIN.x, surface.width / 4), y: Math.min(LABEL_MARGIN.y, surface.height / 4) };
+    return stageInset(surface, LABEL_MARGIN);
 }
 
 /**
- * Floor `i`'s focus pose (§ 3.3): in front, at `FOCUS_POLAR`, aimed at its top face's centre, at the least distance at
- * which the face's four corners project inside the stage less `focusInset()` — found by bisection, the predicate being
- * monotone in the distance.
+ * The least distance from `target`, in front at `polar` (azimuth 0), at which every one of `corners` projects inside the
+ * stage less `inset` (CSS px a side, `{x, y}`) — found by bisection, the predicate being monotone in the distance: a
+ * point's offset across the line of sight is fixed while its depth grows with the distance. The building's focus pose
+ * and the 3-D floor's entry (`floor3d/view-limits.js`) are its callers.
  *
- * @param {object} stack `stackModel()`'s
- * @param {number} i the slab's index in `stack.slabs`
+ * @param {{x: number, y: number, z: number}} target
+ * @param {number} polar the camera's angle from vertical
+ * @param {list<{x: number, y: number, z: number}>} corners world points
+ * @param {{width: number, height: number}} surface the stage
+ * @param {{x: number, y: number}} inset each under half the stage's axis, or no distance frames a point off the line of sight
  */
-export function focusPose(stack, i, surface) {
-    const slab = stack.slabs[i];
-    const { x, z, w, d } = slab.box;
-    const target = { x: x + w / 2, y: topOf(slab), z: z + d / 2 };
-    const corners = faceCorners(slab);
-    const inset = focusInset(surface);
+export function framingDistance(target, polar, corners, surface, inset) {
     const framed = (distance) => {
-        const camera = orbitCamera(target, FOCUS_POLAR, 0, distance);
+        const camera = orbitCamera(target, polar, 0, distance);
 
         return corners.every((c) => {
             const p = projectPoint(camera, surface, c);
@@ -277,13 +281,14 @@ export function focusPose(stack, i, surface) {
             return p.depth > 0 && p.x >= inset.x && p.x <= surface.width - inset.x && p.y >= inset.y && p.y <= surface.height - inset.y;
         });
     };
+    const span = (axis) => Math.max(...corners.map((c) => c[axis])) - Math.min(...corners.map((c) => c[axis]));
     let near = 0;
-    let far = Math.max(w, d);
+    let far = Math.max(span('x'), span('y'), span('z'));
 
-    // A sized stage frames the face well inside this many doublings; past them the search has no answer to find.
+    // A sized stage frames the corners well inside this many doublings; past them the search has no answer to find.
     for (let doubling = 0; !framed(far); doubling++) {
         if (doubling === FOCUS_SEARCH_BOUND) {
-            throw new Error(`no distance frames ${slab.floor}'s face on a ${surface.width} × ${surface.height} stage`);
+            throw new Error(`no distance frames the ${corners.length} corners on a ${surface.width} × ${surface.height} stage`);
         }
 
         near = far;
@@ -300,7 +305,23 @@ export function focusPose(stack, i, surface) {
         }
     }
 
-    return orbitCamera(target, FOCUS_POLAR, 0, far);
+    return far;
+}
+
+/**
+ * Floor `i`'s focus pose (§ 3.3): in front, at `FOCUS_POLAR`, aimed at its top face's centre, at the least distance at
+ * which the face's four corners project inside the stage less `focusInset()` (`framingDistance()`).
+ *
+ * @param {object} stack `stackModel()`'s
+ * @param {number} i the slab's index in `stack.slabs`
+ */
+export function focusPose(stack, i, surface) {
+    const slab = stack.slabs[i];
+    const { x, z, w, d } = slab.box;
+    const target = { x: x + w / 2, y: topOf(slab), z: z + d / 2 };
+    const distance = framingDistance(target, FOCUS_POLAR, faceCorners(slab), surface, focusInset(surface));
+
+    return orbitCamera(target, FOCUS_POLAR, 0, distance);
 }
 
 /**
