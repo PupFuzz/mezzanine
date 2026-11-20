@@ -13,8 +13,9 @@
 //                                                      pose, a close view, a view with a wall cut away, a walk in
 //                                                      from the entry to the back wall and one from a close view, the
 //                                                      cap floor, the leaves open, the cab through them, a walker, the
-//                                                      marks, a bird, the restroom door in its side wall and reduced
-//                                                      motion
+//                                                      marks, a bird, the restroom door in its side wall, reduced
+//                                                      motion, and the cap floor at night and by day, each from the
+//                                                      entry and close to a desk, at 1,400 × 1,000
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -50,6 +51,8 @@ const { PAN_STEP_PX, turnOf } = await import(pathToFileURL(join(JS, 'wire', 'cam
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);
 const CLOCK = await import(pathToFileURL(join(JS, 'floor3d', 'clip-clock.js')).href);
 const { CAB_SHADE } = await import(pathToFileURL(join(JS, 'floor', 'cab-paint.js')).href);
+const { LOOK } = await import(pathToFileURL(join(JS, 'floor3d', 'look.js')).href);
+const { skyPhase } = await import(pathToFileURL(join(JS, 'floor', 'floor-layout.js')).href);
 const CHARACTERS = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
 const REDUCE = [{ name: 'prefers-reduced-motion', value: 'reduce' }];
 /** How late the kit's files answer in the loop row's restart leg, ms — after the page has drawn and settled. */
@@ -86,7 +89,7 @@ const BUDGET = { calls: 260, triangles: 150000, textureMB: 128, glbMB: 2, walls:
 
 /**
  * § 6's fixed term derived from the room's own members (plan § 6: *each counted from the world's own members*): a plane
- * per grid, the band, the contact discs, a screen per monitor, the doorway's cab and two leaves with a band, and each
+ * per grid, the band, the ground shade, a screen per monitor, the doorway's cab and two leaves with a band, and each
  * restroom door's leaf and field.
  */
 const fixedOf = (m) => m.planes + m.band + 1 + m.screens + 3 * m.band + 2 * m.restroom;
@@ -111,6 +114,13 @@ const expectedFrame = (r, ms) => {
   return (Math.floor(r.t / ms) + CHARACTERS.loopOffset(r.key, length)) % length;
 };
 const LONG_TASK_MS = 1500;
+
+/** A fixed-offset zone whose civil hour is `hour` now — how the look row puts the windows' sky in a phase (A17 reads the
+ *  viewer's own clock). An `Etc/GMT` zone's sign is the reverse of its offset. */
+const zoneAt = (hour) => {
+  const off = ((hour - new Date().getUTCHours() + 36) % 24) - 12;
+  return off === 0 ? 'Etc/GMT' : `Etc/GMT${off > 0 ? '-' : '+'}${Math.abs(off)}`;
+};
 
 /** For a picture only: the camera's target moved to a desk (its name focused) and the eye zoomed in `notches` steps. */
 const closeUp = async (p, key, notches) => {
@@ -234,9 +244,9 @@ const capFloor = () => {
 
 // ── the page ──────────────────────────────────────────────────────────────────────────────────
 /** A browser on the row's server at `path`, drawn: the renderer built, its bodies and labels there, the kit answered. */
-async function open(chrome, c, { path = '/floor/aimla/3d', w = 1280, h = 800, kit = true } = {}) {
+async function open(chrome, c, { path = '/floor/aimla/3d', w = 1280, h = 800, kit = true, timezone = null } = {}) {
   const s = await serve(c);
-  const b = await browser(chrome, w, h, 'never', { media: c.media ?? [] });
+  const b = await browser(chrome, w, h, 'never', { media: c.media ?? [], ...(timezone === null ? {} : { timezone }) });
   const errors = [];
   const glb = new Map();
   await b.page('Runtime.enable');
@@ -672,7 +682,7 @@ const ROWS = {
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['the stop condition dropped', { plant: [P(LOOP, '        if (raf !== null || next === 0) {', '        if (true) {')] }],
-      ['the restart on a late resource dropped', { plant: [P(PAINT, "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    wake();", "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');")] }],
+      ['the restart on a late resource dropped', { plant: [P(PAINT, "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    standShade();\n                    wake();", "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    standShade();")] }],
       ['the controls\' change not wired to the loop', { plant: [P(PAINT, "    controls.addEventListener('change', wake);", '')] }],
       ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(LOOP, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            schedule();')] }],
       ['a settling frame queuing its successor past the one pending frame (two chains, doubling each tick)', { plant: [P(LOOP, '        if (raf !== null || next === 0) {\n            schedule();', '        if (raf !== null || next === 0) {\n            raf = window.requestAnimationFrame(frame);')] }],
@@ -865,7 +875,7 @@ const ROWS = {
     what: '§ 6\'s budget on the cap floor, each term against its own bound and then the total: draw calls, triangles, texture memory and the .glb transfer',
     base: { run: capFloor(), media: REDUCE },
     plants: [
-      ['the character merge dropped (an intern\'s laptop parts each a call)', { plant: [P('js/floor3d/creature-paint.js', '        groups.push(mergeGeometries(laptop, false));', '        groups.push(...laptop);'), P('js/floor3d/creature-paint.js', '        materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));')] }],
+      ['the character merge dropped (an intern\'s laptop parts each a call)', { plant: [P('js/floor3d/creature-paint.js', '        groups.push(mergeGeometries(laptop, false));', '        groups.push(...laptop);'), P('js/floor3d/creature-paint.js', '        materials.push(toon({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(toon({ map: open, vertexColors: true, transparent: true, opacity: 1 }));')] }],
       ['the furniture instancing dropped (a mesh a placement)', { plant: [P('js/floor3d/furniture.js', '        const mesh = new InstancedMesh(geometry, material, placements.length);\n\n        placements.forEach((m, i) => mesh.setMatrixAt(i, m));', '        for (const m of placements.slice(1)) { const one = new InstancedMesh(geometry, material, 1); one.setMatrixAt(0, m); group.add(one); meshes.push(one); }\n        const mesh = new InstancedMesh(geometry, material, 1);\n\n        placements.slice(0, 1).forEach((m, i) => mesh.setMatrixAt(i, m));')] }],
       ['the wall instancing dropped (a mesh a wall)', { plant: [P(ROOM, "        for (const kind of ['edge', 'partition']) {\n            const of = world.walls.filter((w) => w.kind === kind);", "        for (const kind of world.walls.map((w) => w.id)) {\n            const of = world.walls.filter((w) => w.id === kind);")] }],
       ['every part\'s facets ×4 (a lathe of 96 segments)', { plant: [P('js/floor3d/part-geometry.js', 'seat: Object.freeze({ lathe: 24, sphere: [16, 10], bead: [8, 6], tube: [2, 6], cone: 8, cylinder: 20, torus: [8, 24], curve: 4, bevel: 2 }),', 'seat: Object.freeze({ lathe: 96, sphere: [64, 40], bead: [32, 24], tube: [8, 24], cone: 32, cylinder: 80, torus: [32, 96], curve: 16, bevel: 8 }),'), P('js/floor3d/part-geometry.js', 'chibi: Object.freeze({ lathe: 12, sphere: [10, 7], bead: [6, 4], tube: [1, 4], cone: 6, cylinder: 10, torus: [5, 12], curve: 2, bevel: 1 }),', 'chibi: Object.freeze({ lathe: 48, sphere: [40, 28], bead: [24, 16], tube: [4, 16], cone: 24, cylinder: 40, torus: [20, 48], curve: 8, bevel: 4 }),')] }],
@@ -907,6 +917,52 @@ const ROWS = {
         const perDesk = (x) => (x / desks).toFixed(1);
         return { defects: d, facts: { desks, S, I, k: K, furnitureBound: FURNITURE, members: i.room.members, fixedOf: fixedOf(i.room.members), terms: t, calls: total, triangles: i.triangles, perDesk: { calls: perDesk(total), triangles: perDesk(i.triangles) }, textureMB: mb.toFixed(1), textures: i.textures.length, glbMB: glbMB.toFixed(3), glb: glb.length, memory: i.memory } };
       } finally { p.close(); }
+    },
+  },
+
+  look: {
+    what: 'the look pass on the cap floor, at night and by day: the light in the phase the windows show (LOOK\'s colours, intensities summing to π, no tone curve, the pixel ratio capped), and the ground shade over its whole population — a rect a still body, a placement standing on the floor, the wall cells\' area in runs, the band\'s foot, and a pool a floor lamp after dark only',
+    base: { run: capFloor(), media: REDUCE },
+    plants: [
+      ['the furniture\'s footprints dropped', { plant: [P('js/floor3d/furniture.js', '        footprints: () => footprints,', '        footprints: () => [],')] }],
+      ['the light never tinted for the phase', { plant: [P(PAINT, '        phase = phaseOf(sceneIn);', "        phase = 'unset';")] }],
+    ],
+    async run(chrome, c) {
+      const d = [];
+      const facts = {};
+      for (const hour of [23, 12]) {
+        const phase = skyPhase(hour);
+        const p = await open(chrome, c, { w: 1400, h: 1000, timezone: zoneAt(hour) });
+        if (p.failed) return { defects: [p.failed], facts };
+        try {
+          await sleep(4000);
+          const i = await p.settle(1500);
+          const k = i.look;
+          const want = LOOK.phases[phase];
+          const pop = k.population;
+          facts[phase] = { phase: k.phase, hemi: k.hemi, sun: k.sun, pixelRatio: k.pixelRatio, shade: k.shade, population: pop };
+          if (k.phase !== phase) d.push(`at ${hour}:00 the light is in the ${k.phase} phase, not ${phase}`);
+          if (k.hemi.sky !== want.sky || k.sun.colour !== want.sun) d.push(`${phase}: the hemisphere's sky ${k.hemi.sky} and the sun ${k.sun.colour} — not ${want.sky} and ${want.sun}`);
+          if (k.hemi.ground !== LOOK.hemi.ground || Math.abs(k.hemi.intensity + k.sun.intensity - Math.PI) > 1e-2) d.push(`${phase}: the hemisphere's ground ${k.hemi.ground} at ${k.hemi.intensity} and the sun at ${k.sun.intensity} — not ${LOOK.hemi.ground}, summing to π`);
+          if (k.toneMapping !== 0) d.push(`${phase}: tone mapping ${k.toneMapping}, not none`);
+          if (k.pixelRatio > LOOK.pixelRatio) d.push(`${phase}: the pixel ratio ${k.pixelRatio} > ${LOOK.pixelRatio}`);
+          if (pop.still === 0 || pop.standing === 0 || pop.wallArea === 0 || pop.lamps === 0) d.push(`CONTROL: ${phase}: the cap floor holds ${JSON.stringify(pop)} — a term of the shade's population was not measured`);
+          if (k.shade.body !== pop.still) d.push(`${phase}: ${k.shade.body} body shades for ${pop.still} still bodies`);
+          if (k.shade.furniture !== pop.standing) d.push(`${phase}: ${k.shade.furniture} furniture shades for ${pop.standing} placements standing on the floor`);
+          if (Math.abs(k.shade.wallArea - pop.wallArea) > 1e-6) d.push(`${phase}: the wall shades cover ${k.shade.wallArea.toFixed(4)} square units, the wall cells at the floor ${pop.wallArea.toFixed(4)}`);
+          if (k.shade.band !== pop.band) d.push(`${phase}: ${k.shade.band} band lines for ${pop.band} band`);
+          const pools = LOOK.shade.pool.phases.includes(phase) ? pop.lamps : 0;
+          if (k.shade.pool !== pools) d.push(`${phase}: ${k.shade.pool} lamp pools, not ${pools}`);
+          if (k.shade.drawn !== k.shade.body + k.shade.furniture + k.shade.wall + k.shade.band + k.shade.pool) d.push(`${phase}: the decal draws ${k.shade.drawn} instances for its ${JSON.stringify(k.shade)}`);
+          if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+          if (argOf('--out') !== null && !(c.plant ?? []).length) {
+            writeFileSync(join(argOf('--out'), `floor3d-look-${phase}.png`), await p.shot());
+            await closeUp(p, 'aimla-impl-1', 7);
+            writeFileSync(join(argOf('--out'), `floor3d-look-${phase}-close.png`), await p.shot());
+          }
+        } finally { p.close(); }
+      }
+      return { defects: d, facts };
     },
   },
 

@@ -18,7 +18,8 @@ use Tests\TestCase;
  * the 2-D page declares is declared here (the hoisted page addresses them all, which `FloorPageWiringTest` holds against
  * the 2-D page), and the 3-D stage's own ids are declared exactly where `floor3d/` addresses them, both ways; the wiring
  * — `startFloorPage(` once in each entry with its own route, the keys wired in `floor-page.js` alone, the house gesture
- * wire and the 2-D painter nowhere in `floor3d/`, and the camera controls' own key listener connected nowhere.
+ * wire and the 2-D painter nowhere in `floor3d/`, the camera controls' own key listener connected nowhere, and every toon
+ * material of the 3-D floor made by `floor3d/toon.js` on its one ramp (plan § 14.5 check 3).
  *
  * ⚠ WHAT A GREEN HERE IS NOT: a drawing. `tools/design/floor3d.browser.mjs` is the browser leg that draws the floor and
  * reads it.
@@ -110,6 +111,7 @@ class Floor3dPageWiringTest extends TestCase
             'the house gesture wire on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { cameraGestures } from '../wire/camera-gestures.js';\ncameraGestures(null);"],
             'the 2-D painter on the 3-D floor' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { createPainter } from '../floor/painter.js';\ncreatePainter({});"],
             'the controls\' own key listener connected' => ['floor3d/floor-paint.js', '    controls.enableDamping = !reduce;', "    controls.enableDamping = !reduce;\n    controls.listenToKeyEvents(window);"],
+            'a toon material made off the one ramp' => ['floor3d/furniture.js', '    const vertexColoured = toon({ vertexColors: true });', '    const vertexColoured = new MeshToonMaterial({ vertexColors: true });'],
             'the keys wired a second time, in the renderer' => ['floor3d/floor-paint.js', "import { cabTheme, paintCab } from '../floor/cab-paint.js';", "import { cabTheme, paintCab } from '../floor/cab-paint.js';\nimport { cameraKeys } from '../wire/camera-keys.js';\ncameraKeys(null);"],
         ];
 
@@ -276,6 +278,11 @@ class Floor3dPageWiringTest extends TestCase
             if (str_contains($source, 'listenToKeyEvents')) {
                 $defects[] = "{$file} connects the camera controls' own key listener — the keys have one reader, the house wire";
             }
+        }
+
+        // One ramp: a toon material is made by `toon()`, which alone constructs one (plan § 14.3 (c)).
+        if (($where = $in('new MeshToonMaterial(', 'floor3d')) !== ['floor3d/toon.js']) {
+            $defects[] = 'new MeshToonMaterial( appears in '.implode(', ', $where).' — floor3d/toon.js alone makes a toon material, on the one ramp';
         }
 
         if (! str_contains($sources['floor3d/floor-paint.js'], "from '../vendor/three/examples/jsm/controls/OrbitControls.js'")) {

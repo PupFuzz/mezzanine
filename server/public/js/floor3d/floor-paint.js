@@ -9,8 +9,9 @@
  * scene), the camera's limits and the cut-away are `floor3d/view-limits.js`'s, the keys' acts `floor3d/camera-acts.js`'s,
  * the furniture `floor3d/furniture.js`'s, the labels `floor3d/floor-labels.js`'s; the room — planes, walls, band, the
  * elevator's and the restroom's leaves, screens — is `floor3d/room-paint.js`'s, the bodies, their marks and their clock
- * `floor3d/body-paint.js`'s (over `floor3d/clip-clock.js`), the birds and the ring `floor3d/transient-paint.js`'s, and the
- * one frame queue `floor3d/frame-loop.js`'s. This file holds the camera and its controls, builds the parts, and draws a
+ * `floor3d/body-paint.js`'s (over `floor3d/clip-clock.js`), the birds and the ring `floor3d/transient-paint.js`'s, the
+ * ground shade `floor3d/ground-shade.js`'s (over `floor3d/shade-rects.js`), the light's figures `floor3d/look.js`'s, and
+ * the one frame queue `floor3d/frame-loop.js`'s. This file holds the camera and its controls, builds the parts, and draws a
  * frame: each part says when it next needs one, and the soonest is the frame's answer.
  *
  * ⛔ THE CAMERA IS `OrbitControls`, READING THE POINTER ITSELF (the operator's Q2 answer; `FLOOR.md` § 4.5): left-drag or
@@ -40,6 +41,10 @@
  *
  * ⛔ THE CLOCK (plan § 3.5) is `body-paint.js`'s and the CUT-AWAY (plan § 3.7) `room-paint.js`'s; each states its rule.
  *
+ * ⛔ THE LIGHT NEVER CLIPS AND FOLLOWS THE WINDOWS (`FLOOR.md` § 12's *Floor 3-D light* row; plan § 14): a sun and a
+ * hemisphere whose intensities sum to π, no tone curve, sRGB out; their colours are set on each paint from the phase the
+ * windows' sky shows (A17's), a cut — nothing tweens, so reduced motion has nothing to turn off.
+ *
  * ⛔ A LOST CONTEXT STOPS THE DRAWING AND SAYS SO (§ 7, `floor3d/main.js`'s statement); a restored one re-uploads every
  * texture from the canvas it is kept as.
  */
@@ -49,8 +54,10 @@ import {
     DirectionalLight,
     Group,
     HemisphereLight,
+    NoToneMapping,
     PerspectiveCamera,
     Raycaster,
+    SRGBColorSpace,
     Scene,
     Vector2,
     Vector3,
@@ -66,6 +73,9 @@ import { frameLoop } from './frame-loop.js';
 import { floorRoom } from './room-paint.js';
 import { floorBodies } from './body-paint.js';
 import { floorTransients } from './transient-paint.js';
+import { groundShade } from './ground-shade.js';
+import { LOOK, phaseOf } from './look.js';
+import { shadeRects } from './shade-rects.js';
 import { TERMS, onTerm } from './terms.js';
 import { floorWorld } from '../floor/floor-world.js';
 import { cabTheme, paintCab } from '../floor/cab-paint.js';
@@ -97,7 +107,10 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     const markScene = new Scene();
     const markRenderer = new CSS2DRenderer({ element: markLayer });
 
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, LOOK.pixelRatio));
+    // The library's defaults, stated: the light never exceeds 1 on a face, so no tone curve moves the palette.
+    renderer.toneMapping = NoToneMapping;
+    renderer.outputColorSpace = SRGBColorSpace;
     // The cab's clipping planes (`room-paint.js`'s `clipCab()`): a material's own planes, which no other material carries.
     renderer.localClippingEnabled = true;
     renderer.setClearColor(new Color(cssColour('--house-trim') || '#1f3540'));
@@ -168,12 +181,21 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
 
     scene.add(roomGroup, wallGroup, furnitureGroup, creatures, labelGroup, transientGroup);
 
-    const hemi = new HemisphereLight('#fff6e6', '#8f7a6a', 1.7);
-    const sun = new DirectionalLight('#ffffff', 2.2);
+    const hemi = new HemisphereLight(LOOK.phases.unset.sky, LOOK.hemi.ground, LOOK.hemi.intensity);
+    const sun = new DirectionalLight(LOOK.phases.unset.sun, LOOK.sun.intensity);
 
     // § 10.4 item 5's one light, from the top-left of the 2-D viewer's room.
-    sun.position.set(-4, 8, 6);
+    sun.position.set(...LOOK.sun.direction.map((c) => c * 10));
     scene.add(hemi, sun);
+
+    /** the sky phase the light was last tinted for */
+    let phase = 'unset';
+    /** The light in the phase a scene's windows show. */
+    const tint = (sceneIn) => {
+        phase = phaseOf(sceneIn);
+        hemi.color.set(LOOK.phases[phase].sky);
+        sun.color.set(LOOK.phases[phase].sun);
+    };
 
     let art = null;
     let hooks = null;
@@ -189,7 +211,6 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     const bodies = floorBodies({
         document,
         creatures,
-        room: roomGroup,
         wake: () => loop.wake(),
         art: () => art,
         failed: (ids) => hooks.failed(ids),
@@ -197,6 +218,13 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         marks: markScene,
     });
     const transients = floorTransients({ group: transientGroup });
+    const shade = groundShade({ group: roomGroup });
+    /** The ground shade under what the world, the furniture and the bodies stand, in the phase the light is in. */
+    const standShade = () => {
+        if (world !== null) {
+            shade.stand(shadeRects(world, furniture?.footprints() ?? [], bodies.still(), phase), world.planes);
+        }
+    };
 
     // The pointer's ray, through every term's layer; what it may meet first is the room's structure and the furniture.
     const raycaster = new Raycaster();
@@ -256,6 +284,10 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                 if (m?.map) {
                     m.map.needsUpdate = true;
                 }
+
+                if (m?.gradientMap) {
+                    m.gradientMap.needsUpdate = true;
+                }
             }
         });
         restored();
@@ -293,6 +325,7 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                 dressing3d: typeof own?.dressing3d === 'function' ? own.dressing3d : typeof house?.dressing3d === 'function' ? house.dressing3d : null,
                 ready: () => {
                     onTerm(furnitureGroup, 'furniture');
+                    standShade();
                     wake();
                 },
             });
@@ -455,9 +488,11 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                     paintAt = at;
                     // A theme module that failed to load (§ 9 F14) leaves no palette: the walls in the house trim, as the
                     // 2-D floor draws its walls in a flat fallback fill.
+                    tint(sceneIn);
                     room.paint(world, sceneIn, palette?.view.partition ?? (cssColour('--house-trim') || '#1f3540'), at);
                     standFurniture();
                     bodies.paint(world, at);
+                    standShade();
                     transients.paint(world, at);
                     labels.sync(world);
                     labels.riding((sceneIn.ride ?? null) !== null);
@@ -558,6 +593,23 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
                         transient: transients.inspect(),
                         requested: furniture?.requested() ?? [],
                         labels: labels.count(),
+                        look: {
+                            phase,
+                            hemi: { sky: `#${hemi.color.getHexString()}`, ground: `#${hemi.groundColor.getHexString()}`, intensity: hemi.intensity },
+                            sun: { colour: `#${sun.color.getHexString()}`, intensity: sun.intensity, position: sun.position.toArray() },
+                            toneMapping: renderer.toneMapping,
+                            pixelRatio: renderer.getPixelRatio(),
+                            shade: shade.inspect(),
+                            // the world's own counts the shade is held to: the still bodies, the placements standing on
+                            // the floor, the area of the wall cells at the floor, the band, the floor lamps
+                            population: world === null ? null : {
+                                still: bodies.still().length,
+                                standing: furniture?.standing() ?? 0,
+                                wallArea: world.walls.filter((w) => w.box.y === 0).reduce((s, w) => s + w.box.w * w.box.d, 0),
+                                band: world.band === null ? 0 : 1,
+                                lamps: world.pieces.filter((p) => p.kind === LOOK.shade.pool.kind).length,
+                            },
+                        },
                     };
                 },
             };
