@@ -13,8 +13,9 @@
  *
  * ⛔ THE MARKS OVER A BODY ARE LABELS (plan § 3.5's A6, A7, A9 rows; § 3.9): the sleeper's three z's and a state marker,
  * each lit as the 2-D pulse lights it (`data-level` 0–3, the character tree's `zLevels()` and `markerLevel()`), and a
- * walker's thought bubble (A25's food thought, A26's restroom line), positioned by the marks' own `CSS2DRenderer` over
- * the canvas — DOM, so they cost no draw call — in the marks layer, apart from the desks' reading-ordered labels.
+ * walker's thought bubble (A25's food thought, A26's restroom line, and on its walk home its return line), positioned
+ * by the marks' own `CSS2DRenderer` over the canvas — DOM, so they cost no draw call — in the marks layer, apart from the
+ * desks' reading-ordered labels.
  *
  * ⛔ AN INTERN's LAPTOP IS ITS MATERIAL's OPACITY (A24, A10): shown or not as its stool's activity says, faded over the
  * row's frames a step a frame — from the opacity the scene says it starts at — and, on a walk, faded over the walk's
@@ -30,6 +31,7 @@ import { createCreature } from './creature-paint.js';
 import { heldAt, inFlightAt, walkAt } from './clip-clock.js';
 import { onTerm } from './terms.js';
 import { walkerAt } from '../floor/floor-world.js';
+import { thoughtAt } from '../floor/scene.js';
 
 /** Where a body's marks float: this share of its height above its feet (over the head, clear of a raised hand). */
 const MARK_RISE = 1.08;
@@ -210,9 +212,9 @@ export function floorBodies({ document, creatures, wake, art, failed, now: clock
         b.mark.object.position.set(b.spec.at.x, b.spec.at.y + b.spec.h * MARK_RISE, b.spec.at.z);
     };
 
-    /** A walker's thought bubble (A25, A26: the scene's `thought` on its effect), over its head wherever it is. */
-    const thinkBody = (b, p) => {
-        const lines = b.spec.walker?.effect.thought?.lines ?? null;
+    /** A walker's thought bubble `t` ms into its walk (A25, A26: `thoughtAt()` of its effect), over its head wherever it is. */
+    const thinkBody = (b, p, t) => {
+        const lines = thoughtAt(b.spec.walker.effect, t)?.lines ?? null;
 
         if (lines === null || p === null) {
             b.thought = drop(b.thought);
@@ -323,7 +325,7 @@ export function floorBodies({ document, creatures, wake, art, failed, now: clock
             }
 
             b.mark = drop(b.mark);
-            thinkBody(b, p);
+            thinkBody(b, p, Math.min(t, span));
             b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, where: p?.where ?? null, shown: c.mesh.visible, pose, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
 
             return running ? 0 : null;

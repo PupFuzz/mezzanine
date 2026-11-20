@@ -107,6 +107,9 @@ import { keyOf } from '../wire/seat-key.js';
 /** § 9 F17: what the floors a screen still holds are labelled while the last request failed. */
 export const LAST_KNOWN_LAYOUT = 'last known layout';
 
+/** A trip's walker that carries no thought, out or home (card#13521: `scene.js`'s `tripThoughts()` shape). */
+const NO_THOUGHTS = Object.freeze({ thought: null, return_thought: null });
+
 /** The path segments each route kind puts between the floor's segment and the seat's (§ 4.4): the 3-D floor's `3d`. */
 export const ROUTE_SEGMENTS = Object.freeze({ '2d': Object.freeze([]), '3d': Object.freeze(['3d']) });
 
@@ -848,13 +851,14 @@ export class FloorScreen {
         // stops.
         const walkers = new Map((plain.snack?.walkers ?? []).map((w) => [w.key, w]));
         // card#12786 (§ 6.7 item 4): every restroom visitor, busy or idle, carries the restroom line from its walk out to its
-        // walk home — none on a recall's walk home, which is no break.
+        // walk home — none on a recall's walk home, which is no break. card#13521: each trip that carries a thought out
+        // carries its return line home beside it (`thoughts()`), the painters switching at the walk home's first frame.
         const current = this.#inFlight.current(now).map((fx) => (fx.animation_id === 'A10' && typeof fx.intern_key === 'string'
             ? Object.freeze({ ...fx, held_activity: heldOf(fx) })
             : fx.animation_id === 'A25'
-                ? Object.freeze({ ...fx, thought: fx.leg_kind === 'snack' && walkers.get(fx.walker_key)?.busy === true ? plain.snack.thought(fx.line, fx) : null })
+                ? Object.freeze({ ...fx, ...(fx.leg_kind === 'snack' && walkers.get(fx.walker_key)?.busy === true ? plain.snack.thoughts(fx) : NO_THOUGHTS) })
                 : fx.animation_id === 'A26'
-                    ? Object.freeze({ ...fx, thought: fx.leg_kind === 'restroom' ? plain.restroom.thought(fx) : null })
+                    ? Object.freeze({ ...fx, ...(fx.leg_kind === 'restroom' ? plain.restroom.thoughts(fx) : NO_THOUGHTS) })
                     : fx));
         // card#12786: each restroom door's leaf and field at this instant, in frames from `doors_at` — the painter's.
         const doorsNow = this.#inFlight.restroomDoors(now);

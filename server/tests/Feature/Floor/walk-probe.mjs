@@ -562,12 +562,14 @@ if (input.mode === 'snack') {
     const bodies = { seat: walkerSize(CHARACTER), intern: scene.INTERN_SIZE };
 
     const { SNACK_LINES } = await mod('floor/snack-lines.js');
+    const { SNACK_RETURN_LINES } = await mod('floor/return-lines.js');
 
     answer({
         gap_s: scene.SNACK_GAP_S,
         day_s: scene.SNACK_DAY_S,
         dwell_s: scene.SNACK_DWELL_S,
         lines: SNACK_LINES,
+        return_lines: SNACK_RETURN_LINES,
         tables: scene.SNACK_TABLES,
         clearance: CLEARANCE,
         bodies,
@@ -628,6 +630,7 @@ if (input.mode === 'restroom') {
         door: scene.RESTROOM_DOOR,
         plates: scene.RESTROOM_PLATES,
         line: scene.RESTROOM_LINE,
+        return_lines: (await mod('floor/return-lines.js')).RESTROOM_RETURN_LINES,
         door_motion: ELEVATOR_DOOR,
         queue_spacing: scene.queueSpacing(CHARACTER),
         clearance: CLEARANCE,
