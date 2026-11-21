@@ -1017,7 +1017,7 @@ const ROWS = {
   },
 
   clips: {
-    what: 'the clock, on the page: every moving held body shows the loop frame its time since the paint and its key\'s offset name, its time SET from the latest paint even across a long task; two seats in one state at one instant differ in phase; a walker steps its walk at the frame its time names',
+    what: 'the clock, on the page: every moving held body shows the loop frame its time since the paint and its key\'s offset name, its time SET from the latest paint even across a long task; two seats in one state at one instant differ in phase; a walker steps its walk at the frame its time names on a walk leg and stands on any other',
     base: { run: capFloor(), media: [] },
     plants: [
       ['the clock advanced by a capped delta a frame, not set', { plant: [P(BODIES, '        const since = now - paintedAt;\n', '        const since = (b.kept = Math.min(now - paintedAt, (b.kept ?? 0) + 50));\n')] }],
@@ -1077,12 +1077,13 @@ const ROWS = {
             const i = await p.inspect();
             const r = i.clock.find((x) => x.key === w.key);
             const at = i.faces.find((x) => x.key === w.key);
-            const want = CHARACTERS.CLIPS.walk[Math.floor(r.t / ms) % CHARACTERS.CLIPS.walk.length];
-            if (r.frame !== null && (r.frame !== Math.floor(r.t / ms) || r.pose !== want)) d.push(`the walker ${r.key} at ${r.t.toFixed(0)} ms is on frame ${r.frame} showing ${r.pose}, not ${Math.floor(r.t / ms)} showing ${want}`);
+            // stepping on a walk leg, its standing frame on any other (a stand, a cab, an `inside` wait)
+            const want = CHARACTERS.CLIPS.walk[r.leg === 'walk' ? Math.floor(r.t / ms) % CHARACTERS.CLIPS.walk.length : 0];
+            if (r.frame !== null && (r.frame !== Math.floor(r.t / ms) || r.pose !== want)) d.push(`the walker ${r.key} at ${r.t.toFixed(0)} ms is on frame ${r.frame} showing ${r.pose} on its ${r.leg} leg, not ${Math.floor(r.t / ms)} showing ${want}`);
             await sleep(300);
             const at2 = (await p.inspect()).faces.find((x) => x.key === w.key);
             if (at !== undefined && at2 !== undefined && at.x === at2.x && at.y === at2.y) d.push(`the walker ${r.key} stood still between two frames with motion on`);
-            f.walker = [r.key, r.frame, r.pose];
+            f.walker = [r.key, r.frame, r.leg, r.pose];
           }
         } finally { p.close(); }
       }

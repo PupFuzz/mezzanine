@@ -23,6 +23,8 @@
  * marker (A15, over `REPLAY_LOOP`). A row it does not name (A8's head in hands) is its pose, still.
  */
 
+import { pointAt } from '../floor/route.js';
+
 /** The eyes' blink, in loop frames: shut on the last of every this many (§ 6.2 A3/A4's *blink*; the seat's choice). */
 export const BLINK_LOOP = 8;
 
@@ -127,11 +129,16 @@ export function inFlightAt(fx, span, since) {
 }
 
 /**
- * A walker's pose at `t` ms into its walk: the walk clip stepping at its frame rate while it runs, and its standing frame
- * (the clip's first) once it has ended — never a pose between two.
+ * A walker's pose at `t` ms into its walk, and the kind of the leg it is on (`null` once the walk has ended or without
+ * its motion): the walk clip stepping at its frame rate only inside a `walk` leg, and its standing frame (the clip's
+ * first) on every other leg — a `stand` at a table, a door or a call button, a `cab` ride or step, an `inside` wait, an
+ * intern's `seat` — and once it has ended. The leg is `route.js`'s `pointAt()`'s, the one that places the walker: a
+ * walk's legs run end to end from frame 0, so it is the leg whose frames hold `t`, as the 2-D painter's stride window
+ * (`strides()`) is a walk leg's frames.
  */
 export function walkAt(characters, fx, t, running) {
     const walk = characters.CLIPS.walk;
+    const leg = running ? fx.legs[pointAt(fx, t).leg].kind : null;
 
-    return walk[running ? Math.floor(t / fx.frame_interval_ms) % walk.length : 0];
+    return { pose: walk[leg === 'walk' ? Math.floor(t / fx.frame_interval_ms) % walk.length : 0], leg };
 }

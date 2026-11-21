@@ -490,7 +490,7 @@ on a late resource and the frame count (§ 8 item 5). Built in slice 4 with the 
 
 | Row | Class | 3-D counterpart | Changed in the set? |
 |---|---|---|---|
-| A1 arrive, A2 depart (and the walk note's 6a turn-back, AT-D3-36) | edge | the `walk` clip stepping through the route's legs at `pointAt()`, heading per leg; the leaves two sliding boxes at `leafLevel()`; the call plate a pressed box; the cab interior behind the doorway as a dark box (the cab's own drawing stays the modal's); `turnRound()`'s legs are legs | no |
+| A1 arrive, A2 depart (and the walk note's 6a turn-back, AT-D3-36) | edge | the `walk` clip stepping through the route's `walk` legs at `pointAt()`, standing on every other leg, heading per leg; the leaves two sliding boxes at `leafLevel()`; the call plate a pressed box; the cab interior behind the doorway as a dark box (the cab's own drawing stays the modal's); `turnRound()`'s legs are legs | no |
 | A3 work | held | `work` (`type-a`/`type-b`); blink = the face texture's two frames (open, closed) at the loop's cadence — `faceDocument()` takes `blink` | no |
 | A4 think | held | `think` (`lean-back`), the same blink | no |
 | A5 tool-swap | edge | the screen texture cross-fades over 250 ms — two textures, opacity | no |

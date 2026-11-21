@@ -282,9 +282,10 @@ export function floorBodies({ document, creatures, wake, art, failed, now: clock
     };
 
     /**
-     * One body at `now` (plan § 3.5's clock): a walker at its route's point, turned along its leg and stepping its walk; a
-     * seated body at its place in its held form `since` the paint. Answers when it next needs a frame: `0` every display
-     * frame (a walker in flight), a delay in ms (a held loop's or a laptop fade's next step), or `null` (still).
+     * One body at `now` (plan § 3.5's clock): a walker at its route's point, turned along its leg, stepping its walk on a
+     * walk leg and standing on every other; a seated body at its place in its held form `since` the paint. Answers when
+     * it next needs a frame: `0` every display frame (a walker in flight), a delay in ms (a held loop's or a laptop
+     * fade's next step), or `null` (still).
      */
     const place = (b, now) => {
         const c = b.creature;
@@ -302,7 +303,7 @@ export function floorBodies({ document, creatures, wake, art, failed, now: clock
             const { t, running } = inFlightAt(fx, span, since);
             const p = walkerAt(world.slab, s.walker, Math.min(t, span));
             const q = walkerAt(world.slab, s.walker, Math.max(0, Math.min(t, span) - 60));
-            const pose = walkAt(characters, fx, t, running);
+            const { pose, leg } = walkAt(characters, fx, t, running);
 
             c.mesh.visible = p !== null && p.shown;
 
@@ -326,7 +327,7 @@ export function floorBodies({ document, creatures, wake, art, failed, now: clock
 
             b.mark = drop(b.mark);
             thinkBody(b, p, Math.min(t, span));
-            b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, where: p?.where ?? null, shown: c.mesh.visible, pose, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
+            b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, where: p?.where ?? null, shown: c.mesh.visible, pose, leg, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
 
             return running ? 0 : null;
         }
