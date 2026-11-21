@@ -102,6 +102,8 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
     const camera = new PerspectiveCamera(45, 1, 0.05, 1000);
     const controls = new OrbitControls(camera);
     const labelRenderer = new CSS2DRenderer({ element: labelLayer });
+    /** the camera's right, re-read each frame for the labels that stand beside their sitters */
+    const right = new Vector3();
     // The marks over the bodies — z's, markers, a walker's thought — in a layer and a scene of their own, apart from the
     // desks' labels, whose layer is in reading order (`floor-labels.js`).
     const markScene = new Scene();
@@ -260,6 +262,8 @@ export function worldRenderer(document, window, { reduce, lost, restored }) {
         const waits = [bodies.place(now), room.place(now), transients.place(now)].filter((n) => n !== null);
 
         renderer.render(scene, camera);
+        // the camera's right, its matrix's first column — the render above brought the matrix up to this frame's pose
+        labels?.place(right.setFromMatrixColumn(camera.matrixWorld, 0));
         labelRenderer.render(scene, camera);
         markRenderer.render(markScene, camera);
         labels?.cull();

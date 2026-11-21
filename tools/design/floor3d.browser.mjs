@@ -14,8 +14,10 @@
 //                                                      from the entry to the back wall and one from a close view, the
 //                                                      cap floor, the leaves open, the cab through them, a walker, the
 //                                                      marks, a bird, the restroom door in its side wall, reduced
-//                                                      motion, and the cap floor at night and by day, each from the
-//                                                      entry and close to a desk, at 1,400 × 1,000
+//                                                      motion, the cap floor at night and by day, each from the
+//                                                      entry and close to a desk, at 1,400 × 1,000, and a desk's
+//                                                      status beside its sitter from in front of the desk and from
+//                                                      behind it
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -348,6 +350,22 @@ const orderDefects = (labels, desks) => {
 
 // ── the plants: each one textual edit of a served file ───────────────────────────────────────
 const P = (file, from, to) => ({ file, from, to });
+/** WCAG AA's contrast floor for the labels' 12 px text. */
+const AA = 4.5;
+/** The most of a status's or a bubble's plaque that may be its own colour: a quarter of the scene, at least, shows through
+ *  (`FLOOR.md` § 12's *3-D thought plaques* row). */
+const PLAQUE_MOST = 0.75;
+/** A computed CSS colour — `rgb()`, `rgba()` or `color(srgb …)` — as `[r, g, b, alpha]`, each 0 to 1. */
+const rgba = (css) => {
+  const n = css.match(/[\d.]+/g).map(Number);
+  return css.startsWith('color(') ? [n[0], n[1], n[2], n[3] ?? 1] : [n[0] / 255, n[1] / 255, n[2] / 255, n[3] ?? 1];
+};
+/** WCAG 2's contrast ratio of two sRGB colours, each `[r, g, b]` 0 to 1. */
+const contrast = (a, b) => {
+  const lum = (c) => c.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((t, v, k) => t + v * [0.2126, 0.7152, 0.0722][k], 0);
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+};
 const PAINT = 'js/floor3d/floor-paint.js';
 const CLIP = 'js/floor3d/clip-clock.js';
 const TRANSIENT = 'js/floor3d/transient-paint.js';
@@ -788,11 +806,16 @@ const ROWS = {
   },
 
   labels: {
-    what: 'the labels: the status reads the same from in front of its desk and from behind it; a Tab onto a desk\'s name moves the target to that desk; every desk is a row of the list view while a label behind the eye is not drawn',
+    what: 'the labels: the status reads the same from in front of its desk and from behind it, and from both it and the bubble start to the right of its sitter\'s face, the bubble over the status and clear of it; every status and bubble a plaque at most three quarters its own colour, its ink at WCAG AA on it over white and over black; a Tab onto a desk\'s name moves the target to that desk; every desk is a row of the list view while a label behind the eye is not drawn',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['the status drawn on the monitor only, with no label', { plant: [P('js/floor3d/floor-labels.js', '            const wanted = [...world.labels]', "            const wanted = [...world.labels].filter((l) => l.kind !== 'status')")] }],
       ['a focused name leaving the target where it was', { plant: [P('js/floor3d/floor-labels.js', '                focused({ x: (slab.left + slab.right) / 2, z: (slab.back + slab.front) / 2 }, seat);', '')] }],
+      ['every label centred on its point, the status over its sitter\'s face', { plant: [P('js/floor3d/floor-labels.js', '        object.center.set(label.anchor.pin.x, label.anchor.pin.y);', '')] }],
+      ['the bubble hanging from the status\'s point, over the status', { plant: [P('js/floor/floor-world.js', "anchor: beside(PIN.stand), model", "anchor: beside(PIN.hang), model")] }],
+      ['the status moved along the floor\'s x, not the camera\'s right (on the viewer\'s left from behind)', { plant: [P('js/floor/floor-world.js', 'return { x: p.x + right.x * reach, y: p.y + anchor.height / UNIT, z: p.z + right.z * reach };', 'return { x: p.x + reach, y: p.y + anchor.height / UNIT, z: p.z };')] }],
+      ['the status\'s plaque opaque', { plant: [P('css/mezzanine.css', '        background: color-mix(in srgb, var(--scene-monitor) 75%, transparent);', '        background: var(--scene-monitor);')] }],
+      ['the status in the screen\'s teal on its translucent plaque', { plant: [P('css/mezzanine.css', '    background: var(--scene-monitor);\n    color: var(--ink);', '    background: var(--scene-monitor);\n    color: var(--scene-monitor-on);')] }],
     ],
     async run(chrome, c) {
       const p = await open(chrome, c);
@@ -814,15 +837,46 @@ const ROWS = {
         f.focused = focused;
         if (desk === undefined) d.push(`a Tab from the stage focused ${focused}, not a desk's name`);
         else if (Math.abs(i.target[0] - (desk.left + desk.right) / 2) > 1e-3 || Math.abs(i.target[2] - (desk.back + desk.front) / 2) > 1e-3) d.push(`focusing ${focused}'s name left the target at ${i.target.map((v) => v.toFixed(2))}, not on its desk`);
-        // the status from the front and from behind
-        const status = async () => p.ev(`(() => { const e = document.querySelector('.floor3d-status[data-key="${focused}"]'); return e === null ? null : { text: e.textContent, w: Math.round(e.getBoundingClientRect().width), shown: e.style.display !== 'none' }; })()`);
+        // the status from the front and from behind: the same text; it and the bubble each on the viewer's right of the
+        // sitter's face from both, the bubble over the status and clear of it
+        const box = (kind) => `(() => { const e = document.querySelector('.floor3d-${kind}[data-key="${focused}"]'); if (e === null) return null; const r = e.getBoundingClientRect(), o = document.getElementById('floor3d-labels').getBoundingClientRect(); return { text: e.textContent, w: Math.round(r.width), shown: e.style.display !== 'none', left: r.left - o.left, top: r.top - o.top, bottom: r.bottom - o.top }; })()`;
+        const status = async () => {
+          const face = (await p.inspect()).faces.find((x) => x.key === focused) ?? null;
+          const e = await p.ev(box('status'));
+          return e === null ? null : { ...e, face, bubble: await p.ev(box('bubble')) };
+        };
+        const besideFace = (s, side) => {
+          if (s.face === null) { d.push(`CONTROL: ${focused}'s sitter has no face drawn ${side} — its status's place was not read`); return; }
+          if (!(s.left > s.face.x)) d.push(`${side}, ${focused}'s status starts at x ${s.left.toFixed(0)}, not to the right of its sitter's face at x ${s.face.x.toFixed(0)}`);
+          if (s.bubble === null) d.push(`CONTROL: ${focused} has no bubble ${side} — its place was not read`);
+          else if (!(s.bubble.left > s.face.x)) d.push(`${side}, ${focused}'s bubble starts at x ${s.bubble.left.toFixed(0)}, not to the right of its sitter's face at x ${s.face.x.toFixed(0)}`);
+          else if (!(s.bubble.bottom <= s.top)) d.push(`${side}, ${focused}'s bubble reaches down to y ${s.bubble.bottom.toFixed(1)}, over its status, whose top is at y ${s.top.toFixed(1)}`);
+        };
+        const out = argOf('--out') !== null && !(c.plant ?? []).length ? argOf('--out') : null;
         const front = await status();
+        if (out !== null) writeFileSync(join(out, 'floor3d-labels-front.png'), await p.shot());
         for (let k = 0; k < 400 && Math.abs(Math.abs(i.azimuth) - Math.PI) > 0.05; k++) { await p.key('ArrowLeft', 'ArrowLeft'); if (k % 4 === 3) i = await p.inspect(); }
         await sleep(400);
         const behind = await status();
-        f.status = [front, behind];
+        if (out !== null) writeFileSync(join(out, 'floor3d-labels-behind.png'), await p.shot());
+        f.status = [front, behind].map((s) => s && { text: s.text, w: s.w, left: Math.round(s.left), top: Math.round(s.top), face: s.face && Math.round(s.face.x), bubble: s.bubble && [Math.round(s.bubble.left), Math.round(s.bubble.bottom)] });
         if (front === null || behind === null) d.push(`${focused} has no status label`);
-        else if (front.text !== behind.text || front.w !== behind.w || !front.shown || !behind.shown) d.push(`the status read ${JSON.stringify(front)} in front and ${JSON.stringify(behind)} behind`);
+        else {
+          if (front.text !== behind.text || front.w !== behind.w || !front.shown || !behind.shown) d.push(`the status read ${JSON.stringify(f.status[0])} in front and ${JSON.stringify(f.status[1])} behind`);
+          besideFace(front, 'in front');
+          besideFace(behind, 'from behind');
+        }
+        // every status and bubble a plaque the scene shows through, its ink at WCAG AA on it laid over white and over black —
+        // the colours as the browser computed them, `color-mix()` resolved
+        const plaques = await p.ev(`[...document.querySelectorAll('#floor3d-labels .floor3d-status, #floor3d-labels .floor3d-bubble')].map((e) => { const s = getComputedStyle(e); return [e.dataset.key + '/' + e.dataset.kind, s.color, s.backgroundColor]; })`);
+        f.plaques = plaques.length;
+        if (!plaques.some(([id]) => id.endsWith('/bubble'))) d.push('CONTROL: no bubble on the floor — the bubble\'s plaque was not read');
+        for (const [id, ink, ground] of plaques) {
+          const [fg, bg] = [rgba(ink), rgba(ground)];
+          const worst = Math.min(...[[0, 0, 0], [1, 1, 1]].map((under) => contrast(fg.slice(0, 3), bg.slice(0, 3).map((v, k) => v * bg[3] + under[k] * (1 - bg[3])))));
+          if (!(bg[3] <= PLAQUE_MOST)) d.push(`${id}'s plaque is ${ground}, more than ${PLAQUE_MOST} of its own colour`);
+          if (!(worst >= AA)) d.push(`${id}'s ink ${ink} reads at ${worst.toFixed(2)}:1 on its plaque ${ground} over white or black, under AA's ${AA}:1`);
+        }
         // a label behind the eye: the target on the front desk, the eye turned to the band's side of it, brought in close
         // and down to the floor's level — looking at the front edge, the back row is behind it
         const frontDesk = readingOrder(i.desks).at(-1);

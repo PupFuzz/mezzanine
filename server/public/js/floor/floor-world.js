@@ -20,7 +20,8 @@
  * ⛔ DEPTH AGAINST HEIGHT (plan § 3.1's split, `anchor3d()`): the scene is a plan whose `y` is depth, except for what the
  * 2-D layout draws ABOVE a thing's foot — a bubble, a nameplate, the facts — whose offset above the foot is a HEIGHT. A
  * desk's element stands at the desk's own depth (`depth_y`, its furniture foot line) and at the height its centre is
- * drawn above the desk's foot: its sitter's feet, or the desk's foot line with nobody in it.
+ * drawn above the desk's foot: its sitter's feet, or the desk's foot line with nobody in it. The status and the bubble
+ * stand by the sitter instead, at its depth and beside it, the bubble over the status (`anchorPoint()`, `PIN`).
  *
  * ⛔ IT ADDS NO FACT AND READS NO FIELD THE SCENE DOES NOT CARRY (the scene's header's rule): every string on a label is
  * the scene's element's own, every wall the scene's `walls` (`floor/floor-walls.js`, the door view's classification),
@@ -214,22 +215,41 @@ function footOf(desk) {
 }
 
 /**
+ * Which point of a label's own box stands on its anchor's point, as fractions of the box's width and height from its
+ * top-left (`CSS2DObject`'s `center`): a label over its element is centred there; beside a sitter the status hangs from
+ * the point and the bubble stands on it, both reaching right, so the two meet at one line and neither covers the other
+ * at any zoom — a label's size is screen px, which no gap in the world would hold.
+ */
+export const PIN = Object.freeze({
+    centre: Object.freeze({ x: 0.5, y: 0.5 }),
+    hang: Object.freeze({ x: 0, y: 0 }),
+    stand: Object.freeze({ x: 0, y: 1 }),
+});
+
+/**
  * Where one of a desk's drawn elements stands (plan § 3.1's split): its centre's `x`, the desk's depth, and the height
- * its centre is drawn above the desk's foot — 0 for one drawn at or below the foot. Scene px throughout.
+ * its centre is drawn above the desk's foot — 0 for one drawn at or below the foot. Scene px throughout. Its label is
+ * centred on that point (`beside` null: the status and the bubble stand beside their sitter instead).
  *
  * @param {{x: number, y: number, w: number, h: number}} el
  * @param {object} desk the scene's desk
- * @returns {{x: number, depth: number, height: number}}
+ * @returns {{x: number, depth: number, height: number, beside: null, pin: {x: number, y: number}}}
  */
 export function anchor3d(el, desk) {
-    return Object.freeze({ x: el.x + el.w / 2, depth: desk.depth_y, height: Math.max(0, footOf(desk) - (el.y + el.h / 2)) });
+    return Object.freeze({ x: el.x + el.w / 2, depth: desk.depth_y, height: Math.max(0, footOf(desk) - (el.y + el.h / 2)), beside: null, pin: PIN.centre });
 }
 
-/** A label's anchor as a world point on `slab`. */
-export function anchorPoint(slab, anchor) {
+/**
+ * A label's anchor as a world point on `slab`, seen by a camera whose right is `right` (a horizontal unit vector, `{x, z}`:
+ * the camera's own `x` axis, which `OrbitControls` keeps level). A centred anchor (`beside` null) is its point from every
+ * side; an anchor `beside` its sitter is moved `beside` scene px along `right`, so its label — its left edge on the point
+ * (`PIN`) — begins that far to the viewer's right of the sitter's centre line from every side the camera orbits to.
+ */
+export function anchorPoint(slab, anchor, right) {
     const p = worldOf(slab, { x: anchor.x, y: anchor.depth });
+    const reach = (anchor.beside ?? 0) / UNIT;
 
-    return { ...p, y: p.y + anchor.height / UNIT };
+    return { x: p.x + right.x * reach, y: p.y + anchor.height / UNIT, z: p.z + right.z * reach };
 }
 
 /**
@@ -435,6 +455,18 @@ export function floorWorld(scene) {
 
         // The desk's labels in their one order — name, status, chip, facts, bubble (plan § 3.9).
         const label = (kind, el, fields) => labels.push(Object.freeze({ key: d.key, kind, anchor: anchor3d(el, d), ...fields }));
+        // The sitter's own words — what its screen shows and its bubble — stand beside it, on the viewer's right, clear of
+        // the body (the operator's ruling of 2026-11-19: they stood in front of the sitter, covering it): at the sitter's
+        // depth and centre line, a line above the monitor's top, reaching the character's half-width — the frame the 3-D
+        // body is drawn inside — the status hanging from that point and the bubble standing on it (`PIN`). At a
+        // placeholder's desk, where no body is drawn, they start on the seat's line.
+        const beside = (pin) => Object.freeze({
+            x: d.anchor_x,
+            depth: sitterZ,
+            height: MONITOR_TOP / SCALE + LINE,
+            beside: character === undefined ? 0 : character.w / 2,
+            pin,
+        });
         const [name] = of('nameplate');
         const [chip] = of('chip');
         const facts = d.elements.filter((e) => FACT_KINDS.includes(e.kind) && typeof e.text === 'string');
@@ -444,11 +476,11 @@ export function floorWorld(scene) {
         }
 
         if (monitor !== undefined) {
-            // The screen's strings (the operator's Q4 answer): what the monitor shows, floated over the monitor's top.
+            // The screen's strings (the operator's Q4 answer): what the monitor shows.
             labels.push(Object.freeze({
                 key: d.key,
                 kind: 'status',
-                anchor: Object.freeze({ x: monitorAt.x + monitorAt.w / 2, depth: d.depth_y, height: MONITOR_TOP / SCALE + LINE }),
+                anchor: beside(PIN.hang),
                 lit: monitor.lit,
                 text: monitor.lit === 'off' ? null : screenText?.text ?? null,
             }));
@@ -465,7 +497,7 @@ export function floorWorld(scene) {
         }
 
         if (d.bubble !== null) {
-            label('bubble', d.bubble, { model: d.bubble });
+            labels.push(Object.freeze({ key: d.key, kind: 'bubble', anchor: beside(PIN.stand), model: d.bubble }));
         }
     }
 
