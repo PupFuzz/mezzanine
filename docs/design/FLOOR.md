@@ -12918,13 +12918,16 @@ the world half's own test.*
   for its next frame at the next step; a key whose offset is not 0 is not on frame 0 at the paint; two keys whose offsets
   differ are on different frames at one instant; a loop is on the same frame a whole loop later; a held rendering whose
   `motion` is false — reduced motion, or not permitted — is its still at every instant and asks for no step, the still
-  lighting every z and the marker at full brightness; a walk steps its clip while it runs and stands once it has ended,
-  and one drawn without its motion never runs. The browser leg's `clips` row
+  lighting every z and the marker at full brightness; a walker steps its walk clip only on a `walk` leg and stands on
+  every other — a `stand` at a snack table, a door or a call button, a `cab` ride, an `inside` wait, an intern's
+  `seat` — as the 2-D floor strides only through its walk legs; it stands once its walk has ended, and one drawn without
+  its motion never runs. The browser leg's `clips` row
   (`tools/design/floor3d.browser.mjs`) reads the same on a page: each moving body's time is the time since the latest
   paint, across a long task, and its loop frame the one this arithmetic names.
 - **The clock's REDs, each seen red:** the offset dropped (the offset leg); the loop keyed on the row rather
   than on its rendering's `motion` (the still leg); the clock keeping its own time, a step a call (the pose leg); the
-  blink a frame late (the pose leg); a walk without its motion read as running (the walk leg).
+  blink a frame late (the pose leg); a walk without its motion read as running (the walk leg); the walk clip stepped on
+  every leg while the trip runs (the walk leg).
 
 ## 12. Every number, and where it comes from
 

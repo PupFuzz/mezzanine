@@ -11,8 +11,10 @@ use Tests\TestCase;
  * `docs/design/FLOOR.md` § 6.3's timer bullet: the 3-D floor's clock (`floor3d/clip-clock.js`) names, for every held row
  * the 3-D floor steps, the loop frame the arithmetic names at an instant — `⌊T ÷ frame_interval_ms⌋` plus the key's own
  * loop offset — with its clip's pose, its blink and its marks' pulse; two keys in one state step apart; a held rendering
- * without motion is its still at every instant and asks for no step; a walk steps while it runs and stands once it has
- * ended. `clip-clock-probe.mjs` drives it over the shipped character tree and the animation set's own renderings.
+ * without motion is its still at every instant and asks for no step; a walker steps its walk clip only on a `walk`
+ * leg, and stands on every other leg (a `stand` at a table, a door or a call button, a cab, an `inside` wait, a
+ * `seat`), after its walk has ended, and on every leg under reduced motion. `clip-clock-probe.mjs` drives it over the
+ * shipped character tree and the animation set's own renderings.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: a drawing. That the renderer SETS what this answers on every frame from the paint's
  * instant — and that a long task between frames moves nothing — is the browser leg's `clips` row
@@ -60,6 +62,9 @@ class TheThreeDFloorsClockIsSetNotAccumulatedTest extends TestCase
                 '    const frame = (Math.floor((globalThis.kept = Math.min(since, (globalThis.kept ?? 0) + ms)) / ms) + characters.loopOffset(key, length)) % length;', 'pose'],
             'the blink a frame late' => [$clock, '        blink: form?.blink === true && !still && f % BLINK_LOOP === BLINK_LOOP - 1,',
                 '        blink: form?.blink === true && !still && f % BLINK_LOOP === 0,', 'pose'],
+            'the walk clip stepped on every leg while the trip runs' => [$clock,
+                "    return { pose: walk[leg === 'walk' ? Math.floor(t / fx.frame_interval_ms) % walk.length : 0], leg };",
+                '    return { pose: walk[running ? Math.floor(t / fx.frame_interval_ms) % walk.length : 0], leg };', 'walk'],
             'a walk drawn without its motion read as running' => [$clock, '    return { t, running: fx.frames > 0 && t < span };', '    return { t, running: t < span };', 'walk'],
         ];
     }
