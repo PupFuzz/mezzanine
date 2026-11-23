@@ -21,6 +21,9 @@
 #   (2) a body comment that cited another team's private coordination repository by issue and
 #       comment id names only the card, so this public repository carries no reference to it
 #       (card#12292; fragment: `# card#11434 (backend) within card#11604:`).
+#   (3) the caller arm also accepts the caller's recorded `bump_prs: 'off'`, with no secret handed
+#       over, beside upstream's unchanged 'on' arm; upstream accepts only 'on' (framework
+#       card#13796). Remove when card#13796 ships (fragment: `# MEZZANINE local edit (3)`).
 #   The two workflow paths in upstream's own header below are re-pointed too; that is header
 #   text and is not pinned. ShellCheck's findings on this file are recorded in
 #   bin/shell-lint.baseline.tsv rather than annotated in the body, so the body stays upstream's.
@@ -1951,6 +1954,21 @@ grep -Eq '^        uses: actions/create-github-app-token@[0-9a-f]{40}  # v' <<< 
    && [ "$(grep -c '^ *persist-credentials: false' <<< "$BUMP_JOB")" = "$(grep -c 'uses: actions/checkout@' <<< "$BUMP_JOB")" ] \
   && ok "bump job: no personal-token path — no ADVISORY_BUMP_TOKEN in callee or caller, the callee declares only the two app secrets, the bump job reads no other secret and each of those twice (the check and token steps as shipped), the two ADVISORY_BUMP_APP_TOKEN reads are the token step's output, the token action is SHA-pinned, no step names the workflow token, and every checkout sets persist-credentials: false (checkout itself still fetches with its default token)" \
   || fail "the bump job must carry no personal-token path: ADVISORY_BUMP_TOKEN present (callee/caller: $(has "$CALLEE_TEXT" ADVISORY_BUMP_TOKEN && echo yes || echo no)/$(has "$CALLER_TEXT" ADVISORY_BUMP_TOKEN && echo yes || echo no)), declared secrets '$declared', bump-job secret reads '$bump_secret_reads', app-token reads '$token_reads', token action SHA-pinned '$pin_ok'; and no workflow-token step, persist-credentials: false on every checkout"
+# MEZZANINE local edit (3) — remove when card#13796 ships. Upstream's caller arm accepts only
+# `bump_prs: 'on'`, so the callee's own recorded switch `'off'` cannot be adopted. A caller that
+# sets `'off'` on a `bump_prs:` line of its own, and on no other such line, passes the same leg and
+# no-inherit checks and hands over no secret at all; every other caller takes upstream's 'on' arm
+# below, unchanged, which reds on a missing or misspelled value.
+if [ "$(grep -c "^ *bump_prs: " "$CALLER")" = "1" ] && [ "$(grep -c "^ *bump_prs: 'off'$" "$CALLER")" = "1" ]; then
+  if has "$CALLER_TEXT" "leg: \${{ matrix.leg }}" \
+     && [ "$(grep -c 'secrets\.' "$CALLER")" = "0" ] \
+     && [ "$(grep -c '^ *leg: release$' "$CALLER")" = "1" ] && [ "$(grep -c '^ *leg: integration$' "$CALLER")" = "1" ] \
+     && ! has "$CALLER_TEXT" 'secrets: inherit'; then
+    ok "caller: names one release leg and one integration leg, passes leg + bump_prs 'off' (the recorded switch), and hands over no secret"
+  else
+    fail "a caller with bump_prs 'off' must name each leg, pass leg, and pass no secret (never inherit)"
+  fi
+else
 has "$CALLER_TEXT" 'leg: ${{ matrix.leg }}' && has "$CALLER_TEXT" "bump_prs: 'on'" \
    && has "$CALLER_TEXT" 'ADVISORY_BUMP_APP_CLIENT_ID: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID }}' \
    && has "$CALLER_TEXT" 'ADVISORY_BUMP_APP_PRIVATE_KEY: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY }}' \
@@ -1959,6 +1977,7 @@ has "$CALLER_TEXT" 'leg: ${{ matrix.leg }}' && has "$CALLER_TEXT" "bump_prs: 'on
    && ! has "$CALLER_TEXT" 'secrets: inherit' \
   && ok "caller: names one release leg and one integration leg, passes leg + bump_prs 'on', and hands over the two app secrets by name and nothing else" \
   || fail "the caller must name each leg, pass leg and bump_prs, and pass ADVISORY_BUMP_APP_CLIENT_ID and ADVISORY_BUMP_APP_PRIVATE_KEY by name, and no other secret (never inherit)"
+fi
 
 # ══ §R THE REPORTING JOB — a green over nothing must be unreachable from the caller ══════
 run_report() {  # $1=needs.audit.result  $2=population

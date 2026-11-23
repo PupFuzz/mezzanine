@@ -15,15 +15,12 @@
 # byte when vendored (checked by diff against the commit above); the body pin holds it there.
 #   (1) the `uses:` slug names this repo
 #       (fragment: `uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev`).
-#
-# ⚠ BUMP PRs ARE ON, AS UPSTREAM SHIPS THEM, AND THEY DO NOT WORK YET (card#13794). Until the bump
-# GitHub App exists here with its two secrets set, the callee's bump job reds on every integration
-# leg run, naming the missing secrets — upstream's deliberate setup-missing state, and the reason
-# this workflow's report job reds too. What else turning them on needs: the bump tool at the
-# callee's BUMP_TOOL path (not vendored here yet), a PHP toolchain at the composer.json floor in
-# the bump job, and a ruling on the bump PRs' `## Summary` / `## Scope` / `## Test plan` body,
-# which this repository's no-title `pr-body-lint` run reds. `bin/dependency-audit.selftest.sh`
-# asserts `bump_prs: 'on'` in this file, so `'off'` is not available without a selftest edit.
+#   (2) bump PRs are switched OFF by operator decision (2026-11-23, card#13794): `bump_prs` is
+#       `'off'`, upstream's recorded switch, and the `secrets:` block that handed the callee the
+#       bump app's two secrets is removed, since nothing reads them while bumps are off
+#       (fragment: `bump_prs: 'off'`). The scheduled audit still runs both legs; on each, the
+#       callee's bump job prints `BUMP PRS: OFF` and passes. `bin/dependency-audit.selftest.sh`
+#       accepts this through its own declared edit (3), which goes when framework card#13796 ships.
 #
 # TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `.github/workflows/dependency-audit.yml`,
 # `.github/workflows/dependency-ref-matrix.yml` and `bin/dependency-audit-fixtures/` move TOGETHER,
@@ -108,11 +105,7 @@ jobs:
       # Turning them off is this line, set to 'off' — an explicit switch recorded in this file's
       # history, and a different state from a missing bump-app secret, which FAILS the bump job,
       # naming it, on every integration-leg run.
-      bump_prs: 'on'
-    # Named, not `inherit`: the callee gets the bump app's two secrets and no other.
-    secrets:
-      ADVISORY_BUMP_APP_CLIENT_ID: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID }}
-      ADVISORY_BUMP_APP_PRIVATE_KEY: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY }}
+      bump_prs: 'off'
 
   report:
     # `needs:` + `if: always()` — the reporting job must run when a leg FAILED, since a failed
