@@ -54,6 +54,7 @@
 #pop	bin/deploy-gate-inputs.sh
 #pop	bin/deploy.selftest.sh
 #pop	bin/deploy.sh
+#pop	bin/dl-traceability.selftest.sh
 #pop	bin/env-mirror-diff.mirror.sh
 #pop	bin/env-mirror-diff.sh
 #pop	bin/feed-stream-check.sh
@@ -78,6 +79,8 @@ bin/deploy.sh	SC1003	5
 bin/deploy.sh	SC2016	3
 bin/deploy.sh	SC2034	1
 bin/deploy.sh	SC2295	7
+bin/dl-traceability.selftest.sh	SC2016	2
+bin/dl-traceability.selftest.sh	SC2028	1
 bin/promote-cards-by-token	SC2015	1
 bin/promote-cards-by-token	SC2016	1
 bin/promote-cards-by-token.selftest.sh	SC2015	5

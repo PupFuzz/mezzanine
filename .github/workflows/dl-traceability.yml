@@ -1,0 +1,558 @@
+# ── VENDORED from coord 0.77.0 — the board-traceability gate. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+#
+#   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
+#   upstream path     plugins/coord/templates/traceability/workflows/dl-traceability.yml
+#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
+#   plugin version    coord 0.77.0
+#   upstream sha256   4ffff1d63868913780ca2b1b77d615600422125a8d5636566d85b36dc7cac95b
+#
+# That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
+# line that is neither blank nor a comment), which is a different figure. Re-derive this one
+# against a marketplace clone:   git show afaf9a10:plugins/coord/templates/traceability/workflows/dl-traceability.yml | sha256sum
+#
+# DECLARED LOCAL EDITS — none. Everything below this block is upstream's byte for byte (checked by
+# diff against the commit above); the body pin holds it there. The two CUSTOMIZE values were
+# reviewed and kept as shipped: the runner is `ubuntu-latest`, a Linux/GNU runner, and the
+# exemption lists stay upstream's — `release/` and `sync/` are the prefixes this repository's
+# release and integration-sync PRs use, and the Dependabot entries cost nothing while this
+# repository receives no Dependabot PRs.
+#
+# ITS SELFTEST is `bin/dl-traceability.selftest.sh`, also vendored unedited, which
+# `.github/workflows/dl-traceability-selftest.yml` runs against THIS file by passing its path.
+#
+# TO RE-VENDOR: copy upstream's file over everything below this block on a coord version bump, never
+# hand-patch an arm (the plugin's `docs/DL-TRACEABILITY.md` § 6 says why), then re-pin with the
+# command `bin/vendor-pin-check.sh` prints on a red.
+# ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
+# dl-traceability.yml — a code-work PR must carry a board-correlating token in its TITLE or
+# HEAD BRANCH, or the merge is blocked.
+#
+# ADOPT (per repo): copy to `.github/workflows/`, set the CUSTOMIZE values marked below, and
+# read the adoption note before you commit it. Owned by the coord plugin's
+# `docs/DL-TRACEABILITY.md`; the accept-set is owned by `docs/BRIDGE-WRITEBACK.md`
+# § The `card#<task-id>` convention, item 2 — NOT by this file.
+#
+# ── ⛔ THIS SHIPS BLOCKING. THERE IS NO `continue-on-error` KNOB, AND THAT IS THE DESIGN ──
+#
+# Three repos adopted an ancestor of this gate with `continue-on-error: true` and a comment
+# promising promotion "once the convention is steady". Measured 2026-08-21: two of the three
+# never promoted, and the one that did needed an explicit operator ruling to do it. The
+# intermediate state is the problem, not the delay — the step `exit 1`s, emits a `::warning`,
+# and the job still concludes `success`, so it is INDISTINGUISHABLE FROM A WORKING CHECK from
+# every surface anyone reads: the PR's check list, branch protection's required-contexts
+# screen, and a status roll-up. Nothing ever creates pressure to finish. One measured cost:
+# a PR reported "8 of 8 green" with this check's meaningless green inside the denominator, and
+# the token had to be verified BY HAND against the workflow's own regex to know whether the
+# board card could move.
+#
+# ⇒ A PROJECT THAT NEEDS A GRACE PERIOD EXPRESSES THAT BY NOT ADOPTING YET. A flag in the
+# template would be the same promise in a new file. Adopt when you are ready to enforce; until
+# then, run nothing and let the absence be legible.
+#
+# ── ⚠ ADOPTION NOTE — READ BEFORE YOU COMMIT THIS FILE ────────────────────────────────────
+#
+# The day this lands, EVERY OPEN PR without a token starts failing — including PRs that were
+# green ten minutes earlier, whose authors changed nothing. That is the gate working, and it
+# is still an outage if it surprises people. Before you commit:
+#
+#   1. ENUMERATE YOUR OPEN PRs and the verdict each one will get.
+#      `gh pr list --state open --limit 1000 --json number,title,headRefName` gives you the two
+#      surfaces this gate reads; a PR whose title and branch both lack a token will red on its
+#      next event. (The ceiling is not optional: a list read with no `--limit` stops at gh's
+#      default 30 rows, answers exit 0, and says nothing about the PRs it dropped -- card#9723.)
+#   2. FIX THEM FIRST — retitling a PR is free and this workflow re-runs on `edited`, so the
+#      cheapest remedy for every affected PR is a title edit, done BEFORE the gate exists.
+#   3. THEN make it a required status check in branch protection. Merging the workflow does
+#      not by itself block anything; the required-context setting is what does, and it is a
+#      separate, deliberate act.
+#
+# ⚑ THIS FILE CANNOT OBSERVE ITS OWN REQUIRED-CHECK STATUS. A workflow has no read of the
+# branch-protection API, so any claim here about being a required context would be
+# unfalsifiable from where it lives — which is exactly how such a claim goes stale. SOURCE OF
+# TRUTH: the repository's branch-protection settings. Read them there; do not trust this file.
+#
+# ── WHAT IT READS, AND WHY THOSE TWO SURFACES ────────────────────────────────────────────
+#
+# ⛔ THE COUPLING THAT MAKES THIS GATE MEAN ANYTHING: a token this gate ACCEPTS but the board
+# writeback CANNOT PARSE is a false green — the PR merges wearing a traceability pass while
+# the card silently stops tracking reality, which is the exact state the gate exists to
+# prevent. The reverse (a token the writeback parses and this gate rejects) is a false red
+# that sends an author to rename a branch that was already correct.
+#
+# So the surfaces and the grammar are BOTH taken from the writeback, not invented here:
+#   * SURFACES — the writeback reads the PR TITLE and the HEAD BRANCH, each on its own
+#     (`kanban-prs-sync.py`: `_card_id(pr["title"]) or _card_id(pr["headRefName"])`). This
+#     gate evaluates them the same way, per surface, so a token that would only match across
+#     the join of the two strings is not accepted here either. The PR BODY is deliberately not
+#     read: the writeback never reads it, so a token there correlates nothing.
+#   * GRAMMAR — see the accept-set block below.
+#
+# THE BINDING IS EXECUTABLE, NOT A PROMISE — IN THE FRAMEWORK REPO, WHICH IS NOT YOUR TREE.
+# The agent-board-framework repo runs its own CI guard, `.githooks/dl-traceability-accept-set.selftest.py`
+# there, which extracts `_CARD_RE` and `_DL_RE` from the shipped writeback and drives them, and
+# the arms below, over one corpus, asserting identical verdicts row by row. A widening or
+# narrowing on either side reds THERE, before the template ships. ⇒ WHAT THAT DOES AND DOES NOT
+# BUY YOU: it protects the template you COPY, not your copy of it. Nothing in your repo re-checks
+# these arms, so re-copy this file on a coord version bump rather than hand-patching a regex.
+# That guard is also where the RESIDUAL, one-directional cross-engine gap is measured and stated
+# (see the boundary block below, and the coord plugin's `docs/DL-TRACEABILITY.md` § 6.1).
+#
+# ── NO `branches:` FILTER, DELIBERATELY ──────────────────────────────────────────────────
+# `branches:` and `types:` are INDEPENDENT filters and the event fires only if BOTH match, so
+# a base-branch allowlist drops every event from a STACKED PR (base = another feature branch)
+# whatever its activity type. Measured on this framework repo's sibling gate (card#6738): the
+# stacked PRs it silenced were the ones carrying real titles and head refs headed for the
+# writeback, so the allowlist removed the gate exactly where it was needed. Do not add one.
+#
+# `edited` is load-bearing for the same reason it is on that gate: the title is half the
+# checked surface and is edited after the fact far more often than a branch is renamed. It is
+# also the remedy this gate's own failure message tells the author to use.
+name: DL traceability
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+# SUPERSEDED PR RUNS ARE CANCELLED; NOTHING ELSE EVER IS (card#11008) — KEEP IT when you copy this
+# file. A newer `pull_request` run for the same PR cancels this workflow's older run for it; every
+# other event gets a group of its own (`github.run_id`), so no push run is cancelled or evicted.
+# `plugins/coord/docs/CUSTOMIZING.md § Superseded PR runs are cancelled in the shipped workflows`
+# (in your coord install) OWNS the rule, the exemption and why the group is not just `github.ref`.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}  # default deny; the job below takes the one scope it needs
+
+jobs:
+  dl-traceability:
+    # ⚠ DO NOT RENAME the workflow `name:` or this job id once adopted. Both feed the status
+    # context string branch protection stores; renaming a required context leaves the old name
+    # required and never reported, which freezes merges on every PR until an admin edits the
+    # setting. If you must rename, change branch protection FIRST.
+    #
+    # CUSTOMIZE: the runner label set your repo uses — ⛔ A LINUX/GNU RUNNER, NOT ANY RUNNER.
+    # The step body below is GNU/bash-specific and will not run on a Windows runner at all (the
+    # default shell there is `pwsh`). What it requires, named so the constraint is checkable
+    # rather than implied: `bash` (`[[ =~ ]]`, `local -a`, `<<<`, `$'\n'`), and coreutils
+    # `mktemp` and `base64 -d` (BSD spells that second flag `-D`). ⚠ Stated honestly: what a BSD
+    # `grep` would do with the arms below is UNTESTED, not measured-different — the pin rests on
+    # bash and coreutils. `shell: bash` is pinned on the step for the same reason: it makes the
+    # requirement explicit instead of inheriting whatever the runner's default happens to be.
+    runs-on: ubuntu-latest
+    # The minimum for the changed-files read at limb 2. There is deliberately NO checkout: the
+    # file list comes from the API (see limb 2), so untrusted PR-head content never lands on
+    # the runner.
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Assert a code-work PR carries a board-correlating token
+        # ⛔ NO `continue-on-error` HERE. See the header. If you are about to add one, what you
+        # actually want is to not have adopted this file yet.
+        env:
+          # PR metadata travels through `env:`, NEVER inline `${{ }}` inside `run:` — a PR
+          # title is attacker-controlled text and `${{ }}` in a shell body is an injection sink.
+          PR_AUTHOR:   ${{ github.event.pull_request.user.login }}
+          PR_HEAD:     ${{ github.event.pull_request.head.ref }}
+          PR_TITLE:    ${{ github.event.pull_request.title }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUM:      ${{ github.event.pull_request.number }}
+          REPO:        ${{ github.repository }}
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # --- dl-traceability-config
+          # ⛔ LC_ALL=C IS REQUIRED, NOT HYGIENE. Every bracket construct below is a RANGE, and
+          # a range inside a POSIX regex is COLLATION-based — its accept-set is a function of
+          # the host's locale. Measured on glibc with the GHSA arm below:
+          #     GHSA-2v37-7h3g-55é8   matches under en_US.UTF-8, does NOT match under C
+          # One token, two answers, decided by a runner image nobody chose for that reason.
+          # A correlation token names exactly one thing, so an engine- or host-dependent
+          # accept-set is a correctness defect (the DL-231 ruling, applied here). Pinning to C
+          # makes this file ASCII-only on every host, and C is the one locale that is always
+          # present — an unavailable locale name would fall back silently and re-open the hole.
+          export LC_ALL=C
+
+          # ── THE ACCEPT-SET — ONE ARM PER LINE, ON PURPOSE. ──────────────────────────────
+          #
+          # ⛔ THE BOUNDARY RULE IS ASYMMETRIC ACROSS THE ARMS, AND THE ASYMMETRY IS THE
+          # SPECIFICATION. ⇒ ITS OWNER IS the coord plugin's `docs/DL-TRACEABILITY.md` § 6.1 — read
+          # the rule and its measured history there; what follows is the local half a reader of this
+          # file needs to edit an arm without re-deriving it:
+          #     CARD arm  — trailing boundary DELIBERATELY ABSENT (`card-3054_fix` correlates).
+          #     DL / CVE / GHSA arms — trailing boundary REQUIRED.
+          # Do NOT normalise these to one rule in either direction. Measured 2026-08-21 on a
+          # live PR in an adopting repo: a comment justifying the CARD arm's deliberate
+          # unboundedness was over-applied to the DL arm, and the gate then accepted
+          # `DL-99x`, `DL-231abc` and `DL-7_wip` — tokens the writeback CANNOT parse. That PR
+          # would have merged GREEN on a merge-blocking required context while its card stopped
+          # tracking reality: the failure the gate exists to detect, moved from "cannot fire" to
+          # "fires on the wrong set", which is worse because it now carries authority.
+          #
+          # THE ARMS ARE SEPARATE CONSTANTS BECAUSE THE DEFECT ABOVE SURVIVED REVIEW INSIDE A
+          # SINGLE ~300-CHARACTER LINE, where a missing `\b` is invisible. One arm per line is
+          # what makes the property readable; keep it that way when you add or edit an arm.
+          #
+          # SPELLING vs SEMANTICS — read this before you re-spell anything. These arms use
+          # RANGES (`[0-9]`), which is safe here only because `LC_ALL=C` is pinned above; a repo
+          # whose own lint forbids ranges may enumerate them (`[0123456789]`) instead — but note
+          # that `NW` below is ranges too, and enumerating THAT one by hand is how a boundary
+          # class loses a character silently; enumerate it with a test that drives all 256 bytes.
+          # THAT IS A SPELLING ACCOMMODATION AND NOTHING MORE. The semantics belong to the owner,
+          # and a spelling difference must never be offered as evidence that two accept-sets
+          # agree — that argument is exactly how the boundary defect above propagated: "the
+          # accept set is identical; the spelling is not" was asserted, and was false.
+          #
+          # ── THE BOUNDARY, SPELLED AS BYTES — ⛔ NOT `\b`. ────────────────────────────────
+          #
+          # `\b` IS THE WRONG BOUNDARY HERE, AND IT IS WRONG IN THE SILENT DIRECTION. Under
+          # `LC_ALL=C` grep judges BYTES: every byte of every non-ASCII character is ≥ 0x80 and
+          # therefore NON-word, so `\b` finds a boundary beside one. The writeback is python
+          # `re` over a str, where those same characters are WORD characters and there is no
+          # boundary. MEASURED 2026-08-21, GNU grep 3.11 vs python 3.12 (Unicode 15.0), over
+          # EVERY Unicode code point (1,112,062) at both ends of all four arms:
+          #     `\b`  — 965,111 rows where the GATE ACCEPTS and the WRITEBACK CANNOT PARSE.
+          # `DL-231更` is one of those rows, and it is REACHABLE: a PR titled `feat/DL-231更`
+          # over a code diff is accepted by the pre-fix gate, which reports the token as
+          # CORRELATING on a merge-blocking required context, while `kanban-prs-sync.py`
+          # parses no DL number out of it and the card never moves. That is a measurement of
+          # the two engines, not a report of a live incident — no such PR is known to have been
+          # merged. Not one row went the other way, so the gap was pure false green: the
+          # failure mode this gate exists to prevent, wearing the gate's own authority.
+          #
+          # ⇒ THE BOUNDARY IS AN EXPLICIT ASCII NON-WORD CLASS, so a non-ASCII byte can never
+          # supply one. `NW` below matches EXACTLY the ASCII characters that are not word
+          # characters — `[:punct:]` minus `_`, plus space and the control characters — and
+          # nothing at or above 0x80. Same measurement, same population: 0 false greens.
+          #
+          # ⚠ WHAT IT COSTS, STATED PLAINLY: where the neighbouring character is non-ASCII and
+          # NOT a word character (an em dash, a full-width colon, an emoji, a combining mark),
+          # python sees a boundary and this gate does not — the gate is STRICTER than the
+          # writeback there, a FALSE RED. That direction is loud, the author fixes it from the
+          # PR title in seconds, and the failure message says so. It is the trade taken
+          # deliberately: under byte semantics one of the two errors is unavoidable, and only
+          # the false green is silent. ⛔ Do NOT "fix" the false red by restoring `\b`.
+          #
+          # ⛔ AND DO NOT REACH FOR `grep -P '(*UTF)(*UCP)'` INSTEAD. It was measured on the
+          # same population: it agrees with python far better (0 false reds) but still leaves
+          # 30,716 FALSE GREENS, because PCRE2's Unicode tables and the writeback interpreter's
+          # are different versions of Unicode — the residue is every code point assigned in one
+          # and not the other (`U+11F02 KAWI SIGN REPHA` was in the measured set). That makes
+          # the accept-set a function of the RUNNER IMAGE's PCRE2 build, which is the same
+          # host-dependence `LC_ALL=C` is pinned to remove, restored in a silent direction.
+          NW='[[:cntrl:][:space:]!-/:-@[-^`{-~]'
+          LB="(^|$NW)"     # leading boundary: start of surface, or an ASCII non-word character
+          TB="($NW|\$)"    # trailing boundary: an ASCII non-word character, or end of surface
+          #
+          # ── Arm 1 + 2: CORRELATING — tokens the BOARD WRITEBACK PARSES. ─────────────────
+          # OWNERS, both of which this template must be re-checked against whenever the coord
+          # plugin version moves: its `docs/BRIDGE-WRITEBACK.md` § The `card#<task-id>` convention,
+          # item 2 (prose + the published POSIX-ERE form, quoted below with its `\b` replaced by
+          # `$LB` and nothing else) and its machine-readable copy
+          # `templates/kanban/examples/kanban-prs-sync.py` (`_CARD_RE`, `_DL_RE`). That re-check
+          # is mechanical, not a reminder: the framework repo's own CI guard
+          # (`.githooks/dl-traceability-accept-set.selftest.py`, in THAT repo, not this one)
+          # drives the owners and these arms over one corpus every run and reds on any
+          # disagreement before the template ships.
+          #
+          # CARD arm — the owner's published lookahead-free translation, character for
+          # character APART FROM THE BOUNDARY SUBSTITUTION ABOVE, which the guard re-applies to
+          # the owner's own string rather than trusting this copy. Left-anchored only, NO
+          # trailing boundary. The glued form correlates at TWO OR MORE digits only, which is
+          # what keeps an ordinary word (`card2go`) from naming a card while `card-3` does.
+          CARD_RE="${LB}card([-#][0-9]+|[0-9]{2,})"
+          # DL arm — the owner's `_DL_RE` with its capture group dropped (this is a presence
+          # test; nothing here reads a group). BOTH boundaries, and the trailing one is the half
+          # that gets lost: `DL-233_fix` and `DL-99x` do NOT correlate.
+          DL_RE="${LB}DL-0*[0-9]+${TB}"
+          #
+          # ── Arm 3 + 4: ADVISORY — tokens the writeback CANNOT parse. ────────────────────
+          # Accepted anyway, and reported DIFFERENTLY. A hand-written fix for a published
+          # advisory is code work, it is traceable, and the advisory id is the thing that traces
+          # it — but no board card moves on it, so calling it "correlating" would be the false
+          # green this gate exists to prevent. It is an exemption wearing token clothing, and
+          # the run says so out loud. ⛔ DO NOT push these arms up into the owner constant: that
+          # would hand the writeback ids it cannot act on.
+          #
+          # GHSA arm — exactly THREE 4-character groups, trailing boundary REQUIRED. The bound
+          # has a measured cause and a prior incident behind it: an unbounded tail let a PACKAGE
+          # NAME supply a group by accident (`ghsa-2v37-nanoid` matched on `-nano`), so a branch
+          # naming a different package for the same advisory silently stopped matching. Measured
+          # on a shipped unbounded copy, `fix/ghsa-abcd-efgh-ijklmnop` is accepted as an advisory
+          # id it does not contain. Do not re-open this.
+          GHSA_RE="${LB}GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}${TB}"
+          # CVE arm — the sequence part is 4+ digits per the CVE syntax, so `CVE-2026-1` is not
+          # an id. Trailing boundary REQUIRED: measured on the same unbounded copy,
+          # `fix/cve-2026-1214abcd` is accepted as a CVE id it does not contain.
+          CVE_RE="${LB}CVE-[0-9]{4}-[0-9]{4,}${TB}"
+          #
+          # `-i` at the grep is load-bearing, not stylistic: real advisory branches are lowercase
+          # (`fix/cve-2026-71488-commonmark-2.9.0`, `fix/ghsa-2v37-7h3g-55p8-nanoid`), so a
+          # case-sensitive pattern passes a hand-written test and then fails on every real PR.
+          # The composition below is the ONLY place the arms are joined; edit an arm, never this.
+          CORRELATING_RE="$CARD_RE|$DL_RE"
+          ADVISORY_RE="$GHSA_RE|$CVE_RE"
+
+          # CUSTOMIZE-BEGIN traceability-exemptions
+          # ── Limb 1: traceability arrives by ANOTHER ROUTE. ───────────────────────────────
+          # These PRs are traced by the writeback's PR-number path, which keys off the PR
+          # itself and needs no token — and a token on them would fight that key, so they must
+          # NOT carry one. This is a different reason from limb 2 and the two do not generalise
+          # to each other: "a hand-made CVE fix is like a Dependabot PR" is FALSE, because the
+          # bot's card arrives by a route a hand-made fix has no access to.
+          #
+          # ⚠ KNOWN, ACCEPTED WEAKNESS — READ IT BEFORE YOU EXTEND THE PREFIX LIST. The AUTHOR
+          # arm is not spoofable; the BRANCH-PREFIX arm is. Any human can name a branch
+          # `sync/whatever` and skip this gate entirely, and promoting the gate to blocking is
+          # the moment that stops being theoretical. It ships anyway because release and
+          # integration-sync PRs are cut by human-driven agents under ordinary identities, so
+          # an author-only test would gate the very flows the exemption exists for. If your repo
+          # wants it closed, the remedy is OUTSIDE this file: a repository ruleset restricting
+          # who may create those branch prefixes. Shortening this list costs nothing if you do
+          # not use a prefix — it is the one edit here that only ever tightens.
+          AUTOMATION_AUTHORS='dependabot[bot]'
+          AUTOMATION_BRANCH_RE='^(dependabot/|sync/|release/)'
+
+          # ── Limb 2: the diff is not code work. ───────────────────────────────────────────
+          # A changed path counts as documentation iff it matches DOC_RE. EVERYTHING ELSE IS
+          # CODE WORK — sources, lockfiles, workflows, `bin/*`, dotfiles, and any extension not
+          # named here. The PR is exempt only if EVERY changed path is documentation.
+          #
+          # ⛔ THE ENUMERATION IS DELIBERATE AND ITS DIRECTION IS THE POINT. It is permanently
+          # one term behind — the day someone commits a `.webp` diagram, a genuinely docs-only
+          # PR gets gated. That is the CHEAP failure: the author adds a token to the title and
+          # moves on. The inversion (enumerate what is CODE, exempt the rest) fails the other
+          # way, exempting every unknown extension — including the next language the repo picks
+          # up — and a false EXEMPTION is the only failure mode of a traceability gate that
+          # actually costs anything, because it is silent. Widen the list when a real docs asset
+          # is missing from it; do not invert it.
+          #
+          # Case-sensitive by design: an `.MD` file is not assumed to be documentation.
+          DOC_RE='(\.md$|^docs/.*\.(txt|ya?ml|pdf|png|jpe?g|svg|gif)$)'
+          # CUSTOMIZE-END traceability-exemptions
+          # --- end dl-traceability-config
+
+          # --- dl-traceability-lib
+          # ONE scratch file, reused by every surface test below, because a surface must reach
+          # `grep` WITHOUT A PIPE — see the ⛔ note on `surface_matches`. `mktemp` puts it outside
+          # the workspace at mode 0600; nothing here ever executes its contents.
+          SURFACE_FILE="$(mktemp)"
+          trap 'rm -f "$SURFACE_FILE"' EXIT
+
+          # `printf '%s'` with no trailing newline is deliberate: grep still reads a final
+          # incomplete line, and adding one would let a pattern anchored at `$`… there are none
+          # here, but the shape matters for anyone adding an arm. Each surface is tested ON ITS
+          # OWN — never concatenated — so nothing can match across the join of title and branch.
+          #
+          # ⛔ THE SURFACE REACHES grep THROUGH A FILE, NOT A PIPE, AND THAT IS NOT STYLE.
+          # `grep -q` exits ZERO ON ITS FIRST MATCH. That closes the read end, so the writer's
+          # next `write(2)` takes SIGPIPE and dies 141, and under the `set -o pipefail` this step
+          # opens with, the PIPELINE's status is then 141 — not 0. The predicate answers "no
+          # token" about a surface that HAS one, silently: there is no message, and nothing trips
+          # `set -e`, because the pipeline IS the condition. It is gated on payload size (the
+          # writer only reaches a second `write(2)` past the pipe buffer, 64 KiB on Linux), so it
+          # is correct on every hand-written test and wrong on the large real input. "A PR title
+          # is short" is therefore NOT why this is safe — it is safe because there is no writer.
+          #
+          # ⛔ AND NOT `[[ =~ ]]`, WHICH IS THE OBVIOUS-LOOKING REWRITE. Two measured reasons:
+          #   1. IT IS A DIFFERENT ENGINE. The framework guard that proves these arms and the
+          #      board writeback accept the same tokens drives the arms through `grep -E` under
+          #      `LC_ALL=C` — the engine and the locale this file pins. Match them with bash's
+          #      `regexec` instead and that proof measures an engine this file no longer runs,
+          #      which is a false green about the accept-set, on the gate whose whole job is to
+          #      not hand out false greens.
+          #   2. IT DOES NOT SPLIT LINES, SO ON A MULTI-LINE SURFACE THE TWO ENGINES CAN
+          #      DISAGREE. File-fed `grep` judges each LINE; `[[ =~ ]]` judges the whole
+          #      STRING, so `^`/`$` there bind to the string. Measured on bash 5.2.21 /
+          #      glibc 2.39: over a bare `\.md$`, a subject `a.md<newline>src/evil.php`
+          #      MATCHES under `grep` and does NOT match under `[[ =~ ]]`. Today's arms agree
+          #      across both engines (measured, every arm × a multi-line corpus) — but for two
+          #      DIFFERENT reasons, which is why this is a hazard and not a coincidence: `grep`
+          #      never sees the newline, it splits there; bash sees it and `$NW` happens to
+          #      match it as a boundary. An arm added later with a bare `^` or `$` has no such
+          #      luck, and would mean one thing in this gate and another in the `grep -E` guard
+          #      that proves the accept-set. `$LB`/`$TB` are built out of anchors.
+          # The other sanctioned pipe-free form is a `case` glob, which cannot express an ERE.
+          # ⛔ NEVER a herestring (`grep -q… <<<`): it trades this SIGPIPE for a HANG on a Windows
+          # shell (card#12619; `_ci_py` in ci-verdict.sh owns the measurement).
+          #
+          # ⛔ THE WRITE IS CHECKED, AND THAT IS THE FAIL-CLOSED HALF. One file is reused by
+          # every surface, and both callers are invoked as an `if` CONDITION, which suppresses
+          # `set -e` inside the function body. MEASURED: a failed redirection prints to stderr,
+          # yields status 1, LEAVES THE PREVIOUS SURFACE'S BYTES IN THE FILE (the open fails, so
+          # nothing truncates), and execution simply continues to the next line — so an
+          # unchecked write makes `grep` answer about the WRONG surface, silently. `|| return 1`
+          # is the whole fix: in BOTH callers `return 1` is the refusing answer (no token found /
+          # not an automation PR), so a write failure gates instead of exempting, which is the
+          # direction the pipe form used to fail in. A file PER CALLER would not help — it is
+          # the unchecked write, not the sharing, that answers about stale bytes.
+          surface_matches() {  # $1=regex; $2.. = surfaces
+            local re="$1"; shift
+            local s
+            for s in "$@"; do
+              printf '%s' "$s" > "$SURFACE_FILE" || return 1
+              if grep -qiE "$re" "$SURFACE_FILE"; then return 0; fi
+            done
+            return 1
+          }
+
+          is_automation_pr() {
+            # `read -ra`, not `for a in $AUTOMATION_AUTHORS`: an unquoted expansion is subject
+            # to PATHNAME expansion, and `dependabot[bot]` is a valid glob — it would silently
+            # become a filename if one happened to match in the runner's cwd. The comparison is
+            # string equality, never a `case` pattern, because the value on the other side is an
+            # attacker-controlled login and a pattern match would let an author named `*` exempt
+            # themselves.
+            local -a authors=()
+            local a
+            if [ -n "$AUTOMATION_AUTHORS" ]; then
+              IFS=' ' read -r -a authors <<< "$AUTOMATION_AUTHORS"
+              for a in "${authors[@]}"; do
+                if [ "$PR_AUTHOR" = "$a" ]; then return 0; fi
+              done
+            fi
+            # File, never a pipe, for the reason spelled out at `surface_matches` above: a
+            # `grep -q` that matches early SIGPIPEs its writer and `pipefail` turns that into a
+            # FALSE "not an automation PR".
+            if [ -n "$AUTOMATION_BRANCH_RE" ]; then
+              # Checked for the reason spelled out at `surface_matches`: unchecked, a failed
+              # write would leave the previous surface's bytes here and claim automation.
+              printf '%s' "$PR_HEAD" > "$SURFACE_FILE" || return 1
+              if grep -qE "$AUTOMATION_BRANCH_RE" "$SURFACE_FILE"; then return 0; fi
+            fi
+            return 1
+          }
+
+          # CUSTOMIZE-BEGIN traceability-seams
+          # The two API reads, isolated so the framework's selftest can replace them with
+          # fixtures and run everything else in this file verbatim, with no network. Replacing
+          # them in an ADOPTING repo is not expected — if you do, keep the contracts: a
+          # non-zero exit on any failure, and stdout that carries nothing else.
+          pr_head_sha_now() { gh api "repos/$REPO/pulls/$PR_NUM" --jq '.head.sha'; }
+          changed_paths_b64() {
+            # ⛔ ONE PATH PER LINE, BASE64-ENCODED, and that is not decoration. A git path may
+            # contain a NEWLINE; emitted raw, one such path becomes two lines and each fragment
+            # is judged separately, so a crafted name can present two documentation-looking
+            # fragments and win an exemption the real path never earned. Encoding is what makes
+            # such a path VISIBLE to the loop below, which then declines outright — the class is
+            # removed rather than argued about.
+            #
+            # BOTH IMAGES OF A RENAME ARE EMITTED, and this is the load-bearing one. `.filename`
+            # is the POST-image only, so a rename `app/Evil.php` → `docs/Evil.md` presents a
+            # single documentation path and would EXEMPT a PR that is carrying code — a false
+            # exemption, the one failure mode of this gate that is both silent and consequential.
+            # `.previous_filename` (populated by the API on renames) puts the PRE-image back into
+            # the predicate's input; `// empty` emits nothing for a non-rename, so an ordinary
+            # entry still contributes exactly one line and the count stays a true path count.
+            gh api --paginate "repos/$REPO/pulls/$PR_NUM/files" \
+              --jq '.[] | .filename, (.previous_filename // empty) | @base64'
+          }
+          # CUSTOMIZE-END traceability-seams
+
+          # Prints the reason on the exempt path; returns non-zero when docs-only could not be
+          # PROVEN. Every failure to prove is a fall-through to the gate, never an exemption:
+          # an unproven docs-only claim and a code diff are the same thing from here.
+          docs_only() {
+            local sha_now files line p n=0
+            local NL=$'\n'
+
+            # ⛔ THE FILE LIST MUST DESCRIBE THE SHA THIS RUN CERTIFIES. A check's verdict is
+            # recorded against the head SHA of the event that triggered it, but the API answers
+            # for the PR as it is NOW. If the PR moved between the event and this call, the two
+            # disagree and the exemption would be computed from a diff that is not the one this
+            # run is speaking about. The push that moved it has already queued a newer run whose
+            # verdict is the one that governs the merge, so refusing here costs nothing and is
+            # self-healing.
+            sha_now="$(pr_head_sha_now)" || {
+              echo "limb 2 declined: could not read the PR's current head SHA."; return 1; }
+            if [ -z "$sha_now" ] || [ "$sha_now" != "$PR_HEAD_SHA" ]; then
+              echo "limb 2 declined: the PR moved under this run (event head '$PR_HEAD_SHA', current head '$sha_now') — the newer run's verdict is the one that governs."
+              return 1
+            fi
+
+            # FAIL-CLOSED on the read itself: we cannot prove docs-only, so we do not claim it.
+            files="$(changed_paths_b64)" || {
+              echo "limb 2 declined: the changed-files read failed."; return 1; }
+            # An EMPTY list is a measurement that never happened, not a proof of nothing.
+            if [ -z "$files" ]; then
+              echo "limb 2 declined: the changed-files read returned nothing."; return 1
+            fi
+
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              n=$((n + 1))
+              # GitHub's list-files endpoint caps at 3000 files; a truncated list cannot prove
+              # docs-only. `n` counts PATHS, not entries, so a rename-heavy PR reaches the cap
+              # sooner — the correct direction, since the cap exists to refuse a list we cannot
+              # trust and erring toward GATING is the fail-closed side.
+              if [ "$n" -ge 3000 ]; then
+                echo "limb 2 declined: at GitHub's 3000-file list cap, the file list cannot be trusted to be complete."
+                return 1
+              fi
+              p="$(printf '%s' "$line" | base64 -d)" || {
+                echo "limb 2 declined: a changed path did not decode."; return 1; }
+              # ⛔ A PATH CONTAINING A NEWLINE IS DECLINED, NOT MATCHED — and this is not
+              # belt-and-braces over the anchors, it is the load-bearing half. `[[ =~ ]]` judges
+              # the decoded path as ONE STRING, so `$` is END-OF-STRING and sees nothing inside
+              # it. MEASURED on bash 5.2.21 / glibc 2.39 with the DOC_RE above:
+              # `src/evil.php<newline>a.md` MATCHES `\.md$` — the crafted path's LAST line is
+              # documentation and every line before it is code, and one anchored predicate over
+              # the whole string cannot tell those apart. Do not "fix" this by trusting the
+              # anchor; the anchor is answering about the string, not about the lines.
+              case "$p" in
+                *"$NL"*)
+                  echo "limb 2 declined: a changed path contains a newline, which no documentation predicate can judge."
+                  return 1 ;;
+              esac
+              # bash `[[ =~ ]]`, not grep: the decoded path is matched as ONE string, with no
+              # line-splitting step between the API and the predicate. `LC_ALL=C` above is what
+              # keeps DOC_RE's bracket ranges ASCII here as well.
+              if ! [[ "$p" =~ $DOC_RE ]]; then
+                # ⛔ THE OFFENDING PATH IS DELIBERATELY NOT ECHOED. A changed FILENAME is
+                # attacker-controlled text, and GitHub parses `::`-prefixed lines on stdout as
+                # WORKFLOW COMMANDS — a file named to look like one would forge an annotation
+                # (or a `::notice` claiming the gate passed) from inside this step's own log.
+                # The count is safe to print and the author already knows their own diff, so the
+                # useful half survives and the injection surface does not. If you want the path
+                # named, encode it; do not `echo` it.
+                echo "limb 2 declined: path $n of the changed-file list is not documentation."
+                return 1
+              fi
+            done <<< "$files"
+            if [ "$n" -eq 0 ]; then
+              echo "limb 2 declined: no changed paths were read."; return 1
+            fi
+            echo "Exempt (limb 2 — docs-only diff, not code work): $n path(s) changed, all documentation."
+            return 0
+          }
+          # --- end dl-traceability-lib
+
+          # --- dl-traceability-main
+          # ORDER IS DELIBERATE: limb 1, then the token, then limb 2. The token test is free and
+          # the limb-2 test costs two API calls, so limb 2 runs only for a PR that would
+          # otherwise fail — which is also the only PR whose answer it can change.
+          if is_automation_pr; then
+            echo "Exempt (limb 1 — automated / sync / release PR; traced by the writeback's PR-number path, and must NOT carry a token)."
+            exit 0
+          fi
+
+          if surface_matches "$CORRELATING_RE" "$PR_TITLE" "$PR_HEAD"; then
+            echo "OK — a board-correlating token (card / DL) is present in the title or head branch."
+            echo "NOTE: this is a PRESENCE verdict, not a promise that the card will move. A card#<id> that appears in the TITLE ALONE is flagged uncorroborated by the writeback and can be refused; put card-<id> in the HEAD BRANCH too. Owner: the coord plugin's docs/BRIDGE-WRITEBACK.md, section 'The card#<task-id> convention', the corroboration bullet."
+            exit 0
+          fi
+
+          if surface_matches "$ADVISORY_RE" "$PR_TITLE" "$PR_HEAD"; then
+            echo "OK — a security-advisory id (CVE / GHSA) is present in the title or head branch."
+            echo "NOTE: an advisory id is NOT a board-correlating token. No card will self-move for this PR; the advisory is the trace."
+            exit 0
+          fi
+
+          if docs_only; then
+            exit 0
+          fi
+
+          echo "::error title=Board traceability::This PR changes code and carries no board-correlating token in its TITLE or HEAD BRANCH, and its diff is not documentation-only. Accepted spellings, one grammar on both surfaces: card#<id>, card-<id>, and glued card<id> at TWO OR MORE digits (single-digit glued 'card4' does NOT correlate, which is what stops an ordinary word like 'card2go' naming a card); DL-<n> also correlates. Prefer card-<id> in a branch name — '#' is hostile in shell and URL contexts. The accept-set's single owner is the coord plugin's docs/BRIDGE-WRITEBACK.md, section 'The card#<task-id> convention', item 2. CHEAPEST FIX: edit the PR TITLE to include the token — this check re-runs on an edit, so nothing needs pushing. For a card#<id> the title is not the whole job: a title-only card citation the HEAD BRANCH does not back is flagged uncorroborated by the writeback and can be refused, so put card-<id> in the head branch too — same section, the corroboration bullet. IF YOUR TITLE ALREADY CARRIES A TOKEN, check what is IMMEDIATELY BESIDE IT: the token must start and (except for card tokens) end at an ASCII non-word character or at the very start/end of the title or branch, so a non-ASCII character touching it (a full-width colon, an em dash, an emoji, CJK text with no space) is not read as a boundary — put an ASCII space or '-' next to the token. If no card exists for this work, ask for one rather than inventing an id: a token naming a card the board does not carry correlates to nothing. A hand-written fix for a published advisory may instead carry its CVE-YYYY-NNNN or GHSA-xxxx-xxxx-xxxx id. Exempt WITHOUT a token: automated / sync / release PRs, and a diff in which EVERY changed path is documentation — judged on the pre-image path too, so a rename out of code is code work, and declined outright when the file list could not be read, came back empty, hit the 3000-file API cap, or describes a head this run is not speaking about."
+          exit 1
+          # --- end dl-traceability-main

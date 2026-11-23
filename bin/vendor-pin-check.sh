@@ -89,7 +89,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # of any change to either owes a glance at the other.
 #
 # ⚠ THE PIN COLUMN IS A PROVENANCE STRING, NOT ALWAYS A BARE COMMIT. The mover rows were vendored
-# from a commit and name it. The `pr-body-lint` and `dependency-audit` rows name BOTH the plugin
+# from a commit and name it. The `pr-body-lint`, `dependency-audit` and `dl-traceability` rows name BOTH the plugin
 # version and the marketplace commit, because those answer different questions: the version is how a reader says
 # which release this install runs, the commit is what `git show <commit>:<upstream path>` needs to
 # reproduce the bytes. Each of those files' own header carries the same pair plus the WHOLE-FILE
@@ -107,6 +107,8 @@ MANIFEST=(
   "bin/dependency-audit.selftest.sh|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|79041b95dae9e5d6a8fad7711772ed4329aec0360d12609737daa5bce67ee9bc|#"
   "bin/coord-ask-operator|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|b28d8bf1a25b7cce7ec53e71513b45b149f3ce5b1a47ea18565b808e3d9376ba|#"
   "bin/_operator_registry.py|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|55571560eaaa204d727357dea9d68b59f34d32f041e14fd88f34849fcf80df4f|#"
+  ".github/workflows/dl-traceability.yml|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|d64c7fc79f76eda5cfaf671b44bfacbb2647cc5e491f06c303c4c5aed3956e3d|#"
+  "bin/dl-traceability.selftest.sh|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|a52a3d64e31d897a8c5d1da3bf68d0762a92cdb2960079fd60a5f59c8aaebb4a|#"
   "server/public/js/vendor/three/three.module.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|104f56145899722094556490d787aae0617cc2fc3382f31df02d724ea1aee341|//"
   "server/public/js/vendor/three/three.core.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|613e370f76638fdef83926642bf256dc9615684922de1ce1f63a8583e5d78578|//"
   "server/public/js/vendor/three/examples/jsm/loaders/GLTFLoader.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|532ac726e120039acbcd6cf54328c57acbf7b438176afaa6951257126d11bff1|//"
