@@ -14,8 +14,10 @@
 #     (2) card#12325, extended by card#13794 — no private name, as `bin/pr-body-lint.py`'s edit (1).
 #         Arm I's section comment, its `FEATURE_BODY` heading and line, the row (1) label and the
 #         row (7) control label say "a fleet impl repo" and `## Boundary check` (fragment `A fleet
-#         impl repo mandates`); the docstring and arm O cite `platform#467` without its
-#         organisation; arm N's comment says `a fleet impl repo's shape guard`, and its
+#         impl repo mandates`); the docstring and arm O cite the other team's PR as `a fleet
+#         impl repo's release-PR line` (and body) rather than by its repository and number,
+#         located by the fragment `O a fleet impl repo's release-PR line in a release body`;
+#         arm N's comment says `a fleet impl repo's shape guard`, and its
 #         declared heading, near misses and labels use `Boundary check` / `boundary check` where
 #         upstream writes that template's domain word, with the body variable named `extra_h2`.
 #         Every heading stays one the release allow-set does not admit, and each near miss keeps
@@ -115,11 +117,11 @@ placeholder, or the same words mid-line in prose. Its control unwires the rule, 
 must then pass.
 
 `arm_o` is `merge-instruction` (card#13034), a RELEASE-only rule. Its known positive is
-platform#467's line as card#13034 quotes it; PupFuzz/kanban-board#592's struck line could
-not be read, so its rows are RECONSTRUCTED from the release-body template that PR was drafted from,
-and say so. Its negatives are lines naming squash as a subject, the generated `## Bundled` list, and
-the same positive line on a feature PR. Its controls unwire the rule, run it on every PR, drop the
-`## Bundled` skip, disable each shape, and drop the clause-opening narrowing.
+a fleet impl repo's release-PR line as card#13034 quotes it; PupFuzz/kanban-board#592's struck
+line could not be read, so its rows are RECONSTRUCTED from the release-body template that PR was
+drafted from, and say so. Its negatives are lines naming squash as a subject, the generated
+`## Bundled` list, and the same positive line on a feature PR. Its controls unwire the rule, run it
+on every PR, drop the `## Bundled` skip, disable each shape, and drop the clause-opening narrowing.
 
 A rule that reds on both is measuring length, not the standard. The pair is what tells them apart,
 and it is why a hand-written "compliant body" fixture is present as well but is not the whole of
@@ -1715,10 +1717,10 @@ def arm_j_ai_attribution(mod, td):
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # O — `merge-instruction`: THE MERGE-METHOD NOTE, ON A RELEASE PR (card#13034)
 # ══════════════════════════════════════════════════════════════════════════════════════════════
-# The KNOWN POSITIVE is platform#467's line, verbatim as card#13034 quotes it: that body
-# passed `pr-body-lint.py --title 'release: aimla-v0.1.1'` clean, and its live body no longer
-# carries the line. It is a constant here, not a committed body: the rule judges one line, and the
-# rest of that body is another repo's release text.
+# The KNOWN POSITIVE is a fleet impl repo's release-PR line, verbatim as card#13034 quotes it:
+# that body passed `pr-body-lint.py --title 'release: aimla-v0.1.1'` clean, and its live body no
+# longer carries the line. It is a constant here, not a committed body: the rule judges one line,
+# and the rest of that body is another repo's release text.
 P467_LINE = ('**Merge with "Create a merge commit", never squash.** Tag `aimla-v0.1.1` is applied '
              'by hand after the merge.')
 
@@ -1797,7 +1799,8 @@ def arm_o_merge_instruction(mod, td):
     got = rules_on(mod, body, title=RELEASE_TITLE)
     hits = [f for f in mod.findings(declared(body), None, title=RELEASE_TITLE)
             if f.rule == "merge-instruction"]
-    check("O platform#467's line in a release body reds on `merge-instruction` and nothing else",
+    check("O a fleet impl repo's release-PR line in a release body reds on `merge-instruction` "
+          "and nothing else",
           got == ["merge-instruction"], got)
     check("O ...on that line, quoting it, naming `merge-method` and `tag-after-merge`, and citing "
           "§ PR body", len(hits) == 1 and hits[0].text == P467_LINE
@@ -1849,15 +1852,15 @@ def arm_o_merge_instruction(mod, td):
           _merge_hits(mod, P467_LINE, title=None))
 
     # ⛔ THE CONTROLS. Unwired, every positive above passes — the state before card#13034, in which
-    # platform#467's body passed clean.
+    # a fleet impl repo's release-PR body passed clean.
     unwired = mutant(td, "merge-instruction-unwired",
                      ("        out += rule_merge_instruction(rendered)\n", ""))
     still = [line for _, line in MERGE_ROWS + (("", P467_LINE),)
              if rules_on(unwired, _in_highlights(line), title=RELEASE_TITLE)]
-    if check("O CONTROL: with `rule_merge_instruction` UNWIRED, platform#467's line and every "
-             "reconstructed kanban-board#592 line pass", not still, still):
+    if check("O CONTROL: with `rule_merge_instruction` UNWIRED, a fleet impl repo's release-PR "
+             "line and every reconstructed kanban-board#592 line pass", not still, still):
         seen_red("O the merge-instruction rule, driven red by an unwired copy that lets "
-                 "platform#467's merge-method line through")
+                 "a fleet impl repo's release-PR merge-method line through")
     every = mutant(td, "merge-instruction-every-pr",
                    ("           + rule_declarations(body or \"\", author_type))\n",
                     "           + rule_declarations(body or \"\", author_type)"

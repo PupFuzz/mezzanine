@@ -12,7 +12,8 @@
 #         one's PR template; this public repository carries none of them. The sites: the ⛔
 #         RELEASE-SCOPE block's measurement sentence, the line carrying `repo's feature PRs
 #         card#10493 lists each spent a review finding on` ("a fleet impl repo"); the same block's
-#         merge-instruction bullet, which cites `platform#467` without its organisation; the
+#         merge-instruction bullet, which cites the other team's PR as `a fleet impl repo's
+#         release PR` rather than by its repository and number; the
 #         comment above `RELEASE_HEADINGS_FILE`, the line carrying `a fleet impl repo's shape guard
 #         requires`; and `read_release_headings`' docstring. Every heading upstream spells with that
 #         template's domain word is `Boundary check` here. Comments and docstrings only — no rule
@@ -196,9 +197,9 @@ shape is its repo's to define, so only the rules that model that SHAPE are scope
     section shape.
   * RELEASE ONLY TOO — `merge-instruction` (card#13034), for a different reason: it is § PR body's
     merge-method note, which names the release case, and every instance measured was a release
-    body (platform#467, PupFuzz/kanban-board#592). A feature PR in this fleet is often
-    ABOUT merge tooling, so its body names merge methods as its subject; the rule was scoped to the
-    release PR on that ground.
+    body (a fleet impl repo's release PR, PupFuzz/kanban-board#592). A feature PR in this fleet is
+    often ABOUT merge tooling, so its body names merge methods as its subject; the rule was scoped
+    to the release PR on that ground.
   * EVERY PR — everything else. `banned-opener` and `live-state-reading` are § PR body's OUT table,
     and the OUT table's relocations (narration, the audit trail, findings and readings go to the
     review-request round) bind every PR body whatever its section shape — § PR body says so, and

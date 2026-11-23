@@ -955,6 +955,8 @@ body line in their place: upstream attributes a PR by the roster's repo binding 
 opened on, and it has already made one peer's careful API-level verification false. After regenerating
 a body (release bodies especially — `release-pr-body` emits neither), put them back. Neither field has
 a line window: put them anywhere outside a fenced block, in either the bold or the plain spelling.
+`release-pr-body` emits no `Origin:` line either: a release body and a back-merge sync body each add
+`Origin: bundle` (`docs/VERSIONING.md` § Release flow, steps 7 and 11).
 `built-line.md` owns the `Built:` value set.
 
 Read the verdict on a body before you push it, the same verdict the check will reach. These
