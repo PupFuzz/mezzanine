@@ -1,0 +1,44 @@
+# dl-traceability-selftest.yml — proves the board-traceability gate in `dl-traceability.yml` BLOCKS a
+# token-less code PR, PASSES a docs-only one and a tokened one, and that each fail-closed branch is
+# what closes its leg.
+#
+# WHAT IT DOES. Runs the vendored `bin/dl-traceability.selftest.sh` against THIS repository's copy
+# of the gate, by passing its path: the suite extracts that file's own shell verbatim from its
+# marked blocks and runs it with `gh` stubbed. What each leg asserts is the suite's own header; it is
+# not restated here.
+#
+# WHY IT EXISTS. The gate's verdicts change what this repository accepts, and a blocking check that
+# has never been observed blocking looks enforced from every surface while proving nothing (the coord
+# plugin's `docs/DL-TRACEABILITY.md` § 8). This is the lane where it is observed, on every PR.
+#
+# NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: the suite is
+# seconds of bash, and a path-filtered workflow produces NO RUN, which reads as *pending* rather
+# than *passed*.
+#
+# ⛔ WHETHER A RED HERE BLOCKS A MERGE IS NOT STATED IN THIS FILE, DELIBERATELY.
+# `docs/VERSIONING.md § Branch model` is its one home and carries the command that re-derives it.
+#
+# NEEDS NO CREDENTIAL AND NO NETWORK: bash + jq + grep + base64 + sed + the checkout.
+
+name: DL traceability selftest
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  dl-traceability-selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      # `bash` explicitly rather than relying on the executable bit surviving a checkout. The path
+      # argument is load-bearing: without it the suite looks beside itself and fails by name.
+      - name: Self-test (both directions, every fail-closed leg, and the mutant controls)
+        run: bash bin/dl-traceability.selftest.sh .github/workflows/dl-traceability.yml
