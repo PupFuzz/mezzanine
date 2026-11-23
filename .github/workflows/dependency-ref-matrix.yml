@@ -1,30 +1,43 @@
-# ── VENDORED from coord 0.66.0 — the CALLER of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+# ── VENDORED from coord 0.77.0 — the CALLER of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/security/workflows/dependency-ref-matrix.yml
-#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
-#   plugin version    coord 0.66.0
-#   upstream sha256   9a2d3b954939a24d12976ba1720a2e6d2fc0c67e3df8d0a09a47b816cc9a80ed
+#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
+#   plugin version    coord 0.77.0
+#   upstream sha256   ba7021522f6804044f103a26f203d072c8274c76e7e9ddb0eabe186131b21b90
 #
 # That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
 # line that is neither blank nor a comment), which is a different figure. Re-derive this one
-# against a marketplace clone:   git show 70fd3207:plugins/coord/templates/security/workflows/dependency-ref-matrix.yml | sha256sum
+# against a marketplace clone:   git show afaf9a10:plugins/coord/templates/security/workflows/dependency-ref-matrix.yml | sha256sum
 #
 # DECLARED LOCAL EDITS — each is also a FRAGMENTS row in `bin/vendor-pin-check.sh`, which reds
 # when one leaves the body. Outside these edits, the text below this block was upstream's byte for
 # byte when vendored (checked by diff against the commit above); the body pin holds it there.
 #   (1) the `uses:` slug names this repo
 #       (fragment: `uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev`).
+#   (2) bump PRs are switched OFF by operator decision (2026-11-23, card#13794): `bump_prs` is
+#       `'off'`, upstream's recorded switch, and the `secrets:` block that handed the callee the
+#       bump app's two secrets is removed, since nothing reads them while bumps are off
+#       (fragment: `bump_prs: 'off'`). The scheduled audit still runs both legs; on each, the
+#       callee's bump job prints `BUMP PRS: OFF` and passes. `bin/dependency-audit.selftest.sh`
+#       accepts this through its own declared edit (3), which goes when framework card#13796 ships.
 #
-# TO RE-VENDOR: copy upstream's file over everything below this block, re-apply the edits above,
-# then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
+# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `.github/workflows/dependency-audit.yml`,
+# `.github/workflows/dependency-ref-matrix.yml` and `bin/dependency-audit-fixtures/` move TOGETHER,
+# from one upstream commit: the selftest extracts and runs the workflows' own blocks against those fixtures, so a
+# selftest from one revision over workflows or fixtures from another reds (measured on the v0.77.0
+# refresh, card#13794). Copy each upstream file over everything below its block, re-apply each
+# file's declared edits, then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
 # ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-ref-matrix.yml — the CALLER: audits the RELEASE ref and the INTEGRATION ref on a
 # clock, through one shared implementation (`dependency-audit.yml`, the callee).
 #
 # ADOPT (per repo): copy to `.github/workflows/` and set the three CUSTOMIZE values — the two
-# branch names in the matrix, the `uses:` slug, and the cron. Documented in the coord plugin's
-# `docs/DEPENDENCY-AUDIT.md`.
+# branch names in the matrix, the `uses:` slug, and the cron — and set up the bump GitHub App the
+# integration leg's bump job pushes and opens PRs as, with its two repository secrets
+# (`ADVISORY_BUMP_APP_CLIENT_ID`, `ADVISORY_BUMP_APP_PRIVATE_KEY`), or switch that job off with
+# `bump_prs: 'off'` below. A personal token is not supported. Documented in the coord plugin's
+# `docs/DEPENDENCY-AUDIT.md` (§ "The bump app" for the setup).
 #
 # WHY TWO REFS. A lockfile advisory is a property of TIME, not of a diff: a tree nobody pushes
 # to goes from clean to vulnerable with no event to notice it. And the two refs genuinely
@@ -61,7 +74,8 @@ on:
 # There is deliberately no top-level `permissions:` key; the selftest reds if one comes back.
 jobs:
   audit:
-    # The callee checks out the audited ref and reads public advisories; nothing here writes.
+    # The callee checks out the audited ref and reads public advisories; its bump job pushes and
+    # opens PRs as the bump app, never with this workflow token, so nothing here writes.
     permissions:
       contents: read
     strategy:
@@ -71,8 +85,14 @@ jobs:
       # it looks complete. Both legs must always report.
       fail-fast: false
       matrix:
-        # CUSTOMIZE: the release ref first, then the integration ref.
-        ref: [main, dev]
+        # CUSTOMIZE: the release ref first, then the integration ref. Each leg names which it is:
+        # the callee's bump job opens in-range fix PRs on the `integration` leg only, and never
+        # bumps the `release` leg, whose ref changes through a release.
+        include:
+          - ref: main
+            leg: release
+          - ref: dev
+            leg: integration
     # CUSTOMIZE the slug. The `@<integration-branch>` coupling is deliberately NOT a SHA pin:
     # a pin nobody bumps audits with STALE LOGIC wearing a version number — which is the exact
     # failure class this audit exists to catch. The coupling fails LOUD rather than silent: if
@@ -80,6 +100,12 @@ jobs:
     uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev
     with:
       ref: ${{ matrix.ref }}
+      leg: ${{ matrix.leg }}
+      # BUMP PRs ARE ON BY DEFAULT (the coord plugin's `docs/DEPENDENCY-AUDIT.md` § Bump PRs).
+      # Turning them off is this line, set to 'off' — an explicit switch recorded in this file's
+      # history, and a different state from a missing bump-app secret, which FAILS the bump job,
+      # naming it, on every integration-leg run.
+      bump_prs: 'off'
 
   report:
     # `needs:` + `if: always()` — the reporting job must run when a leg FAILED, since a failed
@@ -110,7 +136,7 @@ jobs:
           # accept a run that cannot say what it read.
           fail() { printf 'REPORT: RED — %s\n' "$1" >&2; exit 1; }
           [ "${AUDIT_RESULT:-}" = "success" ] \
-            || fail "the audit matrix concluded '${AUDIT_RESULT:-<absent>}', not success — at least one audited ref did not complete. A leg that did not finish measured nothing."
+            || fail "the audit matrix concluded '${AUDIT_RESULT:-<absent>}', not success — at least one leg's audit or bump job did not succeed (that leg's run names which). A leg that did not finish measured nothing."
           [ -n "${AUDIT_POPULATION:-}" ] \
             || fail "the audit reported NO population output. A run that cannot say what it read is not evidence that anything was read."
           printf '%s' "$AUDIT_POPULATION" | jq -e 'type == "object"' >/dev/null 2>&1 \

@@ -432,6 +432,9 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
    [§ Wire compatibility](#wire-compatibility--the-reporter-to-ingest-contract-has-its-own-version-line).
 7. **Open the release PR `release/v<version>` → `main`** with full notes. Head is the release
    branch, never `dev` ([§ hazard](#the-release-pr-head-hazard--never-pr-dev-directly-into-main)).
+   Its body carries the line `Origin: bundle` beside `Built:` and `**Coordinated in:**`, and
+   `bin/pr-body-lint.py` reds a body without an `Origin:` line (the `coord:release-pr` skill
+   § PR body owns the provenance lines).
    ⛔ **Opening it is ask-first.** The policy is declared in `CLAUDE.md` § Install standing rules,
    on its `**Merge.**` line, and is stated there only; `python3 bin/release-facts.py` cites that
    line as it reads it.
@@ -468,7 +471,8 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
     `--base` is the escape; `docs/KANBAN.md § G-2` owns the three cases where that happens.
     **Do not restate them here** — a second copy of that rule is what went stale last time.
 11. **Open the back-merge `sync/main-to-dev-post-v<version>` → `dev`** and merge it with a
-    merge commit — never a squash (core rule 5). `dev` is squash-only, so the admin identity
+    merge commit — never a squash (core rule 5). Its body carries `Origin: bundle`, as the
+    release PR's does. `dev` is squash-only, so the admin identity
     lands it through the ruleset's admin bypass with `gh pr merge <N> --merge`
     ([§ Branch model](#branch-model)); not with `solo-self-merge`, which always squashes.
 12. **Deploy** what the release actually requires deploying, then exercise it for real. A tag

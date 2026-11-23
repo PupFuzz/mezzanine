@@ -177,8 +177,14 @@ jobs:
     if: github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     steps:
+      # The default ref of a `pull_request` run is the PR's MERGE commit, whose first parent is the
+      # base and whose second is the PR head; `fetch-depth: 2` fetches both parents, which the body
+      # step reads the base's linter out of. Keep both: the body step refuses (exit 2) a checkout
+      # that is not this PR's merge commit rather than fall back to the PR's own linter.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 2
 
       # ⚠ THE PIN AND SELFTEST STEPS BELOW JUDGE THE CHECKOUT, NEVER THE BODY. What each judges is
       # whether this repository's vendored copies are still the bytes their headers declare,
@@ -186,7 +192,8 @@ jobs:
       # repository's body GENERATOR still emits a body that linter passes. So a body, compliant or
       # not, does not red them: what reds them is a PR that edits a vendored file or breaks
       # `bin/change-pr-body.py`, each a defect in this repo that must be loud. The step that judges
-      # the BODY is the third one, and its name says so.
+      # the BODY is the third one, and its name says so. They judge the PR's OWN copies; the body
+      # step judges with the BASE branch's linter, which passed these same steps when it merged.
       - name: Vendored-body pins (selftest reds on a body mutation, then the real check)
         run: |
           bash bin/vendor-pin-check.sh --selftest
@@ -199,9 +206,10 @@ jobs:
       # each fixture, which is what pins `bin/pr-body-lint-fixtures/` (there is no manifest row for
       # those — `bin/vendor-pin-check.sh`'s own header says why, and why this pin is the better one).
       # `--workflow` names THIS file because the selftest's arm i reads the workflow that runs the
-      # lint and checks that it passes the PR title; upstream's default path is the plugin's own
-      # template layout, which this tree does not have (upstream card#10719). The vendored
-      # selftest's header owns the reason.
+      # lint, finds the step named `Lint the PR body`, and runs that step's script against staged
+      # merge-commit checkouts to show it judges with the base's copy; upstream's default path is
+      # the plugin's own template layout, which this tree does not have (upstream card#10719). The
+      # vendored selftest's header owns the reason.
       - name: Self-test (upstream's red-then-green controls for every rule)
         run: python3 bin/pr-body-lint.selftest.py --workflow .github/workflows/card-token-lint.yml
 
@@ -225,8 +233,8 @@ jobs:
       # edited body and needs no new push. Observed, not assumed: on #209 a body edit at
       # 2026-09-22T00:27:56Z started a second run of this workflow on the SAME head SHA two seconds
       # later, with no push, retitle or reopen between them. Judge a body before pushing it with
-      # `python3 bin/pr-body-lint.py --body-file=<file>`, the same program this step runs; with no
-      # title it gives the strict verdict, which covers this step's and the next one's.
+      # `python3 bin/pr-body-lint.py --body-file=<file>`, the program this step runs as the base
+      # branch has it; with no title it gives the strict verdict, which covers both of its runs.
       #
       # ⛔ THE TITLE AND THE AUTHOR'S ACCOUNT TYPE COME THROUGH THE SAME `env:` DOOR, spelled as
       # upstream's own workflow spells them (`templates/workflows/pr-body-lint.yml` in a coord
@@ -238,16 +246,54 @@ jobs:
       # nothing else is waived. `edited` fires on a retitle too, so a PR retitled to or from a
       # release is re-judged. The variable names are the ones `bin/pr-body-lint.selftest.py` arm i
       # checks for in this file, which is why they carry upstream's `COORD_` prefix.
-      - name: Judge this PR's body against the fleet standard (fails the job on findings)
-        id: body-titled
+      # ⛔ MEZZANINE HOLDS A CHANGE PR TO THE RELEASE SECTION SET TOO, AND THE SECOND RUN BELOW IS WHAT
+      # ENFORCES IT (seat ruling on #298). The titled run judges a change PR by the every-PR rules
+      # only, because upstream scopes the closed section set and the scope line to `release:` PRs.
+      # This repository keeps them for its change PRs by choice (`CLAUDE.md § PR bodies are judged
+      # against the fleet standard`), so a change PR's body is judged a second time with NO title,
+      # which is the linter's full release standard. A `release:` PR skips that run: the titled run
+      # already gave it that judgement. The title is lower-cased before the `release:` test, as the
+      # linter compares it, and leading spaces are not trimmed; a title that differs only there gets
+      # the strict run as well, which is the strict side. Both runs always happen in one step, so an
+      # author with findings in both sees both in one log; the step exits with the worse of the two.
+      #
+      # ⛔ THE JUDGE IS THE BASE BRANCH'S LINTER, NOT THE PR'S (upstream's `templates/workflows/
+      # pr-body-lint.yml`, adopted at the v0.77.0 re-vendor, card#13794). A PR that edits
+      # `bin/pr-body-lint.py` must not judge its own body with its own edit, so the script reads the
+      # linter out of the merge commit's first parent (`HEAD^1`). It first checks that HEAD's second
+      # parent IS the PR head the event names, and exits 2 naming the cause when it is not — a shallow
+      # checkout, or a `ref:` set to the PR head — rather than fall back to the PR's copy. On the PR
+      # that first adds the linter there is no base copy, and the script says so and uses the PR's.
+      # `bin/pr-body-lint.selftest.py` arm i extracts this step's script by its name and drives each
+      # of those cases, so the step name, the four `COORD_PR_*` variables and the merge-commit check
+      # are what that arm reads. ⇒ A PR that changes the linter's rules is judged by the OLD rules;
+      # its body must pass both.
+      - name: Lint the PR body against the fleet standard (base branch's linter; fails the job on findings)
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          COORD_PR_TITLE: ${{ github.event.pull_request.title }}
+          COORD_PR_BODY: ${{ github.event.pull_request.body }}
           COORD_PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          COORD_PR_TITLE: ${{ github.event.pull_request.title }}
+          COORD_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          set -euo pipefail
+          if [ -z "${COORD_PR_HEAD_SHA:-}" ] \
+              || [ "$(git rev-parse -q --verify 'HEAD^2' || true)" != "$COORD_PR_HEAD_SHA" ]; then
+            echo "pr-body-lint: HEAD is not this PR's merge commit (its second parent is not the PR head ${COORD_PR_HEAD_SHA:-<unset>}), so the base's copy of the lint cannot be read. Keep the checkout's default ref, 'fetch-depth: 2' and the COORD_PR_HEAD_SHA env line." >&2
+            exit 2
+          fi
+          lint="$RUNNER_TEMP/pr-body-lint.base.py"
+          if git cat-file -e 'HEAD^1:bin/pr-body-lint.py' 2>/dev/null; then
+            git show 'HEAD^1:bin/pr-body-lint.py' > "$lint"
+            echo "pr-body-lint: judged by the base branch's linter (HEAD^1:bin/pr-body-lint.py)."
+          else
+            echo "pr-body-lint: the base has no bin/pr-body-lint.py, so this PR adopts the lint and is judged by the copy it adds."
+            lint=bin/pr-body-lint.py
+          fi
+          label="PR #${PR_NUMBER:-?}"
+
           rc=0
-          python3 bin/pr-body-lint.py --env=PR_BODY --label="PR #$PR_NUMBER" \
+          python3 "$lint" --env=COORD_PR_BODY --label="$label" \
             --title-env COORD_PR_TITLE --author-type-env COORD_PR_AUTHOR_TYPE || rc=$?
           echo
           case "$rc" in
@@ -262,40 +308,26 @@ jobs:
                echo "finding about the body, and a check that could not judge fails rather than"
                echo "passes. Editing the body does not fix it; the workflow or the linter does." ;;
           esac
-          exit "$rc"
 
-      # ⛔ MEZZANINE HOLDS A CHANGE PR TO THE RELEASE SECTION SET TOO, AND THIS STEP IS WHAT ENFORCES
-      # IT (seat ruling on #298). The titled run above judges a change PR by the every-PR rules only,
-      # because upstream scopes the closed section set and the scope line to `release:` PRs. This
-      # repository keeps them for its change PRs by choice (`CLAUDE.md § PR bodies are judged
-      # against the fleet standard`), so a change PR's body is judged a second time with NO title,
-      # which is the linter's full release standard. A `release:` PR skips this step: the run above
-      # already gave it that judgement. GitHub's `startsWith` ignores letter case, as the linter
-      # does, but does not trim leading spaces; a title that differs only there gets this strict
-      # pass as well, which is the strict side.
-      # It runs only when the titled step RAN, whatever its verdict: that step runs only after the
-      # pin and the vendored selftest passed, so this verdict always comes from a verified linter,
-      # and an author with findings in both runs sees both in one log.
-      - name: Judge a change PR's body against the full section set (fails the job on findings)
-        if: ${{ !cancelled() && steps.body-titled.conclusion != 'skipped' && !startsWith(github.event.pull_request.title, 'release:') }}
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          COORD_PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
-        run: |
-          rc=0
-          python3 bin/pr-body-lint.py --env=PR_BODY --label="PR #$PR_NUMBER" \
-            --author-type-env COORD_PR_AUTHOR_TYPE || rc=$?
-          echo
-          case "$rc" in
-            0) echo "pr-body-lint (no title) · rc=0 — this body meets the full section set." ;;
-            1) echo "pr-body-lint (no title) · rc=1 — this job fails. Mezzanine holds a change PR to the"
-               echo "release section set and scope line; the findings above name what to move. Edit the"
-               echo "PR body to clear them. A traceback instead of findings is a linter crash." ;;
-            *) echo "pr-body-lint (no title) · rc=$rc — the linter could not judge this body: a WIRING"
-               echo "defect in this step, not a finding about the body." ;;
+          rc_full=0
+          case "$(printf '%s' "${COORD_PR_TITLE:-}" | tr '[:upper:]' '[:lower:]')" in
+            release:*)
+              echo "pr-body-lint (no title) · not run — a release: PR got the full standard above." ;;
+            *)
+              echo
+              python3 "$lint" --env=COORD_PR_BODY --label="$label" \
+                --author-type-env COORD_PR_AUTHOR_TYPE || rc_full=$?
+              echo
+              case "$rc_full" in
+                0) echo "pr-body-lint (no title) · rc=0 — this body meets the full section set." ;;
+                1) echo "pr-body-lint (no title) · rc=1 — this job fails. Mezzanine holds a change PR to the"
+                   echo "release section set and scope line; the findings above name what to move. Edit the"
+                   echo "PR body to clear them. A traceback instead of findings is a linter crash." ;;
+                *) echo "pr-body-lint (no title) · rc=$rc_full — the linter could not judge this body: a WIRING"
+                   echo "defect in this step, not a finding about the body." ;;
+              esac ;;
           esac
-          exit "$rc"
+          exit $(( rc > rc_full ? rc : rc_full ))
 
       # ⭐ THE ROUTE TO A COMPLIANT BODY, HELD TO THE SAME JUDGE THE STEP ABOVE USES (card#9801).
       # `bin/change-pr-body.py` is this repository's generator for a NON-release PR body — the

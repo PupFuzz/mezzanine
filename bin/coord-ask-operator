@@ -1,0 +1,1518 @@
+#!/usr/bin/env python3
+# ── VENDORED — DO NOT EDIT ANYTHING BELOW THIS HEADER ─────────────────────────────────────────
+#
+# coord-ask-operator — the operator-question linter and registry filer.
+# Everything below this header is upstream's file, byte for byte, EXCEPT THE DECLARED SITES BELOW,
+# and `bin/vendor-pin-check.sh` pins its body.
+#
+#   DECLARED LOCAL EDITS — this is the COMPLETE list. Anything else below is a defect.
+#     (1) card#13794 — the `rt` row of `CITE_SHAPES` spells its example `"rt" + "#1234"`, so this
+#         public repository's text carries no thread-number shape `bin/no-roundtable-refs.py`
+#         reds on. The string at run time is upstream's, unchanged; no rule and no output moves.
+#     (2) card#13794 — `closure_refusal`'s docstring cites `a sola-pm ruling` without the comment
+#         id upstream gives it, an id in a coordination repository this one does not reference.
+#         Docstring only.
+#
+#   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
+#   upstream path     plugins/coord/templates/bin/coord-ask-operator
+#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
+#   plugin version    coord 0.77.0
+#   upstream sha256   100c5d07024eb8fc046545ee042d402148a86ce13db1e358be1ab31c8d125cc7
+#                     — the WHOLE upstream file, NOT the body figure vendor-pin-check pins.
+#
+# WHY THIS REPOSITORY CARRIES IT. Nothing here files operator questions: this repository has no
+# operator registry. `bin/pr-body-lint.selftest.py` arm M holds the lint's `DESIGN_APPROVED_ID_RE`
+# equal to `coord-ask-operator`'s `ITEM_ID_RE`, character for character, and REDS when
+# `coord-ask-operator` is not beside it; `coord-ask-operator` imports `_operator_registry.py` from
+# its own directory at load, so both are here. Re-vendor them with `bin/pr-body-lint.py`, from the
+# same upstream commit.
+#
+# WHY THIS HEADER EXISTS — `bin/vendor-pin-check.sh --selftest`'s control arm requires line 2 to
+# be a `#` comment and upstream's line 2 is not one. `bin/pr-body-lint.py`'s header states the
+# measurement; not restated here.
+#
+# ── END OF MEZZANINE'S HEADER ─────────────────────────────────────────────────────────────────
+r"""coord-ask-operator — the operator-question SHAPE, ENFORCED instead of asked for (card#9550).
+
+THE MEASURED DEFECT, IN THE OPERATOR'S OWN WORDS. Agents file questions the operator cannot
+answer, and the operator has had to send the same correction back every time:
+
+    "Usually the questions as posed are too short to answer because I don't know what each
+     option means (ie: agent asks do A, B, or C but doesn't explain what is A, B, or C).
+     coord-ask-operator needs to enforce proper context similar to how filing a PR forces the
+     agent to write from an installer's perspective."
+
+    "a. treat the operator like they have ADHD. Explain the background of the question (which
+     repo, which host, etc) in easy to understand terms with context or explain with an example.
+     b. Provide me with the answers I can choose from, and the consequences of each choice.
+     Provide the recommended action, and the recommended action must be justified based on the
+     actual context."
+
+    "Normally when I read the operator questions, I need to tell you 'I need more context.
+     Explain it again in easy-to-understand terms or provide me with an actual example. Explain
+     the consequences of each option you're giving me. Explain why you chose to recommend what
+     you did.'"                                           — operator, 2026-09-14, card#9550
+
+⛔ AN ITEM THAT WOULD DRAW ANY OF THOSE FOUR COMPLAINTS MUST FAIL THIS LINT. That sentence is the
+card's own done-when and it is the whole specification. The four map onto rules, and the mapping is
+what `coord-ask-operator-fixtures/` drives:
+
+    "I don't know what each option means"      -> `consequence-missing`, `options-too-few`
+    "explain the background ... easy to
+     understand terms, or an example"          -> `background-too-sparse`
+    "explain the consequences of each option"  -> `consequence-missing`
+    "explain why you chose to recommend"       -> `justification-missing`, `generic-justification`,
+                                                  `justification-unmoored`, `recommend-unknown-option`
+
+⛔ THE COMMAND PLUS ITS REFUSAL IS THE ENFORCEMENT, AND THE REFUSAL MESSAGE IS THE SPECIFICATION.
+This is not a style preference: asking for the behaviour in agent-definition PROSE was measured
+NULL three independent times on this project (fw#8877, reproduced by card#9240 and card#9235,
+re-measured 2026-09-14 with the plumbing share moving the WRONG way). Structural changes worked;
+prose asking for different behaviour did not. Nobody has to read a standard to learn it here —
+every refusal states the rule, the fix, and the offending text, and `docs/OPERATOR-REGISTER.md` is
+where the same standard is written for a reader who wants it before they write.
+
+WHAT IT CANNOT DO, STATED ONCE SO NOBODY RE-DERIVES IT UNDER PRESSURE TO MAKE IT DO MORE. This
+program checks that an item HAS THE PARTS a good item has, in the right cross-referenced
+relationship to each other. It cannot check that the parts are GOOD: it cannot judge whether
+`## Background` is written in terms a non-engineer can follow, whether a `Justification:` is a
+SOUND argument rather than a plausible-sounding one, or whether all materially different options
+were considered. That gap is the gap between "the PR compiles" and "the PR is correct" — a review
+still exists above a passing build, and here the review is the operator's own read. Three of the
+rules below (`background-too-sparse`, `generic-justification`, `justification-unmoored`) are
+PROXIES for that gap and are named as proxies in their own docstrings, never as comprehension
+checks. `docs/OPERATOR-REGISTER.md § What this cannot check` owns the full statement.
+
+THE BAR FOR WHAT REACHES THE OPERATOR IS NOT THIS PROGRAM'S. `docs/process-framework.md § Triage
+doctrine` and engineering-canon #18's MINT GATE own it, and this program deliberately does not
+restate their reasoning (canon #16). What it owns is the one mechanical hook the bar hangs on:
+`Decision-class:` is a CLOSED enum, so a filer who cannot name which class their question belongs
+to has not cleared the gate, and the tool refuses rather than accepting a vague item. A
+`Question:` line is required too — the one-line question the operator's page shows as the item's
+header (card#11145, `rule_question`).
+
+⛔ SCOPE — PM AND SOLO SEATS ONLY. An impl agent sends its questions to its PM; there is no
+operator channel from an impl seat, so filing from one is refused by `registry_root()` rather than
+writing a record nothing will ever render. PM and solo differ in LOCATION ONLY and this tool hides
+it: one function resolves the root and every other line is blind to which branch it took.
+
+⛔ THIS PROGRAM FILES; IT DOES NOT RENDER, AND IT SAYS SO WHEN NOTHING ON THIS MACHINE CAN.
+`operator-register.py` is the other half: it re-derives each item's live state, renders the page
+the operator answers, and — `apply --from-paste` — applies the operator's answers back. On a
+machine where it is not installed, a filed item reaches the operator only when a person or an
+agent reads the registry file. `filed_notice()` prints that, CONDITIONALLY on the generator being
+absent from PATH, so the notice retires itself on every seat that installs it rather than becoming
+a stale line somebody has to remember to delete. A tool that files into a void and prints "filed"
+would read as reassurance; this one names what it cannot do.
+
+REWORDING AN OPEN ITEM: `--edit opq-…` replaces that item's question text in place, under the
+same lint, keeping its id — the register is a burndown list of open questions, not a decision
+archive (card#10815); `edit_record()` owns the rule and its refusals. THE EDIT IS THE FILER'S ONE
+SIBLING: it reads the registry through `operator-register.py` installed BESIDE this file
+(`load_register()`), so there is one stream reader, not two. Linting needs nothing beside this
+file.
+
+AN ITEM WHOSE CITED SOURCES HAVE ALL CONCLUDED IS REFUSED, filed or reworded, naming each one
+(`closure_refusal()`, card#12320): the register would withdraw it on its first render, unseen. The
+check is `operator-register.py`'s own live read, asked of the copy beside this file; where it
+cannot be made the item files, and stderr says what was not checked.
+
+exit: 0 = the item meets the shape (and was filed — or reworded, with `--edit` — unless
+          `--check-only`)
+      1 = at least one finding — NOTHING WAS FILED OR EDITED
+      2 = usage/input fault, a registry root that could not be resolved, an item whose cited
+          sources have all concluded (`closure_refusal`), or an `--edit` the
+          registry refuses or could not perform (unknown or duplicated id, already answered or
+          withdrawn, an unreadable stream, no `operator-register.py` beside this file, a failed
+          write), or a
+          filing whose write the filesystem refused (named, never a traceback). A byte in
+          `COORD_AGENT` that is not UTF-8, or an unpaired UTF-16 surrogate in it, is stored as
+          U+FFFD in the filer's (or editor's) identity
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+
+# VENDOR-BEGIN(stdio-encoding)
+# GENERATED — do not edit; source: plugins/coord/_vendor/stdio-encoding.py.txt; regenerate (framework repo only): python3 tools/gen-vendored.py; fragment-sha256: 9107d70a8af83298
+# jscpd:ignore-start
+def pin_std_streams():
+    """Pin this program's stdout and stderr so no character it writes can KILL the write.
+
+    THE DEFECT THIS ENDS. Python's text streams encode with the `strict` error handler, and
+    outside a UTF-8 locale their codec is the platform's — `cp1252` on the fleet's Windows
+    seat, for a redirected stream as well as for an old console. The first character that
+    codec cannot represent raises `UnicodeEncodeError` *inside* the write, so the process
+    dies with a traceback and the stream it was writing to is left EMPTY. Measured on the
+    tool whose whole subject is refusing empty answers: `git-object-id --help` under
+    `PYTHONIOENCODING=cp1252` exits 1 with ZERO BYTES on stdout, because the contract it
+    prints contains one `⛔`. A reader who asks a tool what it promises, and is handed
+    nothing, reads that as "the tool has nothing to say" — the wrong-population zero,
+    produced by the help path of the tool written to forbid it.
+
+    THREE PROPERTIES, AND EACH IS LOAD-BEARING ON ITS OWN.
+      * `encoding="utf-8"` — the tooling's text IS UTF-8 (arrows, em-dashes, box drawing,
+        accented names come out of coordination data, not out of decoration), so the stream
+        is pinned to the codec that can carry all of it rather than left on whatever the
+        machine's locale happens to be. This is also what makes a redirected stream a FILE
+        of known bytes instead of a file whose encoding depends on which seat produced it.
+      * `errors="backslashreplace"` — the residue after that pin. UTF-8 still cannot encode
+        a LONE SURROGATE, which is exactly what an undecodable byte in a filename becomes
+        once it has been through the filesystem's `surrogateescape` decode, so a program
+        that prints a path it did not choose can still meet a character its stream refuses.
+        The handler makes that one character print as `\\udcXX` and lets the rest of the
+        line through. THE DIRECTION IS THE POINT: an unprintable character must cost its own
+        glyph, never the whole message.
+      * `newline="\\n"` — Windows opens a text stream in TEXT MODE and translates every
+        `\\n` written into `\\r\\n`. Any consumer that captures this program's stdout and
+        compares, splits or evaluates a field then compares a value with a carriage return
+        welded onto it, and the mismatch names nothing. Pinning at the PRODUCER is what lets
+        a reader rely on it, rather than every reader stripping `\\r` for itself.
+
+    WHY THE ERROR HANDLER IS NOT LEFT STRICT once the encoding is pinned: `strict` is the
+    setting that turns an unrepresentable character into NO OUTPUT AT ALL. There is no
+    caller anywhere for whom that is the better answer — a diagnostic that cannot be printed
+    is not a diagnostic — and the two settings are independent, so pinning one and leaving
+    the other is how the crash survives a fix aimed at it. Note that `reconfigure(encoding=)`
+    RESETS the handler to `strict` when `errors=` is omitted (measured, CPython 3.14), which
+    is why the two travel together in one call and never in two — and why NOTHING LATER IN A
+    HOST MAY CALL `reconfigure(encoding=…)` AGAIN. A second such call, however well meant,
+    silently undoes this one on both streams and leaves the program back at the setting that
+    prints nothing; the framework repo's population guard reds on it two ways, statically and
+    by reading the handler the program leaves installed at runtime.
+
+    STDIN IS DELIBERATELY NOT TOUCHED. This is an ENCODE failure — a property of what the
+    program writes — and stdin's decode is a different question with a different right
+    answer per program: a reader that must not corrupt bytes reads `sys.stdin.buffer` and
+    decodes explicitly, and pinning the text layer underneath it would say something about a
+    stream that program never uses.
+
+    A STREAM THAT CANNOT BE RECONFIGURED IS LEFT ALONE, and that is the whole of the failure
+    handling. `reconfigure` exists on a real `TextIOWrapper`; a stream replaced by a test
+    harness, or absent entirely, has neither the method nor the defect. There is no second
+    attempt with fewer arguments, because no stream accepts one of these keywords and
+    refuses another — a fallback rung there would be code for a state that cannot arise, and
+    it would hide the one case worth knowing about by making it look handled.
+    """
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="backslashreplace", newline="\n")
+        except Exception:
+            pass
+
+
+# THE CALL IS SCOPED TO THE PROGRAM, and the scope is load-bearing. A host in this group can also
+# be a LIBRARY — `coord_credentials.py` is imported by the `coord-gh` / `xproj-gh` / `impl-ro-gh`
+# wrappers, by `git-credential-coord`, by `coord-credential-migrate.py`, by `hooks/bin/_ghcred.py`
+# and by `templates/hooks/coord-merge-guard.py` — and an unconditional call re-pins the IMPORTER's
+# streams as a side effect of the import. Measured: `coord-merge-guard.py` ended at
+# `backslashreplace` when `coord_credentials.py` happened to sit in `~/.local/bin` and at `strict`
+# when it did not, so a program's own stdout was a function of another file's install layout. A
+# module choosing an encoding for a program that never asked is this file's own defect one level
+# up — the caller's stream is the CALLER's to declare — and a pin that arrives only sometimes is
+# worse than none, because nothing downstream can rely on either state. Every host here is
+# executed directly, so this still fires for every PROGRAM run; what it no longer does is fire for
+# a reader that only wanted a function.
+if __name__ == "__main__":
+    pin_std_streams()
+# jscpd:ignore-end
+# VENDOR-END(stdio-encoding)
+
+# VENDOR-BEGIN(fence-mask)
+# GENERATED — do not edit; source: plugins/coord/_vendor/fence-mask.py.txt; regenerate (framework repo only): python3 tools/gen-vendored.py; fragment-sha256: 261bd08478c8a48f
+# jscpd:ignore-start
+_FENCE_RE = re.compile(r'^ {0,3}(?P<f>`{3,}|~{3,})(?P<info>.*)$')
+_HTML_COMMENT_OPEN_RE = re.compile(r'^ {0,3}<!--')
+
+
+def fenced_flags(text, html_comments=False):
+    """Per-line booleans over ``text.split("\\n")``: True when that line lies inside a fenced
+    code block, the opening and closing fence lines INCLUDED (they are part of the example,
+    not content).
+
+    MARKDOWN STRUCTURE ONLY COUNTS OUTSIDE A FENCED CODE BLOCK. Inside a fence, a line that
+    looks like a marker / a heading / a divider is an EXAMPLE OF one, quoted for a human — it
+    is the thing being written ABOUT, not an instance of it. Every structural scanner that
+    shipped without that distinction mis-parsed the same way, which is why this is ONE tracker
+    every one of them consults rather than N local patches.
+
+    THE GRAMMAR, stated here because this fragment is spliced whole into hosts that have no
+    other description of it: CommonMark's fenced-code rules, minus what nothing here emits. An
+    opening fence is >=3 backticks or tildes indented <=3 spaces (a backtick fence's info
+    string may not itself contain a backtick); it closes on the first line with >= as many of
+    the SAME character and nothing but whitespace after; an unclosed fence runs to end of
+    document. Indented (4-space) code blocks are NOT tracked, and the PRECONDITION that makes
+    that safe belongs to the caller, not to this: a scanner anchored at column 0 excludes an
+    indented example BY ITS OWN ANCHOR. This sentence used to assert that as a fact about "the
+    scanners that care", and a scanner that deliberately tolerates leading whitespace falsified
+    it (`dispatch-grant.MARKERISH_RE`, which must still see a HAND-MANGLED marker and therefore
+    cannot anchor at column 0). A caller that tolerates indentation reads an indented example as
+    real and owns that remainder itself — as that one does, in writing, beside the pattern.
+
+    `html_comments=True` ALSO flags every line of an HTML comment BLOCK — a caller's opt-in, for
+    a caller that judges what a reader SEES (a comment's own text is not rendered). A block opens
+    on a line whose first text, indented <=3 spaces, is `<!--`, and closes on the first line
+    holding `-->`, the opening line included; unclosed, it runs to end of document. That is
+    CommonMark's HTML-block rule for a comment. It is tracked in THIS loop, not a second pass,
+    because the two blocks hide each other: a `<!--` inside a fence opens no comment, and a fence
+    line inside a comment opens no fence. The flag is per LINE, so text after `-->` on the
+    closing line is flagged with it although a reader DOES see that text — a known false pass
+    for a caller judging what is seen — and a `<!--` that does not open its line flags nothing."""
+    flags, fence_char, fence_len = [], None, 0
+    in_comment = False
+    for ln in text.split("\n"):
+        if in_comment:
+            flags.append(True)
+            in_comment = "-->" not in ln
+            continue
+        if fence_char is None and html_comments and _HTML_COMMENT_OPEN_RE.match(ln):
+            flags.append(True)
+            in_comment = "-->" not in ln
+            continue
+        m = _FENCE_RE.match(ln)
+        if fence_char is None:
+            opening = bool(m) and not (m.group("f")[0] == "`" and "`" in m.group("info"))
+            if opening:
+                fence_char, fence_len = m.group("f")[0], len(m.group("f"))
+            flags.append(opening)
+            continue
+        flags.append(True)
+        if (m and m.group("f")[0] == fence_char and len(m.group("f")) >= fence_len
+                and not m.group("info").strip()):
+            fence_char, fence_len = None, 0
+    return flags
+
+
+def mask_fenced(text):
+    """`text` with every fenced-code line blanked to SPACES. SAME LENGTH, same newline
+    positions, so an offset found in the mask indexes the ORIGINAL unchanged — which is what
+    lets a caller splice on it.
+
+    THE MASK DOCTRINE, BOTH CONJUNCTS — THIS DOCSTRING IS ITS SINGLE OWNER, and a caller
+    arguing a pattern safe argues it HERE, against both. Blanking to spaces withholds a match
+    ONLY for a pattern that (i) cannot span a line boundary AND (ii) cannot match a run of
+    spaces or an all-space line. A pattern failing (ii) can GAIN matches on masked text: an
+    all-space line is a line the mask MANUFACTURED, so ``^\\s*$`` and ``^ {3}$`` both match more
+    often after masking, not less. Every wiring must be argued safe under BOTH clauses.
+
+    THIS DOCSTRING USED TO STATE ONLY THE WITHHELD HALF — "the only thing the mask can do is
+    withhold a match that a fenced example would otherwise have won". That was measurably
+    false, not merely loose, and the gained direction was executed against this very function
+    before the sentence was replaced. The withheld half is still true and still the point; it
+    was never the whole statement."""
+    return "\n".join(" " * len(ln) if f else ln
+                     for ln, f in zip(text.split("\n"), fenced_flags(text)))
+# jscpd:ignore-end
+# VENDOR-END(fence-mask)
+
+# VENDOR-BEGIN(bodylint-core)
+# GENERATED — do not edit; source: plugins/coord/_vendor/bodylint-core.py.txt; regenerate (framework repo only): python3 tools/gen-vendored.py; fragment-sha256: a36db6b9fbcf91c6
+# jscpd:ignore-start
+# ── The body-lint kernel ──────────────────────────────────────────────────────────────────────
+# WHAT THIS FRAGMENT IS, AND WHY IT IS A FRAGMENT RATHER THAN A SECOND COPY (card#9550 leg 1).
+#
+# A body lint is a program that reads ONE markdown body a human or an agent authored, decides
+# whether it is in the SHAPE a standard describes, and refuses it with a message that teaches the
+# standard. This repo now has two such programs, enforcing two UNRELATED standards:
+# `templates/bin/pr-body-lint.py` (the PR-body standard) and `templates/bin/coord-ask-operator`
+# (the operator-question shape). Their RULES share nothing — different closed heading sets, for
+# different reasons, owned by different documents — but the machinery under the rules is the same
+# five things, and NONE of those five is about either standard's content:
+#
+#   * `LINE_CLIP` / `Finding` — one rule, one line, that line's own text, clipped for an echo.
+#     Never a tally.
+#   * `scan` — a fence-aware per-line view of the body, with the zip-length assertion that keeps
+#     a truncated answer from reading like a clean one. It and `field_values` read the body through
+#     `fold_newlines`, the one newline fold, so a body parses the same whoever decoded it.
+#   * `field_values` / `field_value` — the machine-read-line grammar: `Name:` or `**Name:**` at
+#     the start of an unfenced line, with a non-blank value.
+#   * `read_body` — the `--body-file` / `--env` dual source, with `--env` existing for the
+#     shell-injection reason the workflow template states; `env_text` is its environment read,
+#     for a host's other environment values too.
+#
+# ⛔ THE ARGUMENT FOR HOISTING IT IS THE HOST'S OWN HISTORY, NOT A PREFERENCE. `field_value`'s
+# ancestor `_audit_field` was itself a consolidation: `Built:` and `Coordinated in:` had been
+# matched by TWO hand-written regexes strict in OPPOSITE directions, so each rejected the spelling
+# the other required and a compliant PR was reported ABSENT. `pr-body-lint.py`'s own docstring for
+# that function calls two regexes for one family "the measured defect this consolidation fixed."
+# Hand-copying the same five mechanisms into a second lint re-creates, one layer out, exactly the
+# shape that consolidation ended (canon #5: a second divergent implementation of one behavior is a
+# defect, not a style choice).
+#
+# ⛔ WHAT IT DOES NOT CARRY, AND THE LINE IS THE POINT. No rule, no heading set, no phrase table,
+# no exit-code dispatch, no CLI parser. A standard's CONTENT is its own program's, and a rule that
+# drifted in here would be this fragment inventing a standard for two hosts at once. Host-specific
+# reasoning — why THIS host needed the kernel, what its fields mean, what it measured — stays
+# OUTSIDE the markers, hand-authored, per host, the same rule the `fence-mask` group states.
+#
+# ⛔ IT ASSUMES `os`, `re` AND `sys` ARE IMPORTED IN THE HOST, and `mask_fenced` / `fenced_flags`
+# — the `fence-mask` group. Every host here is a copy of that group too; a host that were not
+# would fail on the first body it read rather than silently, because `field_value` calls
+# `mask_fenced` unconditionally.
+
+# The per-finding echo cap. An authored line is text of unbounded length and a finding becomes one
+# line of a CI log, a review digest or a terminal refusal; an unclipped echo of a 70 KB line is a
+# finding nobody can read. The number is this fragment's own and nothing is measured against it —
+# it is not a threshold.
+LINE_CLIP = 200
+
+
+class Finding:
+    """One rule, one line, the line's own text. NEVER a tally.
+
+    A COUNT IS A FIGURE THAT IS FALSE ON THE NEXT EDIT (canon #16), and a lint that reports "3
+    findings" has told the author nothing they can act on. Every finding names its rule, points at
+    a line, quotes that line, and states the fix in prose."""
+
+    def __init__(self, rule, line, text, message):
+        # A quoted line carries no `\r`: every line a rule quotes comes from `scan`, which folds
+        # the body's newlines before it splits (`fold_newlines`).
+        self.rule, self.line, self.text, self.message = rule, line, text, message
+
+    def clipped(self):
+        text = self.text
+        return text if len(text) <= LINE_CLIP else text[:LINE_CLIP] + "… [clipped]"
+
+    def as_dict(self):
+        return {"rule": self.rule, "line": self.line, "text": self.clipped(),
+                "message": self.message}
+
+
+def fold_newlines(text):
+    r"""`text` with every `\r\n` and every lone `\r` turned into `\n` — THE ONE NEWLINE FOLD.
+
+    ⛔ IT IS APPLIED WHERE THE KERNEL PARSES (`scan`, `field_values`), NOT ONLY WHERE A HOST READS
+    (card#10815 r1 review, m1). `review-prep.py` hands the lint an API body straight to
+    `findings()` / `audit_fields()`, never through `read_body`; when the fold lived in the read
+    alone, a lone-CR body was clean under `--env` and `built-missing` from the direct call — the
+    review digest and the CI red were two verdicts. `_body_text` calls this too, because what a
+    host STORES (a filed item's `raw_body`) is the decoded text, not the parse."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def scan(body, html_comments=False):
+    r"""`[(lineno, text, fenced)]`, one row per line of `fold_newlines(body)`, 1-based.
+    `html_comments` is `fenced_flags`'s own opt-in: True also marks an HTML comment block's lines
+    in the `fenced` column, so a rule that skips a fenced line skips a commented one.
+
+    ⛔ THE LINE LISTS ARE NEVER ZIPPED ACROSS TWO PROVENANCES WITHOUT THE LENGTH ASSERTED —
+    `zip` TRUNCATES SILENTLY to the shorter, and a per-line answer that ran out halfway would
+    report the tail of a body as unfenced and read exactly like a clean scan. `hooks/bin/_fence.py`
+    states the same rule over the same tracker; both are consumers of one fragment, not two
+    opinions about it.
+    """
+    body = fold_newlines(body)
+    lines = body.split("\n")
+    flags = fenced_flags(body, html_comments)
+    if len(flags) != len(lines):
+        raise AssertionError(
+            "bodylint-core.scan: the fence tracker returned %d flag(s) for %d line(s). Both are "
+            "computed over `text.split(chr(10))` and must agree." % (len(flags), len(lines)))
+    return [(i + 1, line, bool(f)) for i, (line, f) in enumerate(zip(lines, flags))]
+
+
+def field_values(body, name):
+    r"""EVERY value of the machine-read line `name` in `body`, in document order — `[]` for none.
+
+    ⛔ ONE GRAMMAR FOR EVERY MACHINE-READ LINE IN EVERY HOST. Both accepted spellings are
+    `**Name:**` and plain `Name:`, line-anchored, at the start of the line, with a non-blank value.
+    Both are measured-live in this repo's own PR bodies (`pr-body-lint._audit_field`'s docstring
+    owns that measurement and the sample it came from); the colon-OUTSIDE spelling `**Name**:`
+    appears zero times in it and is deliberately NOT accepted, because tolerating an unmeasured
+    form widens the guard for nobody (canon #3).
+
+    ⛔ `[ \t]*`, NEVER `\s*`, BETWEEN THE FIELD NAME AND ITS VALUE. `\s` matches `\n`, so the
+    shipped pattern once matched ACROSS a newline (driven: `"Built:\ndispatched (…)"` matched,
+    taking the NEXT line as the value). Read over the fence mask that makes a quoted example
+    payload, that spanning arm would take the first non-blank line AFTER a fenced block as the
+    field's value — the fence rule manufacturing the machine line it exists to suppress.
+
+    ⛔ AND IT IS READ OUTSIDE THE BODY'S FENCES. A body that DOCUMENTS this grammar in a fenced
+    example — ordinary in a repo whose bodies are largely about the lines these tools read — would
+    otherwise have its EXAMPLE read as its FIELD. The fail-safe direction is deliberate: a body
+    whose only `Name:` line is inside a fence reads as ABSENT, which is a finding the author fixes
+    by unfencing their own line, rather than a PASS computed from somebody else's text.
+    """
+    body = fold_newlines(body or "")
+    pattern = r"^(?:\*\*%(n)s:\*\*|%(n)s:)[ \t]*(?P<v>\S.*)$" % {"n": re.escape(name)}
+    return [m.group("v").strip()
+            for m in re.finditer(pattern, mask_fenced(body), re.MULTILINE)]
+
+
+def field_value(body, name):
+    """The FIRST value of the machine-read line `name`, or `None` when the body carries none.
+
+    One arity over `field_values`, never a second regex: a field a standard declares once and a
+    field it allows to repeat are read by the SAME grammar, and the only difference is which
+    program wants how many. Two patterns for one family is the defect this fragment's header
+    names."""
+    values = field_values(body, name)
+    return values[0] if values else None
+
+
+def read_body(args):
+    """The body text, from the ONE source the caller named. Raises `ValueError` on a fault.
+
+    TWO SOURCES AND NO DEFAULT. `--body-file` is what a caller with the text already on disk uses;
+    `--env` exists because a body interpolated into a `run:` script or any other shell argument is
+    an injection by construction — double quotes do not stop backticks or `$(...)` — and the same
+    value passed through the environment is not. Every host offers both for that reason, and the
+    choice of which is the CALLER's; a default here would make one of them the silent path.
+
+    ⛔ EVERY SOURCE DECODES THE SAME BYTES TO THE SAME TEXT, because all three read BYTES and
+    hand them to ONE decoder, `_body_text`: UTF-8, an undecodable byte becoming U+FFFD, and `\\r\\n`
+    or a lone `\\r` becoming `\\n`. The environment hands POSIX Python an undecodable byte as a
+    lone surrogate (`\\xff` arrives as `\\udcff`, PEP 383), and `sys.stdin`'s text layer decodes
+    with the locale's codec and error handler; read that way, the same bytes that file cleanly
+    from a file reached a host's UTF-8 write as a surrogate and died there with a traceback
+    (card#10815 r3). The `surrogateescape` re-encode in `env_text` gives back the exact bytes on
+    POSIX; `env_text` owns the Windows case. NEWLINES ARE PART OF THAT PROMISE (card#10815 r4,
+    m2): before they were, only the text-mode file open translated them, and a CRLF body through
+    the environment or stdin kept a `\\r` on every line — which `coord-ask-operator` read as
+    `## Background\\r`, no section at all, and refused the item `section-missing` (exit 1,
+    nothing filed)."""
+    if args.body_file:
+        if args.body_file == "-":
+            return _body_text(sys.stdin.buffer.read())
+        try:
+            with open(args.body_file, "rb") as fh:
+                return _body_text(fh.read())
+        except OSError as exc:
+            raise ValueError("--body-file %s could not be read: %s" % (args.body_file, exc))
+    if args.env not in os.environ:
+        raise ValueError("--env %s names a variable that is not set. An UNSET variable is not an "
+                         "empty body: the caller did not pass one, and a lint that treated the "
+                         "two alike would red on a body it never saw." % args.env)
+    return env_text(args.env)
+
+
+def env_text(name):
+    """The environment variable `name` as `read_body` decodes a body, or `None` when unset.
+
+    The ONE environment read for any value a host writes as text — a body through
+    `--env`, and an identity such as `COORD_AGENT` stored in a record (card#10815 r4, m1: read
+    raw, a non-UTF-8 byte in it reached the record's UTF-8 write as a lone surrogate and died
+    there with a traceback).
+
+    ⛔ IT NEVER RAISES ON THE VALUE (card#10815 r1 review, m2). A Windows environment is text
+    already, and a lone surrogate in it outside `\\udc80`-`\\udcff` fails the `surrogateescape`
+    re-encode. `surrogatepass` encodes it instead, to bytes that are not UTF-8, which `_body_text`
+    then turns into U+FFFD like any other undecodable byte."""
+    if name not in os.environ:
+        return None
+    value = os.environ[name]
+    try:
+        raw = value.encode("utf-8", "surrogateescape")
+    except UnicodeEncodeError:
+        raw = value.encode("utf-8", "surrogatepass")
+    return _body_text(raw)
+
+
+def _body_text(raw):
+    """`raw` bytes as text: UTF-8, U+FFFD for an undecodable byte, universal newlines — exactly
+    what a text-mode `open(..., encoding="utf-8", errors="replace")` of the same bytes returns."""
+    return fold_newlines(raw.decode("utf-8", "replace"))
+# jscpd:ignore-end
+# VENDOR-END(bodylint-core)
+
+
+# ── The standard, as data ─────────────────────────────────────────────────────────────────────
+# ⛔ EVERY TABLE BELOW IS THE EXECUTABLE FORM OF `docs/OPERATOR-REGISTER.md § Question shape`.
+# They are DATA so that the rules read off one place, and a disagreement between a table here and
+# that section is a defect in THIS file — the doc is the standard, this is its enforcement.
+
+# The decision classes, CLOSED. Four of them are engineering-canon #18's own reading of what
+# reaches the operator (business judgement / an outward or irreversible act / a change to what the
+# system accepts or rejects / a regulatory call). `scheduling` is the fifth and it was added
+# because the hand-built precursor to this registry needed it and the four could not hold it: a
+# question about which lane or sprint a card belongs in is not a business call, not an outward
+# act, not a change to what the system accepts, and not a regulatory judgement — it is a
+# placement question, and it had items (operator-directed, card#9550).
+#
+# ⚠ THE FIFTH CLASS TAKES THE SAME BAR AS THE OTHER FOUR, and that is a decision, not an
+# oversight. `DESIGNS/operator-decision-registry.md § 8` offers relaxing the prose proxies for it;
+# nothing ruled on that, and loosening a guard on an unruled guess is what canon #3 forbids. If a
+# real scheduling item is refused for a reason that reads as wrong, that is the evidence the
+# question needed and it goes back to the operator — not a quiet widening here.
+#
+# `design` IS THE SIXTH, AND IT IS THE ONLY CLASS A MERGE GATE READS (card#11037, operator-directed;
+# the register-shape ruling is opq-1792846742-05a9, FOLLOW). A new mechanism goes to the operator
+# as a design before it is built (`docs/USER-GATING.md` § 2g), and `coord-approve` refuses an
+# agent-originated PR unless its `Design-approved:` item is a `design` item whose answer chose the
+# option the item names as its BUILD option (`Build-option:`, required on this class and refused on
+# every other — `rule_build_option`). The class is what makes "the operator approved building it"
+# computable without the register storing the answer: the build option is stated when the item is
+# filed, and the gate reads the answer from the decision comment the register points at.
+DECISION_CLASSES = ("business", "outward", "accepts", "regulatory", "scheduling", "design")
+
+# The closed heading set. An agent that adds its own `## Why I'm asking` or `## Context` instead of
+# using `## Background` reds: the section has a home already, and three sections the operator can
+# rely on being present is the entire reason this shape is enforced rather than suggested.
+ALLOWED_H2 = ("Background", "Options", "Recommendation")
+
+# Each accepted citation shape, with the form a refusal shows the author. A citation is what makes
+# an item's live state DERIVABLE later — `operator-register.py` re-reads the cited source on every
+# render rather than trusting anything written here — so an item with no citation is an item whose
+# state nothing can ever re-derive.
+CITE_SHAPES = (
+    ("card", re.compile(r"^card#(?P<ref>[0-9]+)$"), "card#1234"),
+    ("coord", re.compile(r"^coord#(?P<ref>[0-9]+)$"), "coord#1234"),
+    ("rt", re.compile(r"^rt#(?P<ref>[0-9]+)$"), "rt" + "#1234"),
+    ("merge_url", re.compile(r"^(?P<ref>https://github\.com/[^/\s]+/[^/\s]+/pull/[0-9]+)$"),
+     "https://github.com/OWNER/REPO/pull/123"),
+)
+
+# ⛔ CONTENT-FREE JUSTIFICATIONS, AS A CLOSED LIST, AND THE PROVENANCE RULE IS PART OF THE TABLE.
+# Every entry below comes from `DESIGNS/operator-decision-registry.md § 2.4` (the operator-directed
+# design for this card, 2026-09-14), which seeded them as the phrases that say nothing about the
+# actual question. THE LIST GROWS ONE ENTRY PER REAL RULING, CITED BY DATE — never in bulk, and
+# never from an author's intuition about what sounds weak. That is how `pr-body-lint.py`'s
+# `BANNED_OPENERS` grew and it is the only thing that keeps a refusal defensible to the person it
+# refuses.
+GENERIC_JUSTIFICATIONS = ("it's better", "its better", "it's the right call",
+                          "its the right call", "makes sense", "seems reasonable",
+                          "best practice", "just because")
+
+# The plain-English floor for `## Background`, in words. DESIGN FIGURE, and it is load-bearing
+# enough to be a constant rather than prose: it is the line between a citation with a label glued
+# to it ("See card#4521. Arm the TLS guard.") and an actual paragraph. It is roughly one short
+# paragraph, proposed by `DESIGNS/operator-decision-registry.md § 2.4`, and that section says
+# outright that it is the kind of number a real corpus should calibrate once real filings exist.
+# `docs/OPERATOR-REGISTER.md § Question shape` carries the same figure with a pointer here.
+BACKGROUND_WORD_FLOOR = 25
+
+# Shared tokens this short are shared by every pair of English sentences, so a justification that
+# overlaps a background ONLY on one of these has not referenced it. Length >= 5 already excludes
+# most function words; these are the ones it does not.
+JUSTIFICATION_STOPWORDS = frozenset((
+    "about", "after", "again", "against", "along", "already", "also", "although", "always",
+    "another", "anything", "around", "because", "before", "being", "below", "besides", "better",
+    "between", "both", "cannot", "could", "doing", "during", "each", "either", "enough", "every",
+    "first", "given", "going", "however", "instead", "into", "itself", "least", "maybe",
+    "might", "more", "most", "much", "must", "never", "nothing", "other", "others", "ought",
+    "over", "rather", "really", "right", "same", "seems", "should", "since", "some", "something",
+    "still", "such", "than", "that", "their", "theirs", "them", "then", "there", "these", "they",
+    "thing", "things", "this", "those", "though", "through", "thus", "under", "until", "upon",
+    "very", "what", "whatever", "when", "where", "whether", "which", "while", "with", "within",
+    "without", "would", "your", "yours"))
+
+# An IDENTIFIER-SHAPED token: the shape of a card ref, a path, a hostname, a version string. It is
+# the thing a background is made of when it is a citation rather than an explanation. Read the
+# pair below as one predicate — the character class alone matches ordinary words too, so the
+# second half is what separates `card#4521` and `v1.2.3` and `sola/device` from `database`.
+_IDENT_CHARS_RE = re.compile(r"^[A-Za-z0-9_.#/-]+$")
+_IDENT_MARK_RE = re.compile(r"[#/]|[0-9]{3,}|[A-Za-z0-9][._][A-Za-z0-9]")
+
+# Markdown decoration and sentence punctuation a token can wear without ceasing to be a word.
+_TRIM = "*_`~.,;:!?()[]{}\"'“”‘’—–-"
+
+_H2_RE = re.compile(r"^##[ \t]+(?P<name>.+?)[ \t]*$")
+_H3_RE = re.compile(r"^###[ \t]+(?P<name>.+?)[ \t]*$")
+# `### A — Yes`: the LABEL is what precedes the first spaced dash, and the one-line NAME is what
+# follows it. A heading with no dash is all label, so `### A` declares option `A` with no name —
+# the one-line name is what the standard ASKS for, not a thing this program can require an author
+# to have written well.
+_OPTION_LABEL_RE = re.compile(r"^(?P<label>.+?)(?:[ \t]+[—–-][ \t]+(?P<name>.*))?$")
+
+
+# ── Structure ─────────────────────────────────────────────────────────────────────────────────
+def sections(rows):
+    """`[(lineno, name, rows)]`, one per UNFENCED `## ` heading, in document order.
+
+    A heading inside a fenced block is an EXAMPLE of a heading — this program's own documentation
+    quotes the required shape in a fence, and a scanner that read those as the document's own
+    sections would report `docs/OPERATOR-REGISTER.md` as a malformed operator question. The rows
+    of a section run to the next unfenced `## `, so a `### ` option block belongs to the `##
+    Options` section that opened above it."""
+    out, current = [], None
+    for lineno, text, fenced in rows:
+        if not fenced:
+            m = _H2_RE.match(text)
+            if m:
+                current = (lineno, m.group("name"), [])
+                out.append(current)
+                continue
+        if current is not None:
+            current[2].append((lineno, text, fenced))
+    return out
+
+
+def option_blocks(rows):
+    """`[(lineno, label, name, rows)]`, one per UNFENCED `### ` heading inside the rows given —
+    `name` the heading's one-line name after the dash, `None` when the heading has none."""
+    out, current = [], None
+    for lineno, text, fenced in rows:
+        if not fenced:
+            m = _H3_RE.match(text)
+            if m:
+                head = _OPTION_LABEL_RE.match(m.group("name"))
+                current = (lineno, head.group("label").strip(),
+                           (head.group("name") or "").strip() or None, [])
+                out.append(current)
+                continue
+        if current is not None:
+            current[3].append((lineno, text, fenced))
+    return out
+
+
+# Every machine-read line name this standard declares. It is CLOSED, and `continued_value()`
+# below needs it: a field's value stops where the NEXT field begins, and the only way to know that
+# without guessing is to know the whole set.
+FIELD_NAMES = ("Question", "Decision-class", "Build-option", "Cite", "Consequence", "Recommend",
+               "Justification")
+_ANY_FIELD_RE = re.compile(r"^(?:\*\*(?:%(n)s):\*\*|(?:%(n)s):)"
+                           % {"n": "|".join(re.escape(n) for n in FIELD_NAMES)})
+
+
+def continued_value(rows, name):
+    r"""The FULL value of the machine-read line `name` in `rows` — its own line plus the lines that
+    CONTINUE it — or `None` when the rows carry no such line.
+
+    ⛔ PRESENCE AND VALUE ARE TWO DIFFERENT QUESTIONS AND THEY GET TWO DIFFERENT READS. `Is the
+    line there?` is `field_value()`'s, line-anchored, and it must stay line-anchored: a grammar
+    that spanned lines would take the first non-blank line after a fenced block as a field's value
+    (the `\s`-versus-`[ \t]` defect the kernel's own docstring records). `What does it SAY?` is
+    this one, and it cannot be line-anchored, because the fields this standard actually asks for
+    are PARAGRAPHS. The operator asked each option to state "what changes, what does not, what
+    does it cost" and asked a recommendation to be justified from the context — neither fits on
+    one line, and neither is written on one.
+
+    ⛔ THIS WAS A REAL DEFECT, CAUGHT ON THE FIRST REAL ITEM AND NOT BY REASONING. Filing the
+    standard's own worked GOOD example stored `consequence` as the first line of a four-line
+    sentence ("...at a non-loopback, non-TLS host") and spliced the other three into
+    `description`, so the record the operator would eventually read carried a truncated sentence
+    and a garbled one — while the lint passed, because presence was all it checked. A lint that
+    accepts an item and then stores it wrong is the worst failure this program has: it reports
+    done over something that is not.
+
+    THE VALUE ENDS AT THE FIRST THING THAT IS NOT PROSE CONTINUING IT: a blank line, a heading,
+    another declared field, or a fenced line. That is why `FIELD_NAMES` is closed."""
+    out, collecting = [], False
+    for _, text, fenced in rows:
+        if not collecting:
+            if fenced:
+                continue
+            value = field_value(text, name)
+            if value is None:
+                continue
+            out.append(value)
+            collecting = True
+            continue
+        if fenced or not text.strip() or text.lstrip().startswith("#") \
+                or _ANY_FIELD_RE.match(text):
+            break
+        out.append(text.strip())
+    return " ".join(out) if collecting else None
+
+
+def before_field(rows, name):
+    """The rows of `rows` that precede the machine-read line `name` — an option block's
+    DESCRIPTION, which is everything the author wrote before they stated the consequence."""
+    out = []
+    for row in rows:
+        _, text, fenced = row
+        if not fenced and field_value(text, name) is not None:
+            break
+        out.append(row)
+    return out
+
+
+def section_text(rows):
+    """The rows rendered back to text, so `field_value` reads a SECTION with the same grammar it
+    reads a whole body with. One grammar, scoped — never a second regex per section."""
+    return "\n".join(text for _, text, _ in rows)
+
+
+def words(rows):
+    """The PLAIN-ENGLISH words in `rows`, lowercased. Identifiers and fenced lines are not words.
+
+    ⛔ THIS IS A PROSE-DENSITY MEASURE, NOT A COMPREHENSION CHECK, and the difference matters to
+    anyone reading a refusal it produced. Thirty fluent words of pure jargon pass it; a background
+    that names the repo and the host perfectly clearly in twenty words fails it. What it actually
+    separates is a citation-with-a-label from a paragraph, which is the single most common shape
+    of the item the operator sent back.
+
+    FENCED ROWS ARE EXCLUDED and that is deliberate in the strict direction: a pasted log or
+    transcript is full of English words and would clear any floor while explaining nothing. The
+    refusal says so, so an author whose background genuinely IS a worked example knows the cure is
+    to write the paragraph AND keep the example, not to delete the fence."""
+    out = []
+    for _, text, fenced in rows:
+        if fenced:
+            continue
+        for raw in text.split():
+            if _IDENT_CHARS_RE.match(raw) and _IDENT_MARK_RE.search(raw):
+                continue
+            token = raw.strip(_TRIM)
+            if len(token) >= 3 and token.isalpha():
+                out.append(token.lower())
+    return out
+
+
+def long_tokens(text):
+    """Lowercased tokens of length >= 5 in `text` that are not stopwords — the overlap vocabulary
+    the `justification-unmoored` proxy is computed over."""
+    out = set()
+    for raw in re.split(r"[\s]+", text or ""):
+        token = raw.strip(_TRIM).lower()
+        if len(token) >= 5 and token not in JUSTIFICATION_STOPWORDS:
+            out.add(token)
+    return out
+
+
+# ── The rules ─────────────────────────────────────────────────────────────────────────────────
+def rule_decision_class(body, role):
+    value = field_value(body, "Decision-class")
+    if value is None:
+        return [Finding("decision-class-missing", 0, "",
+                        "the body carries no `Decision-class:` line. Name which kind of decision "
+                        "this is, on its own line, before `## Background`: one of %s. This is the "
+                        "triage gate in mechanical form — an item whose class you cannot name is "
+                        "an item that probably does not need the operator."
+                        % ", ".join("`%s`" % c for c in DECISION_CLASSES))]
+    if value not in DECISION_CLASSES:
+        return [Finding("decision-class-invalid", 0, value,
+                        "`Decision-class: %s` names no class this standard declares. The closed "
+                        "set is %s — lowercase, exactly as spelled. `docs/OPERATOR-REGISTER.md "
+                        "§ Decision classes` says what each one covers."
+                        % (value, ", ".join("`%s`" % c for c in DECISION_CLASSES)))]
+    return []
+
+
+def rule_question(body, role):
+    r"""`Question:` — the item's ONE-LINE question, which the register page shows as the header of
+    the item's card (operator ruling, 2026-10-02, card#11145). Required, and exactly once.
+
+    It is not derived from `## Background` because the background explains; it does not ask. A
+    first sentence cut by code (`operator-register.py one_line`) is what the page falls back to
+    for a record filed before this field existed, and it is marked there as a fallback. The
+    field grammar already holds the value to ONE line: `[ \t]*`, never `\s*`, after the colon."""
+    values = field_values(body, "Question")
+    if not values:
+        return [Finding("question-missing", 0, "",
+                        "the body carries no `Question:` line. Put the question itself, in one "
+                        "line of plain words, on its own line before `## Background` — e.g. "
+                        "`Question: Should the main database connection refuse to start without "
+                        "TLS?`. It is the header of this item on the operator's page; the "
+                        "background explains it, the options answer it.")]
+    if len(values) > 1:
+        return [Finding("question-repeated", 0, values[1],
+                        "the body carries %d `Question:` lines. An item asks ONE question, and its "
+                        "page header can show only one; keep the one the options answer and move "
+                        "the rest into `## Background` or a separate item." % len(values))]
+    return []
+
+
+def rule_build_option(body, secs):
+    """`Build-option:` — on a `design` item, the label of the ONE option that means "build it".
+
+    It is what `coord-approve`'s design gate accepts: an answer choosing exactly this label
+    approves the design, and every other answer — another option, `other`, `reject`, `defer` — does
+    not (card#11037). So a `design` item must name it once, and it must be an option the item
+    declares. It is refused on every other class: no gate reads it there, and a line that looks like
+    an approval rule and governs nothing is one a reader would trust."""
+    values = field_values(body, "Build-option")
+    design = field_value(body, "Decision-class") == "design"
+    if not design:
+        if values:
+            return [Finding("build-option-not-design", 0, values[0],
+                            "`Build-option:` is read only on a `Decision-class: design` item — it "
+                            "names the option whose choice approves building a new mechanism. "
+                            "Remove it, or file this as `design` if that is what it asks.")]
+        return []
+    if not values:
+        return [Finding("build-option-missing", 0, "",
+                        "a `design` item names its build option on its own line before "
+                        "`## Background`: `Build-option: <label>`, one of the labels under "
+                        "`## Options`. The merge gate accepts only an answer choosing exactly that "
+                        "option as the operator's approval of the design.")]
+    if len(values) > 1:
+        return [Finding("build-option-repeated", 0, values[1],
+                        "the body carries %d `Build-option:` lines; a design has one option that "
+                        "means \"build it\"." % len(values))]
+    rows = next((r for _, name, r in secs if name == "Options"), [])
+    labels = [label for _, label, _, _ in option_blocks(rows)]
+    if labels and values[0] not in labels:
+        return [Finding("build-option-unknown-option", 0, values[0],
+                        "`Build-option: %s` names no option this body declared. The labels under "
+                        "`## Options` are: %s." % (values[0], ", ".join("`%s`" % lab
+                                                                     for lab in labels)))]
+    return []
+
+
+def rule_citations(body, role):
+    """Every `Cite:` value must match one of the four shapes, and there must be at least one.
+
+    ⛔ A `coord#` CITATION IS REFUSED ON A SOLO INSTALL, AT FILE TIME. A solo install has no
+    coordination repo, so nothing can ever re-derive that citation's live state; refusing it here
+    turns a silent permanent UNMEASURED at render time into one line at the moment the author can
+    still fix it. The rule fires ONLY when the role actually resolved to `solo` — an unresolved
+    role is not a solo install, and a lint that guessed would refuse a valid PM item."""
+    out, values = [], field_values(body, "Cite")
+    if not values:
+        return [Finding("cite-missing", 0, "",
+                        "the body carries no `Cite:` line. Every item cites at least one source "
+                        "whose LIVE state a program can re-read later — that is what stops this "
+                        "item being carried as open after it has already resolved itself. "
+                        "Accepted forms, one per line: %s."
+                        % ", ".join("`%s`" % form for _, _, form in CITE_SHAPES))]
+    for value in values:
+        kind = next((k for k, pat, _ in CITE_SHAPES if pat.match(value)), None)
+        if kind is None:
+            out.append(Finding("cite-shape", 0, value,
+                               "`Cite: %s` matches none of the four accepted citation shapes. "
+                               "They are: %s. A citation this tool cannot parse is a citation "
+                               "nothing can re-derive state from."
+                               % (value, ", ".join("`%s`" % form for _, _, form in CITE_SHAPES))))
+        elif kind == "coord" and role == "solo":
+            out.append(Finding("cite-coord-on-solo", 0, value,
+                               "`Cite: %s` names a coordination-repo thread and this is a SOLO "
+                               "install, which has no coordination repo — nothing here can ever "
+                               "read that thread's state. Cite the card, the roundtable thread or "
+                               "the PR URL instead." % value))
+    return out
+
+
+def rule_sections(secs):
+    """The heading set is CLOSED and all three are required."""
+    out = []
+    names = [name for _, name, _ in secs]
+    for lineno, name, _ in secs:
+        if name not in ALLOWED_H2:
+            out.append(Finding("heading-not-allowed", lineno, "## " + name,
+                               "`## %s` is not one of the three sections this standard declares: "
+                               "%s. Whatever this section holds belongs inside one of them — the "
+                               "operator reads three sections in a fixed order, and a fourth is a "
+                               "section they have to find."
+                               % (name, ", ".join("`## %s`" % h for h in ALLOWED_H2))))
+    for required in ALLOWED_H2:
+        if required not in names:
+            out.append(Finding("section-missing", 0, "",
+                               "`## %s` is ABSENT. All three of %s are required, in that order: "
+                               "the operator must not have to ask what this is about, what the "
+                               "choices are, or what you recommend."
+                               % (required, ", ".join("`## %s`" % h for h in ALLOWED_H2))))
+    return out
+
+
+def rule_background(secs):
+    """The prose-density PROXY — see `words()` for what it is and is not."""
+    rows = next((r for _, name, r in secs if name == "Background"), None)
+    if rows is None:
+        return []
+    found = words(rows)
+    if len(found) >= BACKGROUND_WORD_FLOOR:
+        return []
+    quote = next((text for _, text, fenced in rows if not fenced and text.strip()), "")
+    return [Finding("background-too-sparse", 0, quote,
+                    "`## Background` carries %d plain-English word(s) outside any fenced block; "
+                    "the floor is %d. A citation plus a short label is not background — name the "
+                    "repo, the host and the environment in plain terms, or give a concrete "
+                    "example of what goes wrong today. A fenced log or transcript does not count "
+                    "toward the floor: write the paragraph AND keep the example."
+                    % (len(found), BACKGROUND_WORD_FLOOR))]
+
+
+def rule_options(secs):
+    """At least two options, each stating what actually happens if it is chosen."""
+    rows = next((r for _, name, r in secs if name == "Options"), None)
+    if rows is None:
+        return []
+    out, blocks = [], option_blocks(rows)
+    if len(blocks) < 2:
+        out.append(Finding("options-too-few", 0, "",
+                           "`## Options` declares %d option(s); at least two are required. Each "
+                           "option is a `### <label> — <one-line name>` subsection. A question "
+                           "with one answer is not a question, and a question whose options are "
+                           "bare labels is the one the operator has to send back."
+                           % len(blocks)))
+    for lineno, label, _, block_rows in blocks:
+        if not field_value(section_text(block_rows), "Consequence"):
+            out.append(Finding("consequence-missing", lineno, "### " + label,
+                               "option `%s` has no `Consequence:` line. Every option states what "
+                               "actually happens if it is chosen — what changes, what does not, "
+                               "and what it costs. This is the operator's own first complaint: "
+                               "\"I don't know what each option means\"." % label))
+    return out
+
+
+def rule_recommendation(secs, body):
+    """`Recommend:` must name an option this body actually declared — a real cross-reference, not
+    a proxy — and `Justification:` must be present, specific and moored to the background.
+
+    ⛔ THE TWO JUSTIFICATION CONTENT RULES ARE PROXIES AND THEY SAY SO IN THEIR OWN MESSAGES. Both
+    are gameable by a determined author: repeat one background word inside an otherwise-generic
+    sentence and `justification-unmoored` passes. They are the cheapest things that catch the
+    operator's repeatedly-named failure mode — a recommendation with no stated reason, or a reason
+    that could have followed any recommendation at all — and claiming more for them than that
+    would be this program asserting it can read."""
+    rows = next((r for _, name, r in secs if name == "Recommendation"), None)
+    if rows is None:
+        return []
+    out = []
+    text = section_text(rows)
+    labels = [label for _, label, _, _ in
+              option_blocks(next((r for _, name, r in secs if name == "Options"), []))]
+
+    recommend = field_value(text, "Recommend")
+    if recommend is None:
+        out.append(Finding("recommend-missing", 0, "",
+                           "`## Recommendation` has no `Recommend:` line. Name one of the option "
+                           "labels, verbatim. The operator asked for a recommended action on "
+                           "every item; an item that lists options and stops has handed the whole "
+                           "analysis back."))
+    elif labels and recommend not in labels:
+        out.append(Finding("recommend-unknown-option", 0, recommend,
+                           "`Recommend: %s` names no option this body declared. The labels "
+                           "declared under `## Options` are: %s. This is usually an option "
+                           "renamed mid-draft with the recommendation left pointing at the old "
+                           "name — which reads to the operator as a choice that does not exist."
+                           % (recommend, ", ".join("`%s`" % lab for lab in labels))))
+
+    justification = continued_value(rows, "Justification")
+    if justification is None:
+        out.append(Finding("justification-missing", 0, "",
+                           "`## Recommendation` has no `Justification:` line. The operator's "
+                           "words: \"the recommended action must be justified based on the actual "
+                           "context\" — so state why THIS option, from something already in "
+                           "`## Background` or in a citation."))
+        return out
+
+    lowered = justification.lower()
+    hit = next((p for p in GENERIC_JUSTIFICATIONS if p in lowered), None)
+    if hit is not None:
+        out.append(Finding("generic-justification", 0, justification,
+                           "\"%s\" is on the closed list of content-free justifications this tool "
+                           "refuses — a phrase that could follow any recommendation on any item "
+                           "has justified none of them. State a reason that follows from "
+                           "something in `## Background` or from a citation." % hit))
+        return out
+
+    # The GROUNDS a justification may be moored to: the background's own vocabulary plus the
+    # citation refs themselves, because "card#4521 is already the blocker" IS a reason anchored to
+    # this item even when it borrows no background word.
+    background = next((r for _, name, r in secs if name == "Background"), [])
+    grounds = (long_tokens(section_text(background))
+               | long_tokens(" ".join(field_values(body, "Cite"))))
+    if not (long_tokens(justification) & grounds):
+        out.append(Finding("justification-unmoored", 0, justification,
+                           "the `Justification:` shares no substantive word with `## Background` "
+                           "or with a citation, so nothing in it is anchored to this item's own "
+                           "context. This is a PROXY, not a judgement about the argument: it "
+                           "catches a reason that could have been written before the question "
+                           "was. Name the thing in the background that makes this the right "
+                           "option."))
+    return out
+
+
+def findings(body, role=None):
+    """Every finding in `body`, ordered by line. THE ONE ENTRY POINT — every consumer calls this.
+
+    `role` is this machine's roster role when it is known, and `None` when it is not. Exactly one
+    rule reads it (`cite-coord-on-solo`); everything else is role-blind, which is what lets
+    `--check-only` lint a draft on a machine with no config at all."""
+    rows = scan(body or "")
+    secs = sections(rows)
+    out = (rule_question(body or "", role) + rule_decision_class(body or "", role)
+           + rule_build_option(body or "", secs)
+           + rule_citations(body or "", role)
+           + rule_sections(secs) + rule_background(secs) + rule_options(secs)
+           + rule_recommendation(secs, body or ""))
+    return sorted(out, key=lambda f: (f.line, f.rule))
+
+
+# ── Where the registry lives — ONE function, and everything downstream is blind to it ─────────
+# THE REGISTRY'S PRIMITIVES ARE `_operator_registry.py`'s (card#12554): `resolve_role`, `registry_root`
+# — the one answer to where this install keeps its registry, and the impl seat's refusal by name —
+# with `registry_lock`, `append_jsonl`, `read_jsonl` and `jsonl_line`. Imported, never copied, and
+# RE-EXPORTED: every tool that loads this file as a sibling and checks `hasattr(registry_root)`
+# keeps finding it here. The library is installed beside this file (/coord:update area 3).
+# The modules beside this tool are the installed plugin tree, read and never written: no bytecode
+# cache lands beside them (card#13501).
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    from _operator_registry import (append_jsonl, jsonl_line,  # noqa: E402,F401 — re-exported
+                                    read_jsonl, registry_lock, registry_root, resolve_role)
+except ImportError as _e:
+    # A named UNMEASURED, never a traceback: run as a program this exits 2 with the cure; loaded
+    # as a sibling it raises, and the loader names it (`load_sibling` reports what raised).
+    _why = ("%s: UNMEASURED — _operator_registry.py could not be resolved beside %s (the "
+            "registry's primitives are that library's); re-copy templates/bin/_operator_registry.py "
+            "into that directory (/coord:update area 3)" % ("%s", os.path.abspath(__file__)))
+    if __name__ == "__main__":
+        sys.stderr.write(_why % 'coord-ask-operator' + "\n")
+        sys.exit(2)
+    raise ImportError(_why % 'coord-ask-operator') from _e
+
+
+# ── The item id ───────────────────────────────────────────────────────────────────────────────
+# `opq-<unix-epoch-seconds>-<4 lowercase hex>` (design § 2.1). PUBLISHED here, beside the one line
+# that mints it, because `operator-register.py apply --from-paste` parses operator answers keyed by
+# it: that program builds its paste grammar from THIS pattern rather than spelling the shape again.
+ITEM_ID_RE = re.compile(r"opq-[0-9]+-[0-9a-f]{4}")
+
+
+# ── The `filed` record ────────────────────────────────────────────────────────────────────────
+def item_content(body):
+    """The QUESTION fields of a `filed` record, parsed from a body that has passed `findings()`.
+
+    The one parse of an item body, shared by a new filing (`build_record`) and an edit in place
+    (`edit_record`), so an edited item cannot be stored in a different shape from a filed one.
+
+    `raw_body` keeps the author's markdown VERBATIM beside the structured fields, so a later audit
+    of whether an item was actually well written reads the original text rather than a
+    re-serialization of the parse that may have dropped nuance."""
+    rows = scan(body)
+    secs = sections(rows)
+    by_name = {name: rws for _, name, rws in secs}
+    rec_text = section_text(by_name.get("Recommendation", []))
+
+    options = []
+    for _, label, name, block_rows in option_blocks(by_name.get("Options", [])):
+        options.append({"label": label, "name": name,
+                        "description": section_text(before_field(block_rows, "Consequence")).strip(),
+                        "consequence": continued_value(block_rows, "Consequence")})
+
+    citations = []
+    for value in field_values(body, "Cite"):
+        for kind, pat, _ in CITE_SHAPES:
+            m = pat.match(value)
+            if m:
+                citations.append({"kind": kind, "ref": m.group("ref")})
+                break
+
+    record = {
+        "question": field_value(body, "Question"),
+        "decision_class": field_value(body, "Decision-class"),
+        "citations": citations,
+        "background": section_text(by_name.get("Background", [])).strip(),
+        "options": options,
+        "recommendation": {"option_label": field_value(rec_text, "Recommend"),
+                           "justification": continued_value(
+                               by_name.get("Recommendation", []), "Justification")},
+        "raw_body": body,
+    }
+    # ONLY WHEN DECLARED: every other class's record keeps exactly the shape it had (card#11037).
+    build = field_value(body, "Build-option")
+    if build is not None:
+        record["build_option"] = build
+    return record
+
+
+def build_record(body, role, now=None):
+    """The `filed` record for a NEW item: a fresh id and the filer's identity, plus `item_content`.
+
+    The question fields can later be reworded in place while the item is still open
+    (`edit_record`); the id, `filed_at` and `filed_by` never change, so the operator answers the
+    same id whatever wording they read."""
+    # ⛔ NOT A MODULE-LEVEL IMPORT: `secrets` imports `hmac`, which loads `_hashlib`/OpenSSL, and
+    # `operator-register.py --indicator` EXECUTES this file (via `load_sibling`) on every
+    # assistant message to resolve the seat's registry. This function is the only user.
+    # `operator-register.selftest.py` J13b measures it with `-X importtime` on that path.
+    import secrets
+    now = time.time() if now is None else now
+    record = {
+        # The format `ITEM_ID_RE` publishes. `operator-register.selftest.py § K` files through this
+        # function and applies an answer to the id it minted, so the two cannot drift silently.
+        "id": "opq-%d-%s" % (int(now), secrets.token_hex(2)),
+        "filed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+        "filed_by": env_text("COORD_AGENT") or "unknown",
+        "filed_role": role,
+    }
+    record.update(item_content(body))
+    return record
+
+
+# The symbols `--edit` takes from `operator-register.py`: that file owns the registry's READ side,
+# and a second stream reader here would split lines its own way (r1 review, F6) — and the one
+# "is this item still waiting" predicate, `answer_of` (card#12320).
+_NEED_REGISTER = ("stream_paths", "read_jsonl", "withdrawn_path", "resolved_index",
+                  "withdrawn_index", "answer_of", "ANSWER_NONE", "ANSWER_WITHDRAWN",
+                  "cited_closure")
+
+
+def load_register():
+    """`(module, None)` or `(None, why_not)` — `operator-register.py`, from BESIDE THIS FILE.
+
+    ⛔ BESIDE THIS FILE AND NOWHERE ELSE. `--edit` REWRITES the lines this reader returns, so the
+    reader must be the one installed as this filer's pair — `/coord:update` installs both into
+    `~/.local/bin`, and in the plugin tree they are siblings too. A copy found elsewhere on PATH
+    could be a different version splitting lines differently, and its split would be written back.
+    `--edit` needs it, and a filing asks it whether the item's cited sources are still live
+    (`closure_refusal`); linting needs nothing beside this file."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "operator-register.py")
+    if not os.access(path, os.R_OK):
+        return None, ("`operator-register.py` is not installed beside this file (%s); a filing "
+                      "asks it whether the cited sources are still open, and `--edit` reads the "
+                      "registry through it. Install it per `/coord:update` (its "
+                      "`operator-register.py` bullet)." % path)
+    try:
+        import importlib.util
+        from importlib.machinery import SourceFileLoader
+        spec = importlib.util.spec_from_loader("coord_ask_operator_register",
+                                               SourceFileLoader("coord_ask_operator_register",
+                                                                path))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:                          # noqa: BLE001 — an import runs code
+        return None, "loading %s raised %s: %s" % (path, type(exc).__name__, str(exc)[:200])
+    missing = [n for n in _NEED_REGISTER if not hasattr(mod, n)]
+    if missing:
+        return None, ("%s does not carry %s — it is older than this filer. Re-copy it from the "
+                      "plugin's templates/bin/ (`/coord:update`)." % (path, ", ".join(missing)))
+    return mod, None
+
+
+def edit_record(root, ident, body, role, now=None):
+    """Reword the OPEN item `ident` in place. `(path, record, None)` or `(None, None, why_not)`.
+
+    ⭐ THE REGISTER IS A BURNDOWN LIST OF OPEN QUESTIONS, NOT A DECISION ARCHIVE (operator ruling,
+    2026-09-29, card#10815). A decision's permanent home is the thread or card the item cites,
+    where `operator-register.py apply` posts it. So while an item is still OPEN its wording is
+    simply replaced — no revision history, no second item — and the operator answers the SAME id.
+    The body has already passed the same `findings()` lint as a filing; that is the caller's gate.
+    An answer given on a page rendered BEFORE the edit is refused by `apply`, because every answer
+    line carries the revision of the wording it answers (`operator-register.py item_revision`).
+
+    Refused, and NOTHING is written — `_edit_target()` owns the refusals, so `--check-only` and a
+    real edit cannot disagree:
+      - no `filed` record carries `ident`, or more than one does (which one is the question?);
+      - the item is not waiting on the operator by `operator-register.py`'s `answer_of`, the one
+        predicate the page and the bar read: it is ANSWERED (one `resolved` record — rewording the
+        question under an answer would make the record say the operator answered something they
+        never read — or two, a conflict the renderer shows as UNMEASURED), or it was WITHDRAWN
+        because every source it cites concluded (card#12320). A withdrawal is final, so a reworded
+        withdrawn item would be rewritten and still never shown: the refusal says to file anew;
+      - a line of `resolved.jsonl` or `withdrawn.jsonl` that does not parse, or a stream that
+        cannot be read: the unreadable line may be this item's answer or withdrawal, and a failed
+        read is never read as "open".
+
+    The caller has ALSO refused a body whose citations have all concluded (`closure_refusal`),
+    before this runs: the edit would be withdrawn on the next render.
+
+    The id, `filed_at`, `filed_by` and `filed_role` are kept; every question field is replaced;
+    `edited_at` / `edited_by` say when and by whom it was last reworded (one value, overwritten on
+    the next edit — not a history). Every other line is written back verbatim, unparseable ones
+    included.
+
+    ⛔ THE READ AND THE REPLACE HAPPEN UNDER `registry_lock()`, THE LOCK EVERY APPEND TAKES. Without
+    it a record another filer appended between this read and the replace is overwritten — a filing
+    lost with no error. The new file is written to a UNIQUE temp name beside the stream (two edits
+    never share one), given the stream's mode, and installed with `os.replace`; a failed write or
+    replace removes the temp file and is reported (exit 2), and the stream is untouched."""
+    reg, why = load_register()
+    if reg is None:
+        return None, None, why + " Nothing was edited."
+    filed_path = reg.stream_paths(root)[0]
+    try:
+        with registry_lock(filed_path):
+            rows, at, why = _edit_target(reg, root, ident)
+            if why:
+                return None, None, why
+            now = time.time() if now is None else now
+            old = rows[at][1]
+            record = {k: old.get(k) for k in ("id", "filed_at", "filed_by", "filed_role")}
+            record.update(item_content(body))
+            record["edited_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+            record["edited_by"] = env_text("COORD_AGENT") or "unknown"
+            lines = [raw for _, _, raw in rows]
+            lines[at] = jsonl_line(record)
+            _replace_stream(filed_path, "\n".join(lines) + "\n")
+    except OSError as exc:
+        return None, None, ("%s could not be rewritten (%s: %s). Nothing was edited."
+                            % (filed_path, type(exc).__name__, exc))
+    return filed_path, record, None
+
+
+def _replace_stream(path, text):
+    """Install `text` as `path`: a unique temp file beside it, the stream's mode, `os.replace`.
+    Any failure removes the temp file and re-raises; `path` is then exactly as it was."""
+    import shutil
+    import tempfile
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(path)),
+                               prefix=".%s." % os.path.basename(path), suffix=".edit-tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(text)
+        shutil.copymode(path, tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def closure_refusal(body):
+    """`(refusal, note)` — may this item be filed (or an item reworded to it) at all?
+
+    ⛔ AN ITEM WHOSE CITED SOURCES HAVE ALL CONCLUDED IS REFUSED, NAMING EACH ONE (card#12320 r1
+    review, BLOCKER; a sola-pm ruling). `operator-register.py` withdraws an unanswered
+    item the moment a render reads every source it cites as concluded, and a withdrawal is final —
+    so such an item, filed, is withdrawn on its first render and never reaches the operator, and a
+    refile goes the same way. The refusal is that render's own predicate, asked of
+    `operator-register.py`'s `cited_closure` (the same live read, the same `concluded_labels`),
+    not a second copy of it here.
+
+    `refusal` is the message (exit 2, nothing written). `note` is said when the check could not be
+    made — no `operator-register.py` beside this file, no config, a source that could not be read:
+    an unread citation never counts as concluded, so the item files, and the note says what was not
+    checked. Both `None`: at least one cited source is still open."""
+    reg, why = load_register()
+    if reg is None:
+        return None, why
+    concluded, unread = reg.cited_closure(item_content(body), CITE_SHAPES)
+    if concluded:
+        return ("every source this item cites has already concluded:\n%s\nThe register "
+                "withdraws an unanswered item whose cited sources have all concluded, on its first "
+                "render, so this one would never reach the operator. Nothing was written. If the "
+                "question still needs the operator, cite the card, thread or pull request where "
+                "it is still open." % "\n".join("  - %s" % c for c in concluded)), None
+    return None, unread
+
+
+def edit_refusal(root, ident):
+    """Why `ident` cannot be reworded (`edit_record`'s refusals), or `None` — read-only, for
+    `--check-only`."""
+    reg, why = load_register()
+    if reg is None:
+        return why + " Nothing was edited."
+    return _edit_target(reg, root, ident)[2]
+
+
+def _edit_target(reg, root, ident):
+    """`(filed_rows, index_of_ident, None)` or `(None, None, why_not)` — `edit_record`'s refusals,
+    in one place so `--check-only` and a real edit cannot disagree. Rows are `read_jsonl`'s
+    `(lineno, obj_or_None, raw)`."""
+    filed_path, resolved_path, _deferred = reg.stream_paths(root)
+    withdrawn_path = reg.withdrawn_path(root)
+    filed_rows, fault = reg.read_jsonl(filed_path)
+    if not fault:
+        resolved_rows, fault = reg.read_jsonl(resolved_path)
+    if not fault:
+        withdrawn_rows, fault = reg.read_jsonl(withdrawn_path)
+    if fault:
+        return None, None, "the registry could not be read (%s). Nothing was edited." % fault
+
+    hits = [n for n, (_, obj, _) in enumerate(filed_rows)
+            if obj is not None and obj.get("id") == ident]
+    by_id, conflicted, torn_answers = reg.resolved_index(resolved_rows)
+    withdrawn, torn_withdrawals = reg.withdrawn_index(withdrawn_rows)
+    kind, rec = reg.answer_of(ident, by_id, conflicted, withdrawn)
+    why = None
+    if not hits:
+        why = ("no filed item has the id %s in %s%s." % (
+            ident, filed_path, " (a line there does not parse, and it may be this item)"
+            if any(obj is None for _, obj, _ in filed_rows) else ""))
+    elif len(hits) > 1:
+        why = ("%s is carried by more than one record in %s, so which question to reword cannot "
+               "be read." % (ident, filed_path))
+    elif torn_answers or torn_withdrawals:
+        lineno, path, what = ((torn_answers[0][0], resolved_path, "the operator's answer to")
+                              if torn_answers else
+                              (torn_withdrawals[0][0], withdrawn_path, "the withdrawal of"))
+        why = ("line %d of %s does not parse, and it may be %s %s — an item whose state cannot be "
+               "read is never treated as open." % (lineno, path, what, ident))
+    elif kind == reg.ANSWER_WITHDRAWN:
+        why = ("%s was WITHDRAWN — %s (%s)%s — so it is no longer in front of the operator, and a "
+               "withdrawal is final: rewording it would change a question nobody will be shown. "
+               "File a NEW question, citing a source that is still open, if one remains."
+               % (ident, rec.get("reason"), ", ".join(rec.get("closing_cards") or []),
+                  ", at %s" % rec["withdrawn_at"] if rec.get("withdrawn_at") else ""))
+    elif kind != reg.ANSWER_NONE:
+        why = ("%s already carries an operator answer in %s, so it is no longer an open question "
+               "and its wording is final. The decision lives on the thread or card the item "
+               "cites; file a NEW question if one remains." % (ident, resolved_path))
+    if why:
+        return None, None, why + " Nothing was edited."
+    return filed_rows, hits[0], None
+
+
+def append_record(root, record):
+    """Append one `filed` record to `<root>/filed.jsonl`. Returns the path written."""
+    return append_jsonl(os.path.join(root, "filed.jsonl"), record)
+
+
+def filed_notice():
+    """The line that says what this machine CANNOT do with a filed item — or nothing, once it can.
+
+    ⛔ AN ENFORCEMENT MECHANISM THAT CANNOT FIRE MUST SAY SO. `operator-register.py` is the
+    generator that re-derives each citation's live state, renders the artifact the operator
+    answers, and applies the answers back. On a machine where it is not on PATH, a filed item
+    reaches the operator only when a person or an agent reads the registry file — so a bare
+    "filed." here would be reassurance, not a report.
+
+    THE NOTICE IS CONDITIONAL ON THE GENERATOR'S ABSENCE FROM PATH, so it retires ITSELF on every
+    seat that installs it. A stale caveat nobody remembered to delete is the same defect one
+    direction over: it would tell every future filer that a tool sitting right there does not
+    exist."""
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        if directory and os.path.isfile(os.path.join(directory, "operator-register.py")):
+            return None
+    return ("⚠ NO RENDERER IS INSTALLED ON THIS MACHINE. `operator-register.py` — the generator "
+            "that re-derives this item's live state and renders the artifact the operator answers "
+            "— is not on PATH here, so this item reaches the operator only when someone reads the "
+            "file above. Say so when you report that you filed it; do not report it as asked. "
+            "Install it per `/coord:update` (its `operator-register.py` bullet); this notice "
+            "disappears by itself once the generator is on PATH.")
+
+
+# ── CLI ───────────────────────────────────────────────────────────────────────────────────────
+def report(found, label, out):
+    out.write("coord-ask-operator: %s does NOT meet the required operator-question shape.\n"
+              % label)
+    for f in found:
+        where = "line %d" % f.line if f.line else "the item"
+        out.write("\n  %s · %s\n    %s\n" % (where, f.rule, f.message))
+        if f.text.strip():
+            out.write("    > %s\n" % f.clipped())
+    out.write("\nNothing is dropped by fixing this — the item files as soon as every finding above "
+              "is addressed, and no partial record was written. The standard, with a worked "
+              "example that passes and one that does not, is in `docs/OPERATOR-REGISTER.md "
+              "§ Question shape` in your coord install.\n")
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(
+        prog="coord-ask-operator",
+        description="File a question that genuinely needs the operator's judgement — refusing it "
+                    "unless it carries the background, the options with their consequences, and a "
+                    "justified recommendation the operator asked every item to carry.",
+        epilog="exit: 0 = meets the shape (filed or, with --edit, reworded; unless --check-only) | "
+               "1 = at least one finding, NOTHING filed or edited | 2 = usage/input fault, an "
+               "item whose cited sources have all concluded, an --edit the registry refuses, or "
+               "a filing or edit the filesystem refused to write", allow_abbrev=False)
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--body-file", help="read the item from this path (`-` for stdin)")
+    src.add_argument("--env", help="read the item from this ENVIRONMENT VARIABLE — the route to "
+                                   "use when the text is composed by an agent, because a body "
+                                   "interpolated into a shell argument is an injection by "
+                                   "construction (double quotes do not stop `$(...)`)")
+    ap.add_argument("--check-only", action="store_true",
+                    help="lint and report, file NOTHING — draft-and-check before committing to a "
+                         "filing, the way a linter runs before a commit")
+    ap.add_argument("--root", help="the registry directory (default: derived from this seat's "
+                                   "roster role — PM state, or a solo install's config dir)")
+    ap.add_argument("--edit", metavar="OPQ_ID",
+                    help="REWORD this still-open item in place instead of filing a new one: the "
+                         "body replaces its question text, passes the same lint, and keeps the "
+                         "same id. Refused for an item the operator has already answered, or "
+                         "one withdrawn because every source it cites concluded")
+    ap.add_argument("--label", default="this item",
+                    help="what to call the item in the output (default: %(default)s)")
+    ap.add_argument("--json", action="store_true",
+                    help="emit the result as JSON on stdout")
+    args = ap.parse_args(argv)
+    if args.edit is not None and not ITEM_ID_RE.fullmatch(args.edit):
+        sys.stderr.write("coord-ask-operator: --edit %r is not an item id (opq-<epoch>-<4 hex>)\n"
+                         % args.edit)
+        return 2
+
+    try:
+        body = read_body(args)
+    except ValueError as exc:
+        sys.stderr.write("coord-ask-operator: %s\n" % exc)
+        return 2
+
+    role = resolve_role()
+    found = findings(body, role)
+
+    # ⛔ THE ROOT IS RESOLVED BEFORE ANYTHING IS WRITTEN AND AFTER THE LINT, NEVER BETWEEN. A
+    # refusable step and a writing step in one command run the refusable one FIRST (canon #14):
+    # a lint that passed and a root that then could not be resolved must leave NOTHING behind,
+    # and it does, because the only writes in this program — the append and the `--edit` rewrite
+    # below — are made after both have succeeded.
+    record, path = None, None
+    if not found:
+        # ⛔ BEFORE ANY WRITE, AND UNDER --check-only TOO, so a draft and a filing cannot disagree:
+        # an item whose every cited source has concluded is refused (`closure_refusal`).
+        refusal, note = closure_refusal(body)
+        if refusal:
+            sys.stderr.write("coord-ask-operator: the item meets the shape but %s — %s\n"
+                             % ("%s was NOT edited" % args.edit if args.edit is not None
+                                else "was NOT filed", refusal))
+            return 2
+        if note:
+            sys.stderr.write("coord-ask-operator: note — whether the cited sources are still open "
+                             "was not checked (%s). An unread citation never counts as "
+                             "concluded, so this goes ahead; a render that finds every one "
+                             "concluded withdraws the item and names it on stderr.\n" % note)
+    if not found and args.edit is not None:
+        # An edit is checked against the registry under --check-only too, so a draft learns that
+        # the id is unknown or already answered before the author polishes the wording.
+        root, why = registry_root(args.root)
+        if root is None:
+            sys.stderr.write("coord-ask-operator: the item meets the shape but %s was NOT edited "
+                             "— %s\n" % (args.edit, why))
+            return 2
+        if args.check_only:
+            path, record, why = None, None, edit_refusal(root, args.edit)
+        else:
+            path, record, why = edit_record(root, args.edit, body, role)
+        if why:
+            sys.stderr.write("coord-ask-operator: %s\n" % why)
+            return 2
+    elif not found and not args.check_only:
+        root, why = registry_root(args.root)
+        if root is None:
+            sys.stderr.write("coord-ask-operator: the item meets the shape but was NOT filed — "
+                             "%s\n" % why)
+            return 2
+        record = build_record(body, role)
+        try:
+            path = append_record(root, record)
+        except OSError as exc:
+            # The same contract as `--edit`'s failed write: a named reason and exit 2, never a
+            # traceback exiting 1 — which is the LINT's code, and would read as "the item has
+            # findings" (r2 review, N2). The append makes no temp file, so there is none to remove.
+            # An ENCODE failure is not caught here and not meant to be: the body and the
+            # `COORD_AGENT` identity (`filed_by` / `edited_by`) are both decoded by the one
+            # primitive (`read_body` / `env_text`) to text with no lone surrogate.
+            sys.stderr.write("coord-ask-operator: the item meets the shape but was NOT filed — "
+                             "%s could not be written (%s: %s). A failure part-way through the "
+                             "write can leave a partial last line, which the renderer reports by "
+                             "line number and the next filing does not glue onto.\n"
+                             % (os.path.join(root, "filed.jsonl"), type(exc).__name__, exc))
+            return 2
+
+    notice = filed_notice() if record is not None else None
+
+    if args.json:
+        json.dump({"tool": "coord-ask-operator", "label": args.label, "clean": not found,
+                   "check_only": bool(args.check_only), "role": role,
+                   "edited" if args.edit else "filed": path, "item": record,
+                   "renderer_absent_notice": notice,
+                   "findings": [f.as_dict() for f in found]},
+                  sys.stdout, ensure_ascii=False, indent=2)
+        sys.stdout.write("\n")
+        return 1 if found else 0
+
+    if found:
+        report(found, args.label, sys.stdout)
+        return 1
+    if args.check_only:
+        sys.stdout.write("coord-ask-operator: %s meets the required operator-question shape. "
+                         "NOTHING WAS FILED — this was --check-only. Re-run without it to file.\n"
+                         % args.label)
+        return 0
+    if args.edit:
+        sys.stdout.write("coord-ask-operator: reworded %s in place (same id; the operator answers "
+                         "it as before)\n  %s\nRe-render the page (`operator-register.py --html`) "
+                         "so the operator reads the new wording.\n" % (record["id"], path))
+    else:
+        sys.stdout.write("coord-ask-operator: filed %s\n  %s\n" % (record["id"], path))
+    if notice:
+        sys.stdout.write("\n%s\n" % notice)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

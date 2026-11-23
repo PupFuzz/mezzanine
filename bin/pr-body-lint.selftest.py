@@ -11,17 +11,23 @@
 #         names each struck string). Located by the fragment
 #         `a7c1a1b4df5763c51f7dc18078035b06b981a03e70a4b50cccd3addc715f922d` (the fw#847 positive's
 #         figure). No arm, rule or assertion moves; the suite runs green on the struck bodies.
-#     (2) card#12325 — arm I's citation of another team's private implementation repository and
-#         of a heading its PR template carries. The section-I comment, the `FEATURE_BODY` heading
-#         and its line, the row (1) label and the row (7) control label say "a fleet impl repo" and
-#         `## Boundary check` instead. Located by the fragment `A fleet impl repo mandates`. The
-#         heading stays one the release allow-set does not admit, so every arm asserts what it did.
+#     (2) card#12325, extended by card#13794 — no private name, as `bin/pr-body-lint.py`'s edit (1).
+#         Arm I's section comment, its `FEATURE_BODY` heading and line, the row (1) label and the
+#         row (7) control label say "a fleet impl repo" and `## Boundary check` (fragment `A fleet
+#         impl repo mandates`); the docstring and arm O cite the other team's PR as `a fleet
+#         impl repo's release-PR line` (and body) rather than by its repository and number,
+#         located by the fragment `O a fleet impl repo's release-PR line in a release body`;
+#         arm N's comment says `a fleet impl repo's shape guard`, and its
+#         declared heading, near misses and labels use `Boundary check` / `boundary check` where
+#         upstream writes that template's domain word, with the body variable named `extra_h2`.
+#         Every heading stays one the release allow-set does not admit, and each near miss keeps
+#         its kind (suffixed, truncated, case-changed), so every arm asserts what it did.
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE)
 #   upstream path     plugins/coord/templates/bin/pr-body-lint.selftest.py
-#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
-#   plugin version    coord 0.66.0
-#   upstream sha256   a52d5ff2b6dd66f6531e5ff14606616d6f06f0309fd32b9c8804435b1f71280b
+#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
+#   plugin version    coord 0.77.0
+#   upstream sha256   ca709194ca66a9bb5c712333c5f9072c8b5d80f43b66b25986ff0d7e09989d06
 #                     — the WHOLE upstream file, NOT the body figure vendor-pin-check pins.
 #
 # ⚠ IT MUST BE RE-VENDORED IN THE SAME COMMIT AS THE TOOL. It resolves both `pr-body-lint.py` and
@@ -110,6 +116,13 @@ line the harness actually writes (or `coord-post` wrote, before card#10673 retir
 placeholder, or the same words mid-line in prose. Its control unwires the rule, and fw#891's footer
 must then pass.
 
+`arm_o` is `merge-instruction` (card#13034), a RELEASE-only rule. Its known positive is
+a fleet impl repo's release-PR line as card#13034 quotes it; PupFuzz/kanban-board#592's struck
+line could not be read, so its rows are RECONSTRUCTED from the release-body template that PR was
+drafted from, and say so. Its negatives are lines naming squash as a subject, the generated
+`## Bundled` list, and the same positive line on a feature PR. Its controls unwire the rule, run it
+on every PR, drop the `## Bundled` skip, disable each shape, and drop the clause-opening narrowing.
+
 A rule that reds on both is measuring length, not the standard. The pair is what tells them apart,
 and it is why a hand-written "compliant body" fixture is present as well but is not the whole of
 the negative side: a body someone wrote to pass the lint they just wrote proves nothing about a
@@ -126,7 +139,11 @@ this suite rather than a note — a guard that edits the thing it guards has no 
 
 HERMETIC: no network, no `$HOME`, no coordination config. Everything it reads is in this
 directory, except ONE file: the workflow that runs the lint in CI, which `arm_i` step (9) reads to
-check that it passes the PR title (card#10493).
+check that it passes the PR title (card#10493), and step (10) runs — its lint step's script, with
+`bash`, in throwaway local `git` repos shaped as a PR's merge-commit checkout — to check that a PR
+is judged by its BASE's copy of the lint (card#12387). The lint itself also reads a repo's declared release
+headings from the directory it runs in (card#12387); every CLI row runs it in an empty directory
+of its own, except `arm_n`'s, which build the file they mean.
 
 WHERE THAT WORKFLOW IS, IS AN INPUT (card#10719). In this plugin it sits at
 `templates/workflows/pr-body-lint.yml`, beside this file's `bin/`, and that is the default. A repo
@@ -142,6 +159,11 @@ It is never a skip: a vendored install that could not find its workflow would ot
 check its own gate. `arm_k` builds a vendored copy and runs it both ways: with no input, and with
 `--workflow`.
 
+`arm_n` is the REPO-DECLARED RELEASE HEADINGS (card#12387): a release body carrying a heading the
+adopting repo declares passes; the same body with no file reds `heading-not-allowed` (its control);
+an undeclared heading, and a near miss of a declared one, still red with the file present; a line
+written with the `## ` marker is a fault; and a feature PR's verdict does not move.
+
 `arm_l` is the VERSION CLASSIFICATION (card#9748): every rule id derived from this lint's own
 `Finding("<id>", …)` sites carries a `VERSION_CLASSIFICATION` row, and a planted rule with no row
 is seen unclassified.
@@ -151,6 +173,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import ast
+import importlib.machinery
 import importlib.util
 import json
 import os
@@ -160,6 +183,15 @@ import subprocess
 import sys
 import tempfile
 
+# card#11746: pin UTF-8 + `backslashreplace` on stdout/stderr, so on a cp1252 seat a character the
+# code page cannot encode costs its own glyph, never this suite's verdict.
+if __name__ == "__main__":
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOOL = os.path.join(HERE, "pr-body-lint.py")
 FIXTURE_DIR = os.path.join(HERE, "pr-body-lint-fixtures")
@@ -168,6 +200,12 @@ DEFAULT_WORKFLOW = os.path.join(HERE, "..", "workflows", "pr-body-lint.yml")
 WORKFLOW_ENV = "PR_BODY_LINT_WORKFLOW"
 # Set on the copies `arm_k` runs, so a copy does not run `arm_k` again.
 NESTED_ENV = "PR_BODY_LINT_SELFTEST_NESTED"
+# The repo-declared release headings file, relative to the directory the lint runs in (`arm_n`).
+RELEASE_HEADINGS_REL = ".github/pr-body-lint-release-headings.txt"
+# The directory every CLI row runs in unless it names one: an EMPTY directory made in `main`, so no
+# row reads a declared-headings file from wherever this suite happened to be started (a vendored
+# run from an adopting repo's root would otherwise judge every CLI row under that repo's extras).
+EMPTY_CWD = None
 
 
 def resolve_workflow(arg, environ):
@@ -226,6 +264,7 @@ COMPLIANT_BODY = """**`dev → main` release PR — v1.4.0.** Bundles the commit
 
 **Built:** dispatched (coder ×1 / mechanic ×0)
 **Coordinated in:** acme/coordination#412
+Origin: bundle
 
 ## Highlights
 
@@ -291,14 +330,32 @@ def load_tool(path=TOOL):
     return mod
 
 
-def rules_on(mod, body, author_type=None, title=None):
+# ── card#11037: the provenance rows, and the arms written before them ─────────────────────────────
+# Every body this suite judged before card#11037 declares no `Origin:`, and that card made the line
+# required on every PR. An arm about some OTHER rule still asserts "this body passes", so the
+# harness judges such a body WITH a declared origin added (`declared`), through `rules_on` and
+# `run_cli` alike — the arm then measures the rule it was written for, and its "passes" means what
+# it meant. `arm_m_provenance` drives the provenance rows themselves with `raw=True`, so nothing is
+# added there. The line is `Origin: bundle` because most of these bodies are release bodies; it is
+# appended at the END, so no line a finding quotes moves.
+DECLARED_ORIGIN = "Origin: bundle"
+
+
+def declared(body):
+    """`body` with `DECLARED_ORIGIN` appended when it carries no `Origin:` line of its own."""
+    if mod_main.field_values(body, "Origin"):
+        return body
+    return body.rstrip("\r\n") + "\n\n" + DECLARED_ORIGIN + "\n"
+
+
+def rules_on(mod, body, author_type=None, title=None, raw=False):
     """The set of RULE NAMES `mod` reports on `body`, for a PR whose author account type is
     `author_type` (`None` = the caller has none, which is every caller but CI) and whose TITLE is
     `title`. `title=None` passes NO title at all, which is how every arm but `arm_i` calls it — and
     that is deliberate: those arms keep driving the no-title path, which is judged as a RELEASE body
     (the behaviour before card#10493), so the whole release standard stays pinned by them."""
     kw = {} if title is None else {"title": title}
-    return sorted({f.rule for f in mod.findings(body, author_type, **kw)})
+    return sorted({f.rule for f in mod.findings(body if raw else declared(body), author_type, **kw)})
 
 
 def read_fixture(key):
@@ -439,13 +496,94 @@ def arm_c_fences(mod, td):
           or mod.audit_fields("```\nBuilt: forged\n```\n")["Built"] is None,
           mod.audit_fields("```\nBuilt: forged\n```\n"))
 
+    arm_c_html_comments(mod, td)
+
+
+# An HTML comment is not rendered, so a PR template's guidance comments are no more the body's own
+# claim than a fenced example is (card#12387 item 3). Each body below is the COMPLIANT body plus
+# comment lines that, read as content, red on a rule.
+TEMPLATE_COMMENT_BLOCK = ("<!--\n"
+                          "Why: say what changed for someone installing it.\n"
+                          "## Notes\n"
+                          "CI is green at this head — do not write that line.\n"
+                          "-->\n")
+TEMPLATE_COMMENT_LINE = "<!-- CI is green at this head? Then delete this line. -->\n"
+
+
+def arm_c_html_comments(mod, td):
+    for name, comment in (("multi-line", TEMPLATE_COMMENT_BLOCK),
+                          ("single-line", TEMPLATE_COMMENT_LINE)):
+        body = COMPLIANT_BODY + "\n" + comment
+        check("C a %s HTML comment is not rendered, so the lines inside it are not findings"
+              % name, rules_on(mod, body) == [], rules_on(mod, body))
+
+    # THE CONTROL: comment-blind, the same body reds on the rules the comment's lines break.
+    blind = mutant(td, "comment-blind",
+                   ("_HTML_COMMENT_OPEN_RE = re.compile(r'^ {0,3}<!--')",
+                    "_HTML_COMMENT_OPEN_RE = re.compile(r'(?!)')"))
+    got = rules_on(blind, COMPLIANT_BODY + "\n" + TEMPLATE_COMMENT_BLOCK)
+    if check("C CONTROL: a COMMENT-BLIND lint reds on the template comment's lines — the comment "
+             "rule is what withheld them",
+             {"banned-opener", "heading-not-allowed", "live-state-reading"} <= set(got), got):
+        seen_red("C the HTML-comment rule, driven red by a comment-blind mutant that reads a "
+                 "template's guidance comment as the body's own lines")
+
+    # Masking is not only lenient: a scope line that exists only inside a comment is not rendered,
+    # so the body has none.
+    hidden_scope = ("<!--\nDescribe the range this merges.\n-->\n\n"
+                    "Built: dispatched (coder ×1 / mechanic ×0)\n"
+                    "Coordinated in: acme/coordination#412\n\n## Highlights\n\n- x\n")
+    check("C a scope line that exists only inside an HTML comment is no scope line",
+          "scope-line" in rules_on(mod, hidden_scope), rules_on(mod, hidden_scope))
+
+    # The comment ends on the first line holding `-->`, and what follows is content again.
+    after = COMPLIANT_BODY + "\n" + TEMPLATE_COMMENT_BLOCK + "Why this release is MINOR.\n"
+    check("C the line after a comment's `-->` line is content again",
+          rules_on(mod, after) == ["banned-opener"], rules_on(mod, after))
+
+    # A `<!--` that does not OPEN a line is not a comment block: quoted in backticks mid-line, as
+    # this repo's own bodies quote markers, it hides nothing after it.
+    quoted = COMPLIANT_BODY + "\nA line opening `<!--` is skipped.\nWhy this release is MINOR.\n"
+    check("C a `<!--` quoted mid-line opens no comment — the next line is still judged",
+          "banned-opener" in rules_on(mod, quoted), rules_on(mod, quoted))
+
+    # A `<!--` inside a fence is the fence's payload, not a comment that runs on past it.
+    fenced_open = COMPLIANT_BODY + "\n```\n<!--\n```\n\n## Correlation gaps\n"
+    check("C a `<!--` inside a fence opens no comment — a heading after the fence is still judged",
+          "heading-not-allowed" in rules_on(mod, fenced_open), rules_on(mod, fenced_open))
+
+    # And the converse: a fence line inside a comment is the comment's text, not a fence that runs
+    # on past the `-->` and hides the rest of the body. Both blocks are tracked in ONE loop
+    # (`fenced_flags`), which is what makes this hold; a comment pass layered over the fence flags
+    # would leave everything after this comment unjudged.
+    comment_fence = (COMPLIANT_BODY + "\n<!--\nQuote an example in a fence:\n```\n-->\n\n"
+                     "## Correlation gaps\n")
+    check("C a fence line inside an HTML comment opens no fence — a heading after the comment is "
+          "still judged", rules_on(mod, comment_fence) == ["heading-not-allowed"],
+          rules_on(mod, comment_fence))
+
+    # The attribution rules judge what the body CARRIES, and a comment carries its text into the
+    # squash message the body becomes. The context stamp IS a comment.
+    for rule, line in (("ai-attribution", "<!-- CTX: 47% | 94200tok -->"),
+                       ("attribution-line", "<!--\nFROM: pm\n-->")):
+        body = COMPLIANT_BODY + "\n" + line + "\n"
+        check("C `%s` still reds inside an HTML comment" % rule,
+              rules_on(mod, body) == [rule], rules_on(mod, body))
+
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 # D — THE MUTANTS: each rule disabled in a COPY, and the answer must flip
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 def mutant(td, name, substitution, count=1):
-    """A copy of the shipped lint with ONE property removed, asserted to have APPLIED. `count=-1`
-    replaces EVERY occurrence — for a property spelled once per shape it applies to."""
+    """A copy of the shipped lint with ONE property removed, asserted to have APPLIED, loaded as a
+    module. `count=-1` replaces EVERY occurrence — for a property spelled once per shape it applies
+    to."""
+    return load_tool(mutant_path(td, name, substitution, count))
+
+
+def mutant_path(td, name, substitution, count=1):
+    """`mutant`'s copy as a FILE, for a row that runs it as a program. The shipped path when the
+    anchor is gone — with the failure recorded, so no row's green over it is believed."""
     old, new = substitution
     with open(TOOL, encoding="utf-8") as fh:
         src = fh.read()
@@ -453,13 +591,13 @@ def mutant(td, name, substitution, count=1):
         FAILURES.append("MUTANT `%s`: its anchor is no longer in %s, so the copy is UNMUTATED and "
                         "every assertion over it would be a green over the shipped code."
                         % (name, TOOL))
-        return load_tool()
+        return TOOL
     path = os.path.join(td, "pr-body-lint.%s.py" % name)
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(src.replace(old, new, count))
     if sha256_file(path) == sha256_file(TOOL):
         FAILURES.append("MUTANT `%s`: the copy is byte-identical to the shipped file." % name)
-    return load_tool(path)
+    return path
 
 
 def arm_d_mutants(td):
@@ -793,8 +931,8 @@ def arm_g_live_state(mod, td):
     # ⛔ THE CONTROLS. The positive reds on older rules too, so "the positive reds" was true
     # before this rule existed: unwire it, and the live-state finding must be what disappears.
     unwired = mutant(td, "live-state-unwired",
-                     ("rule_banned_openers(rows) + rule_live_state_reading(rows)\n",
-                      "rule_banned_openers(rows)\n"))
+                     ("rule_banned_openers(rendered) + rule_live_state_reading(rendered)\n",
+                      "rule_banned_openers(rendered)\n"))
     got_u = rules_on(unwired, positive)
     if check("G CONTROL: with `rule_live_state_reading` UNWIRED, fw#873's reading lines stop reding on "
              "`live-state-reading` — and every other rule still reds, so the mutant disabled one "
@@ -1126,10 +1264,10 @@ def arm_i_release_scope(mod, td):
           "`banned-opener` — the OUT table binds every PR body — and on nothing release-only",
           got == ["banned-opener", "live-state-reading"], got)
 
-    # (6) WHERE THE LINE IS DRAWN: only the rules that model a SECTION SHAPE are scoped. The OUT
-    # table's content rules — a narration opener, a live-state reading — bind every PR body, so the
-    # same two lines red under a feature title as under a release one; the release title adds only
-    # the section set and the scope line.
+    # (6) WHERE THE LINE IS DRAWN: only the release-only rules the lint's header names are scoped.
+    # The OUT table's content rules — a narration opener, a live-state reading — bind every PR body,
+    # so the same two lines red under a feature title as under a release one; on this body the
+    # release title adds `scope-line` and `heading-not-allowed`, the release-only rules it breaks.
     extra = (FEATURE_BODY + "\nVerification: the suite is green at this head.\n"
              "- CI has not run on this head.\n")
     got_feat = rules_on(mod, extra, title=FEATURE_TITLE)
@@ -1174,7 +1312,8 @@ def arm_i_release_scope(mod, td):
     # ⛔ AND THE OTHER HALF OF THE SPLIT — WHICH RULES SIT OUTSIDE THE GATE. The three predicate
     # mutants above cannot move a rule that runs whatever the predicate says, so rows (5), (5b) and
     # (6) get their own controls: a copy that puts the rule back BEHIND the gate.
-    gate_anchor = "        out += rule_scope_line(rows) + rule_headings(rows)\n"
+    gate_anchor = ("        out += rule_scope_line(rendered) + rule_headings(rendered, "
+                   "release_headings)\n")
     content_gated = mutant(td, "content-rules-release-only",
                            (gate_anchor, gate_anchor + "    else:\n        out = [f for f in out "
                             "if f.rule not in (\"banned-opener\", \"live-state-reading\")]\n"))
@@ -1247,6 +1386,241 @@ def arm_i_release_scope(mod, td):
     check("I the shipped workflow passes the PR TITLE through `env:` and names it to the lint",
           "COORD_PR_TITLE: ${{ github.event.pull_request.title }}" in wf_text
           and re.search(r"--title-env COORD_PR_TITLE\b", wf_text) is not None, wf)
+
+    # (10) THE WORKFLOW JUDGES A PR WITH THE BASE'S COPY OF THE LINT (card#12387 item 5).
+    workflow_judges_with_base_copy(td, wf, wf_text)
+
+
+# A narration body under a feature title: the real lint reds it on `banned-opener` and nothing else.
+WF_RED_BODY = ("Fixes the retry window.\n\nBuilt: inline (trivial)\nCoordinated in: card#1\n"
+               "Origin: bug-fix card#1\n\nWhy we did it: the daemon stalled.\n")
+# What a PR that edits the lint to wave itself through would put in `bin/pr-body-lint.py`.
+WF_LENIENT_LINT = "import sys\nprint('lenient copy: everything passes')\nsys.exit(0)\n"
+
+
+def _workflow_step_script(wf_text):
+    """The `run: |` block of the workflow's lint step, dedented — the script CI runs."""
+    lines = wf_text.split("\n")
+    start = next(i for i, l in enumerate(lines) if "- name: Lint the PR body" in l)
+    run_at = next(i for i in range(start, len(lines)) if re.match(r"^\s+run: \|\s*$", lines[i]))
+    indent = len(lines[run_at]) - len(lines[run_at].lstrip())
+    block = []
+    for l in lines[run_at + 1:]:
+        if l.strip() and len(l) - len(l.lstrip()) <= indent:
+            break
+        block.append(l)
+    width = min(len(l) - len(l.lstrip()) for l in block if l.strip())
+    return "\n".join(l[width:] for l in block) + "\n"
+
+
+# The fixture builds real repositories, so it must not inherit a hook's GIT_DIR (card fw#823).
+# VENDOR-BEGIN(git-env)
+# GENERATED — do not edit; source: plugins/coord/_vendor/git-env.py.txt; regenerate (framework repo only): python3 tools/gen-vendored.py; fragment-sha256: 537972ca69e8e779
+# jscpd:ignore-start
+def git_env(base=None, **overrides):
+    """An environment for a git aimed at a repository OTHER than the ambient one: every
+    inherited `GIT_*` variable dropped, then `overrides` layered on top.
+
+    WHY IT EXISTS. `GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE`, `GIT_PREFIX` and their
+    siblings OUTRANK both the child's working directory and an explicit `git -C <dir>`, so
+    the target written at the call site does not win the argument. Git EXPORTS them to its
+    own hooks, and in a LINKED WORKTREE it exports an ABSOLUTE `GIT_DIR`
+    (`…/.git/worktrees/<name>`) — so every nested git call made from a worktree hook lands
+    in the HOOK'S repository rather than the one the caller named:
+
+        $ GIT_DIR=<other>/.git git -C <fresh-dir> init -q -b b
+        warning: re-init: ignored --initial-branch=b        <- it RE-INIT'd <other>
+
+    A NON-worktree checkout exports no `GIT_DIR` and only a RELATIVE `.git/index`, which is
+    why this stays invisible from a main checkout and green on every hand run.
+
+    THE WHOLE `GIT_` PREFIX, NEVER AN ENUMERATED LIST. A list can only name the variables
+    that have already bitten someone, so it is permanently one variable behind; the prefix
+    is the namespace git itself reserves, and it covers the next variable with no edit.
+
+    NOTHING INHERITED SURVIVES — the keep-list is EMPTY, and that is a decision taken WITH
+    the population that would have survived, not for want of one. Measured on git 2.53
+    against `git -C <dir> rev-parse --show-toplevel`:
+
+      GIT_CEILING_DIRECTORIES  A ceiling stops only discovery that must ASCEND, and that
+        bound is the whole of its reach. With a ceiling on the target's own repo root,
+        `git -C <root>` still answers with the toplevel — the start directory holds the
+        `.git` itself, so nothing is walked upward — while `git -C <root>/sub` from the
+        identical environment is `fatal: not a git repository`, rc 128. (Re-measured on git
+        2.43 for card#8617, with the two forms as the control for each other; the wording
+        here previously claimed the rc 128 for both.) Dropping the variable can therefore
+        ADD the true answer for a caller whose path sits BELOW the repo root, and can never
+        redirect one — so the keep-list stays empty on its own argument either way.
+      GIT_CONFIG_GLOBAL        Load-bearing in the OPPOSITE direction: on a repo git judges
+        dubiously owned, the `safe.directory` exception lives in whichever global config is
+        in force. Dropping the variable returns git to the user's own `~/.gitconfig`, where
+        the exception is found or it is not — and when it is not the answer is rc 128, an
+        honest refusal rather than a wrong answer.
+      GIT_EXEC_PATH            Not load-bearing, PROBED rather than reasoned: aimed at an
+        empty directory it leaves `rev-parse` answering normally (a builtin) while
+        `git submodule` from the same environment dies with "is not a git command" and
+        recovers the instant the variable is unset — so the probe was shown capable of the
+        other answer before its null result was believed.
+
+    NEITHER LOAD-BEARING VARIABLE CAN PRODUCE A FALSE ANSWER, which is the only outcome this
+    contract cannot survive. Add a survivor here only with a measurement showing that
+    dropping it answers WRONGLY, never merely that it answers less often.
+
+    SCRUB THEN LAYER, AND THE ORDER IS STRUCTURAL RATHER THAN A CONVENTION. A caller that
+    deliberately sets a `GIT_*` value — `GIT_TERMINAL_PROMPT=0` so a credential-less clone
+    fails instead of stalling on a prompt no terminal will answer, `GIT_AUTHOR_DATE` for a
+    reproducible fixture commit — passes it as an `overrides` keyword and it is applied
+    AFTER the drop. The inverse order silently deletes exactly the value the caller meant
+    to set, and `git_env(GIT_TERMINAL_PROMPT="0")` cannot be written in that order. An
+    INHERITED value is by definition not a deliberate one, which is why no keep-list is
+    needed to protect the deliberate case.
+
+    `base` is the mapping to scrub, defaulting to `os.environ`. A caller that has already
+    built a child environment passes it here rather than scrubbing afterwards, so the drop
+    is never applied to a dict that a later `dict(...)` re-widens.
+
+    A COPY, never an in-place edit: the caller's own AMBIENT git calls — a hook asking
+    about the repository it was invoked for — must keep the environment they were handed,
+    and that environment is exactly what this function refuses to hand onward.
+
+    WINDOWS IS REASONED, NOT MEASURED, and is recorded as such: Windows Python upper-cases
+    every `os.environ` key and git's own variables are already upper-case, so a
+    `startswith("GIT_")` filter matches there by construction.
+    """
+    src = os.environ if base is None else base
+    env = {k: v for k, v in src.items() if not k.startswith("GIT_")}
+    env.update(overrides)
+    return env
+# jscpd:ignore-end
+# VENDOR-END(git-env)
+
+
+def git(cwd, *args):
+    """`git` in the fixture repository `cwd`, its stdout. A failure RAISES (`check=True`), so no
+    call here reads an empty answer as a measurement."""
+    return subprocess.run(["git", "-c", "user.name=selftest", "-c", "user.email=selftest@invalid",
+                           "-c", "init.defaultBranch=main", "-c", "commit.gpgsign=false"]
+                          + list(args), cwd=cwd, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=60, check=True,
+                          env=git_env()).stdout.strip()
+
+
+def _pr_checkout(td, name, base_lint, head_lint, depth, merge=True, head_is_merge=False):
+    """A clone shaped as `actions/checkout` leaves a `pull_request` run: the PR's MERGE commit
+    (first parent the base, second the PR head) fetched at `depth`, and the PR head's sha — what
+    the event's `pull_request.head.sha` names. `base_lint` / `head_lint` are the bytes of
+    `bin/pr-body-lint.py` on each side, `None` for no file. `merge=False` checks out the PR head
+    itself instead — the checkout of an adopter who set `ref:` to the head sha. `head_is_merge`
+    makes the PR head a merge of the base INTO the PR branch ("Update branch"), so that head has
+    a second parent of its own and its first parent carries the PR's lint."""
+    origin = os.path.join(td, name + "-origin")
+    os.makedirs(origin)
+    git(origin, "init", "-q")
+
+    def commit(content, msg):
+        path = os.path.join(origin, "bin", "pr-body-lint.py")
+        if content is None:
+            if os.path.exists(path):
+                git(origin, "rm", "-q", path)
+        else:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(content)
+            git(origin, "add", path)
+        git(origin, "commit", "-q", "--allow-empty", "-m", msg)
+        return git(origin, "rev-parse", "HEAD")
+
+    root = commit(None, "root")
+    base = commit(base_lint, "base")
+    git(origin, "checkout", "-q", "-b", "pr", root)
+    commit(head_lint, "pr head")
+    if head_is_merge:
+        git(origin, "merge", "-q", "--no-ff", "-X", "ours", "-m", "update branch", base)
+    head = git(origin, "rev-parse", "pr")
+    git(origin, "checkout", "-q", "--detach", base)
+    git(origin, "merge", "-q", "--no-ff", "-X", "theirs", "-m", "merge", "pr")
+    ref = git(origin, "rev-parse", "HEAD" if merge else "pr")
+    git(origin, "update-ref", "refs/pull/1/merge", ref)
+    work = os.path.join(td, name + "-work")
+    os.makedirs(work)
+    git(work, "init", "-q")
+    git(work, "fetch", "-q", "--depth=%d" % depth, "file://" + origin,
+         "+refs/pull/1/merge:refs/remotes/pull/1/merge")
+    git(work, "checkout", "-q", "--detach", "refs/remotes/pull/1/merge")
+    return work, head
+
+
+def workflow_judges_with_base_copy(td, wf, wf_text):
+    with open(TOOL, encoding="utf-8") as fh:
+        real_lint = fh.read()
+    try:
+        script = _workflow_step_script(wf_text)
+    except (StopIteration, ValueError):
+        check("I the lint step's `run:` script could be read out of the workflow", False, wf)
+        return
+    m = re.search(r"^\s+fetch-depth:\s*(\d+)\s*$", wf_text, re.M)
+    depth = int(m.group(1)) if m else 1   # `actions/checkout`'s default when the key is absent
+    runner_temp = os.path.join(td, "runner-temp")
+    os.makedirs(runner_temp, exist_ok=True)
+
+    def run_step(checkout):
+        work, head = checkout
+        env = git_env(COORD_PR_BODY=WF_RED_BODY, COORD_PR_AUTHOR_TYPE="User",
+                      COORD_PR_TITLE="fix: retry window", COORD_PR_HEAD_SHA=head,
+                      RUNNER_TEMP=runner_temp)
+        return subprocess.run(["bash", "-c", script], cwd=work, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=120, env=env)
+
+    # The merge-commit check compares HEAD^2 with the PR head the EVENT names; the rows below set
+    # that variable themselves, so the workflow must be shown to pass it from the event.
+    check("I the workflow passes the PR head sha from the event as COORD_PR_HEAD_SHA",
+          "COORD_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}" in wf_text, wf)
+
+    # The PR edits the lint to pass everything; the base's copy must still be the judge.
+    proc = run_step(_pr_checkout(td, "wf-edits-lint", real_lint, WF_LENIENT_LINT, depth))
+    check("I the workflow judges a PR that EDITS the lint with the BASE's copy — the PR's lenient "
+          "copy does not wave its own red body through",
+          proc.returncode == 1 and "banned-opener" in proc.stdout
+          and "lenient copy" not in proc.stdout,
+          (proc.returncode, proc.stdout[-500:], proc.stderr[-300:]))
+
+    # The adoption PR: the base has no lint yet, so the copy the PR adds is the only judge — and the
+    # run says that is what happened.
+    proc = run_step(_pr_checkout(td, "wf-adopts", None, real_lint, depth))
+    check("I on the ADOPTION PR (no lint at the base) the workflow runs the copy the PR adds, and "
+          "says so", proc.returncode == 1 and "banned-opener" in proc.stdout
+          and "adopts the lint" in proc.stdout,
+          (proc.returncode, proc.stdout[-500:], proc.stderr[-300:]))
+
+    # A checkout that is not this PR's merge commit — too shallow, or the PR head checked out
+    # instead of it — must fail, never judge with the PR's own copy. `wf-head-ref-merge` is the
+    # case a bare "has a second parent" check passes: the PR head is itself a merge of the base
+    # ("Update branch"), so it HAS a second parent, and its first parent carries the PR's lint.
+    for name, d, merge, head_is_merge in (("wf-shallow", 1, True, False),
+                                          ("wf-head-ref", depth, False, False),
+                                          ("wf-head-ref-merge", depth, False, True)):
+        proc = run_step(_pr_checkout(td, name, real_lint, WF_LENIENT_LINT, d, merge,
+                                     head_is_merge))
+        check("I a checkout that is not this PR's merge commit (%s) is a fault (exit 2) that "
+              "names the cause, never the PR's own copy" % name,
+              proc.returncode == 2 and "lenient copy" not in proc.stdout
+              and "merge commit" in proc.stdout + proc.stderr,
+              (proc.returncode, proc.stdout[-300:], proc.stderr[-300:]))
+
+    # THE CONTROL: with the merge-commit check cut out of the script, the shallow checkout reads as
+    # the adoption PR and the PR's lenient copy judges it — the check is what refused it above.
+    guard = re.search(r"^if [^\n]*COORD_PR_HEAD_SHA.*?HEAD\^2.*?^fi\n", script, re.M | re.S)
+    if guard is None:
+        check("I CONTROL: the lint step's merge-commit check could be found to cut out", False,
+              script[:400])
+        return
+    script = script.replace(guard.group(0), "")
+    proc = run_step(_pr_checkout(td, "wf-shallow-unguarded", real_lint, WF_LENIENT_LINT, 1))
+    if check("I CONTROL: without the merge-commit check, a shallow checkout falls back to the PR's "
+             "own lenient copy and passes", proc.returncode == 0 and "lenient copy" in proc.stdout,
+             (proc.returncode, proc.stdout[-300:])):
+        seen_red("I the base-copy judge, driven red by a workflow script without its merge-commit "
+                 "check, whose shallow checkout is judged by the PR's own copy")
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1340,7 +1714,429 @@ def arm_j_ai_attribution(mod, td):
                  "harness footer through")
 
 
-def run_cli(args, env=None, cwd=None):
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# O — `merge-instruction`: THE MERGE-METHOD NOTE, ON A RELEASE PR (card#13034)
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# The KNOWN POSITIVE is a fleet impl repo's release-PR line, verbatim as card#13034 quotes it:
+# that body passed `pr-body-lint.py --title 'release: aimla-v0.1.1'` clean, and its live body no
+# longer carries the line. It is a constant here, not a committed body: the rule judges one line,
+# and the rest of that body is another repo's release text.
+P467_LINE = ('**Merge with "Create a merge commit", never squash.** Tag `aimla-v0.1.1` is applied '
+             'by hand after the merge.')
+
+# PupFuzz/kanban-board#592's struck line, RECONSTRUCTED. That body's edit history was not readable
+# when this arm was written (the repo 404s to every token this seat holds, and the edit history is
+# GraphQL-only), so the struck text itself is not here. These are the merge-method and merge-gate
+# lines of the release-body template `skills/release-pr/SKILL.md` Step 10 carried when #592 was
+# drafted (`git show 6ba6ccaa^:plugins/coord/skills/release-pr/SKILL.md`, the commit card#6344
+# struck them in), which is what a body drafted from that template carried.
+KB592_RECONSTRUCTED = (
+    ("merge-method", "- [x] Merge-button intent: **Create a merge commit**"),
+    ("merger-named", "- User is the merger (release PRs to the release branch are the production "
+                     "gate; no carve-out)"),
+    ("merge-gate-wait", "- Pre-merge: wait for `mergeStateStatus: CLEAN` (all required CI checks "
+                        "pass)"),
+    ("merge-method", "- Merge button: **Create a merge commit** (per `pr-review-flow.md`)"),
+)
+
+# One example per shape alternative, each pinning ONE shape, so each per-shape mutant can be read.
+# The rows marked `fw#<n>` are this repo's own release bodies, verbatim (`gh api
+# repos/PupFuzz/agent-board-framework/pulls/<n> --jq .body`): earlier instances that passed.
+MERGE_ROWS = KB592_RECONSTRUCTED + (
+    # fw#815, lines 4 and 5.
+    ("merge-method", '**Merge with "Create a Merge Commit"** (`skills/release-pr/SKILL.md § '
+                     'Merge-button intent`) — do'),
+    ("merge-method", "NOT squash. Do not merge on my account: this is the operator's gate."),
+    # fw#707, line 6.
+    ("merge-method", "**Merge button: `Create a Merge Commit`** (release PR — squashing corrupts "
+                     "the release topology"),
+    ("merge-method", "- Merge with **Create a merge commit**."),
+    ("merge-method", "Do not squash this PR."),
+    ("merge-method", '- Use "Create a merge commit".'),
+    ("merger-named", "- The operator merges this once CI is CLEAN."),
+    ("tag-after-merge", "- Tag `v1.4.0` is pushed after the merge."),
+    ("tag-after-merge", "- Tag `v1.4.0` manually."),
+)
+
+# Lines that NAME a merge method as their SUBJECT — changelog-style highlights, and the generated
+# `## Bundled` list's PR titles — must pass.
+MERGE_SUBJECT_LINES = (
+    "- `coord-self-merge` refuses a squash of a back-merge sync PR, so sync PRs are never squashed.",
+    "- `branch-lines.sh` refuses to create a merge commit on a squash-only line.",
+    "- `coord-sync` will never squash a back-merge sync PR.",
+    "- `git rebase` is no longer run by `coord-build fix`; it merges the base instead.",
+    "- `auto-tag-version.yml` creates the release tag after the merge to `main`.",
+)
+MERGE_BUNDLED_LINE = "- **#1475** fix(self-merge): refuse a squash of a back-merge sync PR (card#6942)"
+
+# The header's NAMED residues, pinned so the list there is a measured claim.
+MERGE_NOT_JUDGED = (
+    ("a merge instruction whose opening token follows a word",
+     "- Please merge with a merge commit."),
+    ("a merge instruction in words no shape matches", "- Use the merge-commit button, please."),
+)
+
+
+def _in_highlights(line):
+    """COMPLIANT_BODY with `line` as the first line of `## Highlights` — appended at the END it
+    would sit under `## Bundled`, which this rule does not judge."""
+    anchor = "## Highlights\n\n"
+    if COMPLIANT_BODY.count(anchor) != 1:
+        FAILURES.append("O the `## Highlights` anchor is not in COMPLIANT_BODY exactly once")
+    return COMPLIANT_BODY.replace(anchor, anchor + line + "\n", 1)
+
+
+def _merge_hits(mod, line, title=None):
+    """The shapes `mod` names on `line` placed in a release body's highlights — `[]` for none."""
+    kw = {} if title is None else {"title": title}
+    hits = [f for f in mod.findings(declared(_in_highlights(line)), None, **kw)
+            if f.rule == "merge-instruction"]
+    return [s for s, _ in mod.MERGE_INSTRUCTIONS if hits and "`%s`" % s in hits[0].message]
+
+
+def arm_o_merge_instruction(mod, td):
+    body = _in_highlights(P467_LINE)
+    got = rules_on(mod, body, title=RELEASE_TITLE)
+    hits = [f for f in mod.findings(declared(body), None, title=RELEASE_TITLE)
+            if f.rule == "merge-instruction"]
+    check("O a fleet impl repo's release-PR line in a release body reds on `merge-instruction` "
+          "and nothing else",
+          got == ["merge-instruction"], got)
+    check("O ...on that line, quoting it, naming `merge-method` and `tag-after-merge`, and citing "
+          "§ PR body", len(hits) == 1 and hits[0].text == P467_LINE
+          and _merge_hits(mod, P467_LINE) == ["merge-method", "tag-after-merge"]
+          and "`skills/release-pr/SKILL.md § PR body`" in hits[0].message,
+          [(f.text, f.message[:120]) for f in hits])
+
+    for shape, line in MERGE_ROWS:
+        check("O `%s` reds on %r, naming that shape alone" % (shape, line),
+              _merge_hits(mod, line) == [shape], _merge_hits(mod, line))
+    for line in MERGE_SUBJECT_LINES:
+        got = rules_on(mod, _in_highlights(line), title=RELEASE_TITLE)
+        check("O a line naming a merge method as its SUBJECT passes: %r" % line, got == [], got)
+    bundled = COMPLIANT_BODY.replace("- #311 — read the env file\n",
+                                     "- #311 — read the env file\n" + MERGE_BUNDLED_LINE + "\n", 1)
+    check("O the bundled-line anchor applied", bundled != COMPLIANT_BODY)
+    got = rules_on(mod, bundled, title=RELEASE_TITLE)
+    check("O a changelog line about squash in the generated `## Bundled` section passes", got == [],
+          got)
+    for why, line in MERGE_NOT_JUDGED:
+        got = rules_on(mod, _in_highlights(line), title=RELEASE_TITLE)
+        check("O NOT judged — %s: %r" % (why, line), got == [], got)
+    in_bundled = COMPLIANT_BODY.replace("- #311 — read the env file\n",
+                                        "- #311 — read the env file\n" + P467_LINE + "\n", 1)
+    got = rules_on(mod, in_bundled, title=RELEASE_TITLE)
+    check("O NOT judged — a merge instruction hand-added under `## Bundled` (the header's "
+          "residue)", got == [], got)
+    after = in_bundled.replace("<!-- release-manifest:shipped-refs=310,311 -->\n",
+                               "<!-- release-manifest:shipped-refs=310,311 -->\n\n"
+                               "## Release artifacts\n\n" + P467_LINE + "\n", 1)
+    got = rules_on(mod, after, title=RELEASE_TITLE)
+    check("O ...and the section after `## Bundled` is judged again", got == ["merge-instruction"],
+          got)
+    fenced = _in_highlights("```\n%s\n```" % P467_LINE)
+    commented = _in_highlights("<!-- %s -->" % P467_LINE)
+    check("O a merge instruction inside a FENCE or an HTML comment is not judged",
+          rules_on(mod, fenced, title=RELEASE_TITLE) == []
+          and rules_on(mod, commented, title=RELEASE_TITLE) == [],
+          (rules_on(mod, fenced, title=RELEASE_TITLE), rules_on(mod, commented, title=RELEASE_TITLE)))
+
+    # RELEASE PRs ONLY: the same line on a feature PR is not this rule's, and with NO title it is
+    # judged as a release, the strict side.
+    feature = FEATURE_BODY + "\n" + P467_LINE + "\n"
+    got = rules_on(mod, feature, title=FEATURE_TITLE)
+    check("O the same line on a NON-release PR does not fire `merge-instruction`",
+          "merge-instruction" not in got, got)
+    check("O ...and with no title it does (a missing title is judged as a release)",
+          _merge_hits(mod, P467_LINE, title=None) == ["merge-method", "tag-after-merge"],
+          _merge_hits(mod, P467_LINE, title=None))
+
+    # ⛔ THE CONTROLS. Unwired, every positive above passes — the state before card#13034, in which
+    # a fleet impl repo's release-PR body passed clean.
+    unwired = mutant(td, "merge-instruction-unwired",
+                     ("        out += rule_merge_instruction(rendered)\n", ""))
+    still = [line for _, line in MERGE_ROWS + (("", P467_LINE),)
+             if rules_on(unwired, _in_highlights(line), title=RELEASE_TITLE)]
+    if check("O CONTROL: with `rule_merge_instruction` UNWIRED, a fleet impl repo's release-PR "
+             "line and every reconstructed kanban-board#592 line pass", not still, still):
+        seen_red("O the merge-instruction rule, driven red by an unwired copy that lets "
+                 "a fleet impl repo's release-PR merge-method line through")
+    every = mutant(td, "merge-instruction-every-pr",
+                   ("           + rule_declarations(body or \"\", author_type))\n",
+                    "           + rule_declarations(body or \"\", author_type)"
+                    " + rule_merge_instruction(rendered))\n"))
+    got = rules_on(every, feature, title=FEATURE_TITLE)
+    if check("O CONTROL: with the rule run on EVERY PR, the feature PR's line reds — the release "
+             "predicate is what keeps it off a feature PR", "merge-instruction" in got, got):
+        seen_red("O the release scope of `merge-instruction`, driven red by a copy that runs it on "
+                 "a feature PR")
+    nobundle = mutant(td, "merge-instruction-judges-bundled",
+                      ("        if generated:\n            continue\n", ""))
+    got = rules_on(nobundle, in_bundled, title=RELEASE_TITLE)
+    if check("O CONTROL: with the `## Bundled` skip removed, a line under that heading reds — the "
+             "skip is what keeps the generated list unjudged", got == ["merge-instruction"], got):
+        seen_red("O the `## Bundled` skip, driven red by a copy that judges the generated list")
+    for shape, _ in mod.MERGE_INSTRUCTIONS:
+        off = mutant(td, "merge-shape-%s-disabled" % shape,
+                     ('("%s",\n     r"(?:' % shape, '("%s",\n     r"(?!)(?:' % shape))
+        own = [line for s, line in MERGE_ROWS if s == shape]
+        others = [line for s, line in MERGE_ROWS if s != shape]
+        if check("O CONTROL: with shape `%s` DISABLED, its own rows stop reding while every other "
+                 "shape's rows still red" % shape,
+                 own and all(_merge_hits(off, l) == [] for l in own)
+                 and all(_merge_hits(off, l) for l in others),
+                 ([_merge_hits(off, l) for l in own], [_merge_hits(off, l) for l in others])):
+            seen_red("O shape `%s`, driven red by a copy whose pattern can never match" % shape)
+    opener = mutant(td, "merge-opener-dropped", (r"(?<!\w )", ""), count=-1)
+    withheld = (MERGE_SUBJECT_LINES[1], MERGE_SUBJECT_LINES[2], MERGE_NOT_JUDGED[0][1])
+    reds = [line for line in withheld
+            if "merge-instruction" in rules_on(opener, _in_highlights(line), title=RELEASE_TITLE)]
+    if check("O CONTROL: with the clause-opening narrowing dropped, the subject lines `to create "
+             "a merge commit` / `will never squash` and the `please merge with` residue red — the "
+             "narrowing is what withholds them", len(reds) == len(withheld), reds):
+        seen_red("O the clause-opening narrowing, driven red by a copy without `(?<!\\w )`")
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# M — THE PROVENANCE ROWS (card#11037): `Origin:`, `Design-approved:` and `Tier:`
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+def arm_m_provenance(mod, td):
+    def body(*lines):
+        return "Fix the retry loop.\n\nBuilt: inline (trivial)\n**Coordinated in:** acme/coordination#1\n" + (
+            "\n".join(lines) + "\n" if lines else "")
+
+    feat = "fix: retry loop"
+    check("M a body declaring `Origin: bug-fix card#<n>` passes every rule",
+          rules_on(mod, body("Origin: bug-fix card#7"), title=feat, raw=True) == [],
+          rules_on(mod, body("Origin: bug-fix card#7"), title=feat, raw=True))
+    for lines in (("**Origin:** operator-directive card#283",),
+                  ("Origin: operator-directive opq-1792846742-05a9",),
+                  ("Origin: bundle",),
+                  ("Origin: agent-originated card#7", "Design-approved: `opq-1792846742-05a9`"),
+                  ("Origin: bug-fix card#7", "Tier: **RESERVED** money: payouts"),
+                  ("Origin: bug-fix card#7", "Tier: routine"),
+                  # card#12757: a change to tests alone names the card it was dispatched under.
+                  ("Origin: test-only card#7",),
+                  # card#12618: a `/coord:update` reconcile PR carries no card and no opq.
+                  ("Origin: reconcile",),
+                  ("Origin: reconcile area 4 orientation re-sync",)):
+        got = rules_on(mod, body(*lines), title=feat, raw=True)
+        check("M well-formed provenance passes: %r" % (lines,), got == [], got)
+    cases = (
+        ("origin-missing", body()),
+        ("origin-malformed", body("Origin: guess card#7")),
+        ("origin-malformed", body("Origin: bug-fix 7")),
+        ("origin-malformed", body("Origin: operator-directive")),
+        # card#11037 r1: a directive the merge gate cannot check is malformed, not merely unproven.
+        ("origin-malformed", body("Origin: operator-directive thread#7 c-1")),
+        # the bot origin is derived from the PR's author by the gate; no body may claim it.
+        ("origin-malformed", body("Origin: dependency-bump")),
+        ("origin-malformed", body("Origin: bug-fix card#7", "Origin: bundle")),
+        # card#12757: `test-only` names its card the way `bug-fix` does.
+        ("origin-malformed", body("Origin: test-only 7")),
+        ("origin-malformed", body("Origin: test-only")),
+        ("design-approved-missing", body("Origin: agent-originated card#7")),
+        ("design-approved-malformed", body("Origin: agent-originated card#7",
+                                           "Design-approved: card#12")),
+        ("tier-malformed", body("Origin: bug-fix card#7", "Tier: hard")),
+    )
+    for rule, text in cases:
+        got = rules_on(mod, text, title=feat, raw=True)
+        check("M `%s` reds on the body that violates exactly it, and nothing else" % rule,
+              got == [rule], got)
+    # card#12618's control: a `/coord:update` area-4 reconcile PR body (the `Built:` value
+    # `docs/built-line.md` defines for it) reds without an origin and passes with `reconcile`.
+    area4 = ("Re-sync the impl orientation file to the installed plugin.\n\n"
+             "Built: in-session (docs/coordination)\n**Coordinated in:** acme/coordination#1\n")
+    check("M card#12618: an area-4 reconcile body with NO `Origin:` reds `origin-missing`",
+          rules_on(mod, area4, title="chore: coord:update reconcile", raw=True) == ["origin-missing"],
+          rules_on(mod, area4, title="chore: coord:update reconcile", raw=True))
+    check("M card#12618: the same body carrying `Origin: reconcile` passes",
+          rules_on(mod, area4 + "Origin: reconcile\n", title="chore: coord:update reconcile",
+                   raw=True) == [],
+          rules_on(mod, area4 + "Origin: reconcile\n", title="chore: coord:update reconcile",
+                   raw=True))
+    # The `origin-missing` message spells the forms an author may write; every kind the one parser
+    # accepts is among them, so the message cannot fall behind `ORIGIN_KINDS`.
+    missing_msg = " ".join(f.message for f in mod.findings(body(), None, title=feat)
+                           if f.rule == "origin-missing")
+    unnamed = [k for k in mod.ORIGIN_KINDS if "`Origin: %s" % k not in missing_msg]
+    check("M the `origin-missing` message names every kind in `ORIGIN_KINDS`", not unnamed,
+          (unnamed, missing_msg))
+    # The bot exemption reaches `origin-missing` and `design-approved-missing` only.
+    for rule, text in (("origin-missing", body()),
+                       ("design-approved-missing", body("Origin: agent-originated card#7"))):
+        check("M a BOT-authored body is exempt from `%s`" % rule,
+              rule not in rules_on(mod, text, "Bot", title=feat, raw=True),
+              rules_on(mod, text, "Bot", title=feat, raw=True))
+    check("M ...and NOT from a malformed line",
+          "origin-malformed" in rules_on(mod, body("Origin: guess card#7"), "Bot", title=feat,
+                                         raw=True), None)
+    # A release body opening on the provenance line still has its scope line BELOW it.
+    rel = "Origin: bundle\n\n" + COMPLIANT_BODY.replace("Origin: bundle\n", "")
+    check("M a release body that OPENS on `Origin:` is not read as scope-line-less — the line is a "
+          "machine row the scope rule skips", "scope-line" not in rules_on(mod, rel, raw=True),
+          rules_on(mod, rel, raw=True))
+    # The id pattern is a declared restatement of `coord-ask-operator`'s, held equal here.
+    filer = os.path.join(HERE, "coord-ask-operator")
+    if os.path.exists(filer):
+        spec = importlib.util.spec_from_loader("pbl_cao", importlib.machinery.SourceFileLoader(
+            "pbl_cao", filer))
+        cao = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cao)
+        check("M `DESIGN_APPROVED_ID_RE` is `coord-ask-operator`'s `ITEM_ID_RE`, character for "
+              "character — the id the registry mints is the id this lint accepts",
+              mod.DESIGN_APPROVED_ID_RE.pattern == cao.ITEM_ID_RE.pattern,
+              (mod.DESIGN_APPROVED_ID_RE.pattern, cao.ITEM_ID_RE.pattern))
+    elif os.environ.get(NESTED_ENV) != "1":
+        check("M `coord-ask-operator` sits beside this suite, so the id-pattern guard can run",
+              False, filer)
+    unwired = mutant(td, "declarations-unwired",
+                     ('           + rule_declarations(body or "", author_type))',
+                      '           + [])'))
+    if check("M CONTROL: with `rule_declarations` unwired, a body with no `Origin:` passes — the "
+             "rule is what reds it",
+             "origin-missing" not in rules_on(unwired, body(), title=feat, raw=True),
+             rules_on(unwired, body(), title=feat, raw=True)):
+        seen_red("M a missing `Origin:` line, passed by a copy whose provenance rule is unwired")
+    proc = run_cli(["--env", "COORD_PR_BODY", "--title", feat], env={"COORD_PR_BODY": body()},
+                   raw=True)
+    check("M CLI: a body with no `Origin:` exits 1 naming `origin-missing`",
+          proc.returncode == 1 and "origin-missing" in proc.stdout, proc.stdout[-300:])
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# N — THE REPO-DECLARED RELEASE HEADINGS (card#12387 item 4)
+# ══════════════════════════════════════════════════════════════════════════════════════════════
+# An adopting repo can REQUIRE a section on every PR — a fleet impl repo's shape guard requires
+# `## Boundary check` at level 2 — and the closed release set reds it, so no release body could
+# pass both. The repo declares its extra release H2s in one file the lint reads from the directory
+# it runs in; the vendored lint stays byte-identical. Driven through the CLI, because the file is
+# read there and nowhere else.
+HEADINGS_AS_DIRECTORY = object()   # sentinel: the declared-headings PATH exists as a directory
+
+
+def _release_headings_run(td, name, declared_lines, body, title=RELEASE_TITLE):
+    """The CLI on `body` under `title`, run in a fresh repo-shaped directory that carries the
+    declared-headings file with `declared_lines` — or no file at all when `declared_lines` is None,
+    the file's exact bytes when it is `bytes`, and a directory at that path when it is
+    `HEADINGS_AS_DIRECTORY`."""
+    repo = os.path.join(td, "release-headings-" + name)
+    os.makedirs(os.path.join(repo, ".github"))
+    if declared_lines is HEADINGS_AS_DIRECTORY:
+        os.makedirs(os.path.join(repo, RELEASE_HEADINGS_REL))
+    elif isinstance(declared_lines, bytes):
+        with open(os.path.join(repo, RELEASE_HEADINGS_REL), "wb") as fh:
+            fh.write(declared_lines)
+    elif declared_lines is not None:
+        with open(os.path.join(repo, RELEASE_HEADINGS_REL), "w", encoding="utf-8",
+                  newline="") as fh:
+            fh.write("".join(line + "\n" for line in declared_lines))
+    path = os.path.join(repo, "body.md")
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(body)
+    return run_cli(["--body-file", path, "--title", title, "--json"], cwd=repo)
+
+
+def _rules_of(proc):
+    try:
+        return sorted(f["rule"] for f in json.loads(proc.stdout)["findings"])
+    except ValueError:
+        return None
+
+
+def arm_n_repo_release_headings(td):
+    extra_h2 = COMPLIANT_BODY + "\n## Boundary check\n\nNo change to the boundary.\n"
+    declared_file = ["Boundary check", "CI action-pin resync check"]
+
+    # (1) THE DEFECT, CLOSED — with the heading declared, a release body carrying it passes.
+    proc = _release_headings_run(td, "declared", declared_file, extra_h2)
+    check("N with `%s` declaring `Boundary check`, a RELEASE body carrying "
+          "`## Boundary check` passes" % RELEASE_HEADINGS_REL,
+          proc.returncode == 0 and _rules_of(proc) == [], (proc.returncode, proc.stdout[-500:]))
+
+    # (2) THE CONTROL — the same body with no file reds on that heading: today's behaviour.
+    proc = _release_headings_run(td, "absent", None, extra_h2)
+    if check("N with NO declared-headings file the same release body reds `heading-not-allowed` — "
+             "a missing file is no extras", proc.returncode == 1
+             and _rules_of(proc) == ["heading-not-allowed"], (proc.returncode, proc.stdout[-500:])):
+        seen_red("N the boundary-heading release body with no declared-headings file")
+
+    # (3) THE SET STAYS CLOSED — an undeclared heading still reds with the file present.
+    proc = _release_headings_run(td, "undeclared", declared_file, extra_h2 + "\n## Summary\n")
+    check("N with the file present an UNDECLARED heading (`## Summary`) still reds "
+          "`heading-not-allowed`, and only it",
+          proc.returncode == 1 and _rules_of(proc) == ["heading-not-allowed"]
+          and "## Summary" in proc.stdout and "## Boundary check\"" not in proc.stdout
+          and RELEASE_HEADINGS_REL in proc.stdout,
+          (proc.returncode, proc.stdout[-500:]))
+
+    # (4) EXACT, NOT PREFIX — a declared heading admits that heading's full text only.
+    for near in ("Boundary check (none)", "Boundary", "boundary check"):
+        proc = _release_headings_run(td, "near-" + re.sub(r"\W", "_", near), declared_file,
+                                     COMPLIANT_BODY + "\n## %s\n" % near)
+        check("N a declared heading matches EXACTLY: `## %s` still reds" % near,
+              proc.returncode == 1 and _rules_of(proc) == ["heading-not-allowed"],
+              (proc.returncode, proc.stdout[-400:]))
+
+    # (5) A LINE WRITTEN AS A HEADING (`## …`) IS A FAULT, NEVER A SILENT NON-MATCH.
+    proc = _release_headings_run(td, "marker", ["## Boundary check"], extra_h2)
+    check("N a declared line carrying the `#` marker is a usage fault (exit 2) naming the file",
+          proc.returncode == 2 and RELEASE_HEADINGS_REL in proc.stderr,
+          (proc.returncode, proc.stderr[:300]))
+
+    # (6) NON-RELEASE PRs ARE UNTOUCHED — the file changes nothing under a feature title, either way.
+    with_file = _rules_of(_release_headings_run(td, "feat-file", declared_file, FEATURE_BODY,
+                                                FEATURE_TITLE))
+    without = _rules_of(_release_headings_run(td, "feat-none", None, FEATURE_BODY, FEATURE_TITLE))
+    malformed = _release_headings_run(td, "feat-marker", ["## Boundary check"], FEATURE_BODY,
+                                      FEATURE_TITLE)
+    check("N a FEATURE PR's verdict is the same with the file, without it, and with a malformed one "
+          "— the file is read for a release PR only",
+          with_file is not None and with_file == without == _rules_of(malformed)
+          and malformed.returncode == 0, (with_file, without, malformed.returncode))
+
+    # (7) A LEADING UTF-8 BYTE-ORDER MARK IS NOT PART OF THE FIRST HEADING (fw#1405 r1). Left in
+    # place it is glued to line 1: that declaration silently admits nothing, and a `## …` line 1
+    # slips past the `#` fault in (5).
+    bom = b"\xef\xbb\xbf"
+    proc = _release_headings_run(td, "bom", bom + b"Boundary check\n", extra_h2)
+    check("N a declared-headings file opening with a UTF-8 BOM still admits its FIRST heading",
+          proc.returncode == 0 and _rules_of(proc) == [], (proc.returncode, proc.stdout[-500:]))
+    proc = _release_headings_run(td, "bom-marker", bom + b"## Boundary check\n", extra_h2)
+    check("N ...and a BOM before a `## ` first line is still the `#` usage fault (exit 2) naming "
+          "the file", proc.returncode == 2 and RELEASE_HEADINGS_REL in proc.stderr
+          and "opens with `#`" in proc.stderr, (proc.returncode, proc.stderr[:300]))
+
+    # (8) A PATH THAT EXISTS AND CANNOT BE READ IS A FAULT, NEVER "NO EXTRAS" (fw#1405 r1).
+    proc = _release_headings_run(td, "directory", HEADINGS_AS_DIRECTORY, extra_h2)
+    check("N a DIRECTORY at the declared-headings path is a usage fault (exit 2) naming the path",
+          proc.returncode == 2 and RELEASE_HEADINGS_REL in proc.stderr
+          and "could not be read" in proc.stderr, (proc.returncode, proc.stderr[:300]))
+
+
+def run_cli(args, env=None, cwd=None, raw=False, tool=TOOL):
+    """The lint — or the copy at `tool` — as a child. Unless `raw`, the body it is handed is
+    `declared` first — a `--body-file` through a temporary copy, an `--env` body in place (see
+    `DECLARED_ORIGIN`)."""
+    if not raw:
+        args, env = list(args), dict(env or {})
+        if "--env" in args and args[args.index("--env") + 1] in env:
+            var = args[args.index("--env") + 1]
+            env[var] = declared(env[var])
+        if "--body-file" in args and args[args.index("--body-file") + 1] != "-":
+            i = args.index("--body-file") + 1
+            with open(args[i], "rb") as fh:
+                text = fh.read().decode("utf-8", "replace")
+            if declared(text) != text:
+                with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8",
+                                                 newline="") as fh:
+                    fh.write(declared(text))
+                args[i] = fh.name
+                try:
+                    return run_cli(args, env, cwd, raw=True, tool=tool)
+                finally:
+                    os.unlink(fh.name)
     full = dict(os.environ)
     full.pop("COORD_PR_BODY", None)
     # ⛔ AND THE AUTHOR-TYPE VARIABLE TOO. A row here asserting that an UNSET variable is not a bot
@@ -1349,8 +2145,9 @@ def run_cli(args, env=None, cwd=None):
     # …and the title variable, for the same reason: an unset title is judged as a release body.
     full.pop("COORD_PR_TITLE", None)
     full.update(env or {})
-    return subprocess.run([sys.executable, TOOL] + args, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=60, env=full, cwd=cwd)
+    return subprocess.run([sys.executable, tool] + args, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=60, env=full,
+                          cwd=EMPTY_CWD if cwd is None else cwd)
 
 
 def arm_e_cli(td):
@@ -1387,7 +2184,8 @@ def arm_e_cli(td):
     # calls `findings()` on the API body directly, never through `read_body`; CI runs `--env`. A
     # newline fold done only in the body read gave a lone-CR body two answers — clean under
     # `--env`, `built-missing` from the direct call — so the fold belongs to the parse.
-    lone_cr = "**Coordinated in:** card#1\rBuilt: inline (trivial)\r\rSummary here.\r"
+    lone_cr = ("**Coordinated in:** card#1\rBuilt: inline (trivial)\rOrigin: bug-fix card#1\r"
+               "\rSummary here.\r")
     proc = run_cli(["--env", "COORD_PR_BODY", "--title", "fix: x", "--json"],
                    env={"COORD_PR_BODY": lone_cr})
     try:
@@ -1402,6 +2200,21 @@ def arm_e_cli(td):
 
     proc = run_cli([])
     check("E no source is a usage fault, not a pass", proc.returncode != 0, proc.returncode)
+
+    # ⛔ A CRASH IS A FAULT (exit 2), NEVER A FINDING (exit 1) — card#12387 item 1. A CI step that
+    # tells "the body is wrong" from "the lint could not judge it" reads the exit status, and a
+    # traceback that exits 1 reads as a body the author must fix. The crash is planted in a copy,
+    # past the input reads, so the exception is one no handler in `main` anticipates.
+    crashing = mutant_path(td, "planted-crash",
+                           ("    found = findings(body, author_type, title, release_headings)\n",
+                            "    found = None.planted_crash\n"))
+    for extra in ([], ["--json"]):
+        proc = run_cli(["--body-file", body_path] + extra, tool=crashing)
+        check("E an unhandled exception exits 2 — a fault, not a finding — and the traceback names "
+              "it on stderr, with no verdict on stdout (%s)" % (" ".join(extra) or "text output"),
+              proc.returncode == 2 and "planted_crash" in proc.stderr
+              and "Traceback" in proc.stderr and "meet" not in proc.stdout,
+              (proc.returncode, proc.stdout[-300:], proc.stderr[-400:]))
 
 
 def _finding_ids(path, source):
@@ -1515,7 +2328,7 @@ def arm_k_vendored(td):
     check("K a vendored copy given no workflow does not crash — no traceback", "Traceback" not in out,
           out[-600:])
     check("K ...every arm after i still runs and reports (j and e included)",
-          re.search(r"^pr-body-lint\.selftest: arms run: a b c d f g h i j l e$", proc.stdout, re.M)
+          re.search(r"^pr-body-lint\.selftest: arms run: a b c d f g h i j l m n o e$", proc.stdout, re.M)
           is not None, proc.stdout[-600:])
     check("K ...and the result is a FAILURE of arm i that names the path it tried and both ways to "
           "point it elsewhere — never a pass, never a skip",
@@ -1557,8 +2370,8 @@ def arm_k_resolution():
 
 
 def main(argv=None):
-    global mod_main, WORKFLOW, WORKFLOW_SOURCE
-    ap = argparse.ArgumentParser(description="The PR-body lint's own controls.")
+    global mod_main, WORKFLOW, WORKFLOW_SOURCE, EMPTY_CWD
+    ap = argparse.ArgumentParser(description="The PR-body lint's own controls.", allow_abbrev=False)
     ap.add_argument("--workflow", metavar="PATH",
                     help="the workflow that runs the lint (default: this plugin's "
                          "templates/workflows/pr-body-lint.yml; env %s)" % WORKFLOW_ENV)
@@ -1569,6 +2382,8 @@ def main(argv=None):
     mod_main = load_tool()
     ran = []
     with tempfile.TemporaryDirectory() as td:
+        EMPTY_CWD = os.path.join(td, "empty-cwd")
+        os.makedirs(EMPTY_CWD)
         for letter, run in (("a", lambda: arm_a_the_controls(mod_main)),
                             ("b", lambda: arm_b_each_rule(mod_main)),
                             ("c", lambda: arm_c_fences(mod_main, td)),
@@ -1579,6 +2394,9 @@ def main(argv=None):
                             ("i", lambda: arm_i_release_scope(mod_main, td)),
                             ("j", lambda: arm_j_ai_attribution(mod_main, td)),
                             ("l", lambda: arm_l_version_classification(mod_main, td)),
+                            ("m", lambda: arm_m_provenance(mod_main, td)),
+                            ("n", lambda: arm_n_repo_release_headings(td)),
+                            ("o", lambda: arm_o_merge_instruction(mod_main, td)),
                             ("e", lambda: arm_e_cli(td)),
                             # A copy `arm_k` runs does not run arm k again; the list printed below
                             # is what says so.
