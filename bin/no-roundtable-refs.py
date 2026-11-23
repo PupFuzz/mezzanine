@@ -86,6 +86,7 @@ cannot clean in place, with the reason and the owner who can. A pair is consumed
 an exemption never covers a SECOND occurrence in the same file, and an exemption that no longer
 matches anything REDS as stale — deleting the reference without deleting its row is a red, so the
 list cannot outlive what it covers. Adding a row is a decision for review, not a way to go green.
+An empty list is the expected state; `--selftest` exercises the mechanism with a made-up row.
 
 Usage: python3 bin/no-roundtable-refs.py             # check this checkout (exit 1 on any hit)
        python3 bin/no-roundtable-refs.py --selftest  # plant each form and see it red; controls
@@ -94,6 +95,7 @@ Usage: python3 bin/no-roundtable-refs.py             # check this checkout (exit
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import os
 import re
@@ -218,13 +220,7 @@ def readable_text(rel: str, text: str, pinned: frozenset[str]) -> str:
 
 
 # (repo-relative path, exact matched text, reason and owner). See the module docstring: only shrinks.
-EXEMPT = [
-    ("CLAUDE.md", _W + " #255",
-     "line 188, inside the coord:solo-orientation managed block (its BEGIN marker is line 1 and its "
-     "END marker line 764 of CLAUDE.md, verified 2026-10-23), which orientation-sync rewrites from the coord "
-     "plugin's templates/solo-CLAUDE.md; an in-block edit is refused or erased by the next sync. "
-     "Owner: the coord plugin (agent-board-framework); cleared when upstream's template drops it."),
-]
+EXEMPT: list[tuple[str, str, str]] = []
 
 
 def tracked_files(root: str) -> list[str]:
@@ -233,11 +229,12 @@ def tracked_files(root: str) -> list[str]:
     return [p for p in out.decode("utf-8", "surrogateescape").split("\0") if p]
 
 
-def scan(root: str, digests: frozenset[str] = PRIVATE_NAME_DIGESTS) -> tuple[list[str], int]:
-    """Return (failure lines, files read). `digests` is the private-name list; `--selftest` swaps in
-    a made-up one."""
-    pending = {}
-    for path, text, _why in EXEMPT:
+def scan(root: str, digests: frozenset[str] = PRIVATE_NAME_DIGESTS,
+         exempt: list[tuple[str, str, str]] = EXEMPT) -> tuple[list[str], int]:
+    """Return (failure lines, files read). `digests` is the private-name list and `exempt` the
+    exemption list; `--selftest` swaps in made-up ones."""
+    pending: dict[tuple[str, str], int] = {}
+    for path, text, _why in exempt:
         pending.setdefault((path, text), 0)
         pending[(path, text)] += 1
     failures: list[str] = []
@@ -331,8 +328,13 @@ def _selftest(scratch: str) -> int:
         subprocess.run(["git", "-C", d, "add", "-A"], check=True)
         return d
 
-    ex_text = EXEMPT[0][1]  # the real EXEMPT row's text, never a second copy of it
-    exempt_file = {"CLAUDE.md": ("x " + ex_text + " y\n").encode()}
+    # A made-up exemption, passed to every `scan` below so each plant and control also runs with one
+    # exemption consumed. Its text is an rt-number form with an invented number.
+    ex_path, ex_text = "docs/managed.md", "r" + "t#9030"
+    syn_exempt = [(ex_path, ex_text, "made-up row for the selftest")]
+    exempt_file = {ex_path: ("x " + ex_text + " y\n").encode()}
+    scan_ex = functools.partial(scan, exempt=syn_exempt)
+
     # Every number below is invented for the plant (9001 and up); none names a real thread.
     planted = {
         "repo-name": "see PupFuzz/agent-" + _W + " for it",
@@ -356,7 +358,7 @@ def _selftest(scratch: str) -> int:
     }
     for name, body in planted.items():
         d = repo(dict(exempt_file, **{"docs/x.md": (body + "\n").encode()}))
-        failures, _ = scan(d)
+        failures, _ = scan_ex(d)
         expect("planted %s reds" % name,
                len(failures) == 1 and failures[0].startswith("HIT docs/x.md"), repr(failures))
 
@@ -379,7 +381,7 @@ def _selftest(scratch: str) -> int:
         private_plants[n + " (longer name)"] = "the " + "-".join(words) + "-fork repo"
     for name, body in private_plants.items():
         d = repo(dict(exempt_file, **{"docs/x.md": (body + "\n").encode()}))
-        failures, _ = scan(d, fake_digests)
+        failures, _ = scan_ex(d, fake_digests)
         expect("planted private-name %s reds, without echoing the name" % name,
                len(failures) == 1 and failures[0].startswith("HIT docs/x.md:")
                and "[private-name]" in failures[0]
@@ -387,14 +389,14 @@ def _selftest(scratch: str) -> int:
                            for w in name.split(" ")[0].split("-")),
                repr(failures))
         # CONTROL: the same plant passes with no digest listed — the list is what fired.
-        failures, _ = scan(d, frozenset())
+        failures, _ = scan_ex(d, frozenset())
         expect("control: planted private-name %s passes with an empty digest list" % name,
                failures == [], repr(failures))
     # CONTROL: lookalikes of the made-up names pass under the made-up list.
     lookalike = ("hostlabels; host-label; acmesecretrepo; acme.secret.repo; acme/secret/repo; "
                  "acme secret repos; zz-private-organisation; zzprivate-org\n")
     d = repo(dict(exempt_file, **{"docs/x.md": lookalike.encode()}))
-    failures, _ = scan(d, fake_digests)
+    failures, _ = scan_ex(d, fake_digests)
     expect("control: private-name lookalikes pass", failures == [], repr(failures))
     # The digest a name is listed by: any case or separator gives one digest; what could never match
     # is refused rather than listed.
@@ -429,7 +431,7 @@ def _selftest(scratch: str) -> int:
     clean = ("the " + _W + " channel; a " + _W + " thread; PR #9015; card#9016; art#9017; "
              "start#9018; sharecard/issue-9019; smart 9020; agentroundup; part-9021\n")
     d = repo(dict(exempt_file, **{"docs/x.md": clean.encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("control: concept mentions and lookalikes pass", failures == [], repr(failures))
 
     # Control: the placeholder the private names were replaced by, and each team's bare name as the
@@ -440,24 +442,32 @@ def _selftest(scratch: str) -> int:
                    + "; ".join("install %s, seat %s-pm, the %s floor, %scoordination, %s-orgs"
                                % (t, t, t, t, t) for t in teams) + "\n")
     d = repo(dict(exempt_file, **{"docs/x.md": placeholder.encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("control: the placeholder and bare team names pass", failures == [], repr(failures))
 
-    # The exemption covers exactly one occurrence, in exactly its file.
-    d = repo({"CLAUDE.md": ("x " + ex_text + " y\nz " + ex_text + "\n").encode()})
-    failures, _ = scan(d)
+    # The exemption is what lets its file pass; it covers exactly one occurrence, in exactly its file.
+    d = repo(exempt_file)
+    failures, _ = scan_ex(d)
+    expect("exempted occurrence passes", failures == [], repr(failures))
+    failures, _ = scan(d, exempt=[])
+    expect("control: the same occurrence reds with no exemption",
+           len(failures) == 1 and failures[0].startswith("HIT " + ex_path + ":1"), repr(failures))
+    d = repo({ex_path: ("x " + ex_text + " y\nz " + ex_text + "\n").encode()})
+    failures, _ = scan_ex(d)
     expect("exemption does not cover a second occurrence",
-           len(failures) == 1 and "CLAUDE.md:2" in failures[0], repr(failures))
+           len(failures) == 1 and ex_path + ":2" in failures[0], repr(failures))
     d = repo(dict(exempt_file, **{"docs/x.md": ("x " + ex_text + "\n").encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("exemption does not cover another file",
            len(failures) == 1 and "docs/x.md" in failures[0], repr(failures))
 
     # A stale exemption reds.
     d = repo({"docs/x.md": b"nothing here\n"})
-    failures, _ = scan(d)
-    expect("stale exemption reds", len(failures) == 1 and failures[0].startswith("STALE"),
-           repr(failures))
+    failures, _ = scan_ex(d)
+    expect("stale exemption reds", len(failures) == 1 and failures[0].startswith("STALE EXEMPTION "
+           + ex_path), repr(failures))
+    failures, _ = scan(d, exempt=[])
+    expect("control: the same tree passes with no exemption", failures == [], repr(failures))
 
     # A pinned upstream body is not read; its header is, and so is a file there with no declaration.
     vend = "server/public/js/vendor/three/x.js"
@@ -465,25 +475,25 @@ def _selftest(scratch: str) -> int:
     pinned_file = dict(exempt_file, **pin)
     head = "// header\n//   " + UPSTREAM_BODY_DECLARATION + ".\n"
     d = repo(dict(pinned_file, **{vend: (head + "let r" + "t1 = 0, r" + "t2 = 1;\n").encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("a pinned upstream body under the declaration is not read", failures == [], repr(failures))
     d = repo(dict(exempt_file, **{vend: (head + "let r" + "t1 = 0;\n").encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("a declared file there that the manifest does not pin is read whole", len(failures) == 1,
            repr(failures))
     slash = {"bin/vendor-pin-check.sh": ('MANIFEST=(\n  "' + vend + '|three|0|/"\n)\n').encode()}
     d = repo(dict(exempt_file, **slash, **{vend: (head + "let r" + "t1 = 0;\n").encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("a file the manifest pins under another comment leader is read whole", len(failures) == 1,
            repr(failures))
     d = repo(dict(pinned_file, **{vend: (head + "// per r" + "t#9020\nlet a = 0;\n").encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("the header of a declared upstream file is still read", len(failures) == 1, repr(failures))
     d = repo(dict(pinned_file, **{vend: ("// header\nlet r" + "t1 = 0;\n").encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("a file there without the declaration is read whole", len(failures) == 1, repr(failures))
     d = repo(dict(exempt_file, **{"server/public/js/x.js": (head + "let r" + "t1 = 0;\n").encode()}))
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("the declaration outside the upstream directory narrows nothing", len(failures) == 1,
            repr(failures))
 
@@ -491,7 +501,7 @@ def _selftest(scratch: str) -> int:
     d = repo(exempt_file)
     with open(os.path.join(d, "untracked.md"), "w") as fh:
         fh.write("agent-" + _W + "\n")
-    failures, _ = scan(d)
+    failures, _ = scan_ex(d)
     expect("untracked file is not read", failures == [], repr(failures))
 
     # This file and its workflow must not be hits over themselves.
