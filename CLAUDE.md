@@ -1,4 +1,4 @@
-<!-- BEGIN coord:solo-orientation (synced from coord v0.74.0) -->
+<!-- BEGIN coord:solo-orientation (synced from coord v0.77.0) -->
 # Agent Board Framework — solo agent orientation
 
 > **⚠ Only two sections of this file reach a session automatically: `## Who you are` and
@@ -100,7 +100,8 @@ a head `ci-wait live` lists `WAITING`: that registered wait is its state, so it 
 - **`doc-sync.md`** — the standing rule that every code PR audits and updates affected docs
   in the same PR.
 - **`parallel-dispatch.md`** (plugin `docs/`, read in place) — the dispatch map you derive
-  before sending a batch of two or more tasks to your own subagents.
+  before sending a batch of two or more tasks to your own subagents, and the working tree every
+  writing subagent gets.
 - **`CONFIG.md`** — the `coordination.config.json` schema and the per-machine identity env.
 
 **Identity & config** come from env, set per-machine in `.claude/settings.local.json` by
@@ -198,7 +199,7 @@ never reverted by your PR. A tip-to-tip (`A..B`) diff that appears to delete it 
 these two tips differ", not "what will this merge do" — rebasing quiets that noise; it is not
 undoing a reversion.
 
-**PR bodies — write them for the software installer (roundtable #255; operator 2026-09-09).** The
+**PR bodies — write them for the software installer (operator 2026-09-09).** The
 audience is the person who deploys or upgrades to what the PR ships — not you, and on a solo
 install nobody else will re-aim it for you. What that means line by line — the IN/OUT tables, the
 home named for everything they keep out, and how a solo install reads a home that says "the
@@ -206,9 +207,9 @@ review-request round" — is ONE section and is not restated here: **`coord:rele
 body — write it for the software installer**. Its section set is the RELEASE body's; a feature
 PR's section shape is your repo's own, and its OUT table binds every body. Nothing is dropped; only
 the home moves. **Run `pr-body-lint.py --body-file <the body file> --title "<the PR title>"`
-before `gh pr create`:** it reds on the release section set and scope line when the title opens
-`release:`, and on narration openers, live-state readings, the audit rows and the `Origin:` line
-(the coord plugin's `docs/USER-GATING.md` § 2g) on any PR, and on a solo
+before `gh pr create`:** it reds on the release section set, scope line and merge instructions
+when the title opens `release:`, and on narration openers, live-state readings, the audit rows and
+the `Origin:` line (the coord plugin's `docs/USER-GATING.md` § 2g) on any PR, and on a solo
 install it is the only reader besides you — so adopt `templates/workflows/pr-body-lint.yml` in
 your repo too, and read a green as "the shape is right", never as "the audience is right".
 
@@ -239,11 +240,15 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
 - **Routine code-bearing and docs-only PRs to the integration branch → you self-merge.**
   There is no PM approval loop. You review your own PR adversarially (`coord-review` records
   that pass — `SOLO.md § Review records in solo mode` — per engineering canon
-  #16), confirm CI is green on the `ci_settled` event of the `ci_await` you registered (one read;
-  `coord:gh-wrapper` § Pattern 2b), and merge with **`solo-self-merge <pr#> [--repo <owner/name>]`** —
+  #16), read the head's CI verdict with `ci-read` once the `ci_settled` event of the `ci_await` you
+  registered arrives — the event wakes you, it is not the verdict (`coord:gh-wrapper` § Pattern 2b
+  owns the wait and which runs are graded) — and merge with
+  **`solo-self-merge <pr#> [--repo <owner/name>]`** —
   the guarded wrapper (installed by `coord:init-solo`) that squash-merges + deletes the branch
   (first retargeting any open PR based on it to the merged PR's base — card#9427)
-  and **refuses** any PR whose base is the release branch or whose repo you don't own. Prefer
+  and **refuses** any PR whose base is the release branch, whose repo you don't own, or whose head
+  CI is not green by its own read (its header owns which checks it judges and the
+  two audited overrides). Prefer
   it over raw `gh pr merge`: where the auto-mode permission classifier runs, raw `gh pr merge`
   is gated on every call (it can't tell an integration merge from a release merge, so it
   prompts), while `solo-self-merge` is the allow-listed safe path that keeps the unattended
@@ -268,12 +273,9 @@ merge-button intent) using each repo's own conventions. Use it whenever cutting 
   that is abnormal — surface to your human before proceeding.
 - **Release PRs (integration → release) → your human merges.** Release PRs are the
   production gate; never self-merge them.
-- **Hard-gate changes** (error handling / validation rules / business-logic flow / permissive
-  "fixes" / destructive DB / safety-critical / regulated surfaces / anything
-  irreversible or outward-facing / a new mechanism's design / a file moved into the repo from
-  outside it) → **ask your human before
-  proceeding** (see § Ask-first gates below). On their go-ahead you implement and self-merge the integration PR; the
-  change still reaches prod only through the user-gated release.
+- **Hard-gate changes** (what counts: `USER-GATING.md § 2f` — not restated here) → **ask your
+  human before proceeding** (see § Ask-first gates below). On their go-ahead you implement and
+  self-merge the integration PR; the change still reaches prod only through the user-gated release.
 
 ---
 
@@ -443,8 +445,9 @@ dispatches.
 **One-per-task above means one TASK per subagent — never one subagent at a time.** You are both the
 seat that decides the batch and the seat that runs it, you can hold more than one in flight, and
 work that can run in parallel goes out in parallel: **before dispatching two or more tasks, derive
-the dispatch map first and dispatch from it.** The doctrine — footprints, named exclusions,
-merge-don't-split, sequencing, and why finished work sitting unpushed is a shadow queue — is stated
+the dispatch map first and dispatch from it.** The doctrine — footprints, a working tree of its
+own for every subagent that writes (a lone one too), named exclusions, merge-don't-split,
+sequencing, and why finished work sitting unpushed is a shadow queue — is stated
 once in **`parallel-dispatch.md`**, read in the plugin's own `docs/` directory. Apply it from there;
 nothing here restates it.
 
@@ -481,17 +484,10 @@ There is no PM to route through. Every question, blocker, uncertainty, and hard 
 **directly to your human**. Keep the rule simple: when you genuinely don't know which way to
 go, or the action is hard-gate, surface it and wait.
 
-**What counts as a hard gate (pause and ask before proceeding):**
-
-- Hard-gate code-behavior changes: validation rules, business-logic flow, error-handling
-  changes, permissive "fixes," destructive DB operations.
-- Production release / deploy.
-- Safety-critical or regulated surfaces.
-- Anything irreversible or outward-facing (external sends, force-push, permanent deletes).
-- A new mechanism: its design goes to your human as an operator decision before any build
-  (`USER-GATING.md § 2g` owns the rule).
-- Moving a file into the repo from outside it: only your human's authorization, recorded where
-  you can cite it, is a go (`USER-GATING.md § 2h` owns the rule and the same-repo exemption).
+**What counts as a hard gate (pause and ask before proceeding) is owned by `USER-GATING.md § 2f`**
+(a canonical framework doc, in the plugin's `docs/` directory) **— read the list there; it is
+deliberately not copied here**, because a shortened copy is a gate set you under-ask against. Your
+install's reserved surfaces (§ 4a) add to it; nothing narrows it.
 
 **Capture is never gated** (canon #2 carves this out explicitly; whether a finding also earns an
 ITEM is #18's mint gate, a different question). Routing a capture to your human as a question is
