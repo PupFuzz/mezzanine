@@ -128,12 +128,12 @@ jobs:
       # is any number of directories). Keep the lines for your stack and delete the rest; `**/bin/**`
       # is the C# build output — delete it where `bin/` holds source. To leave tests out of the
       # population, add your test globs here (the default measures all code).
-      # The three exact paths on the last line are vendored framework copies, pinned by
+      # The exact paths on the last line are vendored framework copies, pinned by
       # bin/vendor-pin-check.sh, excluded until coord v0.79.0 ships framework card#13807 — then remove.
       RATCHET_EXCLUDE: >-
         **/vendor/** **/storage/** **/bootstrap/cache/**
         **/node_modules/** **/public/build/** **/*.min.js
-        bin/coord-ask-operator bin/pr-body-lint.py bin/pr-body-lint.selftest.py
+        bin/coord-ask-operator bin/_operator_registry.py bin/pr-body-lint.py bin/pr-body-lint.selftest.py
       # ⛔ CUSTOMIZE — the copy scan's formats (jscpd names). A XAML repository adds `markup`, sets
       # RATCHET_JSCPD_FORMATS_EXTS to `markup:xaml`, and adds `**/*.html **/*.htm **/*.xml **/*.svg`
       # to RATCHET_JSCPD_IGNORE (jscpd's markup format reads those too).
