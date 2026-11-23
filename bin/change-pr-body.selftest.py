@@ -163,7 +163,7 @@ def stage(*, commit_on_feature: bool = True, detach: bool = False) -> Path:
 def generate(work: Path, *extra: str) -> subprocess.CompletedProcess:
     argv = [sys.executable, str(GEN),
             "--built", "dispatched (coder ×1 / mechanic ×0)",
-            "--coordinated-in", "card#9801", *extra]
+            "--coordinated-in", "card#9801", "--origin", "bug-fix card#9801", *extra]
     return subprocess.run(argv, cwd=work, capture_output=True, text=True)
 
 
@@ -208,6 +208,11 @@ _, verdict = lint(BODY)
 eq("  … `Built:` is parsed off the body, not merely present",
    "dispatched (coder ×1 / mechanic ×0)", verdict["fields"]["Built"])
 eq("  … `**Coordinated in:**` likewise", "card#9801", verdict["fields"]["Coordinated in"])
+# `Origin:` is read by the linter's ONE provenance reader, `declarations()` — the reader the merge
+# gate calls too — so it is asserted through that function, not by matching the text.
+eq("  … `Origin:` is read off the body by the linter's own provenance reader",
+   ({"kind": "bug-fix", "ref": "card#9801"}, []),
+   (_lint_mod.declarations(BODY)["origin"], _lint_mod.declarations(BODY)["faults"]))
 
 # Every H2 the generator emits is DERIVED from the output and checked against the judge's set,
 # so a section added to the template with no home in the standard reds here rather than on a PR.
@@ -225,6 +230,7 @@ print("\n§ 2 RED — the green above is discriminating: each mutation reds its 
 SCOPE = BODY.splitlines()[0]
 BUILT = "Built: dispatched (coder ×1 / mechanic ×0)"
 COORD = "**Coordinated in:** card#9801"
+ORIGIN = "Origin: bug-fix card#9801"
 
 MUTANTS = (
     ("a house section is added back",
@@ -235,6 +241,22 @@ MUTANTS = (
      lambda b: plant(b, BUILT + "\n", ""), ["built-missing"]),
     ("the `**Coordinated in:**` line is dropped",
      lambda b: plant(b, COORD + "\n", ""), ["coordinated-missing"]),
+    ("the `Origin:` line is dropped",
+     lambda b: plant(b, ORIGIN + "\n", ""), ["origin-missing"]),
+    ("the `Origin:` line names no origin kind",
+     lambda b: plant(b, ORIGIN, "Origin: guess card#9801"), ["origin-malformed"]),
+    ("an `agent-originated` origin carries no `Design-approved:`",
+     lambda b: plant(b, ORIGIN, "Origin: agent-originated card#9801"),
+     ["design-approved-missing"]),
+    ("a `Design-approved:` line names no register item",
+     lambda b: plant(b, ORIGIN + "\n", ORIGIN + "\nDesign-approved: approved\n"),
+     ["design-approved-malformed"]),
+    ("a `Tier:` line names no tier",
+     lambda b: plant(b, ORIGIN + "\n", ORIGIN + "\nTier: maybe\n"), ["tier-malformed"]),
+    ("a merge-method instruction is written into the body",
+     lambda b: plant(b, "## Highlights\n",
+                     '## Highlights\n\n**Merge with "Create a merge commit", never squash.**\n'),
+     ["merge-instruction"]),
     ("a `FROM:` attribution line is put back on top",
      lambda b: "FROM: mezzanine-solo\n" + b, ["attribution-line"]),
     ("a highlight opens on a phrase the OUT table homes elsewhere",
@@ -347,12 +369,18 @@ refused("a head that does not resolve is refused",
         generate(WORK, "--head", "no-such-ref"), "does not resolve to a commit")
 refused("an empty `Built:` value is refused, never emitted as a blank field",
         subprocess.run([sys.executable, str(GEN), "--built", "  ",
-                        "--coordinated-in", "card#9801"],
+                        "--coordinated-in", "card#9801", "--origin", "reconcile"],
                        cwd=WORK, capture_output=True, text=True), "--built is empty")
 refused("a `**Coordinated in:**` value spanning lines is refused",
         subprocess.run([sys.executable, str(GEN), "--built", "in-session",
-                        "--coordinated-in", "card#9801\ncard#9802"],
+                        "--coordinated-in", "card#9801\ncard#9802", "--origin", "reconcile"],
                        cwd=WORK, capture_output=True, text=True), "spans more than one line")
+refused("an empty `Origin:` value is refused, never emitted as a blank field",
+        subprocess.run([sys.executable, str(GEN), "--built", "in-session",
+                        "--coordinated-in", "card#9801", "--origin", " "],
+                       cwd=WORK, capture_output=True, text=True), "--origin is empty")
+refused("a `Design-approved:` value spanning lines is refused",
+        generate(WORK, "--design-approved", "opq-1-abcd\nopq-2-abcd"), "spans more than one line")
 # The options that wrote AI attribution into the body are GONE, so a caller still passing one is
 # refused by argparse rather than having it dropped silently or written anywhere.
 for _removed in ("--agent", "--session-url"):
@@ -403,10 +431,16 @@ else:
 
 # argparse's own refusal, asserted because `--built` being REQUIRED is the design decision that
 # keeps this program from ever writing an attestation nobody made.
-no_built = subprocess.run([sys.executable, str(GEN), "--coordinated-in", "card#9801"],
+no_built = subprocess.run([sys.executable, str(GEN), "--coordinated-in", "card#9801",
+                           "--origin", "reconcile"],
                           cwd=WORK, capture_output=True, text=True)
 eq("omitting `--built` altogether is a usage fault, not a default", 2, no_built.returncode)
 contains("  … and it names the missing field", "--built", no_built.stderr)
+no_origin = subprocess.run([sys.executable, str(GEN), "--built", "in-session",
+                            "--coordinated-in", "card#9801"],
+                           cwd=WORK, capture_output=True, text=True)
+eq("omitting `--origin` altogether is a usage fault, not a default", 2, no_origin.returncode)
+contains("  … and it names the missing field", "--origin", no_origin.stderr)
 
 
 # ── § 4 SHAPE — what the standard states and a lint cannot see ────────────────────────────────
@@ -418,6 +452,15 @@ warned = generate(WORK, "--upgrade-warnings")
 eq("  … and present when the author declares the installer must act", 0, warned.returncode)
 contains("  … as an H2", "## Upgrade warnings", warned.stdout)
 eq("  … still clean against the linter", [], rules(warned.stdout))
+
+absent("`Design-approved:` is ABSENT unless given", "Design-approved:", BODY)
+approved = generate(WORK, "--origin", "agent-originated card#9801",
+                    "--design-approved", "opq-1792926707-7f44")
+eq("  … and an `agent-originated` origin with one given is generated", 0, approved.returncode)
+eq("  … as the line after `Origin:`",
+   ["Origin: agent-originated card#9801", "Design-approved: opq-1792926707-7f44"],
+   approved.stdout.rstrip("\n").splitlines()[-2:])
+eq("  … still clean against the linter", [], rules(approved.stdout))
 
 contains("the judgement sections are left as author markers", "<!-- AUTHOR:", BODY)
 contains("the scope line carries the DERIVATION that re-prints the range",
@@ -437,12 +480,12 @@ eq("  … with a sha beside it, so a stale tip is visible",
 contains("  … and the stale-base consequence is stated, not left to be inferred",
          "widens the range", run.stderr)
 
-# ⛔ THE BODY ENDS ON THE MACHINE LINES. Nothing follows `**Coordinated in:**` — the slot the
+# ⛔ THE BODY ENDS ON THE MACHINE LINES. Nothing follows `Origin:` — the slot the
 # Claude Code model line and the session link used to fill stays empty rather than being filled
 # with an agent line nobody agreed a spelling for. Asserted on the text as well as by § 2b,
 # because § 2b does not run where the upstream linter is absent.
-eq("the body's last line is `**Coordinated in:**` — no attribution trailer after it",
-   COORD, BODY.rstrip("\n").splitlines()[-1])
+eq("the body's last lines are `**Coordinated in:**` and `Origin:` — no attribution trailer after them",
+   [COORD, ORIGIN], BODY.rstrip("\n").splitlines()[-2:])
 # … and nowhere else in the body either. The last-line check only guards the old trailer slot; this
 # is the placement-independent half, and it runs on every runner (CI included) because it needs
 # no upstream linter. Patterns are the three AI_LINES shapes, matched loosely.
@@ -499,7 +542,7 @@ else:
         # Every LHS must be a heading the judge actually REFUSES. A map row for a heading the
         # standard has come to admit would send an author to rewrite a section that was fine.
         eq(f"`{house}` is a heading the linter refuses",
-           ["heading-not-allowed"], rules(f"scope.\n\n{house}\n\nbody\n\n{BUILT}\n{COORD}\n"))
+           ["heading-not-allowed"], rules(f"scope.\n\n{house}\n\nbody\n\n{BUILT}\n{COORD}\n{ORIGIN}\n"))
         if dest.startswith("## "):
             name = dest[3:].strip()
             eq(f"  … and its destination `{dest}` is one the standard admits",
@@ -507,14 +550,14 @@ else:
             # CONTROL: the destination is not merely IN the tuple — it passes the real judge, so
             # the row's advice is executable and not just consistent with a list.
             eq(f"  … and a body using `{dest}` passes",
-               [], rules(f"scope.\n\n{dest}\n\nbody\n\n{BUILT}\n{COORD}\n"))
+               [], rules(f"scope.\n\n{dest}\n\nbody\n\n{BUILT}\n{COORD}\n{ORIGIN}\n"))
         else:
             ok(f"  … and its destination is outside the body: {dest}")
 
     # CONTROL for the two predicates above: a heading the standard DOES admit must not read as
     # refused, or "`X` is a heading the linter refuses" would be true of everything.
     eq("CONTROL: an admitted heading is NOT refused by the same probe",
-       [], rules(f"scope.\n\n## Highlights\n\nbody\n\n{BUILT}\n{COORD}\n"))
+       [], rules(f"scope.\n\n## Highlights\n\nbody\n\n{BUILT}\n{COORD}\n{ORIGIN}\n"))
 
 
 print()

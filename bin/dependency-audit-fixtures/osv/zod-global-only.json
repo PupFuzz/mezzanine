@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "source": {"path": "package-lock.json", "type": "lockfile"},
+      "packages": [
+        {
+          "package": {"name": "zod", "version": "4.4.3", "ecosystem": "npm"},
+          "vulnerabilities": [
+            {
+              "id": "GHSA-mrhx-c7xc-m3w5",
+              "affected": [
+                {
+                  "package": {"ecosystem": "npm", "name": "zod"},
+                  "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}, {"fixed": "4.6.6"}]}]
+                }
+              ],
+              "database_specific": {"severity": "HIGH"}
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -38,7 +38,8 @@ change PR too. `Bundled` and `Release artifacts` come from the row its own IN ta
     ## Upgrade warnings ONLY when the installer cannot deploy correctly without an action
                         (`--upgrade-warnings`; absent that need there is no section at all,
                         not an empty one — the IN table is explicit)
-    the machine lines   `Built:` and `**Coordinated in:**`, and nothing after them
+    the machine lines   `Built:`, `**Coordinated in:**`, `Origin:` and, when given,
+                        `Design-approved:` — and nothing after them
 
 `CLAUDE.md § PR bodies are judged against the fleet standard` carries the map from this
 repository's former house sections onto that set, and its `change-pr-body:house-map` block is what
@@ -51,8 +52,8 @@ green). The selftest drives the real linter over this generator's real output, s
 the output complies is measured on every CI run rather than asserted in this paragraph.
 
 ⛔ READ THAT CLAIM AT ITS EXACT SCOPE: THE SKELETON PASSES, A BODY BUILT FROM IT IS NOT PROMISED TO.
-`--built` and `--coordinated-in` are written VERBATIM and judged only for being one non-empty
-line, and the author's own prose goes on top of the skeleton, so the body that gets pushed is a
+`--built`, `--coordinated-in`, `--origin` and `--design-approved` are written VERBATIM and judged
+only for being one non-empty line, and the author's own prose goes on top of the skeleton, so the body that gets pushed is a
 different document from the one the selftest judged. ⇒ THIS IS WHY THE LINT STEP AFTER THE
 GENERATOR IS NOT OPTIONAL and why the stderr checklist names it. The right answer to what the
 author adds is the lint, never a validator bolted on here.
@@ -80,6 +81,11 @@ WHAT IT REFUSES TO GUESS, rather than filling in plausibly:
   * `--built` and `--coordinated-in` are REQUIRED. A `Built:` count cannot be reconstructed from a
     tree — nothing in a worktree records how many contexts touched it — so a value this program
     invented would be a fabricated attestation, strictly worse than the gap it fills.
+  * `--origin` is REQUIRED for the same reason: where a change came from (an operator directive,
+    a bug fix, an agent proposal, a reconcile) is the author's declaration, which the merge gate
+    reads, and no default is true of every PR. `--design-approved` is written only when given.
+    Their VALUE SET is `USER-GATING.md` § 2g's and `bin/pr-body-lint.py` judges it; a second copy
+    of it here is the duplication canon #5 forbids.
   * the VALUE SET for `Built:` is `built-line.md`'s and is NOT checked here. This program
     refuses only a value it could not write as one field (empty, or spanning lines); whether
     `dispatched (coder ×2 / mechanic ×0)` is the true count is plane 1's question, on the body's
@@ -203,11 +209,15 @@ def resolve_base(base: str) -> tuple[str | None, str, list[Git]]:
 
 
 def build_body(scope_line: str, highlights: str, upgrade: str | None,
-               built: str, coordinated_in: str) -> str:
+               built: str, coordinated_in: str, origin: str,
+               design_approved: str | None) -> str:
     parts = [scope_line, "", "## Highlights", "", highlights, ""]
     if upgrade is not None:
         parts += ["## Upgrade warnings", "", upgrade, ""]
-    parts += ["Built: %s" % built, "**Coordinated in:** %s" % coordinated_in]
+    parts += ["Built: %s" % built, "**Coordinated in:** %s" % coordinated_in,
+              "Origin: %s" % origin]
+    if design_approved is not None:
+        parts.append("Design-approved: %s" % design_approved)
     return "\n".join(parts) + "\n"
 
 
@@ -224,6 +234,13 @@ def main(argv: list[str]) -> int:
                          "never invents one.")
     ap.add_argument("--coordinated-in", required=True, dest="coordinated_in",
                     help="the `**Coordinated in:**` value, verbatim (e.g. `card#9801`).")
+    ap.add_argument("--origin", required=True,
+                    help="the `Origin:` value, verbatim (e.g. `bug-fix card#9801`, `reconcile`). "
+                         "REQUIRED: `USER-GATING.md` § 2g owns the values and the lint judges "
+                         "them — this program never invents one.")
+    ap.add_argument("--design-approved", dest="design_approved",
+                    help="the `Design-approved:` value, verbatim (an operator register item id). "
+                         "An `agent-originated` origin needs one; omit it otherwise.")
     ap.add_argument("--base", default="dev",
                     help="the branch this PR merges INTO (default: %(default)s)")
     ap.add_argument("--head", default="HEAD",
@@ -234,13 +251,16 @@ def main(argv: list[str]) -> int:
                          "empty one.")
     args = ap.parse_args(argv)
 
-    for name, value in (("--built", args.built), ("--coordinated-in", args.coordinated_in)):
+    for name, value in (("--built", args.built), ("--coordinated-in", args.coordinated_in),
+                        ("--origin", args.origin), ("--design-approved", args.design_approved)):
+        if value is None:   # only `--design-approved` is optional
+            continue
         if not value.strip():
             return refuse("%s is empty. The field is machine-read off the body and an empty one "
                           "reads as absent, which is the defect the field exists to make "
                           "visible." % name)
         if "\n" in value or "\r" in value:
-            return refuse("%s spans more than one line. Both fields are parsed as ONE line and "
+            return refuse("%s spans more than one line. Each field is parsed as ONE line and "
                           "only the first would be read." % name)
 
     # ⛔ THIS PROBE ANSWERS "CAN GIT ANSWER HERE AT ALL", NOT "IS THIS A REPOSITORY". The two are
@@ -308,7 +328,8 @@ def main(argv: list[str]) -> int:
 
     body = build_body(scope_line, HIGHLIGHTS_PLACEHOLDER,
                       UPGRADE_PLACEHOLDER if args.upgrade_warnings else None,
-                      args.built.strip(), args.coordinated_in.strip())
+                      args.built.strip(), args.coordinated_in.strip(), args.origin.strip(),
+                      args.design_approved.strip() if args.design_approved is not None else None)
     sys.stdout.write(body)
 
     # STDERR: what is NOT done. A generator that printed nothing here would read as "this body is
@@ -328,7 +349,7 @@ def main(argv: list[str]) -> int:
         "  * `git fetch origin` first if that tip is not the base's current one — a stale base\n"
         "    moves the merge-base back and widens the range this body claims to merge.\n"
         "  * every `%s … -->` marker — delete the marker, write the section.\n"
-        "  * `--built` / `--coordinated-in` are written VERBATIM; the lint below is what\n"
+        "  * `--built` / `--coordinated-in` / `--origin` are written VERBATIM; the lint below is what\n"
         "    judges the body you actually push.\n"
         "  * read it back as the person INSTALLING this, then judge it:\n"
         "      python3 bin/pr-body-lint.py --body-file <the body file>\n"

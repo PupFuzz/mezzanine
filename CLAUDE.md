@@ -825,6 +825,11 @@ require the context is a repository setting; `docs/VERSIONING.md § Branch model
 that reads it. The workflow block that owns this lane's behaviour is the `pr-body-lint` job in
 `.github/workflows/card-token-lint.yml`.
 
+⚠ **THE BODY IS JUDGED BY THE BASE BRANCH'S LINTER, NOT THE PR'S** (card#13794, upstream's workflow
+shape). A PR that changes `bin/pr-body-lint.py` is judged by the copy already on its base, so its
+body must pass the old rules and the new ones. Judge such a body with both:
+`git show origin/dev:bin/pr-body-lint.py > /tmp/base-lint.py` and run each over the body file.
+
 **To clear a red body verdict, edit the PR body.** The workflow runs on `edited`, so the edit re-runs
 the check with no new push. Judge a body before you open the PR with the commands further down.
 
@@ -860,8 +865,8 @@ It leaves a feature, fix, docs or dependency PR's shape to its repository, and t
 the title. **Mezzanine chooses the same allowed set for its change PRs** (seat ruling on #298:
 the gate stays as strict as it was before the re-vendor). The `pr-body-lint` job therefore judges a
 change PR's body twice. The first run passes the title, as upstream's workflow does, and applies
-the every-PR rules: banned openers, live-state readings, `Built:`, `**Coordinated in:**` and both
-attribution rules. The second run passes NO title, which is the linter's full release standard, so
+the every-PR rules: banned openers, live-state readings, `Built:`, `**Coordinated in:**`, the
+`Origin:` provenance lines and both attribution rules. The second run passes NO title, which is the linter's full release standard, so
 the closed section set and the scope line hold on every change PR as well. A `release:` PR gets
 the full standard from the first run. The OUT table binds every body. `bin/change-pr-body.py` emits
 the shape below, and `bin/change-pr-body.selftest.py` holds that skeleton to the same no-title
@@ -873,7 +878,7 @@ change PR to carry a section — so what it leaves a PR into `dev` is exactly:
 | the scope line | always — one line, FIRST, naming the range this merges against its base, with the command that re-prints it and never a tally of it |
 | `## Highlights` | whenever anything about the change has an installer-visible face |
 | `## Upgrade warnings` | **only** when the installer cannot deploy or upgrade correctly without an action. Absent that need there is no section, not an empty one |
-| `Built:`, `**Coordinated in:**` | always, last — machine-read, and the installer POV does not reach them. Nothing follows them: no AI-attribution trailer (below) |
+| `Built:`, `**Coordinated in:**`, `Origin:` | always, last — machine-read, and the installer POV does not reach them. `Design-approved:` follows `Origin:` when the origin is `agent-originated`. Nothing follows them: no AI-attribution trailer (below) |
 
 Everything this repository used to put in a body keeps its obligation and changes its home:
 
@@ -919,12 +924,15 @@ class here until `bin/change-pr-body.py` (card#9801). Use it, then fill the mark
 ```
 python3 bin/change-pr-body.py \
   --built 'dispatched (coder ×N / mechanic ×M)' --coordinated-in 'card#NNNN' \
+  --origin 'bug-fix card#NNNN' \
   > /tmp/body.md                                          # add --upgrade-warnings only if needed
 python3 bin/pr-body-lint.py --body-file /tmp/body.md      # must be rc 0 BEFORE `gh pr create`
 ```
 
-It refuses rather than guessing: `--built` and `--coordinated-in` are required (a count nothing
-recorded is a fabricated attestation), and a detached HEAD and an empty range are refused by name. The judgement sections come out as `<!-- AUTHOR: … -->` markers — the
+It refuses rather than guessing: `--built`, `--coordinated-in` and `--origin` are required (a count
+nothing recorded is a fabricated attestation, and where a change came from is the author's to
+declare — `USER-GATING.md` § 2g in the coord install owns the `Origin:` values, and
+`--design-approved <opq-id>` adds the line an `agent-originated` origin needs), and a detached HEAD and an empty range are refused by name. The judgement sections come out as `<!-- AUTHOR: … -->` markers — the
 same marker `release-pr-body` leaves — so `grep '<!-- AUTHOR:'` finds an unfilled body of either
 kind. **A RELEASE PR still uses `release-pr-body`**; this tool emits no version, no bundled table
 and no artifact checklist, and is wrong for one.

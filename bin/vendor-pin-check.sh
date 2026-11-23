@@ -69,8 +69,9 @@
 #
 # `bin/dependency-audit-fixtures/*` has no row either, for the same reason (JSON and lockfiles, no
 # header), and unlike the set above NOTHING pins it: upstream's selftest carries no per-fixture
-# sha256, so no check compares those files to the source. They were byte-identical to coord 0.66.0's
-# `templates/security/fixtures/` when vendored, except the README's title line naming this path.
+# sha256, so no check compares those files to the source. They were byte-identical to coord 0.77.0's
+# `templates/security/fixtures/` when vendored, except the README, which names this path and drops
+# the rows for `shipped-imports/` and the bump tool, neither of which this repository carries.
 #
 # Usage: bash bin/vendor-pin-check.sh              # check every manifest row (exit 1 on drift)
 #        bash bin/vendor-pin-check.sh --selftest   # prove the check CAN fail, then that a
@@ -99,11 +100,13 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST=(
   "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|796695b361003301c8b79f3f9606d6bcb5f4b002faa44f2b4120f687aa0ac973|#"
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|258d8e7f083b6db44381e7bd1d8136d44a6914868db54b1809ec63227391d073|#"
-  "bin/pr-body-lint.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|5711a19e4f7af120b969caa1ed432290f8dac1ec64dc27e50d742f8f2c0e3913|#"
-  "bin/pr-body-lint.selftest.py|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e|fb7e8ecf503221a8a96ed45f2e47221bb09a47f9bcdad9fc75af8b69aae38a00|#"
-  ".github/workflows/dependency-audit.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|71b68902619fe84a14990a124a1af335f5afd0de41f348d20f6f9d3d10054239|#"
-  ".github/workflows/dependency-ref-matrix.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|1a867e8435290a5d0f1d385c9501e09d65d4a4e841fb61b1951e6eae57d29705|#"
-  "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|2c82aab9280da78d93fc8423ba5050915e067edd42b9104eef316c60be2a4241|#"
+  "bin/pr-body-lint.py|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|61ca2555fb5c35dc9fda67bbb8130170e03bada51eecc729219454d7f88fa642|#"
+  "bin/pr-body-lint.selftest.py|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|95613c19b8f8a076882ee0b22ae582cc51b628251871d97b0b9d5acf8e9f5fce|#"
+  ".github/workflows/dependency-audit.yml|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|de4bb51daa38d32a4aa49ad08d6d6b0dfece866184567909ebddb064559896b6|#"
+  ".github/workflows/dependency-ref-matrix.yml|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|2c177622e45e06d56437dcc0b86156cbf0a4f1eb01b0fac8a7b41c3490d3338b|#"
+  "bin/dependency-audit.selftest.sh|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|79041b95dae9e5d6a8fad7711772ed4329aec0360d12609737daa5bce67ee9bc|#"
+  "bin/coord-ask-operator|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|b28d8bf1a25b7cce7ec53e71513b45b149f3ce5b1a47ea18565b808e3d9376ba|#"
+  "bin/_operator_registry.py|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|55571560eaaa204d727357dea9d68b59f34d32f041e14fd88f34849fcf80df4f|#"
   "server/public/js/vendor/three/three.module.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|104f56145899722094556490d787aae0617cc2fc3382f31df02d724ea1aee341|//"
   "server/public/js/vendor/three/three.core.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|613e370f76638fdef83926642bf256dc9615684922de1ce1f63a8583e5d78578|//"
   "server/public/js/vendor/three/examples/jsm/loaders/GLTFLoader.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|532ac726e120039acbcd6cf54328c57acbf7b438176afaa6951257126d11bff1|//"
@@ -131,10 +134,12 @@ FRAGMENTS=(
   "bin/promote-cards-by-token|card#12260 site (4), the flat-write comment without its thread number|Ratified flat write contract, upstream's;"
   "bin/promote-cards-by-token.selftest.sh|card#12260, a fixture subject citing ref #N|(card#101, ref #9)"
   "bin/promote-cards-by-token.selftest.sh|card#12260, a fixture subject citing ref #N|(card#5085, ref #148)"
-  "bin/pr-body-lint.py|card#12260 (1), the docstring's ratification sentence without its thread number|operator (once in fleet coordination, and again on 2026-09-09"
   "bin/pr-body-lint.selftest.py|card#12260 (1), the FIXTURES sha256 figures re-derived over the struck fixtures|a7c1a1b4df5763c51f7dc18078035b06b981a03e70a4b50cccd3addc715f922d"
-  "bin/pr-body-lint.py|card#12325 (2), the release-scope measurement sentence without the impl repo's name|repo's feature PRs card#10493 lists each spent a review finding on"
+  "bin/pr-body-lint.py|card#12325 (1), the release-scope measurement sentence without the impl repo's name|repo's feature PRs card#10493 lists each spent a review finding on"
+  "bin/pr-body-lint.py|card#13794 (1), the release-headings comment without the impl repo's name|a fleet impl repo's shape guard requires"
+  "bin/pr-body-lint.py|card#13794 (1), the merge-instruction bullet without the organisation|body (platform#467, PupFuzz/kanban-board#592)"
   "bin/pr-body-lint.selftest.py|card#12325 (2), arm I without the impl repo's name or its template heading|A fleet impl repo mandates"
+  "bin/pr-body-lint.selftest.py|card#13794 (2), arm N without the impl repo's name or its template heading|declared_file = [\"Boundary check\", \"CI action-pin resync check\"]"
   "bin/promote-cards-by-token.selftest.sh|card#11527, the foreign-card / 403 / read-before-write cases|9c. A 403 card read is judged"
   "bin/promote-cards-by-token.selftest.sh|card#11527, the 200-shape degraded-read cases|9d. A 200 that does not carry the fields"
   ".github/workflows/dependency-audit.yml|(1) the pinned osv-scanner install step|SHA256=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
@@ -143,6 +148,8 @@ FRAGMENTS=(
   "bin/dependency-audit.selftest.sh|(1) the callee path under .github/workflows/|ROOT/.github/workflows/dependency-audit.yml\""
   "bin/dependency-audit.selftest.sh|(1) the fixtures path bin/dependency-audit-fixtures/|HERE/dependency-audit-fixtures\""
   "bin/dependency-audit.selftest.sh|(2) the card#11434 comment carries no private coordination reference|# card#11434 (backend) within card#11604:"
+  "bin/coord-ask-operator|card#13794 (1), the rt citation example spelled in two parts|\"rt\" + \"#1234\""
+  "bin/coord-ask-operator|card#13794 (2), the closure-refusal docstring without a comment id|BLOCKER; a sola-pm ruling)."
 )
 
 # --- The version leg: <repo-relative path>|<lockfile, repo-relative>|<the lockfile's packages key>

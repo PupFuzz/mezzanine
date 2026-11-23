@@ -1,14 +1,14 @@
-# ── VENDORED from coord 0.66.0 — the CALLEE of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+# ── VENDORED from coord 0.77.0 — the CALLEE of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/security/workflows/dependency-audit.yml
-#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
-#   plugin version    coord 0.66.0
-#   upstream sha256   71223bba4e210ff11b21a35b1d6f1fb4977776f8e8a80fa2eb6d994ec24161e9
+#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
+#   plugin version    coord 0.77.0
+#   upstream sha256   628866da4af9d26bd5cd5566ccb6c4299278ed749d940767087500c99f0469d9
 #
 # That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
 # line that is neither blank nor a comment), which is a different figure. Re-derive this one
-# against a marketplace clone:   git show 70fd3207:plugins/coord/templates/security/workflows/dependency-audit.yml | sha256sum
+# against a marketplace clone:   git show afaf9a10:plugins/coord/templates/security/workflows/dependency-audit.yml | sha256sum
 #
 # DECLARED LOCAL EDITS — each is also a FRAGMENTS row in `bin/vendor-pin-check.sh`, which reds
 # when one leaves the body. Outside these edits, the text below this block was upstream's byte for
@@ -19,8 +19,12 @@
 #   (2) the CUSTOMIZE ZONE's pointer to the selftest names this repo's path
 #       (fragment: `runs verbatim (bin/dependency-audit.selftest.sh`).
 #
-# TO RE-VENDOR: copy upstream's file over everything below this block, re-apply the edits above,
-# then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
+# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `.github/workflows/dependency-audit.yml`,
+# `.github/workflows/dependency-ref-matrix.yml` and `bin/dependency-audit-fixtures/` move TOGETHER,
+# from one upstream commit: the selftest extracts and runs the workflows' own blocks against those fixtures, so a
+# selftest from one revision over workflows or fixtures from another reds (measured on the v0.77.0
+# refresh, card#13794). Copy each upstream file over everything below its block, re-apply each
+# file's declared edits, then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
 # ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-audit.yml — the CALLEE: one dependency-advisory audit of ONE ref, exposed as
 # a `workflow_call` so a single implementation serves every ref its caller matrixes over.
@@ -54,6 +58,14 @@
 # would be one more thing to keep in step with the `err`/`fatal` calls below, and the copies
 # are what went false the last time this guarantee stopped being true.
 #
+# THE BUMP JOB (card#12253). On the INTEGRATION leg, a second job (`bump`, at the end of this file)
+# opens a lockfile bump PR for each finding whose fix the package manager's own resolver reaches
+# inside the declared ranges, against that leg's ref. The release leg is never bumped. It is ON by
+# default; it pushes and opens PRs as a GitHub App's bot, and needs that app's two repository secrets
+# (`ADVISORY_BUMP_APP_CLIENT_ID`, `ADVISORY_BUMP_APP_PRIVATE_KEY`): an unset one FAILS the job on every
+# integration-leg run, naming it. A personal token is not supported. The coord plugin's
+# `docs/DEPENDENCY-AUDIT.md` § "Bump PRs" owns the rules and § "The bump app" the setup.
+#
 # THE POPULATION STATEMENT IS EMITTED BEFORE ANY VERDICT and is exported as an OUTPUT, not
 # only logged. A caller's reporting job asserts on it, so a green over an empty population is
 # impossible to confuse with a green over audited lockfiles. (Anchor: a release's committed
@@ -83,6 +95,34 @@ on:
         description: The git ref to audit (the caller passes one matrix leg per audited branch).
         required: true
         type: string
+      leg:
+        description: >-
+          Which leg `ref` is: `release` (audited, never bumped) or `integration` (audited, and
+          the bump job opens in-range fix PRs against it). The caller names it per matrix leg.
+          Absent while bump PRs are on is setup missing, and the bump job FAILS naming it.
+        required: false
+        type: string
+        default: ''
+      bump_prs:
+        description: >-
+          `on` (the default) or `off`. `off` is the explicit, recorded switch that turns the
+          bump job off; it is not the same state as a missing secret, which FAILS whenever a
+          bump is due. Any other value FAILS the bump job.
+        required: false
+        type: string
+        default: 'on'
+    secrets:
+      ADVISORY_BUMP_APP_CLIENT_ID:
+        description: >-
+          The client ID of the GitHub App the bump job pushes and opens PRs as (the coord plugin's
+          docs/DEPENDENCY-AUDIT.md § "The bump app"). Unset while the integration leg bumps FAILS the
+          bump job, naming it.
+        required: false
+      ADVISORY_BUMP_APP_PRIVATE_KEY:
+        description: >-
+          That app's private key (PEM). Read by the token step only. Unset while the integration
+          leg bumps FAILS the bump job, naming it.
+        required: false
     outputs:
       population:
         description: >-
@@ -96,6 +136,19 @@ on:
       status:
         description: '`audited` only when both sources completed; `error` otherwise.'
         value: ${{ jobs.audit.outputs.status }}
+      affected:
+        description: >-
+          JSON array, one object per AFFECTED row of either source (source "1" or "2",
+          ecosystem, package, version, repo, ghsa, severity, range, patched) — the FINDINGS
+          lines in machine form, for the bump job. `[]` when neither source reported one;
+          EMPTY means the audit never exported it, and the bump job FAILS on that.
+        value: ${{ jobs.audit.outputs.affected }}
+
+# UTF-8 stdio for every python process this workflow starts (the bump job's tool), at workflow
+# scope so a job added later is covered too (the coord plugin's `docs/CUSTOMIZING.md` § UTF-8 stdio
+# in the shipped workflows owns the argument).
+env:
+  PYTHONUTF8: "1"
 
 # PERMISSIONS ARE GRANTED PER JOB, never once at workflow level (card#11434), as in the caller;
 # the selftest reds if a top-level `permissions:` comes back.
@@ -109,6 +162,7 @@ jobs:
       population: ${{ steps.audit.outputs.population }}
       findings: ${{ steps.audit.outputs.findings }}
       status: ${{ steps.audit.outputs.status }}
+      affected: ${{ steps.audit.outputs.affected }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -179,9 +233,9 @@ jobs:
           # ref's checkout. It accepts one advisory BY ID whose range this audit cannot read, at the
           # resolved versions the entry lists, with a reason, a reviewer and a date (an expiry is
           # recommended). It is optional: no file means nothing is accepted. Its format and rules:
-          # `docs/DEPENDENCY-AUDIT.md` § "Accepting one advisory". Keep it under review like code
-          # (CODEOWNERS on it is a good idea), since an entry in it turns one advisory's RED into a
-          # printed NOTICE.
+          # the coord plugin's `docs/DEPENDENCY-AUDIT.md` § "Accepting one advisory". Keep it under
+          # review like code (CODEOWNERS on it is a good idea), since an entry in it turns one
+          # advisory's RED into a printed NOTICE.
           ACCEPT_FILE=".github/dependency-audit-accept.json"
           OSV_SCANNER_BIN="${OSV_SCANNER_BIN:-osv-scanner}"
           # CUSTOMIZE-BEGIN audit-seams
@@ -234,6 +288,12 @@ jobs:
           list_json() { printf '%s' "$1" | jq -Rsc 'split("\n") | map(select(length > 0))'; }
           list_text() { printf '%s' "$1" | jq -Rsr 'split("\n") | map(select(length > 0)) | join(", ")'; }
           MANIFESTS=(); PKG_TSV="$WORK/packages.tsv"; : > "$PKG_TSV"
+          # The AFFECTED rows of BOTH sources in machine form, exported as `affected` for the bump
+          # job (card#12253). Created here, before any leg can fail, so a run that stopped early
+          # exports `[]` rather than nothing: that run is RED on its own named error, and its
+          # population's `status` is `error`, which the bump tool refuses (fw#1369 r1) — so this
+          # `[]` never reads as "nothing to bump". Nothing reads this file to decide the verdict.
+          : > "$WORK/affected.ndjson"
           err() {   # $1=code $2=detail. Recorded, printed, and RED at the verdict.
             AUDIT_ERRORS=$((AUDIT_ERRORS + 1))
             ERROR_LINES="${ERROR_LINES}  AUDIT-ERROR[$1] $2"$'\n'
@@ -272,11 +332,31 @@ jobs:
           #                                                                 unless eq_after_version)
           #   The COMMA IS AMBIGUOUS across publishers, and a wrong guess FAILS OPEN. So:
           #     every piece is a single term     -> comma = AND  (GitHub, Composer, PEP 440)
-          #     every piece is a bounded interval -> comma = OR  (websockets/ws GHSA-96hv-2xvq-fx4p:
-          #                                         ">= 1.1.0 < 5.2.5, >= 6.0.0 < 6.2.4, ...", where
-          #                                         the reviewed global advisory lists each piece as
-          #                                         its own range)
-          #     any other mix                    -> RANGE-UNPARSEABLE
+          #     otherwise, where no two
+          #       pieces share a version          -> comma = OR  (websockets/ws GHSA-37g9-w4hg-h9qr:
+          #                                         "< 5.2.8, >= 6.0.0 < 6.2.7, ...": of every two
+          #                                         pieces, the lower bound of one is above the upper
+          #                                         bound of the other; and GHSA-96hv-2xvq-fx4p,
+          #                                         ">= 1.1.0 < 5.2.5, >= 6.0.0 < 6.2.4, ...", whose
+          #                                         reviewed global advisory lists each piece as its
+          #                                         own range)
+          #     otherwise                        -> RANGE-UNPARSEABLE
+          #   GitHub's format gives the comma one meaning, AND between the two bounds of ONE range;
+          #   a field holding several ranges is outside it, so the format does not say what such a
+          #   comma means. A reading of the commas puts the pieces in groups, ANDs each group and
+          #   ORs the groups. An advisory never means "no version" (the empty-interval rule below),
+          #   so a reading with a group that describes no version is a misread. Where no two pieces
+          #   share a version, every group of two or more describes none, so OR, each piece its own
+          #   group, is the one reading left. Where two pieces share a version, ANDing them is a
+          #   second reading, and the range is not read: "< 2.0, >= 1.0 < 3.0", bounded pieces
+          #   that overlap (">= 1.0 < 3.0, >= 2.0 < 4.0", AND reads 1.5 clean), or the lone
+          #   ">= 2.0.0" and "< 2.0.5" of ">= 1.0.0 < 1.5.3, >= 2.0.0, < 2.0.5", which GitHub's
+          #   comma form pairs into one range. Every two pieces are tested, not only neighbours: no
+          #   source this grammar follows groups pieces that are not neighbours, but a range not
+          #   read is still decided by agreed and the reviewed record, and the acceptance input can
+          #   accept it, while a range that is read skips agreed and the record, and an AFFECTED it
+          #   reads cannot be accepted. An `=` of a full version ("= 1.2.3") is never apart from
+          #   another piece (apart), so a field holding one is not read by this rule.
           #   A conjunction must describe ONE non-empty interval: at most one lower and one upper
           #   bound, and `=` only alone. ANDing GitHub's own invalid example "> 2.0, < 2.3, > 3.0,
           #   < 3.2" gives an empty set, which would read 2.1 as clean; this block refuses it
@@ -315,22 +395,32 @@ jobs:
           #   flags more than Composer does (`<= 2.3` flags 2.3.5). `< X` admits the pre-releases
           #   of X, and `> 1.2` admits 1.2.x (npm reads it as `>= 1.3.0`). npm excludes a
           #   pre-release from a range that names no pre-release on its core; that rule is not
-          #   applied.
+          #   applied. The comma-OR rule refuses wherever any two pieces share a version,
+          #   neighbours or not, and wherever a piece is an `=` of a full version. A field it reads is
+          #   decided by its own text and patched text alone, so where the maintainer's text is
+          #   itself wrong, neither the reviewed record nor the acceptance input clears the
+          #   AFFECTED it reads.
           #   A BARE version ("1.17.0") is NOT read (pm ruling on card#11106, comment 10035): the
           #   same text means one version in axios GHSA-654m-c8p4-x5fp (reviewed record "= 1.15.2")
           #   and a lower bound in axios GHSA-r4gj-5m52-g5wh (reviewed record ">= 1.17.0, < 1.20.0").
           #   Like any unread range, what every reading agrees on decides it first (agreed, below;
           #   card#11604), then the reviewed global record (reviewed_hit).
           VMATCH_JQ='
+            # A lockfile entry with no version reaches here as "" (or null): that is no version,
+            # so it takes the VERSION-UNPARSEABLE verdict like any other unreadable one. Without
+            # the first arm, `"" | split("+")[0]` is null and the next `split` is a jq error.
             def vparse:
-              . as $v
-              | ($v | sub("^[vV]"; "") | split("+")[0]) as $s
-              | ($s | split("-")) as $p
-              | ($p[0] | split(".")) as $core
-              | if ($core | length) == 0 or ($core | any(test("^[0-9]+$") | not))
-                then null
-                else {c: ($core | map(tonumber)), pre: (($p | length) > 1), tag: ($p[1:] | join("-"))}
-                end;
+              if (type != "string") or . == "" then null
+              else
+                . as $v
+                | ($v | sub("^[vV]"; "") | split("+")[0]) as $s
+                | ($s | split("-")) as $p
+                | ($p[0] | split(".")) as $core
+                | if ($core | length) == 0 or ($core | any(test("^[0-9]+$") | not))
+                  then null
+                  else {c: ($core | map(tonumber)), pre: (($p | length) > 1), tag: ($p[1:] | join("-"))}
+                  end
+              end;
             def pad($n): . + [range(0; $n - length) | 0];
             def belowtag: .tag | test("^(?:(?:alpha|a|beta|b|rc)(?:[.-]?[0-9]+)*(?:[.-]?dev)?|dev)$"; "i");
             def vcmp($a; $b):   # -1, 0 or 1; null = UNDECIDABLE
@@ -363,6 +453,9 @@ jobs:
                 else [ $chunks[] | scan("(>=|<=|>|<|=)\\s*([^\\s<>=,;&|]+)") | {op: .[0], b: (.[1] | vparse)} ]
                      | if any(.b == null) then null else . end
                 end;
+            def empty_pair($l; $u):  # a lower bound {op, b} and an upper one -> true when no version is between them; null = UNDECIDABLE
+              vcmp($l.b; $u.b) as $c
+              | if $c == null then null else $c > 0 or ($c == 0 and ($l.op == ">" or $u.op == "<")) end;
             # $keep (only `agreed` passes true) keeps a lower/upper pair whose order is
             # undecidable as {lo, hi, unordered: true} instead of refusing it; holds decides it.
             def interval_of($keep):  # [{op, b}] ANDed -> ONE non-empty {lo, hi, eq}, or null
@@ -376,17 +469,20 @@ jobs:
                 | map(select(.op == "<=" or .op == "<")) as $u
                 | map(select(.op == "=")) as $e
                 | if ($l | length) > 1 or ($u | length) > 1 then null
-                  elif ($l | length) == 1 and ($u | length) == 1 and vcmp($l[0].b; $u[0].b) == null
+                  elif ($l | length) == 1 and ($u | length) == 1 and empty_pair($l[0]; $u[0]) == null
                   then (if $keep then {lo: $l[0], hi: $u[0], eq: null, unordered: true}
                         else null end)   # UNDECIDABLE: bounds that cannot be ordered cannot be shown non-empty
-                  elif ($l | length) == 1 and ($u | length) == 1
-                       and (vcmp($l[0].b; $u[0].b) as $c
-                            | $c > 0 or ($c == 0 and ($l[0].op == ">" or $u[0].op == "<")))
+                  elif ($l | length) == 1 and ($u | length) == 1 and empty_pair($l[0]; $u[0])
                   then null   # EMPTY: an advisory never means "no version" — this is a misread
                   else {lo: $l[0], hi: $u[0], eq: $e[0]} end
               end;
             def interval: interval_of(false);
-            def bounded: . != null and .lo != null and .hi != null;
+            # Two pieces are apart when the lower bound of one is above the upper bound of the
+            # other. A refused piece (null), an `=` of a full version and an undecidable order are
+            # never apart.
+            def apart($a; $b):
+              ($a.lo != null and $b.hi != null and empty_pair($a.lo; $b.hi))
+              or ($b.lo != null and $a.hi != null and empty_pair($b.lo; $a.hi));
             def alternative($keep):  # one ||-alternative -> [interval] ORed, or null
               gsub("^\\s+|\\s+$"; "") as $a
               | (($a | capture("^(?<a>[^\\s,]+)\\s+(?:-|through)\\s+(?<b>[^\\s,]+)$")) // null) as $hy
@@ -398,7 +494,10 @@ jobs:
                   | if ($pieces | any(. == null)) then null
                     elif ($pieces | length) == 1 then [ $pieces[0] | interval_of($keep) ]
                     elif ($pieces | all(length == 1)) then [ $pieces | add | interval_of($keep) ]   # comma = AND
-                    elif ($pieces | all(interval | bounded)) then [ $pieces[] | interval_of($keep) ] # comma = OR
+                    elif ($pieces | map(interval)) as $iv
+                         | [ range(0; $iv | length) as $i | range($i + 1; $iv | length) as $j
+                             | apart($iv[$i]; $iv[$j]) ] | all
+                    then [ $pieces[] | interval_of($keep) ]   # comma = OR: no two pieces share a version
                     else null end
                 end
               | if . == null or any(. == null) then null else . end;
@@ -732,7 +831,7 @@ jobs:
           #   PRINTED: every entry, with what became of it, in the population statement; every
           #     acceptance used, as a NOTICE at the verdict, exported in the population's `accepted`.
           read_acceptances() {   # -> $WORK/accept.json, [entry] of the entries that accept
-            local today n adv why
+            local today refused
             printf '[]' > "$WORK/accept.json"
             if [ ! -e "$ACCEPT_FILE" ]; then
               ACCEPT_LINES="    none: no $ACCEPT_FILE on this ref"$'\n'
@@ -775,9 +874,12 @@ jobs:
                  else "    refused entry \(.n) (\(.advisory)): \(.why | join("; "))" end) | oneline' "$WORK/accept.ndjson")"$'\n'
             [ -s "$WORK/accept.ndjson" ] || ACCEPT_LINES="    none: $ACCEPT_FILE lists no entry"$'\n'
             # Process substitution, NOT a pipe, so each err() below counts in the parent shell.
-            while IFS=$'\t' read -r n adv why; do
-              err ACCEPT-ENTRY-REFUSED "$ACCEPT_FILE entry $n ($adv): $why, so it accepts nothing"
-            done < <(jq -r 'select(.status == "refused") | [.n, .advisory, (.why | join("; "))] | @tsv' "$WORK/accept.ndjson")
+            # jq composes the whole `<n> (<advisory>): <why>` text, so no field is split in bash:
+            # the advisory is the adopter's own string and CAN be empty, and a tab-delimited `read`
+            # collapses an empty field (tab is IFS whitespace) and prints the reason in its slot.
+            while IFS= read -r refused; do
+              err ACCEPT-ENTRY-REFUSED "$ACCEPT_FILE entry $refused, so it accepts nothing"
+            done < <(jq -r "$ONELINE_JQ"'select(.status == "refused") | "\(.n) (\(.advisory)): \(.why | join("; "))" | oneline' "$WORK/accept.ndjson")
             jq -s 'map(select(.status == "accepted") | .entry)' "$WORK/accept.ndjson" > "$WORK/accept.json"
           }
           # --- end dep-audit-accept
@@ -808,6 +910,37 @@ jobs:
           # Source 1 is handed the DISCOVERED lockfiles explicitly; it is never pointed at the
           # repo root. That is what keeps committed SBOM directories out of it, independently of
           # whichever exclusion flag the current scanner version spells.
+          #
+          # One `affected` row per (package, vulnerability) of the scanner's results — a global-
+          # database advisory reaches the bump job exactly as a repository advisory does. `patched`
+          # lists every `fixed` event of the OSV record's SEMVER and ECOSYSTEM ranges for this
+          # package (a GIT range's events are commit hashes, not versions); the bump tool picks the
+          # lowest one above the flagged version. `range` is display text only.
+          S1_ROWS_JQ='
+            def addterm($t): (if length == 0 then [""] else . end)
+              | .[-1] |= (if . == "" then $t else . + ", " + $t end);
+            def interval_text:   # one OSV range -> one text per interval its events describe
+              reduce (.events // [])[] as $e ([];
+                if $e.introduced != null then
+                  . + [ (if $e.introduced == "0" then "" else ">= \($e.introduced)" end) ]
+                elif $e.fixed != null then addterm("< \($e.fixed)")
+                elif $e.last_affected != null then addterm("<= \($e.last_affected)")
+                elif $e.limit != null then addterm("< \($e.limit)")
+                else . end)
+              | map(if . == "" then "all versions" else . end);
+            .results[]? as $r | $r.packages[]? as $p | $p.vulnerabilities[]? as $v
+            | ($p.package.name // "") as $name | ($p.package.ecosystem // "") as $eco
+            | [ ($v.affected // [])[]
+                | select((.package.name // "" | ascii_downcase) == ($name | ascii_downcase))
+                | select((.package.ecosystem // "" | ascii_downcase) == ($eco | ascii_downcase))
+                | (.ranges // [])[] | select(.type == "SEMVER" or .type == "ECOSYSTEM") ] as $rs
+            | ([ $rs[] | (.events // [])[] | .fixed // empty ] | unique) as $fixed
+            | {source: "1", ecosystem: $eco, package: $name, version: ($p.package.version // ""),
+               repo: "", ghsa: ($v.id // ""),
+               severity: ($v.database_specific.severity // "" | ascii_downcase),
+               range: ([ $rs[] | interval_text[] ] | join(" || ")),
+               patched: (if $fixed == [] then "no fixed version in its OSV record"
+                         else "patched in \"\($fixed | join(", "))\"" end)}'
           run_source1() {
             local rc=0
             osv_scan "${MANIFESTS[@]}" > "$WORK/osv.json" 2> "$WORK/osv.err" || rc=$?
@@ -830,6 +963,8 @@ jobs:
             FINDINGS=$((FINDINGS + n))
             if [ "$n" -gt 0 ]; then
               FINDING_LINES="${FINDING_LINES}$(jq -r "$ONELINE_JQ"'.results[]?.packages[]? as $p | $p.vulnerabilities[]? | "  SOURCE1 \($p.package.ecosystem):\($p.package.name)@\($p.package.version) \(.id)" | oneline' "$WORK/osv.json")"$'\n'
+              jq -c "$S1_ROWS_JQ" "$WORK/osv.json" >> "$WORK/affected.ndjson" \
+                || err SOURCE1-UNPARSEABLE "the scanner's findings could not be exported as affected rows for the bump job"
             fi
           }
           # --- end dep-audit-source1
@@ -900,8 +1035,13 @@ jobs:
               return 0
             fi
             local eco name version repo npm_total=0 npm_ok=0
-            : > "$WORK/resolved.tsv"
-            while IFS=$'\t' read -r eco name version repo; do
+            # A lockfile entry with no `version` gives an EMPTY version field, and tab is an IFS
+            # whitespace character: a tab-delimited `read` collapses the empty field and reads the
+            # repo as the version. So the packages rows are read with their tabs turned into US
+            # (\x1f), which `read` does not collapse — @tsv escapes a tab inside a value, so every
+            # raw tab is a separator — and resolved.rows is written US-delimited for the same reason.
+            : > "$WORK/resolved.rows"
+            while IFS=$'\x1f' read -r eco name version repo; do
               [ -n "$name" ] || continue
               if [ "$eco" = npm ]; then
                 npm_total=$((npm_total + 1))
@@ -924,18 +1064,18 @@ jobs:
               fi
               if [ -n "$repo" ]; then
                 N_RESOLVED=$((N_RESOLVED + 1))
-                printf '%s\t%s\t%s\t%s\n' "$eco" "$name" "$version" "$repo" >> "$WORK/resolved.tsv"
+                printf '%s\037%s\037%s\037%s\n' "$eco" "$name" "$version" "$repo" >> "$WORK/resolved.rows"
               else
                 N_UNRESOLVED=$((N_UNRESOLVED + 1))
                 printf '%s\t%s\t%s\n' "$eco" "$name" "$version" >> "$WORK/unresolved.tsv"
               fi
-            done < "$PKG_TSV"
+            done < <(tr '\t' '\037' < "$PKG_TSV")
             if [ "$npm_total" -gt 0 ] && [ "$npm_ok" -eq 0 ]; then
               # Some npm packages legitimately carry no repository field; ALL of them failing is
               # the registry hop being broken, which would shrink source 2's population silently.
               fatal SOURCE2-NPM-RESOLUTION-EMPTY "$npm_total npm package(s) and NOT ONE resolved to a repository — the registry hop is failing, not the packages"
             fi
-            N_REPOS=$(cut -f4 "$WORK/resolved.tsv" 2>/dev/null | sort -u | grep -c . || true)
+            N_REPOS=$(cut -d $'\x1f' -f4 "$WORK/resolved.rows" 2>/dev/null | sort -u | grep -c . || true)
           }
           # ⛔ FETCHES, RECORDS NOTHING, AND IS NEVER COMMAND-SUBSTITUTED. It reports its outcome
           # through ADV_CACHE / ADV_FAIL_CODE / ADV_FAIL_DETAIL and its exit status; the CALLER
@@ -971,7 +1111,7 @@ jobs:
           # a lookup that fails is written into the map as {lookup_failed: why}, and the matcher
           # turns that entry into RANGE-UNPARSEABLE, so no failure here can read as clean.
           reviewed_records() {   # stdin: GHSA IDs, one per line -> $WORK/reviewed.json, {<id>: record}
-            local id rec
+            local id rec why
             while IFS= read -r id; do
               # The ID comes from a payload and is built into an API path, so it is checked first.
               if ! [[ $id =~ ^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$ ]]; then
@@ -981,7 +1121,17 @@ jobs:
               rec="$WORK/rev/$id.json"   # cached per run
               if [ ! -f "$rec" ]; then
                 if ! reviewed_advisory_fetch "$id" > "$rec.part" 2> "$WORK/rev.err" < /dev/null; then
-                  jq -nc --arg w "the lookup exited non-zero: $(tr '\n' ' ' < "$WORK/rev.err" | cut -c1-200)" '{lookup_failed: $w}' > "$rec"
+                  # A 404 and a 403 call for different actions, so each is named. The status is read
+                  # from the shipped seam's `gh api` error line, which ends "(HTTP <code>)"; a seam
+                  # that reports otherwise gets the generic line. GITHUB_TOKEN has been measured
+                  # getting 403 where an anonymous read of the same unreviewed advisory got 404, so
+                  # the 403 line does not claim access is the cause.
+                  why="$(tr '\n' ' ' < "$WORK/rev.err" | cut -c1-200)"
+                  case "$why" in
+                    *"(HTTP 404)"*) why="HTTP 404, GitHub has no global record of $id: it is missing or not yet reviewed, and no token or permission change makes a lookup decide it: $why" ;;
+                    *"(HTTP 403)"*) why="HTTP 403, the token was refused: an access problem, or a record that does not exist (GITHUB_TOKEN has answered 403 for an unreviewed advisory); https://github.com/advisories/$id answers 404 when no record exists: $why" ;;
+                  esac
+                  jq -nc --arg w "the lookup exited non-zero: $why" '{lookup_failed: $w}' > "$rec"
                 elif ! jq -e 'type == "object"' "$rec.part" >/dev/null 2>&1; then
                   jq -nc --arg w "the lookup returned a payload that is not a JSON object: $(head -c 200 "$rec.part" | tr '\n' ' ')" '{lookup_failed: $w}' > "$rec"
                 else
@@ -1015,11 +1165,11 @@ jobs:
               fatal SOURCE2-CONTROL-EMPTY "the control repo '$ADVISORY_CONTROL_REPO' returned ZERO advisories — either this token cannot read another org's repository advisories, or the control repo no longer carries any. Source 2 is blind either way."
               return 0
             fi
-            [ -s "$WORK/resolved.tsv" ] || return 0
+            [ -s "$WORK/resolved.rows" ] || return 0
             local eco name version repo adv hits verdicts n_adv notes kind id line
-            # `< "$WORK/resolved.tsv"` and NOT a pipe: a piped `while` body runs in a subshell,
+            # `< "$WORK/resolved.rows"` and NOT a pipe: a piped `while` body runs in a subshell,
             # where every err() below would increment a counter that dies at the `done`.
-            while IFS=$'\t' read -r eco name version repo; do
+            while IFS=$'\x1f' read -r eco name version repo; do
               if ! fetch_advisories "$repo"; then
                 err "$ADV_FAIL_CODE" "$ADV_FAIL_DETAIL"
                 continue
@@ -1057,6 +1207,7 @@ jobs:
                           else empty end
                         | map(oneline) | join("\t")')" \
                 || { err SOURCE2-MATCH-FAILED "could not read the notices for $name@$version ($repo)"; continue; }
+              # Tab is IFS whitespace (collapses an empty field): kind is W/A and id a GHSA the matcher already matched; the tab-IFS read cannot shift them.
               while IFS=$'\t' read -r kind id line; do
                 case "$kind" in
                   W) WITHDRAWN_IDS="${WITHDRAWN_IDS}$id"$'\n' ;;
@@ -1095,8 +1246,10 @@ jobs:
               elif [ "$n" -gt 0 ]; then
                 FINDINGS=$((FINDINGS + n))
                 FINDING_LINES="${FINDING_LINES}$(printf '%s' "$hits" | jq -r --arg p "$name" --arg v "$version" --arg r "$repo" "$ONELINE_JQ"'.[] | select(.verdict == "AFFECTED") | "  SOURCE2 \($p)@\($v) \(.ghsa) \(.severity) [\(.range)] \(.patched) (repo-level on \($r))" | oneline')"$'\n'
+                printf '%s' "$hits" | jq -c --arg e "$eco" --arg p "$name" --arg v "$version" --arg r "$repo" '.[] | select(.verdict == "AFFECTED") | {source: "2", ecosystem: $e, package: $p, version: $v, repo: $r, ghsa, severity, range, patched}' >> "$WORK/affected.ndjson" \
+                  || err SOURCE2-MATCH-FAILED "could not export $name@$version ($repo)'s findings as affected rows for the bump job"
               fi
-            done < "$WORK/resolved.tsv"
+            done < "$WORK/resolved.rows"
           }
           # --- end dep-audit-source2
           # --- dep-audit-report
@@ -1166,6 +1319,7 @@ jobs:
               printf 'population=%s\n' "$POPULATION_JSON"
               printf 'findings=%s\n' "$FINDINGS"
               printf 'status=%s\n' "$status"
+              printf 'affected=%s\n' "$(jq -sc '.' "$WORK/affected.ndjson")"
             } >> "$GITHUB_OUTPUT"
           }
           verdict() {
@@ -1193,3 +1347,165 @@ jobs:
           emit_outputs
           verdict
           # --- end dep-audit-main
+
+  # THE BUMP JOB (card#12253). On the leg the caller names `leg: integration`, every finding whose
+  # fix the package manager's own resolver reaches inside the declared ranges gets a lockfile bump
+  # PR against that leg's ref; a fix out of range is reported in the job summary for a human. The
+  # release leg is never bumped. The coord plugin's `docs/DEPENDENCY-AUDIT.md` § "Bump PRs" owns
+  # the rules, and `advisory-bump.py`'s docstring owns what one bump carries.
+  # `!cancelled()` rather than the default `success()`: the audit job is RED whenever it has a
+  # finding, which is exactly when this job has work. It reads the audit's `affected` and
+  # `population` outputs, never its log.
+  #
+  # ⛔ THE BUMP APP (operator ruling opq-1792926707-7f44). The job pushes, opens PRs and authors its
+  # commits as a GitHub App's bot, so GitHub reports each bump PR and every commit on it as that
+  # bot's and the coord plugin's EXISTING bot slot takes it: no `Origin:` line, nothing added to the
+  # origin vocabulary. There is no personal-token path: a PR a person's token opens is
+  # `User`-authored, which that slot does not cover, and a PR opened with GITHUB_TOKEN runs no CI.
+  bump:
+    needs: audit
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The workflow token stays read-only: the push and the PR go through the bump app's
+    # installation token, and nothing here falls back to GITHUB_TOKEN.
+    permissions:
+      contents: read
+    env:
+      # CUSTOMIZE — where your repo keeps the bump tool (copied from the template's
+      # `advisory-bump.py`) and the optional per-repo hook it runs in each bump tree. A hook
+      # path with no file there means no hook.
+      BUMP_TOOL: .github/dependency-audit/advisory-bump.py
+      BUMP_HOOK: .github/dependency-audit/bump-hook
+    steps:
+      - name: Decide whether this leg opens bump PRs
+        id: gate
+        env:
+          BUMP_PRS: ${{ inputs.bump_prs }}
+          BUMP_LEG: ${{ inputs.leg }}
+          AUDIT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          # --- dep-bump-gate
+          # The ONE place that decides whether this leg bumps and against which ref. The steps
+          # below run only on `run=true`, and take the ref they bump from `base`, which is set
+          # only on the integration leg — so the release ref can never be a bump's base.
+          # Three states stay apart: OFF (the caller's recorded `bump_prs: off`, green), setup
+          # missing (no `leg`, RED naming it), and a release leg (green, never bumped).
+          bump_gate() {
+            local out="${GITHUB_OUTPUT:?GITHUB_OUTPUT is unset; the gate cannot record its decision}"
+            case "${BUMP_PRS:-}" in
+              off)
+                printf 'BUMP PRS: OFF — switched off in the caller (`bump_prs: off`); leg %s opens none.\n' "'${AUDIT_REF:-?}'"
+                printf 'run=false\n' >> "$out"
+                return 0 ;;
+              on) ;;
+              *)
+                printf 'BUMP-GATE: RED — bump_prs is %s; it is `on` (the default) or `off`, nothing else.\n' "'${BUMP_PRS:-}'" >&2
+                return 1 ;;
+            esac
+            case "${BUMP_LEG:-}" in
+              integration)
+                [ -n "${AUDIT_REF:-}" ] || { printf 'BUMP-GATE: RED — the integration leg names no ref to bump.\n' >&2; return 1; }
+                printf 'BUMP PRS: ON — leg %s is the integration leg; in-range fixes are opened against it.\n' "'$AUDIT_REF'"
+                printf 'run=true\nbase=%s\n' "$AUDIT_REF" >> "$out" ;;
+              release)
+                printf 'BUMP PRS: leg %s is the release leg — audited, never bumped.\n' "'${AUDIT_REF:-?}'"
+                printf 'run=false\n' >> "$out" ;;
+              '')
+                printf 'BUMP-GATE: RED — setup missing: bump PRs are on (the default) and the caller names no `leg` for ref %s. Name each matrix leg `leg: release` or `leg: integration` in the caller and pass it as `leg:` (the coord plugin'\''s docs/DEPENDENCY-AUDIT.md § Bump PRs), or switch bump PRs off there with `bump_prs: off`.\n' "'${AUDIT_REF:-?}'" >&2
+                return 1 ;;
+              *)
+                printf 'BUMP-GATE: RED — leg is %s; it is `release` or `integration`, nothing else.\n' "'$BUMP_LEG'" >&2
+                return 1 ;;
+            esac
+          }
+          bump_gate
+          # --- end dep-bump-gate
+      # Setup missing is named here, before the token step, rather than left to that action's own
+      # input error: the step sees only whether each secret is set (`!= ''`), never its value.
+      - name: Check the bump app's secrets are set
+        if: ${{ steps.gate.outputs.run == 'true' }}
+        env:
+          HAS_CLIENT_ID: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID != '' }}
+          HAS_PRIVATE_KEY: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          # --- dep-bump-app-secrets
+          # Both secrets set, or RED naming each missing one and the setup step. Never a fallback:
+          # no other token is read by this job, so a missing app is a red, not a quieter path.
+          bump_app_secrets() {
+            local missing=""
+            [ "${HAS_CLIENT_ID:-}" = "true" ] || missing="$missing ADVISORY_BUMP_APP_CLIENT_ID"
+            [ "${HAS_PRIVATE_KEY:-}" = "true" ] || missing="$missing ADVISORY_BUMP_APP_PRIVATE_KEY"
+            if [ -n "$missing" ]; then
+              printf 'BUMP-APP: RED — setup missing: the repository secret(s)%s are not set, so the bump app cannot sign in and NO bump is opened. Create the bump GitHub App, install it on this repository, and add both secrets (the coord plugin'\''s docs/DEPENDENCY-AUDIT.md § "The bump app"), then pass them from the caller by name; or switch bump PRs off in the caller with `bump_prs: off`. A personal token is not supported.\n' "$missing" >&2
+              return 1
+            fi
+            printf 'BUMP-APP: both bump-app secrets are set.\n'
+          }
+          bump_app_secrets
+          # --- end dep-bump-app-secrets
+      # The installation token, scoped to this repository (the action's default with no `owner` /
+      # `repositories`) and narrowed to the two permissions the job uses. It is masked, and revoked
+      # when the job ends. Only the identity and open steps below read it.
+      - name: Mint the bump app's installation token
+        id: app
+        if: ${{ steps.gate.outputs.run == 'true' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          client-id: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: ${{ steps.gate.outputs.run == 'true' }}
+        with:
+          ref: ${{ steps.gate.outputs.base }}
+          persist-credentials: false   # the push goes through the app token in the open step, never a stored credential
+      # The workflow token is read by actions/checkout above (its default `token:`) to fetch, and
+      # `persist-credentials: false` leaves it nowhere a later step can use it: nothing in this job
+      # pushes or opens a PR with it.
+      # CUSTOMIZE — the package managers your lockfiles need, at your project's versions. npm comes
+      # with Node. Composer (2.7 or later: the tool passes `--minimal-changes`) resolves against the
+      # runner's PHP unless your composer.json sets `config.platform.php`; set that, or add a pinned
+      # PHP setup step here, so a bump never picks a version your production PHP cannot run.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        if: ${{ steps.gate.outputs.run == 'true' }}
+        with:
+          node-version: '20'
+      # The bot's commit identity: `<app-slug>[bot]` and its noreply address, read from GitHub's
+      # account record, which must say `Bot` — so every bump commit is the bot's, author and
+      # committer, which is what the merge gate's bot slot requires of every commit on the PR.
+      - name: Read the bump app's bot identity (app token)
+        id: identity
+        if: ${{ steps.gate.outputs.run == 'true' }}
+        env:
+          ADVISORY_BUMP_APP_TOKEN: ${{ steps.app.outputs.token }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
+        run: python3 "$BUMP_TOOL" identity --app-slug "$APP_SLUG" --output "$GITHUB_OUTPUT"
+      - name: Build one bump branch per in-range package (no token in this step)
+        id: plan
+        if: ${{ steps.gate.outputs.run == 'true' }}
+        env:
+          AFFECTED: ${{ needs.audit.outputs.affected }}
+          POPULATION: ${{ needs.audit.outputs.population }}
+          BUMP_BASE: ${{ steps.gate.outputs.base }}
+          BUMP_AUTHOR_NAME: ${{ steps.identity.outputs.name }}
+          BUMP_AUTHOR_EMAIL: ${{ steps.identity.outputs.email }}
+        run: >-
+          python3 "$BUMP_TOOL" plan --findings-env AFFECTED --population-env POPULATION
+          --base "$BUMP_BASE" --hook "$BUMP_HOOK" --plan-out "$RUNNER_TEMP/advisory-bump-plan.json"
+          --author-name "$BUMP_AUTHOR_NAME" --author-email "$BUMP_AUTHOR_EMAIL"
+      # It PREFLIGHTS the token's read of this repository first, on every run of the integration
+      # leg, and only then pushes and opens. A token GitHub refuses has already failed the identity
+      # step, naming the app's two secrets, so this read is a second check. It runs after a plan step that failed on ONE package too: the plan still carries the
+      # bumps that built, and the job is red on the plan step either way. It does not run when the
+      # identity step did not succeed (no app, so nothing to open with). The tool hands the token to
+      # `gh` (and to git through `gh auth git-credential`) in a child environment only — never on an
+      # argv, never echoed.
+      - name: Preflight the app token, then push and open the bump PRs
+        if: ${{ !cancelled() && steps.gate.outputs.run == 'true' && steps.identity.outcome == 'success' }}
+        env:
+          ADVISORY_BUMP_APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: python3 "$BUMP_TOOL" open --plan "$RUNNER_TEMP/advisory-bump-plan.json"

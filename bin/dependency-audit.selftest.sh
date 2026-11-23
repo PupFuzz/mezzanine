@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# ── VENDORED from coord 0.66.0 — the selftest of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+# ── VENDORED from coord 0.77.0 — the selftest of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/security/dependency-audit.selftest.sh
-#   vendored from     70fd3207c96f7240f7368c93de277970ac39598e   (marketplace, the v0.66.0 release merge)
-#   plugin version    coord 0.66.0
-#   upstream sha256   7fdb5496a1336f8818850058c3154131333c85d14ab1b9c9eb6da049d16cb436
+#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
+#   plugin version    coord 0.77.0
+#   upstream sha256   6f0eddda96d4ead7c0259ee89f2385deefb3d684d79442f0b5376826402f6a7a
 #
 # That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
 # line that is neither blank nor a comment), which is a different figure. Re-derive this one
-# against a marketplace clone:   git show 70fd3207:plugins/coord/templates/security/dependency-audit.selftest.sh | sha256sum
+# against a marketplace clone:   git show afaf9a10:plugins/coord/templates/security/dependency-audit.selftest.sh | sha256sum
 #
 # DECLARED LOCAL EDITS — each is also a FRAGMENTS row in `bin/vendor-pin-check.sh`, which reds
 # when one leaves the body. Outside these edits, the text below this block was upstream's byte for
@@ -25,8 +25,12 @@
 #   text and is not pinned. ShellCheck's findings on this file are recorded in
 #   bin/shell-lint.baseline.tsv rather than annotated in the body, so the body stays upstream's.
 #
-# TO RE-VENDOR: copy upstream's file over everything below this block, re-apply the edits above,
-# then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
+# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `.github/workflows/dependency-audit.yml`,
+# `.github/workflows/dependency-ref-matrix.yml` and `bin/dependency-audit-fixtures/` move TOGETHER,
+# from one upstream commit: the selftest extracts and runs the workflows' own blocks against those fixtures, so a
+# selftest from one revision over workflows or fixtures from another reds (measured on the v0.77.0
+# refresh, card#13794). Copy each upstream file over everything below its block, re-apply each
+# file's declared edits, then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
 # ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-audit.selftest.sh — proves the shipped dependency-advisory gate CAN FAIL, fails
 # for the right reason, and DISTINGUISHES an affected lockfile from a clean one (a check that
@@ -54,7 +58,9 @@
 #
 # THE CONTROLS. Mutants, each removing one guard from the extracted block, except the naive-fix
 # range mutant, which removes both halves of the naive fix, the two belowtag re-narrowing
-# mutants, which put back the narrower rule belowtag replaced, and the patched-version mutants
+# mutants, which put back the narrower rule belowtag replaced, the two comma-OR mutants that put
+# back a rule a fix removed (OR wherever some two pieces are apart, card#13220; OR wherever every
+# piece is bounded, card#13228), and the patched-version mutants
 # that put a named wrong reading in place of the shipped one (own line, tie, pre-release, a
 # bounded range overruled, an interval that begins at or above the fix overruled, an unread range
 # cleared by its patched text, a read range that cannot be compared overruled, the no-shared-lead
@@ -71,7 +77,10 @@
 # agrees on), or put back the reading of a bare version as exact that card#11604 rules out.
 # Without them, a leg could be passing
 # because the fixture is odd rather than because the shipped logic is closed. The §X mutant
-# re-mints the swallowed-error defect and requires the class guard to catch it.
+# re-mints the swallowed-error defect and requires the class guard to catch it. The §B mutant gives
+# the bump gate's release arm a bump and requires it to set `base=main`, which the release leg's
+# assertion refuses, and the §B app-secrets mutant lets a missing bump-app secret through, which the
+# app-secrets legs refuse.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -89,8 +98,8 @@ FAILURES=0
 # assertion below is a membership question about `$out`, an audit report that grows with the
 # population it describes, so the size gate is a matter of fixtures rather than of principle.
 # The herestring these lines USED to be (`grep -q PAT <<< "$out"`) removes the SIGPIPE and buys
-# the worse defect: MSYS blocks on a herestring past its own ~64 KiB window, turning a silent
-# wrong answer into a HUNG test on the fleet's Windows seat (ci-verdict.sh § (b), card#7692).
+# the worse defect: a HUNG test instead of a silent wrong answer on the fleet's Windows seat
+# (card#12619 — `_ci_py` in ci-verdict.sh owns the measurement).
 # Byte-identical to `plugins/coord/hooks/bin/_selftest_match.sh`, which owns the argument and the
 # measurement; IN-FILE rather than sourced because this file SHIPS into an adopter's repo, where
 # that path is not one it can name. Two FRAMEWORK-REPO guards keep it honest — neither ships, so
@@ -263,6 +272,9 @@ pop() { jq -r --arg k "$1" '(.[$k] // "MISSING") | tostring' <<< "$(sed -n 's/^p
 # unparseable population is a NO rather than an empty string that compares equal to nothing.
 pop_has() { jq -e --arg k "$1" --arg v "$2" '(.[$k] // []) | index($v) != null' \
               <<< "$(sed -n 's/^population=//p' "$TMP/gh_output")" >/dev/null 2>&1; }
+# The `affected` output — the AFFECTED rows of both sources in machine form, which the bump job
+# reads instead of the log (card#12253). Asserted with `jq -e`, so an absent output is a NO.
+aff() { sed -n 's/^affected=//p' "$TMP/gh_output"; }
 
 # ══ §1 THE DISCRIMINATING PAIR — the same package at two versions ════════════════════════
 out="$(run_audit "$AFFECTED" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE")")"; rc=$?
@@ -275,6 +287,11 @@ else
 fi
 [ "$(pop findings)" = "4" ] && ok "…and the population output carries findings=4" \
   || fail "population findings should be 4, got '$(pop findings)'"
+jq -e 'length == 4 and all(.[]; .source == "2" and .ecosystem == "composer" and .package == "league/commonmark"
+         and .version == "2.9.0" and .repo == "thephpleague/commonmark" and (.patched | type == "string"))
+       and any(.[]; .ghsa == "GHSA-f8fg-pg57-v4j8")' <<< "$(aff)" >/dev/null 2>&1 \
+  && ok "…and affected exports the same four rows in machine form, each marked source 2" \
+  || fail "affected should carry the four commonmark rows as source 2, got '$(aff)'"
 has "$out" 'POPULATION STATEMENT' \
   && ok "…and the POPULATION STATEMENT is still emitted on a RED run" \
   || fail "the population statement must be emitted even when the run reds: $out"
@@ -303,6 +320,9 @@ fi
   && [ "$(pop resolved)" = "1" ] && [ "$(pop unresolved)" = "1" ] \
   && ok "…and the population output names what was read (1 lockfile, 2 production packages, 1 resolved, 1 not)" \
   || fail "clean-leg population wrong: $(sed -n 's/^population=//p' "$TMP/gh_output")"
+[ "$(aff)" = "[]" ] \
+  && ok "…and affected is [] — exported, and empty, which the bump job reads as nothing to bump" \
+  || fail "the clean leg's affected should be [], got '$(aff)'"
 has "$out" 'commonmark-devonly' \
   && fail "a packages-dev entry leaked into the production population" \
   || ok "…and the dev-only package is excluded (2 packages, not 3)"
@@ -389,15 +409,18 @@ fi
 
 # ══ §V THE RANGE GRAMMAR — live advisory range strings through the SHIPPED matcher ═════════
 # Every row except those marked SYNTHETIC is a `vulnerable_version_range` copied verbatim from a
-# published repository advisory, fetched 2026-09-28 with
+# published repository advisory, fetched 2026-09-28 (the card 13220 rows 2026-11-13) with
 # `gh api repos/<owner>/<repo>/security-advisories`. The verdicts come from that advisory's own
 # `patched_versions` and, where GitHub reviewed it, from the global advisory's per-range split
 # (`gh api /advisories/<GHSA>`). The grammar and its sources are stated once, above in_range in
 # the callee; this table does not restate them. A SYNTHETIC row's verdict was checked on 2026-09-28
-# against npm's `semver` and `composer/semver` (with `;` and `&&` spelled as a space, `=>` as `>=`
-# and `through` as `-`): where either reads its version as affected, the row reads AFFECTED or
-# RANGE-UNPARSEABLE, never clean. Fields are `#`-separated because the ranges
-# themselves carry `,`, `;`, `|` and `&`.
+# (the card 13220 rows on 2026-11-13, against npm semver 7.6.1 and composer/semver 3.4.4) against
+# npm's `semver` and `composer/semver` (with `;` and `&&` spelled as a space, `=>` as `>=`,
+# `through` as `-`, and for the card 13220 rows the comma between pieces also as `||`): where
+# either reads its version as affected, the row reads AFFECTED or RANGE-UNPARSEABLE, never clean.
+# The card 13220 rows added in its r1 fix round read RANGE-UNPARSEABLE, which that rule allows
+# whatever either reads, and were not run through either.
+# Fields are `#`-separated because the ranges themselves carry `,`, `;`, `|` and `&`.
 #   want = AFFECTED | clean | RANGE-UNPARSEABLE     (clean = no verdict row at all)
 RANGE_TABLE='>= 1.3.0; <=2.10.1#2.10.1#AFFECTED#commonmark GHSA-97jj-33gv-5xf9 (;)
 >= 1.3.0; <=2.10.1#2.10.2#clean#commonmark GHSA-97jj-33gv-5xf9 (;)
@@ -416,13 +439,25 @@ RANGE_TABLE='>= 1.3.0; <=2.10.1#2.10.1#AFFECTED#commonmark GHSA-97jj-33gv-5xf9 (
 >= 1.1.0 < 5.2.5, >= 6.0.0 < 6.2.4, >= 7.0.0 < 7.5.11, >= 8.0.0 < 8.21.0#5.9.0#clean#ws GHSA-96hv-2xvq-fx4p (comma = OR, gap)
 >= 1.1.0 < 5.2.5, >= 6.0.0 < 6.2.4, >= 7.0.0 < 7.5.11, >= 8.0.0 < 8.21.0#8.21.0#clean#ws GHSA-96hv-2xvq-fx4p (comma = OR, patched)
 >= 5.0.0 < 5.2.3, >= 6.0.0 < 6.2.2, >= 7.0.0 < 7.4.6 #7.4.5#AFFECTED#ws GHSA-6fc8-4gx4-v693 (comma = OR, trailing space)
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#8.21.3#AFFECTED#ws GHSA-37g9-w4hg-h9qr (card 13220: comma = OR, no two pieces share a version)
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#8.23.0#clean#ws GHSA-37g9-w4hg-h9qr (card 13220: comma = OR, at the fix of the 8 line)
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#5.2.7#AFFECTED#ws GHSA-37g9-w4hg-h9qr (card 13220: comma = OR, the open first piece)
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#7.5.14#clean#ws GHSA-37g9-w4hg-h9qr (card 13220: comma = OR, at the fix of the 7 line)
 >= 1.5.0, < 2.10.0#2.9.0#AFFECTED#commonmark GHSA-8rr7-cvq3-gmfh (GitHub documented shape)
 >= 1.5.0, < 2.10.0#2.10.0#clean#commonmark GHSA-8rr7-cvq3-gmfh (GitHub documented shape)
 2.3.0 - 2.8.1#2.8.1#AFFECTED#commonmark GHSA-hh8v-hgvp-g3f5 (hyphen)
 0.15.6 through 0.18.0#0.18.1#clean#commonmark GHSA-rfj4-8hcc-qvwm (through)
 > 2.0, < 2.3, > 3.0, < 3.2#3.1#RANGE-UNPARSEABLE#SYNTHETIC: GitHub docs example of the refused multi-range field (AND would read clean)
 >= 3.0, < 2.0#2.5#RANGE-UNPARSEABLE#SYNTHETIC: an empty interval is a misread, never "no version"
->= 1.0 < 2.0, >= 3.0#3.5#RANGE-UNPARSEABLE#SYNTHETIC: comma between a bounded and an open piece is ambiguous
+>= 1.0 < 2.0, >= 3.0#3.5#AFFECTED#SYNTHETIC (card 13220): a bounded and an open piece that share no version read as OR, the one reading that describes a version
+>= 1.0 < 2.0, >= 3.0#2.5#clean#SYNTHETIC (card 13220): a version between two pieces that share no version is in neither
+< 2.0, >= 1.0 < 3.0#2.5#RANGE-UNPARSEABLE#SYNTHETIC (card 13220): two pieces that share a version have a second reading, AND (AND reads 2.5 clean, OR affected)
+>= 1.0.0 < 1.5.3, >= 2.0.0, < 2.0.5#3.0.0#RANGE-UNPARSEABLE#SYNTHETIC (card 13220 r1 review): the lone ">= 2.0.0" and "< 2.0.5" pair into one range by GitHub comma form, a second reading, so not read (§G decides it)
+< 6.20.45, >= 7.0.0 < 7.30.7, >= 8.0.0, < 8.83.27#11.0.0#RANGE-UNPARSEABLE#SYNTHETIC (card 13220 r1 review): laravel-like, the lone ">= 8.0.0" and "< 8.83.27" pair into one range, so not read (§G decides it)
+< 0.5, >= 1.0 < 3.0, < 2.0#2.5#RANGE-UNPARSEABLE#SYNTHETIC (card 13220): a bounded piece and the lone upper bound beside it share a version (ANDed they read 2.5 clean, OR affected)
+< 1.0, >= 2.0 < 3.0, < 0.5#0.7#RANGE-UNPARSEABLE#SYNTHETIC (card 13220): two pieces that are not neighbours share a version (ANDed they read 0.7 clean, OR affected)
+>= 1.0 < 3.0, >= 2.0 < 4.0#1.5#RANGE-UNPARSEABLE#SYNTHETIC (card 13228): bounded pieces that share a version have a second reading, AND (AND reads 1.5 clean, OR affected)
+>= 1.0 < 3.0, >= 2.0 < 4.0#2.5#RANGE-UNPARSEABLE#SYNTHETIC (card 13228): a version both overlapping bounded pieces hold is not read either (§G decides it)
 = 1.0, = 2.0#1.0#RANGE-UNPARSEABLE#SYNTHETIC: two equalities under one AND
 >= 1.0,, < 2.0#1.5#RANGE-UNPARSEABLE#SYNTHETIC: an empty piece
 >= 1.0 | < 2.0#1.5#RANGE-UNPARSEABLE#SYNTHETIC: a single pipe is not read
@@ -592,8 +627,10 @@ all versions after 1.0#1.5.3#2.0.0#RANGE-UNPARSEABLE#SYNTHETIC (card 11604): a w
 <2.3.5 || >=2.4.0#2.3.5#2.4.1#AFFECTED#SYNTHETIC (r2 review): the open interval holding the version begins above the own-line fix
 >=1.0.0 <1.5.3 || >=2.0.0#1.5.3#2.2.0#AFFECTED#SYNTHETIC (r2 review): the open interval holding the version begins above the highest fix
 >=1.0.0 <1.5.0#1.4.0#1.5.0-p1#RANGE-UNPARSEABLE#SYNTHETIC (r2 review): a range that is read but cannot be compared at this version is not cleared by the patched text
-<1.5.3, >=2.0.0 <2.0.5#1.5.3#2.0.1#RANGE-UNPARSEABLE#SYNTHETIC (r1 review): a comma between a single term and a bounded piece — not read, so its patched text never clears it; this table hands in no reviewed record (§G does)
-<1.5.3, >=3.0.0 <3.0.5#1.5.3#2.0.1#RANGE-UNPARSEABLE#SYNTHETIC: a comma between a single term and a bounded piece, naming versions above the version — not read, so its patched text never clears it; this table hands in no reviewed record (§G does)
+<1.5.3, >=2.0.0 <2.0.5#1.5.3#2.0.1#AFFECTED#SYNTHETIC (r1 review; card 13220): a single term and a bounded piece that share no version, read as OR; the bounded piece holds the version, so its patched text does not clear it
+<1.5.3, >=3.0.0 <3.0.5#1.5.3#2.0.1#clean#SYNTHETIC (card 13220): a single term and a bounded piece that share no version, read as OR; the version is in neither piece
+>= 1.0.0 < 1.5.3, >= 2.0.0, < 2.0.5#2.0.5#1.6.0#RANGE-UNPARSEABLE#SYNTHETIC (card 13220 r1 review): the lone ">= 2.0.0" and "< 2.0.5" pair into one range, so not read, and its patched text does not clear 1.6.0 (§G decides it)
+> 2.0.0, < 2.3.0, > 3.0.0 < 3.2.0#3.2.0#2.5.0#RANGE-UNPARSEABLE#SYNTHETIC (card 13220 r1 review): the lone "> 2.0.0" and "< 2.3.0" pair into one range, so not read, and its patched text does not clear 2.5.0 (§G decides it)
 <1.5.3, >=2.0.0#1.5.3#2.0.0#RANGE-UNPARSEABLE#SYNTHETIC: a comma between a single term and an open piece, at a version it names — not read, so its patched text never clears it; this table hands in no reviewed record (§G does)
 sometime after 2.x#1.5.3#3.0.0#RANGE-UNPARSEABLE#SYNTHETIC: prose naming a version that does not parse — not read, so its patched text never clears it; this table hands in no reviewed record (§G does)
 sometime later#1.5.3#3.0.0#RANGE-UNPARSEABLE#SYNTHETIC: prose naming no version — not read, so its patched text never clears it; this table hands in no reviewed record (§G does)
@@ -610,7 +647,12 @@ sometime later#1.5.3#3.0.0#RANGE-UNPARSEABLE#SYNTHETIC: prose naming no version 
 >=1.0.0 <1.5.3 || >=2.0.0#2.0.0#2.0.1#AFFECTED#SYNTHETIC: a read lower bound equal to the fix begins an interval at the fix, so not cleared
 >=1.0.0 || >=4.0.0 <4.2.0#1.5.3, 2.1.0#3.0.0#AFFECTED#SYNTHETIC: no shared leading number, and the read range names versions above it, so not cleared
 >=1.0.0 || >=0.5.0 <3.0.0#1.5.3, 2.1.0#3.0.0#AFFECTED#SYNTHETIC: no shared leading number, at a version the read range names, so not cleared
-<2.3.5 || >=2.4.0#2.3.5#2.4.0#AFFECTED#SYNTHETIC: the open interval holding the version begins at the version, above the own-line fix, so not cleared'
+<2.3.5 || >=2.4.0#2.3.5#2.4.0#AFFECTED#SYNTHETIC: the open interval holding the version begins at the version, above the own-line fix, so not cleared
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#5.2.8, 6.2.7, 7.5.14, 8.23.0#8.21.3#AFFECTED#ws GHSA-37g9-w4hg-h9qr (card 13220): below the fix of its own line
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#5.2.8, 6.2.7, 7.5.14, 8.23.0#8.23.0#clean#ws GHSA-37g9-w4hg-h9qr (card 13220): at the fix of its own line, which no piece holds
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#5.2.8, 6.2.7, 7.5.14, 8.23.0#5.2.7#AFFECTED#ws GHSA-37g9-w4hg-h9qr (card 13220): below the fix of its own line, in the open first piece
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#5.2.8, 6.2.7, 7.5.14, 8.23.0#7.5.14#clean#ws GHSA-37g9-w4hg-h9qr (card 13220): at the fix of the 7 line, which no piece holds
+< 5.2.8, >= 6.0.0 < 6.2.7, >= 7.0.0 < 7.5.14, >= 8.0.0 < 8.23.0#5.2.8, 6.2.7, 7.5.14, 8.22.0#8.22.0#AFFECTED#SYNTHETIC (card 13220): a version the patched text names exactly but a piece of the read range holds stays AFFECTED'
 patched_rows() {  # $1 = jq program -> "got#range PATCHED patched#version#want#source", one per row
   local prog="$1" range patched version want src got
   while IFS='#' read -r range patched version want src; do
@@ -638,7 +680,8 @@ done <<< "$PATCHED_OUT"
 # copy the entry verbatim from `gh api repos/<owner>/<repo>/security-advisories` (fetched
 # 2026-10-06) and key on the real reviewed record of that advisory, vendored in
 # fixtures/reviewed/ (provenance in fixtures/README.md). SYNTHETIC rows key on a record in
-# REVIEWED_SYNTH below, each built so that one guard is all that keeps it from reading clean.
+# REVIEWED_SYNTH below, each built so that one guard is all that keeps it from reading clean,
+# except the card 13220 and 13228 records, each one reading of a range left unread, which decide it.
 # The rule is stated once, above reviewed_hit in the callee; this table does not restate it.
 #   fields: ghsa # ecosystem:package # range # patched_versions # version # want # source
 REVIEWED_SYNTH='{
@@ -662,7 +705,22 @@ REVIEWED_SYNTH='{
   "GHSA-syn0-0000-0010": {"ghsa_id": "GHSA-syn0-0000-0010", "type": "reviewed", "withdrawn_at": null,
     "vulnerabilities": [{"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 1.0.0"}]},
   "GHSA-syn0-0000-0011": {"lookup_failed": "the lookup exited non-zero: gh: Not Found (HTTP 404)"},
-  "GHSA-syn0-0000-0012": {"lookup_failed": "the lookup exited non-zero: gh: Resource not accessible by integration (HTTP 403)"}
+  "GHSA-syn0-0000-0012": {"lookup_failed": "the lookup exited non-zero: gh: Resource not accessible by integration (HTTP 403)"},
+  "GHSA-syn0-0000-0013": {"ghsa_id": "GHSA-syn0-0000-0013", "type": "reviewed", "withdrawn_at": null,
+    "vulnerabilities": [{"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 1.0.0, < 1.5.3"},
+                        {"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 2.0.0, < 2.0.5"}]},
+  "GHSA-syn0-0000-0014": {"ghsa_id": "GHSA-syn0-0000-0014", "type": "reviewed", "withdrawn_at": null,
+    "vulnerabilities": [{"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": "> 2.0.0, < 2.3.0"},
+                        {"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": "> 3.0.0, < 3.2.0"}]},
+  "GHSA-syn0-0000-0015": {"ghsa_id": "GHSA-syn0-0000-0015", "type": "reviewed", "withdrawn_at": null,
+    "vulnerabilities": [{"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": "< 6.20.45"},
+                        {"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 7.0.0, < 7.30.7"},
+                        {"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 8.0.0, < 8.83.27"}]},
+  "GHSA-syn0-0000-0016": {"ghsa_id": "GHSA-syn0-0000-0016", "type": "reviewed", "withdrawn_at": null,
+    "vulnerabilities": [{"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 2.0.0, < 3.0.0"}]},
+  "GHSA-syn0-0000-0017": {"ghsa_id": "GHSA-syn0-0000-0017", "type": "reviewed", "withdrawn_at": null,
+    "vulnerabilities": [{"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 1.0.0, < 3.0.0"},
+                        {"package": {"ecosystem": "npm", "name": "p"}, "vulnerable_version_range": ">= 2.0.0, < 4.0.0"}]}
 }'
 REVIEWED_TABLE='GHSA-gv7v-rgg6-548h#composer:laravel/framework#<6.20.45,>=7,<7.30.7,>=8,<8.83.28,>=9,<9.52.17,>=10,<10.48.23,>=11,<11.31.0#6.20.45,7.30.7,8.83.28,9.52.17,10.48.23,11.31.0#8.83.28#clean#laravel GHSA-gv7v-rgg6-548h: at the fix of its own line
 GHSA-gv7v-rgg6-548h#composer:laravel/framework#<6.20.45,>=7,<7.30.7,>=8,<8.83.28,>=9,<9.52.17,>=10,<10.48.23,>=11,<11.31.0#6.20.45,7.30.7,8.83.28,9.52.17,10.48.23,11.31.0#8.84.1#clean#laravel GHSA-gv7v-rgg6-548h: a later minor of a line whose fix shipped
@@ -704,7 +762,15 @@ GHSA-syn0-0000-0006#npm:p#sometime after 1.0#1.0.0#3.0.0#RANGE-UNPARSEABLE#SYNTH
 GHSA-syn0-0000-0007#npm:p#sometime after 1.0#1.0.0#3.0.0#clean#SYNTHETIC: a range of another package in the record does not hold for this one
 GHSA-syn0-0000-0008#npm:p#sometime after 1.0#1.0.0#3.0.0#RANGE-UNPARSEABLE#SYNTHETIC: an advisory whose record was never looked up stays unread
 GHSA-syn0-0000-0009#npm:p#sometime after 1.0#1.0.0#2.0.0-beta.1#RANGE-UNPARSEABLE#SYNTHETIC: a reviewed range that cannot be compared at the version stays unread
-GHSA-syn0-0000-0010#npm:p#sometime after 1.0#1.0.0#3.0.0#AFFECTED#SYNTHETIC: the reviewed range decides, and the patched text (1.0.0, below the version) is not read'
+GHSA-syn0-0000-0010#npm:p#sometime after 1.0#1.0.0#3.0.0#AFFECTED#SYNTHETIC: the reviewed range decides, and the patched text (1.0.0, below the version) is not read
+GHSA-syn0-0000-0013#npm:p#>= 1.0.0 < 1.5.3, >= 2.0.0, < 2.0.5#2.0.5#1.6.0#clean#SYNTHETIC (card 13220 r1 review): two pieces sharing a version leave the range unread, and its reviewed record clears 1.6.0
+GHSA-syn0-0000-0013#npm:p#>= 1.0.0 < 1.5.3, >= 2.0.0, < 2.0.5#NULL#3.0.0#clean#SYNTHETIC (card 13220 r1 review): with no patched text, its reviewed record clears 3.0.0
+GHSA-syn0-0000-0013#npm:p#>= 1.0.0 < 1.5.3, >= 2.0.0, < 2.0.5#2.0.5#2.0.1#AFFECTED#SYNTHETIC (card 13220): its reviewed record holds 2.0.1
+GHSA-syn0-0000-0014#npm:p#> 2.0.0, < 2.3.0, > 3.0.0 < 3.2.0#3.2.0#2.5.0#clean#SYNTHETIC (card 13220 r1 review): two pieces sharing a version leave the range unread, and its reviewed record clears 2.5.0
+GHSA-syn0-0000-0015#npm:p#< 6.20.45, >= 7.0.0 < 7.30.7, >= 8.0.0, < 8.83.27#NULL#11.0.0#clean#SYNTHETIC (card 13220 r1 review): laravel-like, two pieces sharing a version leave the range unread, and its reviewed record clears 11.0.0
+GHSA-syn0-0000-0016#npm:p#>= 1.0.0 < 3.0.0, >= 2.0.0 < 4.0.0#NULL#1.5.0#clean#SYNTHETIC (card 13228): bounded pieces sharing a version leave the range unread, and its reviewed record, the AND reading, clears 1.5.0
+GHSA-syn0-0000-0016#npm:p#>= 1.0.0 < 3.0.0, >= 2.0.0 < 4.0.0#NULL#2.5.0#AFFECTED#SYNTHETIC (card 13228): its reviewed record, the AND reading, holds 2.5.0
+GHSA-syn0-0000-0017#npm:p#>= 1.0.0 < 3.0.0, >= 2.0.0 < 4.0.0#NULL#1.5.0#AFFECTED#SYNTHETIC (card 13228): its reviewed record, the OR reading, holds 1.5.0, a version inside one piece only'
 REVIEWED_MAP="$TMP/reviewed-map.json"
 jq -s --argjson syn "$REVIEWED_SYNTH" 'map({(.ghsa_id): .}) | add + $syn' "$FIX"/reviewed/*.json > "$REVIEWED_MAP" \
   || { fail "reviewed table: could not build the map of reviewed records from fixtures/reviewed"; finish; }
@@ -790,6 +856,17 @@ REV_SLURP='cat >/dev/null; cat "$FIX/reviewed/$1.json";'
 rev_check "$LARAVEL_AT_FIX" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE" "$REV_FAIL")" SOURCE2-RANGE-UNPARSEABLE 'the lookup of its global record failed: the lookup exited non-zero' \
   && ok "a reviewed-record lookup that exits non-zero → RED (SOURCE2-RANGE-UNPARSEABLE, the failed lookup named)" \
   || fail "a failed reviewed-record lookup must red and be named: $REV_OUT"
+# The shipped seam is `gh api`, whose error line ends "(HTTP <code>)". A 404 (no global record)
+# and a 403 (refused) are each named in the detail, card#13220.
+REV_404='echo "gh: Not Found (HTTP 404)" >&2; return 1;'
+REV_403='echo "gh: Resource not accessible by integration (HTTP 403)" >&2; return 1;'
+rev_check "$LARAVEL_AT_FIX" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE" "$REV_404")" SOURCE2-RANGE-UNPARSEABLE 'the lookup exited non-zero: HTTP 404, GitHub has no global record of GHSA-' \
+  && ok "a reviewed-record lookup answering HTTP 404 → RED, the detail naming a missing or unreviewed record" \
+  || fail "a 404 lookup must red and name the missing record: $REV_OUT"
+rev_check "$LARAVEL_AT_FIX" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE" "$REV_403")" SOURCE2-RANGE-UNPARSEABLE 'the lookup exited non-zero: HTTP 403, the token was refused' \
+  && ! has "$REV_OUT" 'HTTP 404, GitHub has no global record' \
+  && ok "a reviewed-record lookup answering HTTP 403 → RED, the detail naming the refusal and not a missing record" \
+  || fail "a 403 lookup must red and name the refusal, not a missing record: $REV_OUT"
 rev_check "$LARAVEL_AT_FIX" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE" "$REV_FAIL_WITH_RECORD")" SOURCE2-RANGE-UNPARSEABLE 'the lookup exited non-zero' \
   && ok "a lookup that prints a valid reviewed record but exits non-zero → RED: the exit status decides, not the payload" \
   || fail "a lookup that exits non-zero must red even when it printed a record: $REV_OUT"
@@ -902,6 +979,46 @@ if [ "$rc" -ne 0 ] && pop_has error_codes SOURCE2-RANGE-UNPARSEABLE \
 else
   fail "follow-redirects 1.15.12 should red on GHSA-8r9p-f939-6h3c with its failed lookup named (rc=$rc, codes='$(pop error_codes)', lookups='$(tr '\n' ' ' < "$TMP/rev_calls")'): $out"
 fi
+# card#10810 — a lockfile entry with NO `version` (the npm arm admits it: `.value.version // ""`; a
+# composer package without one comes through as "") must reach the audit's rule for a version it
+# cannot read: SOURCE2-VERSION-UNCOMPARABLE when the package HAS advisories, nothing when it has none.
+# Two defects stood in the way. Tab is an IFS whitespace character, so a tab-delimited read of the
+# rows collapsed the empty version and read the repo in its slot (npm fetched the advisories of the
+# repository '', composer listed a package that names its repo as UNRESOLVED). And once the rows were
+# read right, the matcher's version parser crashed on "" (SOURCE2-MATCH-FAILED). The legs with a
+# version (follow-redirects 1.15.12 above, the laravel_repo legs) are the controls.
+nover_lock() {  # $1 = dir name -> a repo whose npm lockfile pins follow-redirects with no version
+  local d="$TMP/$1"; mkdir -p "$d"
+  jq -n '{name: "fixture-app", lockfileVersion: 3, requires: true, packages: {"": {name: "fixture-app", version: "0.0.0"}, "node_modules/follow-redirects": {}}}' > "$d/package-lock.json"
+  printf '%s' "$d"
+}
+out="$(run_audit "$(nover_lock nover-10810)" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_11604" "$REV_LOGGED_FAIL")")"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$(pop resolved)" = "1" ] && pop_has error_codes SOURCE2-VERSION-UNCOMPARABLE \
+   && ! pop_has error_codes SOURCE2-MATCH-FAILED && ! pop_has error_codes SOURCE2-FETCH-FAILED \
+   && has "$out" "follow-redirects@ (follow-redirects/follow-redirects) has advisories, and '' cannot be compared"; then
+  ok "an npm entry with no version, on a package WITH advisories → RED as SOURCE2-VERSION-UNCOMPARABLE against follow-redirects/follow-redirects"
+else
+  fail "an npm entry with no version must red as SOURCE2-VERSION-UNCOMPARABLE against follow-redirects/follow-redirects (rc=$rc, codes='$(pop error_codes)', resolved='$(pop resolved)'): $out"
+fi
+# …and on a package with NO advisories it is not a source-2 error at all: an uncomparable version
+# only matters where there is something to compare it against.
+ADV_NONE_FR='case "$1" in follow-redirects/follow-redirects) printf %s "[]";; *) cat "$FIX/advisories/$(printf %s "$1" | tr / @).json";; esac'
+out="$(run_audit "$(nover_lock nover-noadv-10810)" "$(seam "$OSV_CLEAN" "$ADV_NONE_FR" "$REG_11604" "$REV_LOGGED_FAIL")")"; rc=$?
+if [ "$rc" -eq 0 ] && [ "$(pop errors)" = "0" ] && [ "$(pop findings)" = "0" ] && [ "$(pop resolved)" = "1" ]; then
+  ok "an npm entry with no version, on a package with NO advisories → GREEN (resolved, nothing to compare against)"
+else
+  fail "an npm entry with no version and no advisories must be GREEN (rc=$rc, errors='$(pop errors)', codes='$(pop error_codes)', resolved='$(pop resolved)'): $out"
+fi
+NOVERC="$TMP/nover-composer-10810"; mkdir -p "$NOVERC"
+jq -n '{packages: [{name: "laravel/framework", source: {type: "git", url: "https://github.com/laravel/framework.git", reference: "0"}}], "packages-dev": []}' > "$NOVERC/composer.lock"
+out="$(run_audit "$NOVERC" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE")")"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$(pop resolved)" = "1" ] && [ "$(pop unresolved)" = "0" ] \
+   && pop_has error_codes SOURCE2-VERSION-UNCOMPARABLE && ! pop_has error_codes SOURCE2-MATCH-FAILED \
+   && has "$out" "laravel/framework@ (laravel/framework) has advisories, and '' cannot be compared"; then
+  ok "a composer package with no version is RESOLVED to laravel/framework and reds as SOURCE2-VERSION-UNCOMPARABLE"
+else
+  fail "a composer package with no version must resolve to laravel/framework and red as SOURCE2-VERSION-UNCOMPARABLE (rc=$rc, codes='$(pop error_codes)', resolved='$(pop resolved)', unresolved='$(pop unresolved)'): $out"
+fi
 
 # ══ §A THE ACCEPTANCE INPUT — a reviewed way out for one advisory whose range is not read ═══
 # card#11434. follow-redirects GHSA-8r9p-f939-6h3c and GHSA-q3jh-wrc6-jgq8 write the bare range
@@ -992,6 +1109,18 @@ rev_check "$FR_BADID" "$FR_SEAM" ACCEPT-ENTRY-REFUSED 'not a GHSA ID' \
   && ! pop_has accepted GHSA-8r9p-f939-6h3c \
   && ok "an acceptance entry whose advisory is not a GHSA ID → REFUSED, not a silent no-op" \
   || fail "an acceptance entry naming no GHSA ID must be refused (accepted='$(pop accepted)'): $REV_OUT"
+# card#10810: an EMPTY advisory string keeps the refusal's fields in their places. Tab is an IFS
+# whitespace character, so a tab-delimited read of `<n>\t<advisory>\t<why>` collapses the empty
+# advisory and prints the reason where the advisory belongs. The BADID leg above (advisory
+# present) is the control, its line asserted in the same shape.
+has "$REV_OUT" "AUDIT-ERROR[ACCEPT-ENTRY-REFUSED] .github/dependency-audit-accept.json entry 1 (ghsa-8r9p-f939-6h3c ): advisory \"ghsa-8r9p-f939-6h3c \" is not a GHSA ID" \
+  && ok "control: a refused entry with its advisory present names the advisory, then the reason" \
+  || fail "control: the BADID refusal line is not '<n> (<advisory>): <why>': $REV_OUT"
+FR_EMPTYID="$(fr_repo fr-emptyid 1.15.12)"
+accept_file "$FR_EMPTYID" "{\"accepted\": [$(jq -c '.advisory = ""' <<< "$ACC_8R9P"), $ACC_Q3JH]}"
+rev_check "$FR_EMPTYID" "$FR_SEAM" ACCEPT-ENTRY-REFUSED 'AUDIT-ERROR[ACCEPT-ENTRY-REFUSED] .github/dependency-audit-accept.json entry 1 (): advisory "" is not a GHSA ID' \
+  && ok "an acceptance entry whose advisory is EMPTY → REFUSED, with the empty advisory in its own slot and the reason after it" \
+  || fail "an empty-advisory refusal must read 'entry 1 (): advisory \"\" is not a GHSA ID': $REV_OUT"
 FR_BADEXP="$(fr_repo fr-badexpiry 1.15.12)"
 accept_file "$FR_BADEXP" "{\"accepted\": [$(jq -c '.expires = "next month"' <<< "$ACC_8R9P"), $ACC_Q3JH]}"
 rev_check "$FR_BADEXP" "$FR_SEAM" ACCEPT-ENTRY-REFUSED 'expiry "next month" is not a YYYY-MM-DD calendar day' \
@@ -1149,14 +1278,44 @@ out="$(run_audit "$CLEAN" "$(seam "$OSV_FINDING" "$ADV_FIXTURE" "$REG_NONE")")";
 # The ONE site here that is a REGEX and not a membership test: `.*` has to stay per-LINE, which
 # `has` cannot express and bash's `[[ =~ ]]` gets WRONG in the dangerous direction (its `.`
 # matches a newline, so the two halves could be matched on different lines of the report). So
-# the pattern is unchanged and only its INPUT moves — off the herestring (card#7692's MSYS
-# block) and onto a file, which `grep` reads directly with no pipe and no writer to SIGPIPE.
+# the pattern is unchanged and only its INPUT moves — off the herestring (the card#12619 Windows
+# hang) and onto a file, which `grep` reads directly with no pipe and no writer to SIGPIPE.
 printf '%s\n' "$out" > "$TMP/source1.out"
 if [ "$rc" -ne 0 ] && grep -q 'SOURCE1 .*GHSA-glob-al00-0001' "$TMP/source1.out" \
    && [ "$(pop findings)" = "1" ]; then
   ok "a SOURCE 1 finding reds on its own and is counted (source 1 is wired, not decorative)"
 else
   fail "a source-1 finding must red and be counted (rc=$rc): $out"
+fi
+# A source 1 (global-database) finding reaches the bump job's input, not only the log (card#12253,
+# comment 13429 item 1). Its record names no fixed event, so its row says so.
+jq -e 'length == 1 and .[0].source == "1" and .[0].ecosystem == "Packagist" and .[0].package == "some/pkg"
+         and .[0].ghsa == "GHSA-glob-al00-0001" and .[0].patched == "no fixed version in its OSV record"' \
+     <<< "$(aff)" >/dev/null 2>&1 \
+  && ok "…and affected carries it as a source 1 row, naming no fix where its record names none" \
+  || fail "the source-1 finding should be exported as one source 1 row, got '$(aff)'"
+# THE GLOBAL-ONLY CONTROL: zod 4.4.3, GHSA-mrhx-c7xc-m3w5, an advisory only the global database
+# carries (no repository advisory). The export must EQUAL fixtures/affected/zod-source1.json, the
+# file advisory-bump.selftest.py feeds its plan — so the two ends of the hop read one row.
+OSV_ZOD='cat "$FIX/osv/zod-global-only.json";'
+out="$(run_audit "$CLEAN" "$(seam "$OSV_ZOD" "$ADV_FIXTURE" "$REG_NONE")")"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$(pop findings)" = "1" ] && [ "$(pop errors)" = "0" ] \
+   && jq -e --slurpfile want "$FIX/affected/zod-source1.json" '. == $want[0]' <<< "$(aff)" >/dev/null 2>&1; then
+  ok "a global-only advisory (zod 4.4.3) → RED (findings=1, errors=0), exported as fixtures/affected/zod-source1.json, fix 4.6.6, for the bump job"
+else
+  fail "zod 4.4.3 should red on its one finding and export exactly fixtures/affected/zod-source1.json (rc=$rc, findings='$(pop findings)', errors='$(pop errors)', affected='$(aff)'): $out"
+fi
+OSV_RANGES='cat "$FIX/osv/synthetic-ranges.json";'
+out="$(run_audit "$CLEAN" "$(seam "$OSV_RANGES" "$ADV_FIXTURE" "$REG_NONE")")"; rc=$?
+if [ "$rc" -ne 0 ] && [ "$(pop findings)" = "2" ] && [ "$(pop errors)" = "0" ] \
+   && jq -e 'length == 2
+             and .[0].ghsa == "GHSA-synt-h000-0001" and .[0].range == "< 1.2.3 || >= 2.0.0, < 2.0.5"
+             and .[0].patched == "patched in \"1.2.3, 2.0.5\"" and .[0].severity == "moderate"
+             and .[1].ghsa == "GHSA-synt-h000-0002" and .[1].range == "<= 3.0.0"
+             and .[1].patched == "no fixed version in its OSV record"' <<< "$(aff)" >/dev/null 2>&1; then
+  ok "a source 1 record's fixes: every fixed event of THIS package's SEMVER/ECOSYSTEM ranges; another package's range, a GIT range and a last_affected bound name no fix"
+else
+  fail "the synthetic multi-range record should export two rows, fixes 1.2.3 and 2.0.5 only on the first (rc=$rc, affected='$(aff)'): $out"
 fi
 
 # a seam that reads stdin must not eat the loop driving it — a truncated population is the
@@ -1238,11 +1397,42 @@ range_mutant "one-interval rule removed" \
   's/if (\$l | length) > 1 or (\$u | length) > 1 then null/if false then null/' \
   1 "SYNTHETIC: GitHub docs example of the refused multi-range field (AND would read clean)" clean
 range_mutant "empty-interval rule removed" \
-  's/\$c > 0 or (\$c == 0 and (\$l\[0\]\.op == ">" or \$u\[0\]\.op == "<"))/false/' \
+  's/\$c > 0 or (\$c == 0 and (\$l\.op == ">" or \$u\.op == "<"))/false/' \
   1 "SYNTHETIC: an empty interval is a misread, never \"no version\"" clean
-range_mutant "comma-OR branch removed" \
-  's/elif (\$pieces | all(interval | bounded)) then/elif false then/' \
-  1 "ws GHSA-96hv-2xvq-fx4p (comma = OR) THE FAIL-OPEN CONTROL" RANGE-UNPARSEABLE
+for src in "ws GHSA-96hv-2xvq-fx4p (comma = OR) THE FAIL-OPEN CONTROL" \
+           "ws GHSA-37g9-w4hg-h9qr (card 13220: comma = OR, no two pieces share a version)"; do
+  range_mutant "comma-OR rule removed" \
+    's/| apart(\$iv\[\$i\]; \$iv\[\$j\]) \] | all$/| false ] | all/' \
+    1 "$src" RANGE-UNPARSEABLE
+done
+# The rule card#13228 removed: OR wherever every piece is a bounded interval, apart or not. Under
+# it bounded pieces that overlap are read, skip their reviewed record, and read AFFECTED where
+# the AND reading is clean.
+BOUNDED_OR_BACK='s/^\( *\)elif (\$pieces | map(interval)) as \$iv$/\1elif ($pieces | all(interval | . != null and .lo != null and .hi != null)) then [ $pieces[] | interval_of($keep) ]\n&/'
+range_mutant "comma-OR for every-piece-bounded fields put back" \
+  "$BOUNDED_OR_BACK" \
+  1 "SYNTHETIC (card 13228): bounded pieces that share a version have a second reading, AND (AND reads 1.5 clean, OR affected)" AFFECTED
+range_mutant "comma-OR for every-piece-bounded fields put back" \
+  "$BOUNDED_OR_BACK" \
+  1 "SYNTHETIC (card 13228): bounded pieces sharing a version leave the range unread, and its reviewed record, the AND reading, clears 1.5.0" AFFECTED reviewed_rows
+range_mutant "comma-OR read for any mix (the apart test removed)" \
+  's/| apart(\$iv\[\$i\]; \$iv\[\$j\]) \] | all$/| true ] | all/' \
+  1 "SYNTHETIC (card 13220): two pieces that share a version have a second reading, AND (AND reads 2.5 clean, OR affected)" AFFECTED
+range_mutant "comma-OR tests neighbours only" \
+  's/range(\$i + 1; \$iv | length) as \$j$/(\$i + 1 | select(. < (\$iv | length))) as \$j/' \
+  1 "SYNTHETIC (card 13220): two pieces that are not neighbours share a version (ANDed they read 0.7 clean, OR affected)" AFFECTED
+# The rule as first written (card#13220 r1): OR wherever SOME two pieces are apart, so the pieces
+# ANDed describe no version. Under it each field below is read, skips its reviewed record, and
+# reads AFFECTED where the record clears it.
+for src in \
+  "SYNTHETIC (card 13220 r1 review): two pieces sharing a version leave the range unread, and its reviewed record clears 1.6.0" \
+  "SYNTHETIC (card 13220 r1 review): with no patched text, its reviewed record clears 3.0.0" \
+  "SYNTHETIC (card 13220 r1 review): two pieces sharing a version leave the range unread, and its reviewed record clears 2.5.0" \
+  "SYNTHETIC (card 13220 r1 review): laravel-like, two pieces sharing a version leave the range unread, and its reviewed record clears 11.0.0"; do
+  range_mutant "comma-OR wherever some two pieces are apart" \
+    's/| apart(\$iv\[\$i\]; \$iv\[\$j\]) \] | all$/| apart($iv[$i]; $iv[$j]) ] | any/' \
+    1 "$src" AFFECTED reviewed_rows
+done
 range_mutant "unparseable-bound guard in terms removed" \
   's/^\( *\)| if any(\.b == null) then null else \. end$/\1/' \
   1 "SYNTHETIC: unparseable bound" clean
@@ -1282,7 +1472,7 @@ range_mutant "three-valued OR in in_range replaced by plain any" \
   's/^\( *def any3:\).*/\1 any(. == true);/' \
   1 "SYNTHETIC: two pre-release tags on one core cannot be ordered" clean
 range_mutant "undecidable-order interval rule removed" \
-  's/and vcmp(\$l\[0\]\.b; \$u\[0\]\.b) == null$/and false/' \
+  's/and empty_pair(\$l\[0\]; \$u\[0\]) == null$/and false/' \
   1 "SYNTHETIC: bounds whose pre-release tags cannot be ordered, so emptiness is undecidable, and a version below them is not decided" clean
 range_mutant ">= admitting the pre-releases of its own core removed" \
   's/^ *or (\$ver\.pre and (\$bound\.pre | not) and vcmp(\$ver | \.pre = false; \$bound) == 0)$//' \
@@ -1627,6 +1817,148 @@ if block_mutant "the SOURCE2-RANGE-UNPARSEABLE detail not made one line" \
     && ok "mutant control: with the SOURCE2-RANGE-UNPARSEABLE detail not made one line, the multi-line upstream range forges a '  FORGED-LINE' line into the error output" \
     || fail "with the SOURCE2-RANGE-UNPARSEABLE detail not made one line the range should have forged a line: $REV_OUT"
 fi
+
+# ══ §B THE BUMP JOB — which leg bumps, and what the bump steps read (card#12253) ════════════
+# The gate is the shipped `dep-bump-gate` block, run verbatim; the steps after it are a static
+# read of the yml, since they run the bump tool (advisory-bump.selftest.py owns the tool).
+GATE_BLOCK="$(extract "$CALLEE" dep-bump-gate)"
+[ -n "$GATE_BLOCK" ] || { fail "extraction of 'dep-bump-gate' returned EMPTY — the bump job's markers moved"; finish; }
+run_gate() {  # $1=bump_prs $2=leg $3=ref [$4=block] -> output; the decision lands in $TMP/gate_output
+  : > "$TMP/gate_output"
+  GITHUB_OUTPUT="$TMP/gate_output" BUMP_PRS="$1" BUMP_LEG="$2" AUDIT_REF="$3" bash -c "set -euo pipefail
+${4:-$GATE_BLOCK}" 2>&1
+}
+gate_out() { sed -n "s/^$1=//p" "$TMP/gate_output"; }
+out="$(run_gate on integration dev)"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(gate_out run)" = "true" ] && [ "$(gate_out base)" = "dev" ] \
+  && ok "gate: bump PRs on (the default) + the integration leg → run=true, base=dev" \
+  || fail "the integration leg should bump against its own ref (rc=$rc, run='$(gate_out run)', base='$(gate_out base)'): $out"
+# THE RELEASE-REF CONTROL: the release leg is audited and never bumped — no `run=true`, and no
+# `base` for a later step to take as a bump's target.
+out="$(run_gate on release main)"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(gate_out run)" = "false" ] && [ -z "$(gate_out base)" ] && has "$out" 'never bumped' \
+  && ok "gate: the release leg (main) → run=false and NO base — the release ref is never a bump's target" \
+  || fail "the release leg must never bump (rc=$rc, run='$(gate_out run)', base='$(gate_out base)'): $out"
+out="$(run_gate off integration dev)"; rc=$?
+[ "$rc" -eq 0 ] && [ "$(gate_out run)" = "false" ] && has "$out" 'BUMP PRS: OFF' \
+  && ok "gate: the caller's recorded \`bump_prs: off\` → OFF, named, green — a switch, not a failure" \
+  || fail "bump_prs off should be a named, green OFF (rc=$rc): $out"
+out="$(run_gate on '' dev)"; rc=$?
+[ "$rc" -ne 0 ] && has "$out" 'setup missing' && has "$out" '`leg`' && [ -z "$(gate_out run)" ] \
+  && has "$out" "the coord plugin's docs/DEPENDENCY-AUDIT.md § Bump PRs" \
+  && ok "gate: bump PRs on and NO leg named → RED, 'setup missing', naming \`leg\` — distinct from OFF" \
+  || fail "a caller that names no leg must red as setup missing (rc=$rc, run='$(gate_out run)'): $out"
+for bad in "bump_prs=yes|on-but-misspelled" "leg=Integration|a leg nobody declared"; do
+  label="${bad#*|}"; kv="${bad%%|*}"
+  case "$kv" in bump_prs=*) out="$(run_gate "${kv#*=}" integration dev)" ;; *) out="$(run_gate on "${kv#*=}" dev)" ;; esac; rc=$?
+  [ "$rc" -ne 0 ] && has "$out" 'BUMP-GATE: RED' && [ -z "$(gate_out run)" ] \
+    && ok "gate: $kv ($label) → RED, never a guess" \
+    || fail "gate should red on $kv (rc=$rc): $out"
+done
+# The release-ref control can fail: a gate whose release arm bumps is caught by the leg above.
+MUTANT_GATE="${GATE_BLOCK/printf \'run=false\\n\' >> \"\$out\" ;;/printf \'run=true\\nbase=%s\\n\' \"\$AUDIT_REF\" >> \"\$out\" ;;}"
+if [ "$MUTANT_GATE" = "$GATE_BLOCK" ]; then
+  fail "the release-arm mutant did not apply — the gate's release arm changed shape; re-point the mutant"
+else
+  out="$(run_gate on release main "$MUTANT_GATE")"; rc=$?
+  [ "$(gate_out run)" = "true" ] && [ "$(gate_out base)" = "main" ] \
+    && ok "mutant control: a gate whose release arm bumps sets base=main — the release-leg assertion above would red on it" \
+    || fail "the release-arm mutant should have set run=true base=main (rc=$rc, run='$(gate_out run)'): $out"
+fi
+BUMP_JOB="$(sed -n '/^  bump:$/,$p' "$CALLEE")"
+[ -n "$BUMP_JOB" ] || { fail "no \`bump:\` job found in the shipped callee"; finish; }
+# Every step after the gate runs only on the gate's run=true; the checkout takes the gate's base.
+gated="$(awk '/^      - /{ if (step) print step "|" cond; step = $0; cond = "none"; next }
+             /^        if:/{ cond = $0 } END { if (step) print step "|" cond }' <<< "$BUMP_JOB" | tail -n +2)"
+ungated="$(grep -v "steps.gate.outputs.run == 'true'" <<< "$gated" || true)"
+[ -n "$gated" ] && [ -z "$ungated" ] \
+  && ok "bump job: every step after the gate is conditioned on the gate's run=true ($(grep -c . <<< "$gated") steps)" \
+  || fail "a bump-job step runs without the gate's run=true: ${ungated:-no steps found}"
+has "$BUMP_JOB" 'ref: ${{ steps.gate.outputs.base }}' \
+  && ok "bump job: the checkout takes the gate's base, the only ref the gate names on the integration leg" \
+  || fail "the bump job's checkout must take steps.gate.outputs.base"
+has "$BUMP_JOB" 'AFFECTED: ${{ needs.audit.outputs.affected }}' && has "$BUMP_JOB" 'POPULATION: ${{ needs.audit.outputs.population }}' \
+   && has "$BUMP_JOB" '--findings-env AFFECTED --population-env POPULATION' \
+   && has "$(cat "$CALLEE")" 'affected: ${{ steps.audit.outputs.affected }}' \
+   && has "$(extract "$CALLEE" dep-audit-report)" "printf 'affected=%s" \
+  && ok "bump job: the plan step reads needs.audit.outputs.affected and .population, the outputs the report block writes" \
+  || fail "the bump job's plan step must read the audit's affected and population outputs"
+# ── THE BUMP APP (operator ruling opq-1792926707-7f44): the job pushes and opens PRs as a GitHub
+# App's bot, and the secrets check is the shipped `dep-bump-app-secrets` block, run verbatim.
+APP_BLOCK="$(extract "$CALLEE" dep-bump-app-secrets)"
+[ -n "$APP_BLOCK" ] || { fail "extraction of 'dep-bump-app-secrets' returned EMPTY — the bump job's markers moved"; finish; }
+run_app_check() {  # $1=HAS_CLIENT_ID $2=HAS_PRIVATE_KEY [$3=block] -> output
+  HAS_CLIENT_ID="$1" HAS_PRIVATE_KEY="$2" bash -c "set -euo pipefail
+${3:-$APP_BLOCK}" 2>&1
+}
+out="$(run_app_check true true)"; rc=$?
+[ "$rc" -eq 0 ] && ! has "$out" 'RED' \
+  && ok "app secrets: both set → passes" \
+  || fail "both bump-app secrets set should pass (rc=$rc): $out"
+# `-` stands for an EMPTY value (a `secrets.X != ''` that GitHub never rendered): a blank first
+# field would read as a blank row, and the count below catches a row the reader folds away.
+app_cases=0
+while IFS='|' read -r cid key named unnamed; do
+  [ -n "$cid" ] || continue
+  app_cases=$((app_cases + 1))
+  [ "$cid" = "-" ] && cid=""; [ "$key" = "-" ] && key=""
+  out="$(run_app_check "$cid" "$key")"; rc=$?
+  [ "$rc" -ne 0 ] && has "$out" 'BUMP-APP: RED — setup missing' && has "$out" "$named" \
+     && has "$out" "the coord plugin's docs/DEPENDENCY-AUDIT.md § \"The bump app\"" && { [ -z "$unnamed" ] || ! has "$out" "$unnamed"; } \
+    && ok "app secrets: client-id=$cid private-key=$key → RED naming$named and the setup section" \
+    || fail "missing bump-app secret(s) must red naming$named (rc=$rc): $out"
+done <<CASES
+false|true| ADVISORY_BUMP_APP_CLIENT_ID|ADVISORY_BUMP_APP_PRIVATE_KEY
+true|false| ADVISORY_BUMP_APP_PRIVATE_KEY|ADVISORY_BUMP_APP_CLIENT_ID
+false|false| ADVISORY_BUMP_APP_CLIENT_ID ADVISORY_BUMP_APP_PRIVATE_KEY|
+-|-| ADVISORY_BUMP_APP_CLIENT_ID ADVISORY_BUMP_APP_PRIVATE_KEY|
+CASES
+[ "$app_cases" -eq 4 ] \
+  && ok "app-secrets table: all 4 missing-secret cases ran" \
+  || fail "app-secrets table ran $app_cases of 4 cases — rows are being dropped by the reader"
+MUTANT_APP="${APP_BLOCK/return 1/return 0}"
+if [ "$MUTANT_APP" = "$APP_BLOCK" ]; then
+  fail "the app-secrets mutant did not apply — the block's failure arm changed shape; re-point the mutant"
+else
+  out="$(run_app_check false false "$MUTANT_APP")"; rc=$?
+  [ "$rc" -eq 0 ] \
+    && ok "mutant control: an app check whose missing arm returns 0 goes green on no secrets — the legs above would red on it" \
+    || fail "the app-secrets mutant should have passed with no secrets (rc=$rc): $out"
+fi
+# NO PERSONAL-TOKEN PATH. The only credentials the bump job can push or open with are the app's:
+# no `ADVISORY_BUMP_TOKEN` (the personal-token secret of agent-webhook-bridge's reference job; this
+# template never read it) anywhere in either file, the callee declares exactly the two app secrets,
+# every bump-job `secrets.` read names one of them (twice each: the check step and the token step
+# as shipped — a COUNT, so it does not see which step reads), the
+# `ADVISORY_BUMP_APP_TOKEN` the identity and open steps get is the token step's output, and the
+# token step is actions/create-github-app-token at a full SHA. No step names the workflow token,
+# and every checkout sets persist-credentials: false. What this does NOT see: a token reaching a
+# step by another route (an `env.` or `vars.` value, a file) — the secrets count catches a secret,
+# nothing here catches those.
+CALLEE_TEXT="$(cat "$CALLEE")"
+CALLER_TEXT="$(cat "$CALLER")"
+declared="$(sed -n '/^    secrets:$/,/^    outputs:$/p' "$CALLEE" | sed -n 's/^      \([A-Z_][A-Z0-9_]*\):$/\1/p' | sort | tr '\n' ' ')"
+bump_secret_reads="$(grep -o 'secrets\.[A-Za-z_][A-Za-z0-9_]*' <<< "$BUMP_JOB" | sort | uniq -c | awk '{print $2 "=" $1}' | tr '\n' ' ')"
+token_reads="$(grep -c 'ADVISORY_BUMP_APP_TOKEN: \${{ steps.app.outputs.token }}' <<< "$BUMP_JOB" || true)"
+pin_ok=false
+grep -Eq '^        uses: actions/create-github-app-token@[0-9a-f]{40}  # v' <<< "$BUMP_JOB" && pin_ok=true
+! has "$CALLEE_TEXT" 'ADVISORY_BUMP_TOKEN' && ! has "$CALLER_TEXT" 'ADVISORY_BUMP_TOKEN' \
+   && [ "$declared" = "ADVISORY_BUMP_APP_CLIENT_ID ADVISORY_BUMP_APP_PRIVATE_KEY " ] \
+   && [ "$bump_secret_reads" = "secrets.ADVISORY_BUMP_APP_CLIENT_ID=2 secrets.ADVISORY_BUMP_APP_PRIVATE_KEY=2 " ] \
+   && [ "$token_reads" = "2" ] && [ "$(grep -c 'steps\.app\.outputs\.token' <<< "$BUMP_JOB")" = "2" ] \
+   && [ "$pin_ok" = true ] \
+   && ! has "$BUMP_JOB" 'GITHUB_TOKEN }}' && ! has "$BUMP_JOB" 'github.token' \
+   && [ "$(grep -c '^ *persist-credentials: false' <<< "$BUMP_JOB")" = "$(grep -c 'uses: actions/checkout@' <<< "$BUMP_JOB")" ] \
+  && ok "bump job: no personal-token path — no ADVISORY_BUMP_TOKEN in callee or caller, the callee declares only the two app secrets, the bump job reads no other secret and each of those twice (the check and token steps as shipped), the two ADVISORY_BUMP_APP_TOKEN reads are the token step's output, the token action is SHA-pinned, no step names the workflow token, and every checkout sets persist-credentials: false (checkout itself still fetches with its default token)" \
+  || fail "the bump job must carry no personal-token path: ADVISORY_BUMP_TOKEN present (callee/caller: $(has "$CALLEE_TEXT" ADVISORY_BUMP_TOKEN && echo yes || echo no)/$(has "$CALLER_TEXT" ADVISORY_BUMP_TOKEN && echo yes || echo no)), declared secrets '$declared', bump-job secret reads '$bump_secret_reads', app-token reads '$token_reads', token action SHA-pinned '$pin_ok'; and no workflow-token step, persist-credentials: false on every checkout"
+has "$CALLER_TEXT" 'leg: ${{ matrix.leg }}' && has "$CALLER_TEXT" "bump_prs: 'on'" \
+   && has "$CALLER_TEXT" 'ADVISORY_BUMP_APP_CLIENT_ID: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID }}' \
+   && has "$CALLER_TEXT" 'ADVISORY_BUMP_APP_PRIVATE_KEY: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY }}' \
+   && [ "$(grep -c 'secrets\.' "$CALLER")" = "2" ] \
+   && [ "$(grep -c '^ *leg: release$' "$CALLER")" = "1" ] && [ "$(grep -c '^ *leg: integration$' "$CALLER")" = "1" ] \
+   && ! has "$CALLER_TEXT" 'secrets: inherit' \
+  && ok "caller: names one release leg and one integration leg, passes leg + bump_prs 'on', and hands over the two app secrets by name and nothing else" \
+  || fail "the caller must name each leg, pass leg and bump_prs, and pass ADVISORY_BUMP_APP_CLIENT_ID and ADVISORY_BUMP_APP_PRIVATE_KEY by name, and no other secret (never inherit)"
 
 # ══ §R THE REPORTING JOB — a green over nothing must be unreachable from the caller ══════
 run_report() {  # $1=needs.audit.result  $2=population
