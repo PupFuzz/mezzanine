@@ -88,7 +88,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # of any change to either owes a glance at the other.
 #
 # ⚠ THE PIN COLUMN IS A PROVENANCE STRING, NOT ALWAYS A BARE COMMIT. The mover rows were vendored
-# from a commit and name it. The `pr-body-lint` and `dependency-audit` rows name BOTH the plugin
+# from a commit and name it. The `pr-body-lint`, `dependency-audit` and `dl-traceability` rows name BOTH the plugin
 # version and the marketplace commit, because those answer different questions: the version is how a reader says
 # which release this install runs, the commit is what `git show <commit>:<upstream path>` needs to
 # reproduce the bytes. Each of those files' own header carries the same pair plus the WHOLE-FILE
@@ -104,6 +104,8 @@ MANIFEST=(
   ".github/workflows/dependency-audit.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|71b68902619fe84a14990a124a1af335f5afd0de41f348d20f6f9d3d10054239|#"
   ".github/workflows/dependency-ref-matrix.yml|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|1a867e8435290a5d0f1d385c9501e09d65d4a4e841fb61b1951e6eae57d29705|#"
   "bin/dependency-audit.selftest.sh|coord 0.66.0 @ 70fd3207c96f7240f7368c93de277970ac39598e (hand re-vendor, framework card#11791)|2c82aab9280da78d93fc8423ba5050915e067edd42b9104eef316c60be2a4241|#"
+  ".github/workflows/dl-traceability.yml|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|d64c7fc79f76eda5cfaf671b44bfacbb2647cc5e491f06c303c4c5aed3956e3d|#"
+  "bin/dl-traceability.selftest.sh|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|a52a3d64e31d897a8c5d1da3bf68d0762a92cdb2960079fd60a5f59c8aaebb4a|#"
   "server/public/js/vendor/three/three.module.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|104f56145899722094556490d787aae0617cc2fc3382f31df02d724ea1aee341|//"
   "server/public/js/vendor/three/three.core.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|613e370f76638fdef83926642bf256dc9615684922de1ce1f63a8583e5d78578|//"
   "server/public/js/vendor/three/examples/jsm/loaders/GLTFLoader.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|532ac726e120039acbcd6cf54328c57acbf7b438176afaa6951257126d11bff1|//"
