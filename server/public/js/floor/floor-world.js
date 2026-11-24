@@ -145,9 +145,9 @@ const cmU = (cm) => cm / SCALE / UNIT;
  * corner shows through the open doors. A fitting's measure across is fitted as the width is (`door.w` over `CAB.w`),
  * up as the height is (`door.h` over `CAB.h`), and back at the door view's scale, as `drawCabInterior()` places it.
  * `room` is its box (min corner and size, as a wall's), `kick` the kick plates' height up each side wall, `rails` and
- * `posts` the handrails' bars and the posts they stand off their walls on (boxes; the bar square in section at its
- * height), and `light` the ceiling light's panel (`x`, `z` its min corner, `w`, `d`) on the ceiling. Every rider's cab
- * spot lies on its floor (`floor-world-probe.mjs`'s `cab` leg).
+ * `posts` the handrails' bars and the posts they stand off their walls on — the two side walls' first, then the rear
+ * wall's (boxes; the bar square in section at its height), and `light` the ceiling light's panel (`x`, `z` its min
+ * corner, `w`, `d`) on the ceiling. Every rider's cab spot lies on its floor (`floor-world-probe.mjs`'s `cab` leg).
  */
 function cabRoom(door, z) {
     const [across, up] = [door.w / CAB.w, door.h / CAB.h];
@@ -159,12 +159,22 @@ function cabRoom(door, z) {
     const y = rail.y * up - s / 2;
     // Each side wall's inner face, and the way into the room from it.
     const walls = [[room.x, 1], [room.x + w, -1]];
+    // The rear wall's rail: `rail.end` (fitted across) in from each side wall, `rail.off` (back, at the door view's scale)
+    // in front of the rear wall.
+    const [rearEnd, rearOff] = [rail.end * across, cmU(rail.off)];
+    const rearPosts = [room.x + rearEnd, room.x + w - rearEnd];
 
     return Object.freeze({
         room,
         kick: kick * up,
-        rails: Object.freeze(walls.map(([wall, into]) => box(wall + into * off - s / 2, y, room.z + end, s, s, d - 2 * end))),
-        posts: Object.freeze(walls.flatMap(([wall, into]) => [room.z + end, z - end].map((at) => box(Math.min(wall, wall + into * off), y, at - s / 2, off, s, s)))),
+        rails: Object.freeze([
+            ...walls.map(([wall, into]) => box(wall + into * off - s / 2, y, room.z + end, s, s, d - 2 * end)),
+            box(rearPosts[0], y, room.z + rearOff - s / 2, rearPosts[1] - rearPosts[0], s, s),
+        ]),
+        posts: Object.freeze([
+            ...walls.flatMap(([wall, into]) => [room.z + end, z - end].map((at) => box(Math.min(wall, wall + into * off), y, at - s / 2, off, s, s))),
+            ...rearPosts.map((at) => box(at - s / 2, y, room.z, s, s, rearOff)),
+        ]),
         light: Object.freeze({ x: door.x + (w - light.w * across) / 2, z: room.z + (d - cmU(light.d)) / 2, w: light.w * across, d: cmU(light.d) }),
     });
 }

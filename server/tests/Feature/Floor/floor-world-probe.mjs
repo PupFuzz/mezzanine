@@ -649,7 +649,13 @@ for (const { run, i, scene } of scenes) {
         }
 
         // Each bar inside the room, its centre `off` from its own wall at the rail's height; each post from a wall to a bar.
-        cab.rails.forEach((b, k) => {
+        const [sideRails, rearRail] = [cab.rails.slice(0, 2), cab.rails[2]];
+
+        if (cab.rails.length !== 3) {
+            legs.cab.push(`${at} the cab has ${cab.rails.length} handrails, not one on each side wall and one on the rear wall`);
+        }
+
+        sideRails.forEach((b, k) => {
             const wall = k === 0 ? r.x : r.x + r.w;
 
             if (!within(b, r) || !near(Math.abs(b.x + b.w / 2 - wall), CAB_FITTINGS.rail.off * across) || !near(b.y + b.h / 2, CAB_FITTINGS.rail.y * up) || !near(b.d, r.d - 2 * cm(CAB_FITTINGS.rail.end))) {
@@ -657,8 +663,18 @@ for (const { run, i, scene } of scenes) {
             }
         });
 
-        if (cab.posts.length !== 4 || cab.posts.some((b) => !within(b, r) || !(near(b.x, r.x) || near(b.x + b.w, r.x + r.w)))) {
-            legs.cab.push(`${at} the handrails' posts are ${JSON.stringify(cab.posts)} — not four inside the room, each standing on a side wall`);
+        // The rear wall's bar: inside the room, its centre `off` in front of the rear wall at the rail's height, the wall's
+        // width but `end` (fitted across) at each end.
+        if (rearRail !== undefined && (!within(rearRail, r) || !near(rearRail.z + rearRail.d / 2 - r.z, cm(CAB_FITTINGS.rail.off)) || !near(rearRail.y + rearRail.h / 2, CAB_FITTINGS.rail.y * up)
+            || !near(rearRail.x, r.x + CAB_FITTINGS.rail.end * across) || !near(rearRail.w, r.w - 2 * CAB_FITTINGS.rail.end * across))) {
+            legs.cab.push(`${at} the rear handrail stands at ${JSON.stringify(rearRail)} — not inside the room, ${CAB_FITTINGS.rail.off} cm off the rear wall at ${CAB_FITTINGS.rail.y} cm (fitted), the wall's width but ${CAB_FITTINGS.rail.end} cm at each end`);
+        }
+
+        const [sidePosts, rearPosts] = [cab.posts.slice(0, 4), cab.posts.slice(4)];
+
+        if (cab.posts.length !== 6 || sidePosts.some((b) => !within(b, r) || !(near(b.x, r.x) || near(b.x + b.w, r.x + r.w)))
+            || rearPosts.some((b) => !within(b, r) || !near(b.z, r.z))) {
+            legs.cab.push(`${at} the handrails' posts are ${JSON.stringify(cab.posts)} — not six inside the room, four standing on a side wall and two on the rear wall`);
         }
 
         const L = cab.light;

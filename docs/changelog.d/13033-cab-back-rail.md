@@ -1,0 +1,1 @@
+- **card#13033** — **The elevator cab has a handrail on its back wall.** Looking into the cab through the open doors — on the 2-D floor, in the lobby and on the 3-D floor — a handrail now runs across the back wall at the same height as the side walls' rails, standing off the wall on a post at each end, in the same colours as the side rails.

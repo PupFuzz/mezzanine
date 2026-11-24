@@ -340,16 +340,17 @@ export const CAB = Object.freeze({ w: 200, d: 140, h: 230, eye: 155, back: 120, 
 /**
  * THE CAB SEEN FROM THE LANDING (card#12052's band cab; § 12's *Cab interior*): the eye `view` cm in front of the cab's open
  * front, at `CAB.eye`'s height, the frame that open front and the far wall the cab's rear one, `CAB.d` behind it — the lens
- * `drawCabInterior()` is handed for the room seen behind the floor's leaves.
+ * `drawCabInterior()` is handed for the room seen behind the floor's leaves. `rear` marks that far wall as the cab's rear
+ * wall, which carries the back handrail; the rider's lens (`CAB`) faces the doors' wall, which carries none.
  */
-export const LANDING = Object.freeze({ view: 230, back: 230 + CAB.d });
+export const LANDING = Object.freeze({ view: 230, back: 230 + CAB.d, rear: true });
 
 /**
  * WHAT STANDS IN THE CAB's ROOM (§ 12's *Cab interior*), in centimetres: the kick plate along each side wall's foot
- * (`kick` high); the handrail along each side wall, its bar `rail.h` tall centred `rail.y` up, standing `rail.off` off the
- * wall on a post at each end, and running the wall's length but `rail.end` at each end; and the ceiling's light, a panel
- * `light.w` across and `light.d` deep in the middle of the ceiling. `drawCabInterior()` draws them, and the 3-D floor's
- * cab stands them (`floor/floor-world.js`'s band `cab`).
+ * (`kick` high); the handrail along each side wall and along the rear wall, its bar `rail.h` tall centred `rail.y` up,
+ * standing `rail.off` off its wall on a post at each end, and running the wall's length but `rail.end` at each end; and
+ * the ceiling's light, a panel `light.w` across and `light.d` deep in the middle of the ceiling. `drawCabInterior()` draws
+ * them, and the 3-D floor's cab stands them (`floor/floor-world.js`'s band `cab`).
  */
 export const CAB_FITTINGS = Object.freeze({
     kick: 10,
@@ -370,9 +371,10 @@ export const CAB_SHADE = Object.freeze({ side: 0.32, floor: 0.4, ceiling: 0.3 })
  * `box` (`{x, y, w, h}`, the frame — the room's cross-section where `lens` cuts it — in `parent`'s units) — the ceiling and
  * its light, the floor and its tiles, the two side walls and their handrails, and the far wall, each surface shaded so the
  * far end reads deeper. `lens` is the eye it is seen from (`{view, back}`: the eye's distance from the frame and from the
- * far wall): the rider's, `CAB`, by default, or the landing's (`LANDING`). Only what lies between the frame and the far
- * wall is drawn — a handrail or the ceiling's light behind the frame is out of view. It draws no door and no leaves, and
- * lays nothing out: the caller places those on the far wall it answers.
+ * far wall; `rear` when that far wall is the cab's rear one, which then carries its handrail): the rider's, `CAB`, by
+ * default, or the landing's (`LANDING`). Only what lies between the frame and the far wall is drawn — a handrail or the
+ * ceiling's light behind the frame is out of view. It draws no door and no leaves, and lays nothing out: the caller places
+ * those on the far wall it answers.
  *
  * ⛔ ITS COLOURS ARE THE ELEVATOR PALETTE's CARRIERS, NEVER AN ARGUMENT OR AN INLINE COLOUR. Every surface is painted by
  * its class in `STYLE`, from `--cab-frame` / `--cab-lamp` (which `cabTheme()` sets on an ancestor from the house
@@ -383,7 +385,7 @@ export const CAB_SHADE = Object.freeze({ side: 0.32, floor: 0.4, ceiling: 0.3 })
  * @param {Element} parent
  * @param {{x: number, y: number, w: number, h: number}} box
  * @param {string} [id]
- * @param {{view: number, back: number}} [lens]
+ * @param {{view: number, back: number, rear?: boolean}} [lens]
  * @returns {{back: {x: number, y: number, w: number, h: number}}} the far wall, in `parent`'s units
  */
 export function drawCabInterior(parent, box, id = 'cab', lens = CAB) {
@@ -461,6 +463,21 @@ export function drawCabInterior(parent, box, id = 'cab', lens = CAB) {
     // end, standing off the wall on a post at each end — the part of it in view, its bar thinning with depth as the room does.
     const { kick, rail: bar, light } = CAB_FITTINGS;
     const [near, far] = [Math.max(0, Zof(CAB.d - bar.end)), Zof(bar.end)];
+
+    // The rear wall's handrail, when the far wall is the rear one: across the wall but `end` at each end, `off` in front of
+    // it, on a post at each end — drawn before the side rails, which stand nearer the eye.
+    if (lens.rear) {
+        const [head, foot, Z] = [bar.y + bar.h / 2, bar.y - bar.h / 2, D - bar.off];
+        const [x0, x1] = [l + bar.end, r - bar.end];
+        for (const X of [x0, x1]) {
+            const [p, q] = [at(X, bar.y, D), at(X, bar.y, Z)];
+            node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-rail-post' }, g);
+        }
+        face('cab-rail', pts(at(x0, head, Z), at(x1, head, Z), at(x1, foot, Z), at(x0, foot, Z)));
+        const [a, b] = [at(x0, head - 0.5, Z), at(x1, head - 0.5, Z)];
+        node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-rail-shine' }, g);
+    }
+
     for (const side of [l, r]) {
         face('cab-kick', pts(at(side, kick, 0), at(side, kick, D), at(side, 0, D), at(side, 0, 0)), side < 0 ? 'shade-left' : 'shade-right');
         const rail = side - Math.sign(side) * bar.off;

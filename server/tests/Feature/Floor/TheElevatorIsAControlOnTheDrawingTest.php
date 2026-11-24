@@ -216,7 +216,7 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             ['w' => (int) $m[1], 'd' => (int) $m[2], 'h' => (int) $m[3], 'eye' => (int) $m[4], 'back' => (int) $m[5], 'view' => (int) $m[6], 'door' => ['w' => (int) $m[7], 'h' => (int) $m[8]]],
             $depth['cab'],
         );
-        $this->assertSame(['view' => (int) $m[9], 'back' => (int) $m[9] + (int) $m[2]], $depth['landing']);
+        $this->assertSame(['view' => (int) $m[9], 'back' => (int) $m[9] + (int) $m[2], 'rear' => true], $depth['landing']);
     }
 
     /**
