@@ -51,12 +51,11 @@ import {
 } from '../vendor/three/three.module.js';
 import { toon } from './toon.js';
 import { CUTAWAY_H, CUTAWAY_MS, cutaway, doorwayView } from './view-limits.js';
-import { rasterise } from './svg-texture.js';
+import { rasterise, textureSize } from './svg-texture.js';
 import { REPLAY_LOOP, heldAt } from './clip-clock.js';
 import { onTerm } from './terms.js';
 import { leafLevel } from '../floor/scene.js';
 import { SKY_PAINT } from '../floor/floor-layout.js';
-import { textureSize } from '../building/stack-model.js';
 import { CAB_SHADE, CAB_STYLE, cabTheme, rideLeafLevel } from '../floor/cab-paint.js';
 
 /** A texture over a canvas, in the sheet's colour space. */

@@ -47,7 +47,7 @@ const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i +
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const L = await import(pathToFileURL(join(JS, 'floor3d', 'view-limits.js')).href);
-const { FOV, HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-model.js')).href);
+const { FOV, HOME_POLAR } = await import(pathToFileURL(join(JS, 'floor3d', 'camera-frame.js')).href);
 const { LOOP_FPS } = await import(pathToFileURL(join(JS, 'wire', 'animation-set.js')).href);
 const { PAN_STEP_PX, turnOf } = await import(pathToFileURL(join(JS, 'wire', 'camera.js')).href);
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);

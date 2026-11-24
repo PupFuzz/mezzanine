@@ -1,14 +1,28 @@
 /**
- * AN SVG DOCUMENT, RASTERISED ONTO A CANVAS — the one step every 3-D surface drawn from an SVG takes: the building view's
- * floor pictures (`building/floor-picture.js`) and the 3-D creatures' faces and laptop lids (`floor3d/creature-paint.js`).
- * Hoisted out of `building/floor-picture.js` at its second caller (card#13033 stage 2 slice 3,
- * `docs/design/plan-13033-stage2-3d-floor.md` § 3.3 and § 4); the canvas is what a `CanvasTexture` is made over, by each
- * caller, and what a lost context's restore re-uploads from.
+ * AN SVG DOCUMENT, RASTERISED ONTO A CANVAS — the one step every 3-D surface drawn from an SVG takes: the room's
+ * drawn surfaces (`floor3d/room-paint.js`) and the 3-D creatures' faces and laptop lids (`floor3d/creature-paint.js`),
+ * and the texture size a drawing is rasterised at under the GPU's cap (`textureSize()`). The canvas is what a
+ * `CanvasTexture` is made over, by each caller, and what a lost context's restore re-uploads from.
  *
  * ⛔ THE IMAGE IS DECODED BEFORE THE CANVAS IS TOUCHED: a document that does not decode, or a canvas the browser could give
- * no 2-D context, rejects and leaves the canvas holding its last picture whole (the floor picture's per-floor isolation,
- * `tests/Feature/Building/picture-probe.mjs`, rests on it).
+ * no 2-D context, rejects and leaves the canvas holding its last picture whole.
  */
+
+/** The longest texture side drawn, whatever the GPU allows above it (`docs/design/FLOOR.md` § 12). */
+export const TEXTURE_CAP = 4096;
+
+/**
+ * The texture's size for an extent at `scale` texture px per scene px, scaled down proportionally when its longer side
+ * would pass the cap — `min(maxTexture, TEXTURE_CAP)`.
+ *
+ * @returns {{width: number, height: number}}
+ */
+export function textureSize(extent, s, maxTexture) {
+    const cap = Math.min(maxTexture, TEXTURE_CAP);
+    const k = Math.min(s, cap / Math.max(extent.w, extent.h));
+
+    return { width: Math.round(extent.w * k), height: Math.round(extent.h * k) };
+}
 
 /**
  * Draw the SVG text onto `canvas` at `width × height`, through an image of it.

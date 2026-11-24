@@ -28,7 +28,7 @@
  * or a character is never cut away. The band is never lowered: the eye never stands behind its face.
  */
 
-import { FOV, HOME_POLAR, fitDistance, framingDistance, orbitCamera, stageInset } from '../building/stack-model.js';
+import { FOV, HOME_POLAR, fitDistance, framingDistance, orbitCamera, stageInset } from './camera-frame.js';
 import { ROOM_H_U, UNIT } from '../floor/floor-world.js';
 import { walkerSize } from '../floor/scene.js';
 

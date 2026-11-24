@@ -47,7 +47,7 @@
 
 import { CSS2DObject } from '../vendor/three/examples/jsm/renderers/CSS2DRenderer.js';
 import { anchorPoint } from '../floor/floor-world.js';
-import { cullOverlaps, readingOrder } from '../building/stack-model.js';
+import { cullOverlaps, readingOrder } from './label-cull.js';
 import { ELEVATOR_NAME } from '../floor/cab-paint.js';
 
 /** Which labels win a contended place on the stage, first to last: every desk's name, then its status, chip, bubble, facts. */
