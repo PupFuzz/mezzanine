@@ -486,7 +486,8 @@ command. The rule is cheap; the failure is not recoverable in the moment you not
     `opq-…` item that authorized the release. Every release is operator-ordered, so that ref always
     exists. A card named in the body does not break tokenlessness, because R4 reads only the branch
     and the title. `Origin: bundle` does not fit here: the merge gate refuses `bundle` on a
-    self-merged PR.
+    self-merged PR. Because the card is cited and not finished, `solo-self-merge` refuses the PR until
+    it is re-run with `--no-card-move="<reason>"`; that is the correct form here.
     The live file is then `## [Unreleased]` plus the release just cut, and nothing else. The move
     is verbatim in the byte sense — `cmp` the section against the base, extracting the archive
     file's body with `tail -n +6`, since an `awk` range re-emits a trailing newline and cannot see
