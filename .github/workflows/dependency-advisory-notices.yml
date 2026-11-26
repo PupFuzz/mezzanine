@@ -1,0 +1,365 @@
+# ── VENDORED from coord 0.79.0 — the NOTICES workflow of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+#
+#   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
+#   upstream path     plugins/coord/templates/security/workflows/dependency-advisory-notices.yml
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
+#   upstream sha256   4ccc2308eadd26fdf0ed4fb10665173cf3e33776242104008a87e63cfc8bac8b
+#
+# That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
+# line that is neither blank nor a comment), which is a different figure. Re-derive this one
+# against a marketplace clone:   git show 31191341:plugins/coord/templates/security/workflows/dependency-advisory-notices.yml | sha256sum
+#
+# DECLARED LOCAL EDITS — none. The text below this block was upstream's byte for byte when vendored
+# (checked by diff against the commit above); the body pin holds it there.
+#
+# TO RE-VENDOR: this file moves with `bin/dependency-audit.selftest.sh`, whose header names the
+# whole set and the procedure.
+# ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
+# dependency-advisory-notices.yml — ONE GITHUB ISSUE PER ADVISORY, told once. Runs when the
+# dependency audit (`dependency-ref-matrix.yml`, the caller) completes, reads the findings file each
+# audited ref uploaded, and opens, updates, reopens or closes one issue labelled
+# `dependency-advisory` per (advisory, package) in this repository.
+#
+# ADOPT (per repo): copy to `.github/workflows/` beside the caller; it must reach the DEFAULT branch,
+# because `workflow_run` starts only a workflow whose file is there. Set the one CUSTOMIZE value only
+# if you rename the caller: `workflows:` below must equal the caller's `name:`, or this workflow
+# never runs and never reds. The callee must carry the findings export first (it uploads the file
+# this workflow reads); a notices workflow over an older callee is red with NOTICE-NO-INPUT.
+#
+# WHY A WORKFLOW OF ITS OWN. An audit run has one conclusion, so a new advisory that arrives while
+# an older finding keeps the run red looks exactly like the red that was already there. An issue per
+# advisory is a new event for a new advisory, and the issue is also the memory of what was told: an
+# advisory is "already told" exactly when its issue records the same affected refs and versions. A
+# fault here is a failed run of THIS workflow, and the write-scoped token never enters the audit
+# run. The one thing the audit does for notices is upload its findings file; § Advisory notices says
+# what a failed upload does there.
+#
+# The coord plugin's `docs/DEPENDENCY-AUDIT.md` § Advisory notices OWNS the rules this file
+# implements: which runs it acts on, the issue's identity and state line, the reconcile rule, the
+# off switch, and every NOTICE-* code. They are not restated here.
+#
+# OFF SWITCH: set the repository (or organisation) Actions variable DEPENDENCY_AUDIT_NOTICES to
+# `off`. The job is then skipped before any token exists, and the audit uploads no findings file.
+# Every other value, and no value, is on.
+#
+# ⚠ github.com only: `queue: max` on the concurrency group below is not in any GitHub Enterprise
+# Server's workflow syntax, and a server without it refuses the file.
+#
+# ⚠ RUNNER PREREQUISITE: this workflow requires an Actions runner that supports node24, because
+# its download action is pinned by SHA at a major that declares `runs.using: node24`. Do NOT unpin
+# to get node20 back; the callee's header says how to pin a SHA you have read as node20 instead.
+name: Dependency advisory notices
+# Names the audit run this run reconciles; the REST run object has no field naming the run that
+# triggered it.
+run-name: Advisory notices for audit run ${{ github.event.workflow_run.id }}
+
+on:
+  workflow_run:
+    # CUSTOMIZE only together with the caller: this is the caller's `name:`, matched by name.
+    workflows: ["Dependency advisory ref matrix"]
+    types: [completed]
+
+concurrency:
+  # supersession-exempt: one reconcile at a time over the whole repository, so two runs never both find no issue for an advisory and both create one; `queue: max` keeps every waiting run instead of replacing it, and a run that is stale by its turn ends green without writing
+  group: dependency-advisory-notices
+  cancel-in-progress: false
+  queue: max
+
+# PERMISSIONS ARE GRANTED PER JOB, as in the audit pair; there is deliberately no top-level
+# `permissions:` key, and the selftest reds if one comes back.
+jobs:
+  notices:
+    # THE TRUST TEST AND THE OFF SWITCH, in the one job condition. Written without the `${{ }}`
+    # wrapper on purpose (a character outside the wrapper makes the value a non-empty string, which
+    # is always true), and the parentheses are load-bearing: `&&` binds tighter than `||`.
+    # `trusted_latest_audit` in the block below states the same trust test; the selftest compares them.
+    if: >-
+      (github.event.workflow_run.event == 'schedule'
+       || github.event.workflow_run.event == 'workflow_dispatch')
+      && github.event.workflow_run.head_branch == github.ref_name
+      && github.event.workflow_run.conclusion != 'cancelled'
+      && vars.DEPENDENCY_AUDIT_NOTICES != 'off'
+    runs-on: ubuntu-latest
+    # `actions: read` downloads the audit run's artifacts and reads the audit's run list;
+    # `issues: write` lists, creates, comments on, edits and closes issues, and creates the label.
+    # Nothing is checked out, so there is no `contents` scope.
+    permissions:
+      actions: read
+      issues: write
+    steps:
+      - name: Download the audit run's findings files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          pattern: dependency-audit-findings-*
+          path: dependency-audit-findings
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      # Runs whatever the download did: the block counts the files itself, so "no input" never
+      # depends on how the download step treats a pattern that matched nothing.
+      - name: Reconcile one issue per advisory
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_RUN_ID: ${{ github.event.workflow_run.id }}
+          AUDIT_WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+          NOTICES_SWITCH: ${{ vars.DEPENDENCY_AUDIT_NOTICES }}
+          FINDINGS_DIR: dependency-audit-findings
+        run: |
+          set -euo pipefail
+          # ============================ CUSTOMIZE ZONE ============================
+          # Everything BELOW the `# --- dep-notices` marker is the shared implementation the
+          # selftest extracts and runs verbatim (dependency-advisory-notices.selftest.sh).
+          # CUSTOMIZE-BEGIN notice-seams
+          # The one network seam, so the block is exercisable with zero network in the selftest.
+          # Contract: print the HTTP status and exit 0 whenever the server answered, leaving the
+          # response body in $4; exit non-zero only when no status was obtained. `gh api` alone
+          # cannot give that (it exits 1 for any failure, so 403, 404 and 410 look alike), hence
+          # `--include`: its first line is the status line ("HTTP/2.0 404 Not Found"), and the body
+          # follows the blank line that ends the headers.
+          notice_api() {   # $1=METHOD $2=API path $3=request JSON file, or - for none $4=response body file
+            local raw="$4.raw" status input=()
+            [ "$3" = - ] || input=(--input "$3")
+            gh api --include --method "$1" "$2" "${input[@]}" > "$raw" 2>/dev/null || true
+            status="$(head -n 1 "$raw" | awk '{print $2}')"
+            sed '1,/^\r\{0,1\}$/d' "$raw" > "$4"
+            rm -f "$raw"
+            [[ $status =~ ^[0-9]{3}$ ]] || return 1
+            printf '%s\n' "$status"
+          }
+          # CUSTOMIZE-END notice-seams
+          # ========================== END CUSTOMIZE ZONE ==========================
+          # --- dep-notices
+          # Fixed, and outside the CUSTOMIZE zone on purpose: other surfaces find the notices by
+          # this label, so a renamed label in an installed copy would hide every notice from them.
+          NOTICE_LABEL="dependency-advisory"
+          NOTICE_TAG="dependency-audit-notice"
+          REPO="$GITHUB_REPOSITORY"
+          AUDIT_RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/$REPO/actions/runs/$AUDIT_RUN_ID"
+          REMEDY="Enable Issues on this repository, or set the Actions variable DEPENDENCY_AUDIT_NOTICES to off."
+          WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+          RED_AFTER=0   # a fault that names what it skipped and lets the rest reconcile, then reds
+          WRITES=0
+          summary() { printf '%s\n' "$1" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
+          remedy() { case "$1" in 403|410|"") printf ' %s' "$REMEDY" ;; esac; }
+          stop() {   # $1=code $2=detail: red at once; no later call is attempted
+            summary "NOTICE-ERROR[$1] $2"
+            exit 1
+          }
+          # THE TRUSTED LATEST AUDIT RUN, defined once. The job's `if:` states the same trust test
+          # and the selftest compares the two.
+          TRUSTED_LATEST_AUDIT_JQ='
+            def trusted_latest_audit($branch):
+              [ .workflow_runs[]?
+                | select(.status == "completed" and .conclusion != "cancelled")
+                | select(.event == "schedule" or .event == "workflow_dispatch")
+                | select(.head_branch == $branch) ]
+              | max_by(.id);'
+          # THE PLAN: a pure function of the findings files ($files) and the label's issues
+          # ($issues). § Advisory notices owns the rule; this is its one implementation.
+          NOTICE_PLAN_JQ='
+            def lc: ascii_downcase;
+            # Upstream text (an advisory ID, a package name, a range, a patched text, a severity) and
+            # a ref name are shown only through this: backticks and control characters removed, the
+            # rest inside one code span, so none of it can end a line, a span or the state comment,
+            # mention anyone, or read as prose.
+            def inert: tostring | gsub("[[:cntrl:]`]"; "") | "`" + . + "`";
+            def ghsa: test("^GHSA-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}$");
+            def has_ci($x): any(.[]?; lc == ($x | lc));
+            def state_line($s): "<!-- \($tag) " + ($s | tojson | gsub("<"; "\\u003c") | gsub(">"; "\\u003e")) + " -->";
+            def read_state:   # an issue -> its state, or null when its first body line is not one
+              ((.body // "") | split("\n")[0] | sub("\r$"; "")) as $l
+              | ("<!-- \($tag) ") as $p
+              | if ($l | startswith($p)) and ($l | endswith(" -->"))
+                then ($l[($p | length):-4] | try fromjson catch null)
+                     | if type == "object" and (.id | type) == "string" and (.package | type) == "string"
+                          and (.refs | type) == "object" then . else null end
+                else null end;
+            def entry($rows): {versions: ([$rows[].version] | unique), sources: ([$rows[].source] | unique)};
+            def union($a; $b): {versions: ([$a, $b | .versions[]?] | unique), sources: ([$a, $b | .sources[]?] | unique)};
+            # $f did not prove absence: it is not a completed audit of the ref, or a source that
+            # raised the recorded entry could not look the package up.
+            def unproven($f; $recorded; $package):
+              $f.status != "audited"
+              or ((($recorded.sources // []) | index(["2"])) != null and ($f.unresolved | has_ci($package)));
+            # What the issue tells anyone: the refs and their versions. Which sources reported them
+            # is kept for the hold and is never an event.
+            def told: map_values(.versions);
+            def reason($f; $id):
+              if ($f.withdrawn | has_ci($id)) then "GitHub withdrew its reviewed record of the advisory"
+              elif ($f.accepted | has_ci($id)) then "the repository acceptance file now accepts it"
+              else "no longer reported: the locked version is outside the affected range" end;
+            def versions($e): $e.versions | map(inert) | join(", ");
+            def body($k; $s; $rows; $run):
+              ($rows | sort_by(.source, .ref) | first) as $r
+              | [ state_line({id: $k.id, package: $k.package, refs: $s}),
+                  "**Dependency advisory** \($k.id | inert)"
+                    + (if ($k.id | ghsa) then " ([advisory](https://github.com/advisories/\($k.id)))" else "" end)
+                    + " affects \($k.package | inert).",
+                  "",
+                  (if $r == null then "Severity, range and patched text: not reported by this run."
+                   else "- Severity: \($r.severity | inert)\n- Affected range: \($r.range | inert)\n- Patched: \($r.patched | inert)" end),
+                  "",
+                  (if $s == {} then "No audited ref reports it any more."
+                   else "Locked versions, per audited ref:\n" + ([ $s | to_entries[] | "- \(.key | inert): \(versions(.value))" ] | join("\n")) end),
+                  "",
+                  "Recorded by audit run \($run).",
+                  "",
+                  "This issue closes itself when no audited ref reports the advisory. The fix is a pull request the repository agent writes after checking what the update breaks." ]
+              | join("\n");
+            def changes($s; $n; $byref; $id):
+              [ ([$s, $n] | map(keys) | add | unique)[] as $ref
+                | if $s[$ref] == null then "- now affected on \($ref | inert) at \(versions($n[$ref]))"
+                  elif $n[$ref] == null then "- cleared on \($ref | inert): \(reason($byref[$ref]; $id))"
+                  elif $s[$ref].versions != $n[$ref].versions
+                  then "- on \($ref | inert): now \(versions($n[$ref])) (was \(versions($s[$ref])))"
+                  else empty end ];
+            def bad_news($s; $n): any($n | to_entries[]; .key as $ref
+              | $s[$ref] == null or any(.value.versions[]; . as $v | ($s[$ref].versions | index([$v])) == null));
+
+            ($files | map({(.ref): .}) | add // {}) as $byref
+            | [ $files[] as $f | ($f.affected // [])[] | . + {ref: $f.ref} ] as $all
+            | [ $all[] | select((.ghsa // "") != "" and (.package // "") != "") ] as $rows
+            | [ $all[] | select((.ghsa // "") == "" or (.package // "") == "") ] as $unkeyable
+            | [ $issues[] | . + {st: read_state} ] as $labelled
+            | [ $labelled[] | select(.st != null) ] as $notices
+            | ( [ $rows[] | {id: .ghsa, package} ] + [ $notices[] | .st | {id, package} ]
+                | unique_by([(.id | lc), (.package | lc)]) ) as $keys
+            | [ $keys[] as $k
+                | [ $notices[] | select((.st.id | lc) == ($k.id | lc) and (.st.package | lc) == ($k.package | lc)) ]
+                  | max_by(.number) as $issue
+                | (($issue.st.refs) // {}) as $s
+                | [ $rows[] | select((.ghsa | lc) == ($k.id | lc) and (.package | lc) == ($k.package | lc)) ] as $krows
+                | ( reduce ([($byref | keys[]), ($s | keys[])] | unique)[] as $ref ({};
+                      [ $krows[] | select(.ref == $ref) ] as $here
+                      | entry($here) as $listed
+                      | (if unproven($byref[$ref]; $s[$ref]; $k.package) then union($s[$ref]; $listed)
+                         else $listed end) as $now
+                      | if $now.versions == [] then . else .[$ref] = $now end) ) as $n
+                | {key: $k, issue: $issue, s: $s, n: $n, rows: $krows} ] as $keyed
+            | {
+                creates: [ $keyed[] | select(.issue == null and .n != {})
+                           | {op: "create", title: "Dependency advisory: \(.key.package | inert) \(.key.id | inert)",
+                              body: body(.key; .n; .rows; $run), what: "NEW: \(.key.package | inert) \(.key.id | inert)"} ],
+                updates: [ $keyed[] | select(.issue != null and (.n | told) != (.s | told))
+                           | . as $c
+                           | {op: "update", number: .issue.number,
+                              comment: (["Audit run \($run) changed what this advisory affects:"]
+                                        + changes($c.s; $c.n; $byref; $c.key.id) | join("\n")),
+                              body: body(.key; .n; .rows; $run),
+                              state: (if .n == {} and .issue.state == "open" then "closed"
+                                      elif .n != {} and .issue.state == "closed" and bad_news(.s; .n) then "open"
+                                      else null end),
+                              what: "\(if .n == {} then "CLEARED" else "CHANGED" end): #\(.issue.number) \(.key.package | inert) \(.key.id | inert)"} ]
+                         | sort_by(.number),
+                unchanged: [ $keyed[] | select(.issue != null and (.n | told) == (.s | told)) ] | length,
+                unkeyable: [ $unkeyable[] | "NOTICE-ERROR[NOTICE-ROW-UNKEYABLE] ref \(.ref | inert): a row with no advisory ID or no package (package \(.package // "" | inert), advisory \(.ghsa // "" | inert)) got no notice" ],
+                read: [ $files[].ref | inert ] | unique,
+                held: [ ($files[] | select(.status != "audited") | "ref \(.ref | inert) did not complete (status \(.status | inert)): nothing was cleared from it"),
+                        (([ $keyed[].s | keys[] ] | unique - ($byref | keys))[]
+                          | "ref \(inert) sent no findings file: nothing was cleared from it") ],
+                strays: [ $labelled[] | select(.st == null) | "#\(.number) carries the label but no notice state line: left alone" ]
+              }'
+          case "$(printf '%s' "${NOTICES_SWITCH:-}" | tr '[:upper:]' '[:lower:]')" in
+            ""|on) ;;
+            *) summary "WARNING: DEPENDENCY_AUDIT_NOTICES is '$NOTICES_SWITCH'. Only 'off' turns notices off, so they are on." ;;
+          esac
+          # Only the newest trusted audit is reconciled, so a re-run of an old audit, or a run that
+          # waited its turn, never writes an older state over a newer one.
+          st="$(notice_api GET "repos/$REPO/actions/workflows/$AUDIT_WORKFLOW_ID/runs?branch=$GITHUB_REF_NAME&per_page=100" - "$WORK/runs.json")" \
+            || stop NOTICE-LIST-FAILED "the audit workflow's run list got no HTTP status."
+          [ "$st" = 200 ] || stop NOTICE-LIST-FAILED "the audit workflow's run list answered HTTP $st."
+          newer="$(jq -r --arg b "$GITHUB_REF_NAME" --argjson id "$AUDIT_RUN_ID" \
+                     "$TRUSTED_LATEST_AUDIT_JQ"' trusted_latest_audit($b) | select(. != null and .id > $id) | .id' "$WORK/runs.json")"
+          if [ -n "$newer" ]; then
+            summary "A newer audit run, $newer, has completed; it is the one reconciled. This run wrote nothing."
+            exit 0
+          fi
+          # The findings files: one per audited ref that reached its verdict.
+          : > "$WORK/files.ndjson"
+          n_files=0
+          while IFS= read -r -d '' f; do
+            n_files=$((n_files + 1))
+            if jq -e '.schema == 1' "$f" > /dev/null 2>&1; then
+              jq -c . "$f" >> "$WORK/files.ndjson"
+            else
+              RED_AFTER=1
+              summary "NOTICE-ERROR[NOTICE-SCHEMA] ${f#"$FINDINGS_DIR"/} is not a findings file of schema 1, so its ref is treated as having sent none."
+            fi
+          done < <(find "$FINDINGS_DIR" -type f -name dependency-audit-findings.json -print0 2> /dev/null)
+          [ "$n_files" -gt 0 ] \
+            || stop NOTICE-NO-INPUT "audit run $AUDIT_RUN_URL uploaded no findings file. Refresh the audit callee (it must carry the findings export), or read that run: it may have failed before any audit ran, or every upload of a findings file may have failed."
+          # Every issue carrying the label, open and closed, page by page until a short page. A
+          # failed page writes nothing: creating without having checked is how duplicates are made.
+          : > "$WORK/issues.ndjson"
+          page=1
+          while :; do
+            st="$(notice_api GET "repos/$REPO/issues?labels=$NOTICE_LABEL&state=all&per_page=100&page=$page" - "$WORK/page.json")" \
+              || stop NOTICE-LIST-FAILED "the issues labelled $NOTICE_LABEL, page $page, got no HTTP status.$(remedy "")"
+            [ "$st" = 200 ] \
+              || stop NOTICE-LIST-FAILED "the issues labelled $NOTICE_LABEL, page $page, answered HTTP $st.$(remedy "$st")"
+            jq -c '.[] | select(has("pull_request") | not) | {number, state, body}' "$WORK/page.json" >> "$WORK/issues.ndjson"
+            [ "$(jq 'length' "$WORK/page.json")" -eq 100 ] || break
+            page=$((page + 1))
+          done
+          jq -n --arg tag "$NOTICE_TAG" --arg run "$AUDIT_RUN_URL" \
+             --slurpfile files "$WORK/files.ndjson" --slurpfile issues "$WORK/issues.ndjson" \
+             "$NOTICE_PLAN_JQ" > "$WORK/plan.json"
+          # The plan reaches the summary BEFORE anything is applied, so a failed apply still leaves
+          # what is new on the run page.
+          summary "Dependency advisory notices for audit run $AUDIT_RUN_URL"
+          # The refs are named because this workflow does not know the audit's matrix: a ref that sent
+          # no file and has no recorded notice shows only by its absence from this line.
+          jq -r '"refs read: \(.read | join(", "))", .creates[].what, .updates[].what, "unchanged: \(.unchanged) notice(s)", .held[], .strays[], .unkeyable[]' \
+            "$WORK/plan.json" | while IFS= read -r line; do summary "$line"; done
+          [ "$(jq '.unkeyable | length' "$WORK/plan.json")" -eq 0 ] || RED_AFTER=1
+          write() {   # $1=METHOD $2=path $3=request file $4=the one status that means done -> $WORK/resp.json
+            local st
+            [ "$WRITES" -eq 0 ] || sleep 1   # serial, a second apart
+            WRITES=$((WRITES + 1))
+            st="$(notice_api "$1" "$2" "$3" "$WORK/resp.json" < /dev/null)" \
+              || stop NOTICE-WRITE-FAILED "$1 $2 got no HTTP status.$(remedy "")"
+            [ "$st" = "$4" ] || stop NOTICE-WRITE-FAILED "$1 $2 answered HTTP $st, not $4.$(remedy "$st")"
+          }
+          ensure_label() {
+            local st
+            st="$(notice_api GET "repos/$REPO/labels/$NOTICE_LABEL" - "$WORK/resp.json" < /dev/null)" \
+              || stop NOTICE-WRITE-FAILED "the label check got no HTTP status.$(remedy "")"
+            case "$st" in
+              200) ;;
+              404) jq -n --arg n "$NOTICE_LABEL" \
+                     '{name: $n, color: "b60205", description: "A dependency advisory affecting this repository (one issue per advisory)"}' > "$WORK/req.json"
+                   write POST "repos/$REPO/labels" "$WORK/req.json" 201 ;;
+              *) stop NOTICE-WRITE-FAILED "the label check answered HTTP $st.$(remedy "$st")" ;;
+            esac
+          }
+          # Creates first: a new advisory is the event this exists for, so a later failure on an
+          # update cannot cost it. Within an update the comment goes first, then body and state in
+          # ONE request, so the body (the memory) never records a state the issue does not have.
+          LABEL_READY=0
+          while IFS= read -r action; do
+            case "$(jq -r '.op' <<< "$action")" in
+              create)
+                [ "$LABEL_READY" -eq 1 ] || { ensure_label; LABEL_READY=1; }
+                jq --arg l "$NOTICE_LABEL" '{title, body, labels: [$l]}' <<< "$action" > "$WORK/req.json"
+                write POST "repos/$REPO/issues" "$WORK/req.json" 201
+                jq -e --arg l "$NOTICE_LABEL" 'any(.labels[]?; .name == $l)' "$WORK/resp.json" > /dev/null \
+                  || stop NOTICE-LABEL-DROPPED "issue #$(jq -r '.number' "$WORK/resp.json") was created without the $NOTICE_LABEL label, so the next run would not find it and would open it again. The token needs push access to label a new issue."
+                ;;
+              update)
+                n="$(jq -r '.number' <<< "$action")"
+                jq '{body: .comment}' <<< "$action" > "$WORK/req.json"
+                write POST "repos/$REPO/issues/$n/comments" "$WORK/req.json" 201
+                jq '{body} + (if .state == "closed" then {state, state_reason: "completed"}
+                              elif .state == "open" then {state, state_reason: "reopened"} else {} end)' \
+                  <<< "$action" > "$WORK/req.json"
+                write PATCH "repos/$REPO/issues/$n" "$WORK/req.json" 200
+                ;;
+            esac
+          done < <(jq -c '(.creates + .updates)[]' "$WORK/plan.json")
+          summary "Applied: $WRITES write(s)."
+          if [ "$RED_AFTER" -ne 0 ]; then
+            echo "Red: a findings file or a row above could not be reconciled (NOTICE-ERROR lines)." >&2
+            exit 1
+          fi
+          # --- end dep-notices

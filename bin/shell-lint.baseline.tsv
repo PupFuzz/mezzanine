@@ -49,6 +49,8 @@
 #cfg	directive	bin/env-mirror-diff.sh	disable=SC2016	6
 #cfg	directive	bin/shell-lint.sh	disable=SC2064	1
 #cfg	directive	tools/ci-store-probe.selftest.sh	source=bin/lib/selftest-assert.sh	1
+#pop	bin/dependency-advisory-notices-shape.selftest.sh
+#pop	bin/dependency-advisory-notices.selftest.sh
 #pop	bin/dependency-audit.selftest.sh
 #pop	bin/dependency-selftest-lib.sh
 #pop	bin/deploy-gate-inputs.selftest.sh
@@ -67,6 +69,18 @@
 #pop	bin/vendor-pin-check.sh
 #pop	fleet-reporter/install.sh
 #pop	tools/ci-store-probe.selftest.sh
+bin/dependency-advisory-notices-shape.selftest.sh	SC1091	1
+bin/dependency-advisory-notices-shape.selftest.sh	SC2015	2
+bin/dependency-advisory-notices-shape.selftest.sh	SC2016	5
+bin/dependency-advisory-notices-shape.selftest.sh	SC2034	1
+bin/dependency-advisory-notices.selftest.sh	SC1091	1
+bin/dependency-advisory-notices.selftest.sh	SC2001	1
+bin/dependency-advisory-notices.selftest.sh	SC2015	2
+bin/dependency-advisory-notices.selftest.sh	SC2016	73
+bin/dependency-advisory-notices.selftest.sh	SC2034	2
+bin/dependency-advisory-notices.selftest.sh	SC2097	1
+bin/dependency-advisory-notices.selftest.sh	SC2098	2
+bin/dependency-advisory-notices.selftest.sh	SC2153	1
 bin/dependency-audit.selftest.sh	SC1091	1
 bin/dependency-audit.selftest.sh	SC2015	67
 bin/dependency-audit.selftest.sh	SC2016	100

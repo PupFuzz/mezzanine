@@ -1,6 +1,6 @@
-# bin/dependency-audit-fixtures/ — vendored inputs for `bin/dependency-audit.selftest.sh`
+# bin/dependency-audit-fixtures/ — vendored inputs for `bin/dependency-audit.selftest.sh` and `bin/dependency-advisory-notices.selftest.sh`
 
-**Every control leg of that selftest runs with ZERO network.** These files are the reason: they
+**Every control leg of the audit's selftest runs with ZERO network.** These files are the reason: they
 are frozen copies of the inputs the audit reads at run time, so a leg's verdict cannot change
 because a remote endpoint had a bad minute. (A check whose verdict changes without its subject
 changing is not a check — and the habit an intermittently-red selftest teaches is `re-run`.)

@@ -1,4 +1,4 @@
-# ── VENDORED from coord 0.79.0 — the test-only library the dependency-audit selftest sources. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+# ── VENDORED from coord 0.79.0 — the test-only library the dependency-audit and advisory-notices selftests source. A body edit reds bin/vendor-pin-check.sh until declared below. ──
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/security/dependency-selftest-lib.sh
@@ -15,8 +15,8 @@
 # byte when vendored (checked by diff against the commit above); the body pin holds it there.
 #   (1) the fixtures path is this repo's `bin/dependency-audit-fixtures/`, beside the selftest,
 #       rather than upstream's `fixtures/` (fragment: `HERE/dependency-audit-fixtures"`).
-#   Of the suites upstream's header below names, this repository carries only
-#   `bin/dependency-audit.selftest.sh`; the notices suites come with the notices workflow.
+#   This repository carries every suite upstream's header below names, beside this file
+#   in `bin/`.
 #   ShellCheck's findings on this file are recorded in bin/shell-lint.baseline.tsv rather than
 #   annotated in the body, so the body stays upstream's.
 #
