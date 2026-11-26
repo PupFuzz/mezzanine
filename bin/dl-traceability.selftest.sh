@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# ── VENDORED from coord 0.77.0 — the selftest of the board-traceability gate. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+# ── VENDORED from coord 0.79.0 — the selftest of the board-traceability gate. A body edit reds bin/vendor-pin-check.sh until declared below. ──
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/traceability/dl-traceability.selftest.sh
-#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
-#   plugin version    coord 0.77.0
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
 #   upstream sha256   b19d63acdfe7c52f6c7196c6a8cfd55ad454d3467f16fcec05316939da605e9c
 #
 # That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
 # line that is neither blank nor a comment), which is a different figure. Re-derive this one
-# against a marketplace clone:   git show afaf9a10:plugins/coord/templates/traceability/dl-traceability.selftest.sh | sha256sum
+# against a marketplace clone:   git show 31191341:plugins/coord/templates/traceability/dl-traceability.selftest.sh | sha256sum
 #
 # DECLARED LOCAL EDITS — none. Everything below this block is upstream's byte for byte, the upstream
 # header included (checked by diff against the commit above); the body pin holds the body there.

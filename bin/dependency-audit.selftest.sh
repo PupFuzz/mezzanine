@@ -1,48 +1,52 @@
 #!/usr/bin/env bash
-# ── VENDORED from coord 0.77.0 — the selftest of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+# ── VENDORED from coord 0.79.0 — the selftest of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/security/dependency-audit.selftest.sh
-#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
-#   plugin version    coord 0.77.0
-#   upstream sha256   6f0eddda96d4ead7c0259ee89f2385deefb3d684d79442f0b5376826402f6a7a
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
+#   upstream sha256   9364475c0a33ba65af539b01e94181d9173962abf55b7487a44d438083c1cb54
 #
 # That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
 # line that is neither blank nor a comment), which is a different figure. Re-derive this one
-# against a marketplace clone:   git show afaf9a10:plugins/coord/templates/security/dependency-audit.selftest.sh | sha256sum
+# against a marketplace clone:   git show 31191341:plugins/coord/templates/security/dependency-audit.selftest.sh | sha256sum
 #
 # DECLARED LOCAL EDITS — each is also a FRAGMENTS row in `bin/vendor-pin-check.sh`, which reds
 # when one leaves the body. Outside these edits, the text below this block was upstream's byte for
 # byte when vendored (checked by diff against the commit above); the body pin holds it there.
-#   (1) the CALLEE / CALLER / FIX paths point at this repo's layout — workflows under
-#       .github/workflows/, fixtures in bin/dependency-audit-fixtures/ (fragments:
-#       `ROOT/.github/workflows/dependency-audit.yml"` from the CALLEE line and
-#       `HERE/dependency-audit-fixtures"` from the FIX line).
 #   (2) a body comment that cited another team's private coordination repository by issue and
 #       comment id names only the card, so this public repository carries no reference to it
 #       (card#12292; fragment: `# card#11434 (backend) within card#11604:`).
-#   (3) the caller arm also accepts the caller's recorded `bump_prs: 'off'`, with no secret handed
-#       over, beside upstream's unchanged 'on' arm; upstream accepts only 'on' (framework
-#       card#13796). Remove when card#13796 ships (fragment: `# MEZZANINE local edit (3)`).
-#   The two workflow paths in upstream's own header below are re-pointed too; that is header
-#   text and is not pinned. ShellCheck's findings on this file are recorded in
-#   bin/shell-lint.baseline.tsv rather than annotated in the body, so the body stays upstream's.
+#   Retired at the v0.79.0 re-vendor: edit (1), the re-pointed CALLEE / CALLER / FIX paths, and
+#   edit (3), the caller arm's `bump_prs: 'off'` branch. Upstream now reads the workflows from an
+#   input and no longer has a bump job, so the body carries neither. The fixtures path moved into
+#   `bin/dependency-selftest-lib.sh`, whose header declares it.
 #
-# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `.github/workflows/dependency-audit.yml`,
-# `.github/workflows/dependency-ref-matrix.yml` and `bin/dependency-audit-fixtures/` move TOGETHER,
-# from one upstream commit: the selftest extracts and runs the workflows' own blocks against those fixtures, so a
-# selftest from one revision over workflows or fixtures from another reds (measured on the v0.77.0
-# refresh, card#13794). Copy each upstream file over everything below its block, re-apply each
-# file's declared edits, then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
+# RUN IT WITH THIS REPOSITORY'S WORKFLOW DIRECTORY, which is not where upstream's default looks:
+#     bash bin/dependency-audit.selftest.sh --workflows .github/workflows
+# That is what `.github/workflows/dependency-audit-selftest.yml` runs. With no argument the suite
+# looks for `bin/workflows/`, finds nothing, and FAILS naming the path it tried.
+# ShellCheck's findings on this file are recorded in bin/shell-lint.baseline.tsv rather than
+# annotated in the body, so the body stays upstream's.
+#
+# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `bin/dependency-selftest-lib.sh`,
+# `.github/workflows/dependency-audit.yml`, `.github/workflows/dependency-ref-matrix.yml` and
+# `bin/dependency-audit-fixtures/` move TOGETHER, from one upstream commit: the selftest extracts
+# and runs the workflows' own blocks against those fixtures, so a selftest from one revision over
+# workflows or fixtures from another reds (measured on the v0.77.0 refresh, card#13794). Copy each
+# upstream file over everything below its block, re-apply each file's declared edits, then re-pin
+# with the command `bin/vendor-pin-check.sh` prints on a red.
 # ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-audit.selftest.sh — proves the shipped dependency-advisory gate CAN FAIL, fails
 # for the right reason, and DISTINGUISHES an affected lockfile from a clean one (a check that
 # cannot fail is a decoration; a check that reds on everything is one too).
 #
 # WHAT IT RUNS. Every leg executes the SHIPPED YAML's own shell, extracted verbatim from
-# between the `# --- <name>` markers of .github/workflows/dependency-audit.yml and
-# .github/workflows/dependency-ref-matrix.yml. Nothing here re-implements the audit, so an assertion
-# cannot keep passing against logic the templates no longer ship.
+# between the `# --- <name>` markers of workflows/dependency-audit.yml and
+# workflows/dependency-ref-matrix.yml. Nothing here re-implements the audit, so an assertion
+# cannot keep passing against logic the templates no longer ship. The extraction, the harness and
+# the assertions are in `dependency-selftest-lib.sh` beside this file; the notices workflow has its
+# own suites, `dependency-advisory-notices.selftest.sh` and its shape one.
 #
 # ZERO NETWORK IN EVERY LEG. The network seams (`osv_scan`, `advisory_fetch`,
 # `registry_repo_lookup`, `reviewed_advisory_fetch`) live in the yml's CUSTOMIZE zone precisely
@@ -80,77 +84,18 @@
 # agrees on), or put back the reading of a bare version as exact that card#11604 rules out.
 # Without them, a leg could be passing
 # because the fixture is odd rather than because the shipped logic is closed. The §X mutant
-# re-mints the swallowed-error defect and requires the class guard to catch it. The §B mutant gives
-# the bump gate's release arm a bump and requires it to set `base=main`, which the release leg's
-# assertion refuses, and the §B app-secrets mutant lets a missing bump-app secret through, which the
-# app-secrets legs refuse.
+# re-mints the swallowed-error defect and requires the class guard to catch it.
 set -uo pipefail
 
+SUITE=dependency-audit
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# MEZZANINE: the template keeps the workflows and fixtures beside this file; this repo keeps the
-# workflows under .github/workflows/ and the fixtures beside the script, as bin/pr-body-lint-fixtures/.
-ROOT="$(cd "$HERE/.." && pwd)"
-CALLEE="$ROOT/.github/workflows/dependency-audit.yml"
-CALLER="$ROOT/.github/workflows/dependency-ref-matrix.yml"
-FIX="$HERE/dependency-audit-fixtures"
-FAILURES=0
+. "$HERE/dependency-selftest-lib.sh" || { echo "FAIL: dependency-selftest-lib.sh is not beside this selftest, so no leg ran"; exit 1; }
+need_workflows "$CALLER"
+check_workflows_input dependency-audit.yml
+check_workflows_input dependency-ref-matrix.yml
 
-# MEMBERSHIP IS A `case` — NOT A PIPE INTO `grep -q`, AND NOT A HERESTRING EITHER (card#8080).
-# `grep -q` exits on its FIRST match and closes the pipe, so the writer takes SIGPIPE and dies
-# 141; under `pipefail` the PIPELINE is 141, and a TRUE membership comes back FALSE. Every
-# assertion below is a membership question about `$out`, an audit report that grows with the
-# population it describes, so the size gate is a matter of fixtures rather than of principle.
-# The herestring these lines USED to be (`grep -q PAT <<< "$out"`) removes the SIGPIPE and buys
-# the worse defect: a HUNG test instead of a silent wrong answer on the fleet's Windows seat
-# (card#12619 — `_ci_py` in ci-verdict.sh owns the measurement).
-# Byte-identical to `plugins/coord/hooks/bin/_selftest_match.sh`, which owns the argument and the
-# measurement; IN-FILE rather than sourced because this file SHIPS into an adopter's repo, where
-# that path is not one it can name. Two FRAMEWORK-REPO guards keep it honest — neither ships, so
-# nothing in your install runs either and nothing here depends on them being present:
-# `.githooks/pipe-grep-membership.selftest.py` reds if any copy goes back to the pipe (or to the
-# refused herestring), and `.githooks/membership-primitive-drift.selftest.py` reds if this copy
-# stops being byte-identical to the authority.
-has() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
-
-fail() { echo "  FAIL: $1"; FAILURES=$((FAILURES + 1)); }
-ok()   { echo "  ok:   $1"; }
-finish() {
-  if [ "$FAILURES" -gt 0 ]; then echo "dependency-audit selftest: FAIL ($FAILURES)"; exit 1; fi
-  echo "dependency-audit selftest: all checks pass"; exit 0
-}
-
-for tool in jq sed awk find diff; do
-  # A missing prerequisite is NAMED, never skipped: a silent skip reports a green suite that
-  # ran none of these legs. jq is already a CI prerequisite for this repo's other guards.
-  command -v "$tool" >/dev/null 2>&1 || { fail "PREREQUISITE MISSING: $tool is not on PATH; this suite does not skip legs"; finish; }
-done
-
-extract() {  # $1=file $2=block-name -> the block body, de-indented by 10
-  sed -n "/--- $2\$/,/--- end $2\$/p" "$1" \
-    | grep -v -- "--- $2\$" \
-    | grep -v -- "--- end $2\$" \
-    | sed 's/^          //'
-}
-
-# ── §E extraction controls: every leg below is worthless if these are empty ──────────────
-BLOCKS=""
-BLOCK_NAMES="dep-audit-lib dep-audit-accept dep-audit-discovery dep-audit-source1 dep-audit-source2
-            dep-audit-report dep-audit-main"
-for name in $BLOCK_NAMES; do
-  body="$(extract "$CALLEE" "$name")"
-  if [ -z "$body" ]; then
-    fail "extraction of '$name' returned EMPTY — the yml markers moved; this selftest is testing nothing"
-    finish
-  fi
-  BLOCKS="$BLOCKS
-$body"
-done
-ok "$(wc -w <<< "$BLOCK_NAMES" | tr -d ' ') blocks extracted from the shipped callee ($(printf '%s' "$BLOCKS" | wc -l) lines)"
-if ! bash -n <(printf 'set -euo pipefail\n%s\n' "$BLOCKS") 2>/dev/null; then
-  fail "the extracted callee blocks do not PARSE — every leg below would red on a syntax error"
-  finish
-fi
-ok "extracted callee blocks parse"
+# ── §E extraction: the library extracted and parsed every callee block, or this suite ended ──
+ok "$(wc -w <<< "$BLOCK_NAMES" | tr -d ' ') blocks extracted from the shipped callee, and they parse ($(printf '%s' "$BLOCKS" | wc -l) lines)"
 
 REPORT_BLOCK="$(extract "$CALLER" "dep-matrix-report-assert")"
 [ -n "$REPORT_BLOCK" ] || { fail "extraction of 'dep-matrix-report-assert' returned EMPTY — the caller's markers moved"; finish; }
@@ -168,100 +113,108 @@ else
   ok "shipped CUSTOMIZE zone defines every network seam the blocks call (their bodies are NOT run here — no network)"
 fi
 
-# ── §W PERMISSIONS ARE GRANTED PER JOB (card#11434) ──────────────────────────────────────
-# Neither shipped workflow may carry a top-level `permissions:`, and every job under `jobs:` must
-# carry its own. PERM_AWK prints one line per violation, so an empty output is the pass; the
-# control below feeds it the workflow-level shape both files shipped with before card#11434.
-PERM_AWK='
-  /^permissions:/ { print "a top-level permissions: grant"; next }
-  /^jobs:/ { injobs = 1; next }
-  /^[^ #]/ { if (job != "" && !granted) print "job " job " has no permissions: of its own"; injobs = 0; job = ""; next }
-  injobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
-    if (job != "" && !granted) print "job " job " has no permissions: of its own"
-    job = $1; sub(/:$/, "", job); granted = 0; jobs++; next }
-  injobs && /^    permissions:/ { granted = 1 }
-  END { if (job != "" && !granted) print "job " job " has no permissions: of its own"
-        if (!jobs) print "no job found under jobs:" }'
+# ── §W PERMISSIONS ARE GRANTED PER JOB, AND THE AUDIT PAIR GRANTS NO WRITE (card#11434) ────
+# No shipped audit workflow carries a top-level `permissions:`, every job under `jobs:` carries its
+# own, and each is `{}` or a block mapping whose every entry is `read` or `none`. Anything else is
+# refused, `write-all` and a flow mapping included: a grant this check cannot read is not a pass.
+perm_violations() {  # stdin = a workflow -> one line per violation, so an empty output is the pass
+  awk "$GRANTS_AWK" | awk -F'\t' '
+    $1 == "(top level)" { print "a top-level permissions: grant"; next }
+    { jobs++ }
+    $2 == "NONE" { print "job " $1 " has no permissions: of its own"; next }
+    $2 != "{}" { n = split($2, g, ", ")
+                 for (i = 1; i <= n; i++) if (g[i] !~ /^[a-z-]+: (read|none)$/) print "job " $1 " grants " g[i] }
+    END { if (!jobs) print "no job found under jobs:" }'
+}
 for wf in "$CALLEE" "$CALLER"; do
-  perm="$(awk "$PERM_AWK" "$wf")"
-  [ -z "$perm" ] && ok "$(basename "$wf"): no top-level permissions:, and every job grants its own" \
-    || fail "$(basename "$wf"): permissions must be granted per job: $(tr '\n' ';' <<< "$perm")"
+  perm="$(perm_violations < "$wf")"
+  [ -z "$perm" ] && ok "$(basename "$wf"): no top-level permissions:, every job grants its own, and none grants a write" \
+    || fail "$(basename "$wf"): permissions must be granted per job, and read only: $(tr '\n' ';' <<< "$perm")"
 done
-perm="$(printf 'on:\n  workflow_dispatch:\npermissions:\n  contents: read\njobs:\n  audit:\n    runs-on: x\n  report:\n    permissions: {}\n    runs-on: x\n' | awk "$PERM_AWK")"
+perm="$(printf 'on:\n  workflow_dispatch:\npermissions:\n  contents: read\njobs:\n  audit:\n    runs-on: x\n  report:\n    permissions: {}\n    runs-on: x\n' | perm_violations)"
 has "$perm" 'a top-level permissions: grant' && has "$perm" 'job audit has no permissions:' && ! has "$perm" 'job report' \
   && ok "control: the per-job check reds on a workflow-level grant and on a job with no grant, and passes a job that has one" \
   || fail "control: the per-job check did not discriminate the workflow-level shape: $(tr '\n' ';' <<< "$perm")"
-
-# ── the harness: a fixture tree + fixture seams + the extracted blocks ────────────────────
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
-: > "$TMP/swallowed"
-
-run_audit() {
-  # $1 = repo dir, $2 = seam-prelude file, $3 = control repo ("" = the fixture default),
-  # $4 = block text ("" = the shipped blocks)
-  local repo="$1" prelude="$2" ctrl="${3:-thephpleague/commonmark}" blocks="${4:-$BLOCKS}"
-  local rc=0
-  : > "$TMP/gh_output" ; : > "$TMP/step_summary"
-  (
-    cd "$repo" || exit 97
-    GITHUB_OUTPUT="$TMP/gh_output" GITHUB_STEP_SUMMARY="$TMP/step_summary" \
-    AUDIT_REF="fixture-ref" \
-    bash -c "set -euo pipefail
-LOCKFILE_NAMES=\"${AUDIT_LOCKFILE_NAMES:-composer.lock package-lock.json}\"
-ACCEPT_FILE=\".github/dependency-audit-accept.json\"
-EXCLUDE_DIRS=\"sboms vendor node_modules .git\"
-ADVISORY_CONTROL_REPO=\"$ctrl\"
-$(cat "$prelude")
-$blocks" 2>&1
-  ) > "$TMP/audit_out" || rc=$?
-  # ⛔ THE CLASS GUARD, applied to EVERY leg rather than to the legs someone remembered.
-  # `err` does two things — print, and increment the counter the verdict and the exported
-  # population read — and nothing makes those agree. When they disagree, the run has PRINTED an
-  # error it did not RECORD, which is a green over a source that failed. That shipped once, from
-  # an `err` reached only inside `$(...)`, where the increment died with the subshell.
-  # Recorded to a FILE, not asserted here: run_audit is itself called inside `$(...)`, so a
-  # `fail` raised here would be discarded by the very mechanism this guard exists to catch.
-  if grep -q 'AUDIT-ERROR\[' "$TMP/audit_out"; then
-    local e; e="$(pop errors)"
-    [[ $e =~ ^[0-9]+$ ]] && [ "$e" -ge 1 ] \
-      || printf 'repo=%s printed AUDIT-ERROR but exported errors=%s\n' "$repo" "'$e'" >> "$TMP/swallowed"
-  fi
-  cat "$TMP/audit_out"
-  return "$rc"
+perm_control() {  # $1=shipped file $2=sed program planting a grant $3=the one violation it must report
+  local got; got="$(sed "$2" "$1" | perm_violations)"
+  [ "$got" = "$3" ] && ok "control: $(basename "$1") with a planted grant is refused ($3)" \
+    || fail "control: a planted grant in $(basename "$1") should report '$3' alone, got '$(tr '\n' ';' <<< "$got")'"
 }
+perm_control "$CALLER" '/^  audit:$/,/^    strategy:$/{/^      contents: read$/d; s/^    permissions:$/    permissions: write-all/}' 'job audit grants write-all'
+perm_control "$CALLER" 's/^    permissions: {}$/    permissions: write-all/' 'job report grants write-all'
+perm_control "$CALLEE" 's/^      contents: read$/&\n      issues: "write"/' 'job audit grants issues: write'
+perm_control "$CALLEE" 's/^      contents: read$/&\n      issues: write  # a trailing comment/' 'job audit grants issues: write'
+perm_control "$CALLEE" '/^      contents: read$/d; s/^    permissions:$/    permissions: {issues: write}/' 'job audit grants {issues: write}'
 
-seam() {  # writes a prelude file from the named behaviours: $1=osv $2=advisory $3=registry [$4=reviewed, default REV_FIXTURE]
-  local f="$TMP/seam.sh"
-  cat > "$f" <<PRELUDE
-FIX="$FIX"
-osv_scan() { $1 }
-advisory_fetch() { $2 }
-registry_repo_lookup() { $3 }
-reviewed_advisory_fetch() { ${4:-$REV_FIXTURE} }
-PRELUDE
-  printf '%s' "$f"
+# ── every key the caller passes is one the callee declares ────────────────────────────────
+# GitHub refuses to start a called workflow when its caller passes an input or secret the callee
+# does not declare, so a key dropped from one file and not the other fails every scheduled run.
+# Prints one `input <name>` / `secret <name>` line per key: DECLARED_AWK reads the callee's
+# `workflow_call:` inputs/secrets, PASSED_AWK the caller's `with:`/`secrets:` maps.
+DECLARED_AWK='
+  /^  workflow_call:/ { wc = 1; next }
+  /^[^ #]/ || /^  [^ #]/ { wc = 0; sect = "" }
+  wc && /^    inputs:/  { sect = "input"; next }
+  wc && /^    secrets:/ { sect = "secret"; next }
+  wc && /^    [^ #]/    { sect = "" }
+  wc && sect != "" && /^      [A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k); print sect " " k }'
+PASSED_AWK='
+  /^    with:[[:space:]]*$/    { sect = "input"; next }
+  /^    secrets:[[:space:]]*$/ { sect = "secret"; next }
+  /^ {0,4}[^ #]/ { sect = "" }
+  sect != "" && /^      [A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k); print sect " " k }'
+undeclared() {  # $1 = callee, $2 = caller; prints each passed key the callee does not declare
+  local declared; declared="$(awk "$DECLARED_AWK" "$1")"
+  awk "$PASSED_AWK" "$2" | while IFS= read -r key; do
+    has_line "$declared" "$key" || printf '%s\n' "$key"
+  done
 }
+passed="$(awk "$PASSED_AWK" "$CALLER")"
+missing="$(undeclared "$CALLEE" "$CALLER")"
+if [ -z "$passed" ]; then
+  fail "read no key the caller passes under with:/secrets: — the caller-callee check measured nothing"
+elif [ -n "$missing" ]; then
+  fail "the caller passes keys the callee does not declare (GitHub refuses the run): $(tr '\n' ';' <<< "$missing")"
+else
+  ok "every key the caller passes ($(tr '\n' ';' <<< "$passed")) is declared by the callee"
+fi
+missing="$(undeclared "$CALLEE" <(sed 's/^      ref: \${{ matrix.ref }}$/&\n      planted_undeclared: x/' "$CALLER"))"
+[ "$missing" = "input planted_undeclared" ] \
+  && ok "control: a caller passing an undeclared input is reported by name" \
+  || fail "control: the planted undeclared input was not reported alone (got '$(tr '\n' ';' <<< "$missing")')"
+missing="$(undeclared "$CALLEE" <(sed 's/^  report:$/    secrets:\n      PLANTED_SECRET: x\n&/' "$CALLER"))"
+[ "$missing" = "secret PLANTED_SECRET" ] \
+  && ok "control: a caller passing an undeclared secret is reported by name" \
+  || fail "control: the planted undeclared secret was not reported alone (got '$(tr '\n' ';' <<< "$missing")')"
+# Until 0.80.0 the callee also declares the removed bump job's inputs and secrets, ignored, so a
+# caller still in the older shape keeps starting. Remove this check with those declarations.
+OLD_CALLER='jobs:
+  audit:
+    uses: ./.github/workflows/dependency-audit.yml
+    with:
+      ref: ${{ matrix.ref }}
+      leg: ${{ matrix.leg }}
+      bump_prs: on
+    secrets:
+      ADVISORY_BUMP_APP_CLIENT_ID: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID }}
+      ADVISORY_BUMP_APP_PRIVATE_KEY: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY }}'
+missing="$(undeclared "$CALLEE" <(printf '%s\n' "$OLD_CALLER"))"
+[ -z "$missing" ] \
+  && ok "a caller still passing leg, bump_prs and both ADVISORY_BUMP_APP_* secrets is accepted by the callee" \
+  || fail "the callee no longer declares keys an older caller passes, before 0.80.0 (GitHub refuses the run): $(tr '\n' ';' <<< "$missing")"
+missing="$(undeclared <(sed '/^      leg:$/,/^        type: string$/d' "$CALLEE") <(printf '%s\n' "$OLD_CALLER"))"
+[ "$missing" = "input leg" ] \
+  && ok "control: with the callee's leg declaration removed, the older caller is reported by name" \
+  || fail "control: removing the callee's leg declaration did not report 'input leg' alone (got '$(tr '\n' ';' <<< "$missing")')"
 
-OSV_CLEAN='printf %s "{\"results\":[]}";'
+# ── the seams only this suite uses, and the fixture trees ─────────────────────────────────
 OSV_GARBAGE='printf %s "osv-scanner: could not open lockfile"; return 3;'
 OSV_ERR='return 127;'
 OSV_FINDING='printf %s "{\"results\":[{\"source\":{\"path\":\"composer.lock\"},\"packages\":[{\"package\":{\"ecosystem\":\"Packagist\",\"name\":\"some/pkg\",\"version\":\"1.0.0\"},\"vulnerabilities\":[{\"id\":\"GHSA-glob-al00-0001\"}]}]}]}";'
-ADV_FIXTURE='cat "$FIX/advisories/$(printf %s "$1" | tr / @).json";'
 ADV_FAIL_DEP='case "$1" in fixture-org/control-repo) cat "$FIX/advisories/fixture-org@control-repo.json";; *) return 22;; esac'
 ADV_RATELIMIT='case "$1" in fixture-org/control-repo) cat "$FIX/advisories/fixture-org@control-repo.json";; *) printf %s "{\"message\":\"API rate limit exceeded\"}";; esac'
 ADV_EMPTY_CONTROL='printf %s "[]";'
-REG_NONE='return 1;'
-# The reviewed global records (fixtures/reviewed/<GHSA>.json). A GHSA with no fixture exits
-# non-zero, as `gh api` does on a 404, so a leg that needs a record nobody vendored reds.
-REV_FIXTURE='cat "$FIX/reviewed/$1.json";'
 REG_ONE='case "$1" in resolvable-pkg) printf %s "fixture-org/control-repo";; *) return 1;; esac'
-
-mkrepo() {  # $1=name, then pairs of "src:dest"
-  local d="$TMP/$1"; shift; mkdir -p "$d"
-  local pair
-  for pair in "$@"; do mkdir -p "$d/$(dirname "${pair#*:}")"; cp "$FIX/${pair%%:*}" "$d/${pair#*:}"; done
-  printf '%s' "$d"
-}
 
 AFFECTED="$(mkrepo affected composer.lock.affected:composer.lock)"
 CLEAN="$(mkrepo clean composer.lock.clean:composer.lock)"
@@ -270,13 +223,12 @@ NPM="$(mkrepo npm package-lock.json.npm:package-lock.json)"
 NOPKGS="$(mkrepo nopkgs composer.lock.empty:composer.lock)"
 CORRUPT="$(mkrepo corrupt composer.lock.corrupt:composer.lock)"
 
-pop() { jq -r --arg k "$1" '(.[$k] // "MISSING") | tostring' <<< "$(sed -n 's/^population=//p' "$TMP/gh_output")"; }
 # Membership in an exported ARRAY field. Gated on jq's EXIT STATUS, so a withheld or
 # unparseable population is a NO rather than an empty string that compares equal to nothing.
 pop_has() { jq -e --arg k "$1" --arg v "$2" '(.[$k] // []) | index($v) != null' \
               <<< "$(sed -n 's/^population=//p' "$TMP/gh_output")" >/dev/null 2>&1; }
-# The `affected` output — the AFFECTED rows of both sources in machine form, which the bump job
-# reads instead of the log (card#12253). Asserted with `jq -e`, so an absent output is a NO.
+# The `affected` output — the AFFECTED rows of both sources in machine form, for a reader that
+# must not parse the log. Asserted with `jq -e`, so an absent output is a NO.
 aff() { sed -n 's/^affected=//p' "$TMP/gh_output"; }
 
 # ══ §1 THE DISCRIMINATING PAIR — the same package at two versions ════════════════════════
@@ -324,7 +276,7 @@ fi
   && ok "…and the population output names what was read (1 lockfile, 2 production packages, 1 resolved, 1 not)" \
   || fail "clean-leg population wrong: $(sed -n 's/^population=//p' "$TMP/gh_output")"
 [ "$(aff)" = "[]" ] \
-  && ok "…and affected is [] — exported, and empty, which the bump job reads as nothing to bump" \
+  && ok "…and affected is [] — exported, and empty" \
   || fail "the clean leg's affected should be [], got '$(aff)'"
 has "$out" 'commonmark-devonly' \
   && fail "a packages-dev entry leaked into the production population" \
@@ -1290,21 +1242,20 @@ if [ "$rc" -ne 0 ] && grep -q 'SOURCE1 .*GHSA-glob-al00-0001' "$TMP/source1.out"
 else
   fail "a source-1 finding must red and be counted (rc=$rc): $out"
 fi
-# A source 1 (global-database) finding reaches the bump job's input, not only the log (card#12253,
-# comment 13429 item 1). Its record names no fixed event, so its row says so.
+# A source 1 (global-database) finding reaches the `affected` output, not only the log. Its
+# record names no fixed event, so its row says so.
 jq -e 'length == 1 and .[0].source == "1" and .[0].ecosystem == "Packagist" and .[0].package == "some/pkg"
          and .[0].ghsa == "GHSA-glob-al00-0001" and .[0].patched == "no fixed version in its OSV record"' \
      <<< "$(aff)" >/dev/null 2>&1 \
   && ok "…and affected carries it as a source 1 row, naming no fix where its record names none" \
   || fail "the source-1 finding should be exported as one source 1 row, got '$(aff)'"
 # THE GLOBAL-ONLY CONTROL: zod 4.4.3, GHSA-mrhx-c7xc-m3w5, an advisory only the global database
-# carries (no repository advisory). The export must EQUAL fixtures/affected/zod-source1.json, the
-# file advisory-bump.selftest.py feeds its plan — so the two ends of the hop read one row.
+# carries (no repository advisory). The export must EQUAL fixtures/affected/zod-source1.json.
 OSV_ZOD='cat "$FIX/osv/zod-global-only.json";'
 out="$(run_audit "$CLEAN" "$(seam "$OSV_ZOD" "$ADV_FIXTURE" "$REG_NONE")")"; rc=$?
 if [ "$rc" -ne 0 ] && [ "$(pop findings)" = "1" ] && [ "$(pop errors)" = "0" ] \
    && jq -e --slurpfile want "$FIX/affected/zod-source1.json" '. == $want[0]' <<< "$(aff)" >/dev/null 2>&1; then
-  ok "a global-only advisory (zod 4.4.3) → RED (findings=1, errors=0), exported as fixtures/affected/zod-source1.json, fix 4.6.6, for the bump job"
+  ok "a global-only advisory (zod 4.4.3) → RED (findings=1, errors=0), exported as fixtures/affected/zod-source1.json, fix 4.6.6"
 else
   fail "zod 4.4.3 should red on its one finding and export exactly fixtures/affected/zod-source1.json (rc=$rc, findings='$(pop findings)', errors='$(pop errors)', affected='$(aff)'): $out"
 fi
@@ -1688,17 +1639,6 @@ fi
 # The reviewed-record lookup in the caller (card#11106), each guard removed on its own: the
 # end-to-end leg it holds must change verdict. block_mutant is called bare, never inside $( ),
 # so its `fail` counts.
-block_mutant() {  # $1=label $2=sed program $3=sites expected -> MUT (the mutated blocks); 0 when it isolates its guard and parses
-  local n
-  MUT="$(printf '%s\n' "$BLOCKS" | sed "$2")"
-  n="$(diff <(printf '%s\n' "$BLOCKS") <(printf '%s\n' "$MUT") | grep -c '^>' || true)"
-  if [ "$n" -ne "$3" ]; then
-    fail "block mutant '$1' matched $n site(s), not $3 — it no longer isolates the guard it names"; return 1
-  fi
-  if ! bash -n <(printf 'set -euo pipefail\n%s\n' "$MUT") 2>/dev/null; then
-    fail "block mutant '$1' does not parse — its verdict would prove nothing"; return 1
-  fi
-}
 if block_mutant "the second match, with the reviewed records handed in, dropped" \
      's/ --slurpfile reviewed "\$WORK\/reviewed\.json"//' 1; then
   rev_check "$LARAVEL_AT_FIX" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE")" GREEN "" "$MUT" \
@@ -1821,164 +1761,6 @@ if block_mutant "the SOURCE2-RANGE-UNPARSEABLE detail not made one line" \
     || fail "with the SOURCE2-RANGE-UNPARSEABLE detail not made one line the range should have forged a line: $REV_OUT"
 fi
 
-# ══ §B THE BUMP JOB — which leg bumps, and what the bump steps read (card#12253) ════════════
-# The gate is the shipped `dep-bump-gate` block, run verbatim; the steps after it are a static
-# read of the yml, since they run the bump tool (advisory-bump.selftest.py owns the tool).
-GATE_BLOCK="$(extract "$CALLEE" dep-bump-gate)"
-[ -n "$GATE_BLOCK" ] || { fail "extraction of 'dep-bump-gate' returned EMPTY — the bump job's markers moved"; finish; }
-run_gate() {  # $1=bump_prs $2=leg $3=ref [$4=block] -> output; the decision lands in $TMP/gate_output
-  : > "$TMP/gate_output"
-  GITHUB_OUTPUT="$TMP/gate_output" BUMP_PRS="$1" BUMP_LEG="$2" AUDIT_REF="$3" bash -c "set -euo pipefail
-${4:-$GATE_BLOCK}" 2>&1
-}
-gate_out() { sed -n "s/^$1=//p" "$TMP/gate_output"; }
-out="$(run_gate on integration dev)"; rc=$?
-[ "$rc" -eq 0 ] && [ "$(gate_out run)" = "true" ] && [ "$(gate_out base)" = "dev" ] \
-  && ok "gate: bump PRs on (the default) + the integration leg → run=true, base=dev" \
-  || fail "the integration leg should bump against its own ref (rc=$rc, run='$(gate_out run)', base='$(gate_out base)'): $out"
-# THE RELEASE-REF CONTROL: the release leg is audited and never bumped — no `run=true`, and no
-# `base` for a later step to take as a bump's target.
-out="$(run_gate on release main)"; rc=$?
-[ "$rc" -eq 0 ] && [ "$(gate_out run)" = "false" ] && [ -z "$(gate_out base)" ] && has "$out" 'never bumped' \
-  && ok "gate: the release leg (main) → run=false and NO base — the release ref is never a bump's target" \
-  || fail "the release leg must never bump (rc=$rc, run='$(gate_out run)', base='$(gate_out base)'): $out"
-out="$(run_gate off integration dev)"; rc=$?
-[ "$rc" -eq 0 ] && [ "$(gate_out run)" = "false" ] && has "$out" 'BUMP PRS: OFF' \
-  && ok "gate: the caller's recorded \`bump_prs: off\` → OFF, named, green — a switch, not a failure" \
-  || fail "bump_prs off should be a named, green OFF (rc=$rc): $out"
-out="$(run_gate on '' dev)"; rc=$?
-[ "$rc" -ne 0 ] && has "$out" 'setup missing' && has "$out" '`leg`' && [ -z "$(gate_out run)" ] \
-  && has "$out" "the coord plugin's docs/DEPENDENCY-AUDIT.md § Bump PRs" \
-  && ok "gate: bump PRs on and NO leg named → RED, 'setup missing', naming \`leg\` — distinct from OFF" \
-  || fail "a caller that names no leg must red as setup missing (rc=$rc, run='$(gate_out run)'): $out"
-for bad in "bump_prs=yes|on-but-misspelled" "leg=Integration|a leg nobody declared"; do
-  label="${bad#*|}"; kv="${bad%%|*}"
-  case "$kv" in bump_prs=*) out="$(run_gate "${kv#*=}" integration dev)" ;; *) out="$(run_gate on "${kv#*=}" dev)" ;; esac; rc=$?
-  [ "$rc" -ne 0 ] && has "$out" 'BUMP-GATE: RED' && [ -z "$(gate_out run)" ] \
-    && ok "gate: $kv ($label) → RED, never a guess" \
-    || fail "gate should red on $kv (rc=$rc): $out"
-done
-# The release-ref control can fail: a gate whose release arm bumps is caught by the leg above.
-MUTANT_GATE="${GATE_BLOCK/printf \'run=false\\n\' >> \"\$out\" ;;/printf \'run=true\\nbase=%s\\n\' \"\$AUDIT_REF\" >> \"\$out\" ;;}"
-if [ "$MUTANT_GATE" = "$GATE_BLOCK" ]; then
-  fail "the release-arm mutant did not apply — the gate's release arm changed shape; re-point the mutant"
-else
-  out="$(run_gate on release main "$MUTANT_GATE")"; rc=$?
-  [ "$(gate_out run)" = "true" ] && [ "$(gate_out base)" = "main" ] \
-    && ok "mutant control: a gate whose release arm bumps sets base=main — the release-leg assertion above would red on it" \
-    || fail "the release-arm mutant should have set run=true base=main (rc=$rc, run='$(gate_out run)'): $out"
-fi
-BUMP_JOB="$(sed -n '/^  bump:$/,$p' "$CALLEE")"
-[ -n "$BUMP_JOB" ] || { fail "no \`bump:\` job found in the shipped callee"; finish; }
-# Every step after the gate runs only on the gate's run=true; the checkout takes the gate's base.
-gated="$(awk '/^      - /{ if (step) print step "|" cond; step = $0; cond = "none"; next }
-             /^        if:/{ cond = $0 } END { if (step) print step "|" cond }' <<< "$BUMP_JOB" | tail -n +2)"
-ungated="$(grep -v "steps.gate.outputs.run == 'true'" <<< "$gated" || true)"
-[ -n "$gated" ] && [ -z "$ungated" ] \
-  && ok "bump job: every step after the gate is conditioned on the gate's run=true ($(grep -c . <<< "$gated") steps)" \
-  || fail "a bump-job step runs without the gate's run=true: ${ungated:-no steps found}"
-has "$BUMP_JOB" 'ref: ${{ steps.gate.outputs.base }}' \
-  && ok "bump job: the checkout takes the gate's base, the only ref the gate names on the integration leg" \
-  || fail "the bump job's checkout must take steps.gate.outputs.base"
-has "$BUMP_JOB" 'AFFECTED: ${{ needs.audit.outputs.affected }}' && has "$BUMP_JOB" 'POPULATION: ${{ needs.audit.outputs.population }}' \
-   && has "$BUMP_JOB" '--findings-env AFFECTED --population-env POPULATION' \
-   && has "$(cat "$CALLEE")" 'affected: ${{ steps.audit.outputs.affected }}' \
-   && has "$(extract "$CALLEE" dep-audit-report)" "printf 'affected=%s" \
-  && ok "bump job: the plan step reads needs.audit.outputs.affected and .population, the outputs the report block writes" \
-  || fail "the bump job's plan step must read the audit's affected and population outputs"
-# ── THE BUMP APP (operator ruling opq-1792926707-7f44): the job pushes and opens PRs as a GitHub
-# App's bot, and the secrets check is the shipped `dep-bump-app-secrets` block, run verbatim.
-APP_BLOCK="$(extract "$CALLEE" dep-bump-app-secrets)"
-[ -n "$APP_BLOCK" ] || { fail "extraction of 'dep-bump-app-secrets' returned EMPTY — the bump job's markers moved"; finish; }
-run_app_check() {  # $1=HAS_CLIENT_ID $2=HAS_PRIVATE_KEY [$3=block] -> output
-  HAS_CLIENT_ID="$1" HAS_PRIVATE_KEY="$2" bash -c "set -euo pipefail
-${3:-$APP_BLOCK}" 2>&1
-}
-out="$(run_app_check true true)"; rc=$?
-[ "$rc" -eq 0 ] && ! has "$out" 'RED' \
-  && ok "app secrets: both set → passes" \
-  || fail "both bump-app secrets set should pass (rc=$rc): $out"
-# `-` stands for an EMPTY value (a `secrets.X != ''` that GitHub never rendered): a blank first
-# field would read as a blank row, and the count below catches a row the reader folds away.
-app_cases=0
-while IFS='|' read -r cid key named unnamed; do
-  [ -n "$cid" ] || continue
-  app_cases=$((app_cases + 1))
-  [ "$cid" = "-" ] && cid=""; [ "$key" = "-" ] && key=""
-  out="$(run_app_check "$cid" "$key")"; rc=$?
-  [ "$rc" -ne 0 ] && has "$out" 'BUMP-APP: RED — setup missing' && has "$out" "$named" \
-     && has "$out" "the coord plugin's docs/DEPENDENCY-AUDIT.md § \"The bump app\"" && { [ -z "$unnamed" ] || ! has "$out" "$unnamed"; } \
-    && ok "app secrets: client-id=$cid private-key=$key → RED naming$named and the setup section" \
-    || fail "missing bump-app secret(s) must red naming$named (rc=$rc): $out"
-done <<CASES
-false|true| ADVISORY_BUMP_APP_CLIENT_ID|ADVISORY_BUMP_APP_PRIVATE_KEY
-true|false| ADVISORY_BUMP_APP_PRIVATE_KEY|ADVISORY_BUMP_APP_CLIENT_ID
-false|false| ADVISORY_BUMP_APP_CLIENT_ID ADVISORY_BUMP_APP_PRIVATE_KEY|
--|-| ADVISORY_BUMP_APP_CLIENT_ID ADVISORY_BUMP_APP_PRIVATE_KEY|
-CASES
-[ "$app_cases" -eq 4 ] \
-  && ok "app-secrets table: all 4 missing-secret cases ran" \
-  || fail "app-secrets table ran $app_cases of 4 cases — rows are being dropped by the reader"
-MUTANT_APP="${APP_BLOCK/return 1/return 0}"
-if [ "$MUTANT_APP" = "$APP_BLOCK" ]; then
-  fail "the app-secrets mutant did not apply — the block's failure arm changed shape; re-point the mutant"
-else
-  out="$(run_app_check false false "$MUTANT_APP")"; rc=$?
-  [ "$rc" -eq 0 ] \
-    && ok "mutant control: an app check whose missing arm returns 0 goes green on no secrets — the legs above would red on it" \
-    || fail "the app-secrets mutant should have passed with no secrets (rc=$rc): $out"
-fi
-# NO PERSONAL-TOKEN PATH. The only credentials the bump job can push or open with are the app's:
-# no `ADVISORY_BUMP_TOKEN` (the personal-token secret of agent-webhook-bridge's reference job; this
-# template never read it) anywhere in either file, the callee declares exactly the two app secrets,
-# every bump-job `secrets.` read names one of them (twice each: the check step and the token step
-# as shipped — a COUNT, so it does not see which step reads), the
-# `ADVISORY_BUMP_APP_TOKEN` the identity and open steps get is the token step's output, and the
-# token step is actions/create-github-app-token at a full SHA. No step names the workflow token,
-# and every checkout sets persist-credentials: false. What this does NOT see: a token reaching a
-# step by another route (an `env.` or `vars.` value, a file) — the secrets count catches a secret,
-# nothing here catches those.
-CALLEE_TEXT="$(cat "$CALLEE")"
-CALLER_TEXT="$(cat "$CALLER")"
-declared="$(sed -n '/^    secrets:$/,/^    outputs:$/p' "$CALLEE" | sed -n 's/^      \([A-Z_][A-Z0-9_]*\):$/\1/p' | sort | tr '\n' ' ')"
-bump_secret_reads="$(grep -o 'secrets\.[A-Za-z_][A-Za-z0-9_]*' <<< "$BUMP_JOB" | sort | uniq -c | awk '{print $2 "=" $1}' | tr '\n' ' ')"
-token_reads="$(grep -c 'ADVISORY_BUMP_APP_TOKEN: \${{ steps.app.outputs.token }}' <<< "$BUMP_JOB" || true)"
-pin_ok=false
-grep -Eq '^        uses: actions/create-github-app-token@[0-9a-f]{40}  # v' <<< "$BUMP_JOB" && pin_ok=true
-! has "$CALLEE_TEXT" 'ADVISORY_BUMP_TOKEN' && ! has "$CALLER_TEXT" 'ADVISORY_BUMP_TOKEN' \
-   && [ "$declared" = "ADVISORY_BUMP_APP_CLIENT_ID ADVISORY_BUMP_APP_PRIVATE_KEY " ] \
-   && [ "$bump_secret_reads" = "secrets.ADVISORY_BUMP_APP_CLIENT_ID=2 secrets.ADVISORY_BUMP_APP_PRIVATE_KEY=2 " ] \
-   && [ "$token_reads" = "2" ] && [ "$(grep -c 'steps\.app\.outputs\.token' <<< "$BUMP_JOB")" = "2" ] \
-   && [ "$pin_ok" = true ] \
-   && ! has "$BUMP_JOB" 'GITHUB_TOKEN }}' && ! has "$BUMP_JOB" 'github.token' \
-   && [ "$(grep -c '^ *persist-credentials: false' <<< "$BUMP_JOB")" = "$(grep -c 'uses: actions/checkout@' <<< "$BUMP_JOB")" ] \
-  && ok "bump job: no personal-token path — no ADVISORY_BUMP_TOKEN in callee or caller, the callee declares only the two app secrets, the bump job reads no other secret and each of those twice (the check and token steps as shipped), the two ADVISORY_BUMP_APP_TOKEN reads are the token step's output, the token action is SHA-pinned, no step names the workflow token, and every checkout sets persist-credentials: false (checkout itself still fetches with its default token)" \
-  || fail "the bump job must carry no personal-token path: ADVISORY_BUMP_TOKEN present (callee/caller: $(has "$CALLEE_TEXT" ADVISORY_BUMP_TOKEN && echo yes || echo no)/$(has "$CALLER_TEXT" ADVISORY_BUMP_TOKEN && echo yes || echo no)), declared secrets '$declared', bump-job secret reads '$bump_secret_reads', app-token reads '$token_reads', token action SHA-pinned '$pin_ok'; and no workflow-token step, persist-credentials: false on every checkout"
-# MEZZANINE local edit (3) — remove when card#13796 ships. Upstream's caller arm accepts only
-# `bump_prs: 'on'`, so the callee's own recorded switch `'off'` cannot be adopted. A caller that
-# sets `'off'` on a `bump_prs:` line of its own, and on no other such line, passes the same leg and
-# no-inherit checks and hands over no secret at all; every other caller takes upstream's 'on' arm
-# below, unchanged, which reds on a missing or misspelled value.
-if [ "$(grep -c "^ *bump_prs: " "$CALLER")" = "1" ] && [ "$(grep -c "^ *bump_prs: 'off'$" "$CALLER")" = "1" ]; then
-  if has "$CALLER_TEXT" "leg: \${{ matrix.leg }}" \
-     && [ "$(grep -c 'secrets\.' "$CALLER")" = "0" ] \
-     && [ "$(grep -c '^ *leg: release$' "$CALLER")" = "1" ] && [ "$(grep -c '^ *leg: integration$' "$CALLER")" = "1" ] \
-     && ! has "$CALLER_TEXT" 'secrets: inherit'; then
-    ok "caller: names one release leg and one integration leg, passes leg + bump_prs 'off' (the recorded switch), and hands over no secret"
-  else
-    fail "a caller with bump_prs 'off' must name each leg, pass leg, and pass no secret (never inherit)"
-  fi
-else
-has "$CALLER_TEXT" 'leg: ${{ matrix.leg }}' && has "$CALLER_TEXT" "bump_prs: 'on'" \
-   && has "$CALLER_TEXT" 'ADVISORY_BUMP_APP_CLIENT_ID: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID }}' \
-   && has "$CALLER_TEXT" 'ADVISORY_BUMP_APP_PRIVATE_KEY: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY }}' \
-   && [ "$(grep -c 'secrets\.' "$CALLER")" = "2" ] \
-   && [ "$(grep -c '^ *leg: release$' "$CALLER")" = "1" ] && [ "$(grep -c '^ *leg: integration$' "$CALLER")" = "1" ] \
-   && ! has "$CALLER_TEXT" 'secrets: inherit' \
-  && ok "caller: names one release leg and one integration leg, passes leg + bump_prs 'on', and hands over the two app secrets by name and nothing else" \
-  || fail "the caller must name each leg, pass leg and bump_prs, and pass ADVISORY_BUMP_APP_CLIENT_ID and ADVISORY_BUMP_APP_PRIVATE_KEY by name, and no other secret (never inherit)"
-fi
-
 # ══ §R THE REPORTING JOB — a green over nothing must be unreachable from the caller ══════
 run_report() {  # $1=needs.audit.result  $2=population
   AUDIT_RESULT="$1" AUDIT_POPULATION="$2" bash -c "set -euo pipefail
@@ -1991,30 +1773,45 @@ out="$(run_report success "$GOOD")"; rc=$?
 # `|` separates the fields, NOT a tab: tab is an IFS *whitespace* character, so `read` folds
 # two adjacent tabs into one delimiter and the empty-population row silently became a
 # differently-shaped row that the loop skipped. The row count below is what would catch it now.
+# The last field is the text that names the rule that fired; empty means any refusal.
 report_cases=0
-while IFS='|' read -r result population label; do
+while IFS='|' read -r result population label rule; do
   [ -n "$result" ] || continue
   [ -n "$label" ] || { fail "malformed reporting-job case row: '$result|$population'"; continue; }
   report_cases=$((report_cases + 1))
   out="$(run_report "$result" "$population")"; rc=$?
-  if [ "$rc" -ne 0 ] && has "$out" 'REPORT: RED'; then
+  if [ "$rc" -ne 0 ] && has "$out" 'REPORT: RED' && has "$out" "$rule"; then
     ok "reporting job: $label → RED"
   else
-    fail "reporting job accepted $label (rc=$rc): $out"
+    fail "reporting job did not refuse $label${rule:+, naming '$rule'} (rc=$rc): $out"
   fi
 done <<CASES
 success||a WITHHELD population
 success|not json|an UNPARSEABLE population
 success|{"status":"audited","manifests":0,"packages":0,"errors":0}|a population over ZERO lockfiles
-success|{"status":"audited","manifests":2,"packages":0,"errors":0}|a population with lockfiles but ZERO packages
+success|{"status":"audited","manifests":2,"packages":0,"errors":0}|a population that does not say which lockfiles source 2 supports, with ZERO packages|source-2-supported lockfiles: unstated
+success|{"status":"audited","manifests":2,"packages":0,"errors":0,"supported_manifests":["composer.lock"],"unsupported_manifests":["packages.lock.json"]}|a population with a supported lockfile but ZERO packages|source-2-supported lockfiles: 1
+success|{"status":"audited","manifests":2,"packages":0,"errors":0,"supported_manifests":[],"unsupported_manifests":[]}|a population naming NO lockfile of either kind|names no lockfile
 success|{"status":"error","manifests":2,"packages":9,"errors":1}|a population whose sources errored
 success|{"status":"audited","manifests":2,"packages":9,"errors":2}|a population reporting source errors
 failure|$GOOD|a matrix leg that did not succeed
 cancelled|$GOOD|a CANCELLED matrix
 CASES
-[ "$report_cases" -eq 8 ] \
-  && ok "reporting-job table: all 8 rejection cases ran (a row the reader folds away is a leg nobody runs)" \
-  || fail "reporting-job table ran $report_cases of 8 cases — rows are being dropped by the reader"
+[ "$report_cases" -eq 10 ] \
+  && ok "reporting-job table: all 10 rejection cases ran (a row the reader folds away is a leg nobody runs)" \
+  || fail "reporting-job table ran $report_cases of 10 cases — rows are being dropped by the reader"
+# A repo with no lockfile source 2 supports is not red for its zero packages: the population is the
+# one the shipped callee exports over such a repo.
+UNSUP_ONLY="$(mkrepo unsuponly composer.lock.clean:packages.lock.json)"
+out="$(AUDIT_LOCKFILE_NAMES=packages.lock.json run_audit "$UNSUP_ONLY" "$(seam "$OSV_CLEAN" "$ADV_FIXTURE" "$REG_NONE")")"; rc=$?
+population="$(sed -n 's/^population=//p' "$TMP/gh_output")"
+if [ "$rc" -eq 0 ] && jq -e '.packages == 0 and .supported_manifests == [] and .unsupported_manifests == ["packages.lock.json"]' <<< "$population" >/dev/null; then
+  out="$(run_report success "$population")"; rc=$?
+  [ "$rc" -eq 0 ] && ok "reporting job: a repo whose only lockfile source 2 does not support passes, over the callee's own population" \
+    || fail "reporting job refused a repo whose only lockfile source 2 does not support (rc=$rc): $out"
+else
+  fail "the callee over a repo whose only lockfile is unsupported should pass and export it (rc=$rc, population '$population'): $out"
+fi
 
 # ══ §X THE CLASS GUARD — no leg above printed an error it failed to RECORD ═══════════════
 # This is the property blocker-1 violated, asserted over EVERY leg this suite ran rather than

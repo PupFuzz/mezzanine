@@ -15,9 +15,9 @@
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/bin/coord-ask-operator
-#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
-#   plugin version    coord 0.77.0
-#   upstream sha256   100c5d07024eb8fc046545ee042d402148a86ce13db1e358be1ab31c8d125cc7
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
+#   upstream sha256   b5abc6b8616018ca2e6fdf2b6ef77134475cfe2c40a983b3735fda6f0c9062ee
 #                     — the WHOLE upstream file, NOT the body figure vendor-pin-check pins.
 #
 # WHY THIS REPOSITORY CARRIES IT. Nothing here files operator questions: this repository has no
@@ -953,44 +953,48 @@ def rule_recommendation(secs, body):
     rows = next((r for _, name, r in secs if name == "Recommendation"), None)
     if rows is None:
         return []
-    out = []
-    text = section_text(rows)
     labels = [label for _, label, _, _ in
               option_blocks(next((r for _, name, r in secs if name == "Options"), []))]
+    return _recommend_findings(section_text(rows), labels) + _justification_findings(rows, secs, body)
 
+
+def _recommend_findings(text, labels):
+    """`rule_recommendation`'s `Recommend:` half: present, and naming a declared option."""
     recommend = field_value(text, "Recommend")
     if recommend is None:
-        out.append(Finding("recommend-missing", 0, "",
-                           "`## Recommendation` has no `Recommend:` line. Name one of the option "
-                           "labels, verbatim. The operator asked for a recommended action on "
-                           "every item; an item that lists options and stops has handed the whole "
-                           "analysis back."))
-    elif labels and recommend not in labels:
-        out.append(Finding("recommend-unknown-option", 0, recommend,
-                           "`Recommend: %s` names no option this body declared. The labels "
-                           "declared under `## Options` are: %s. This is usually an option "
-                           "renamed mid-draft with the recommendation left pointing at the old "
-                           "name — which reads to the operator as a choice that does not exist."
-                           % (recommend, ", ".join("`%s`" % lab for lab in labels))))
+        return [Finding("recommend-missing", 0, "",
+                        "`## Recommendation` has no `Recommend:` line. Name one of the option "
+                        "labels, verbatim. The operator asked for a recommended action on "
+                        "every item; an item that lists options and stops has handed the whole "
+                        "analysis back.")]
+    if labels and recommend not in labels:
+        return [Finding("recommend-unknown-option", 0, recommend,
+                        "`Recommend: %s` names no option this body declared. The labels "
+                        "declared under `## Options` are: %s. This is usually an option "
+                        "renamed mid-draft with the recommendation left pointing at the old "
+                        "name — which reads to the operator as a choice that does not exist."
+                        % (recommend, ", ".join("`%s`" % lab for lab in labels)))]
+    return []
 
+
+def _justification_findings(rows, secs, body):
+    """`rule_recommendation`'s `Justification:` half: present, not generic, moored to the item."""
     justification = continued_value(rows, "Justification")
     if justification is None:
-        out.append(Finding("justification-missing", 0, "",
-                           "`## Recommendation` has no `Justification:` line. The operator's "
-                           "words: \"the recommended action must be justified based on the actual "
-                           "context\" — so state why THIS option, from something already in "
-                           "`## Background` or in a citation."))
-        return out
+        return [Finding("justification-missing", 0, "",
+                        "`## Recommendation` has no `Justification:` line. The operator's "
+                        "words: \"the recommended action must be justified based on the actual "
+                        "context\" — so state why THIS option, from something already in "
+                        "`## Background` or in a citation.")]
 
     lowered = justification.lower()
     hit = next((p for p in GENERIC_JUSTIFICATIONS if p in lowered), None)
     if hit is not None:
-        out.append(Finding("generic-justification", 0, justification,
-                           "\"%s\" is on the closed list of content-free justifications this tool "
-                           "refuses — a phrase that could follow any recommendation on any item "
-                           "has justified none of them. State a reason that follows from "
-                           "something in `## Background` or from a citation." % hit))
-        return out
+        return [Finding("generic-justification", 0, justification,
+                        "\"%s\" is on the closed list of content-free justifications this tool "
+                        "refuses — a phrase that could follow any recommendation on any item "
+                        "has justified none of them. State a reason that follows from "
+                        "something in `## Background` or from a citation." % hit)]
 
     # The GROUNDS a justification may be moored to: the background's own vocabulary plus the
     # citation refs themselves, because "card#4521 is already the blocker" IS a reason anchored to
@@ -999,14 +1003,14 @@ def rule_recommendation(secs, body):
     grounds = (long_tokens(section_text(background))
                | long_tokens(" ".join(field_values(body, "Cite"))))
     if not (long_tokens(justification) & grounds):
-        out.append(Finding("justification-unmoored", 0, justification,
-                           "the `Justification:` shares no substantive word with `## Background` "
-                           "or with a citation, so nothing in it is anchored to this item's own "
-                           "context. This is a PROXY, not a judgement about the argument: it "
-                           "catches a reason that could have been written before the question "
-                           "was. Name the thing in the background that makes this the right "
-                           "option."))
-    return out
+        return [Finding("justification-unmoored", 0, justification,
+                        "the `Justification:` shares no substantive word with `## Background` "
+                        "or with a citation, so nothing in it is anchored to this item's own "
+                        "context. This is a PROXY, not a judgement about the argument: it "
+                        "catches a reason that could have been written before the question "
+                        "was. Name the thing in the background that makes this the right "
+                        "option.")]
+    return []
 
 
 def findings(body, role=None):
@@ -1293,47 +1297,61 @@ def _edit_target(reg, root, ident):
     in one place so `--check-only` and a real edit cannot disagree. Rows are `read_jsonl`'s
     `(lineno, obj_or_None, raw)`."""
     filed_path, resolved_path, _deferred = reg.stream_paths(root)
-    withdrawn_path = reg.withdrawn_path(root)
-    filed_rows, fault = reg.read_jsonl(filed_path)
-    if not fault:
-        resolved_rows, fault = reg.read_jsonl(resolved_path)
-    if not fault:
-        withdrawn_rows, fault = reg.read_jsonl(withdrawn_path)
+    paths = (filed_path, resolved_path, reg.withdrawn_path(root))
+    streams, fault = _read_streams(reg, paths)
     if fault:
         return None, None, "the registry could not be read (%s). Nothing was edited." % fault
-
+    filed_rows = streams[0]
     hits = [n for n, (_, obj, _) in enumerate(filed_rows)
             if obj is not None and obj.get("id") == ident]
-    by_id, conflicted, torn_answers = reg.resolved_index(resolved_rows)
-    withdrawn, torn_withdrawals = reg.withdrawn_index(withdrawn_rows)
-    kind, rec = reg.answer_of(ident, by_id, conflicted, withdrawn)
-    why = None
-    if not hits:
-        why = ("no filed item has the id %s in %s%s." % (
-            ident, filed_path, " (a line there does not parse, and it may be this item)"
-            if any(obj is None for _, obj, _ in filed_rows) else ""))
-    elif len(hits) > 1:
-        why = ("%s is carried by more than one record in %s, so which question to reword cannot "
-               "be read." % (ident, filed_path))
-    elif torn_answers or torn_withdrawals:
-        lineno, path, what = ((torn_answers[0][0], resolved_path, "the operator's answer to")
-                              if torn_answers else
-                              (torn_withdrawals[0][0], withdrawn_path, "the withdrawal of"))
-        why = ("line %d of %s does not parse, and it may be %s %s — an item whose state cannot be "
-               "read is never treated as open." % (lineno, path, what, ident))
-    elif kind == reg.ANSWER_WITHDRAWN:
-        why = ("%s was WITHDRAWN — %s (%s)%s — so it is no longer in front of the operator, and a "
-               "withdrawal is final: rewording it would change a question nobody will be shown. "
-               "File a NEW question, citing a source that is still open, if one remains."
-               % (ident, rec.get("reason"), ", ".join(rec.get("closing_cards") or []),
-                  ", at %s" % rec["withdrawn_at"] if rec.get("withdrawn_at") else ""))
-    elif kind != reg.ANSWER_NONE:
-        why = ("%s already carries an operator answer in %s, so it is no longer an open question "
-               "and its wording is final. The decision lives on the thread or card the item "
-               "cites; file a NEW question if one remains." % (ident, resolved_path))
+    why = _not_editable(reg, ident, hits, streams, paths)
     if why:
         return None, None, why + " Nothing was edited."
     return filed_rows, hits[0], None
+
+
+def _read_streams(reg, paths):
+    """`([rows per path], None)`, or `(None, fault)` at the first stream that cannot be read."""
+    streams = []
+    for path in paths:
+        rows, fault = reg.read_jsonl(path)
+        if fault:
+            return None, fault
+        streams.append(rows)
+    return streams, None
+
+
+def _not_editable(reg, ident, hits, streams, paths):
+    """Why the filed item `ident` (at `hits` in the filed stream) cannot be reworded, or `None`."""
+    filed_rows, resolved_rows, withdrawn_rows = streams
+    filed_path, resolved_path, withdrawn_path = paths
+    by_id, conflicted, torn_answers = reg.resolved_index(resolved_rows)
+    withdrawn, torn_withdrawals = reg.withdrawn_index(withdrawn_rows)
+    kind, rec = reg.answer_of(ident, by_id, conflicted, withdrawn)
+    if not hits:
+        return ("no filed item has the id %s in %s%s." % (
+            ident, filed_path, " (a line there does not parse, and it may be this item)"
+            if any(obj is None for _, obj, _ in filed_rows) else ""))
+    if len(hits) > 1:
+        return ("%s is carried by more than one record in %s, so which question to reword cannot "
+                "be read." % (ident, filed_path))
+    if torn_answers or torn_withdrawals:
+        lineno, path, what = ((torn_answers[0][0], resolved_path, "the operator's answer to")
+                              if torn_answers else
+                              (torn_withdrawals[0][0], withdrawn_path, "the withdrawal of"))
+        return ("line %d of %s does not parse, and it may be %s %s — an item whose state cannot be "
+                "read is never treated as open." % (lineno, path, what, ident))
+    if kind == reg.ANSWER_WITHDRAWN:
+        return ("%s was WITHDRAWN — %s (%s)%s — so it is no longer in front of the operator, and a "
+                "withdrawal is final: rewording it would change a question nobody will be shown. "
+                "File a NEW question, citing a source that is still open, if one remains."
+                % (ident, rec.get("reason"), ", ".join(rec.get("closing_cards") or []),
+                   ", at %s" % rec["withdrawn_at"] if rec.get("withdrawn_at") else ""))
+    if kind != reg.ANSWER_NONE:
+        return ("%s already carries an operator answer in %s, so it is no longer an open question "
+                "and its wording is final. The decision lives on the thread or card the item "
+                "cites; file a NEW question if one remains." % (ident, resolved_path))
+    return None
 
 
 def append_record(root, record):
@@ -1380,7 +1398,7 @@ def report(found, label, out):
               "§ Question shape` in your coord install.\n")
 
 
-def main(argv):
+def build_parser():
     ap = argparse.ArgumentParser(
         prog="coord-ask-operator",
         description="File a question that genuinely needs the operator's judgement — refusing it "
@@ -1410,7 +1428,117 @@ def main(argv):
                     help="what to call the item in the output (default: %(default)s)")
     ap.add_argument("--json", action="store_true",
                     help="emit the result as JSON on stdout")
-    args = ap.parse_args(argv)
+    return ap
+
+
+def closure_gate(body, args):
+    """Exit 2 when every source the item cites has concluded, else `None`. Runs BEFORE ANY WRITE,
+    and under --check-only too, so a draft and a filing cannot disagree (`closure_refusal`)."""
+    refusal, note = closure_refusal(body)
+    if refusal:
+        sys.stderr.write("coord-ask-operator: the item meets the shape but %s — %s\n"
+                         % ("%s was NOT edited" % args.edit if args.edit is not None
+                            else "was NOT filed", refusal))
+        return 2
+    if note:
+        sys.stderr.write("coord-ask-operator: note — whether the cited sources are still open "
+                         "was not checked (%s). An unread citation never counts as "
+                         "concluded, so this goes ahead; a render that finds every one "
+                         "concluded withdraws the item and names it on stderr.\n" % note)
+    return None
+
+
+def edit_item(args, body, role):
+    """`(record, path, None)` for --edit, or `(None, None, 2)` with the refusal on stderr. An edit
+    is checked against the registry under --check-only too, so a draft learns that the id is
+    unknown or already answered before the author polishes the wording."""
+    root, why = registry_root(args.root)
+    if root is None:
+        sys.stderr.write("coord-ask-operator: the item meets the shape but %s was NOT edited "
+                         "— %s\n" % (args.edit, why))
+        return None, None, 2
+    if args.check_only:
+        path, record, why = None, None, edit_refusal(root, args.edit)
+    else:
+        path, record, why = edit_record(root, args.edit, body, role)
+    if why:
+        sys.stderr.write("coord-ask-operator: %s\n" % why)
+        return None, None, 2
+    return record, path, None
+
+
+def file_item(args, body, role):
+    """`(record, path, None)` once the item is appended, or `(None, None, 2)` with why on stderr."""
+    root, why = registry_root(args.root)
+    if root is None:
+        sys.stderr.write("coord-ask-operator: the item meets the shape but was NOT filed — "
+                         "%s\n" % why)
+        return None, None, 2
+    record = build_record(body, role)
+    try:
+        path = append_record(root, record)
+    except OSError as exc:
+        # The same contract as `--edit`'s failed write: a named reason and exit 2, never a
+        # traceback exiting 1 — which is the LINT's code, and would read as "the item has
+        # findings" (r2 review, N2). The append makes no temp file, so there is none to remove.
+        # An ENCODE failure is not caught here and not meant to be: the body and the
+        # `COORD_AGENT` identity (`filed_by` / `edited_by`) are both decoded by the one
+        # primitive (`read_body` / `env_text`) to text with no lone surrogate.
+        sys.stderr.write("coord-ask-operator: the item meets the shape but was NOT filed — "
+                         "%s could not be written (%s: %s). A failure part-way through the "
+                         "write can leave a partial last line, which the renderer reports by "
+                         "line number and the next filing does not glue onto.\n"
+                         % (os.path.join(root, "filed.jsonl"), type(exc).__name__, exc))
+        return None, None, 2
+    return record, path, None
+
+
+def write_item(args, body, role):
+    """`(record, path, exit code or None)` for an item with no finding: the closure gate, then the
+    edit, or the filing unless this is --check-only."""
+    rc = closure_gate(body, args)
+    if rc is not None:
+        return None, None, rc
+    if args.edit is not None:
+        return edit_item(args, body, role)
+    if not args.check_only:
+        return file_item(args, body, role)
+    return None, None, None
+
+
+def emit_json(args, found, role, record, path, notice):
+    json.dump({"tool": "coord-ask-operator", "label": args.label, "clean": not found,
+               "check_only": bool(args.check_only), "role": role,
+               "edited" if args.edit else "filed": path, "item": record,
+               "renderer_absent_notice": notice,
+               "findings": [f.as_dict() for f in found]},
+              sys.stdout, ensure_ascii=False, indent=2)
+    sys.stdout.write("\n")
+    return 1 if found else 0
+
+
+def emit_text(args, found, record, path, notice):
+    if found:
+        report(found, args.label, sys.stdout)
+        return 1
+    if args.check_only:
+        sys.stdout.write("coord-ask-operator: %s meets the required operator-question shape. "
+                         "NOTHING WAS FILED — this was --check-only. Re-run without it to file.\n"
+                         % args.label)
+        return 0
+    if args.edit:
+        sys.stdout.write("coord-ask-operator: reworded %s in place (same id; the operator answers "
+                         "it as before)\n  %s\nRe-render the page (`operator-register.py --html`) "
+                         "so the operator reads the new wording.\n" % (record["id"], path))
+    else:
+        sys.stdout.write("coord-ask-operator: filed %s\n  %s\n" % (record["id"], path))
+    if notice:
+        sys.stdout.write("\n%s\n" % notice)
+    return 0
+
+
+def main(argv):
+    args = build_parser().parse_args(argv)
     if args.edit is not None and not ITEM_ID_RE.fullmatch(args.edit):
         sys.stderr.write("coord-ask-operator: --edit %r is not an item id (opq-<epoch>-<4 hex>)\n"
                          % args.edit)
@@ -1429,89 +1557,17 @@ def main(argv):
     # refusable step and a writing step in one command run the refusable one FIRST (canon #14):
     # a lint that passed and a root that then could not be resolved must leave NOTHING behind,
     # and it does, because the only writes in this program — the append and the `--edit` rewrite
-    # below — are made after both have succeeded.
+    # in `write_item` — are made after both have succeeded.
     record, path = None, None
     if not found:
-        # ⛔ BEFORE ANY WRITE, AND UNDER --check-only TOO, so a draft and a filing cannot disagree:
-        # an item whose every cited source has concluded is refused (`closure_refusal`).
-        refusal, note = closure_refusal(body)
-        if refusal:
-            sys.stderr.write("coord-ask-operator: the item meets the shape but %s — %s\n"
-                             % ("%s was NOT edited" % args.edit if args.edit is not None
-                                else "was NOT filed", refusal))
-            return 2
-        if note:
-            sys.stderr.write("coord-ask-operator: note — whether the cited sources are still open "
-                             "was not checked (%s). An unread citation never counts as "
-                             "concluded, so this goes ahead; a render that finds every one "
-                             "concluded withdraws the item and names it on stderr.\n" % note)
-    if not found and args.edit is not None:
-        # An edit is checked against the registry under --check-only too, so a draft learns that
-        # the id is unknown or already answered before the author polishes the wording.
-        root, why = registry_root(args.root)
-        if root is None:
-            sys.stderr.write("coord-ask-operator: the item meets the shape but %s was NOT edited "
-                             "— %s\n" % (args.edit, why))
-            return 2
-        if args.check_only:
-            path, record, why = None, None, edit_refusal(root, args.edit)
-        else:
-            path, record, why = edit_record(root, args.edit, body, role)
-        if why:
-            sys.stderr.write("coord-ask-operator: %s\n" % why)
-            return 2
-    elif not found and not args.check_only:
-        root, why = registry_root(args.root)
-        if root is None:
-            sys.stderr.write("coord-ask-operator: the item meets the shape but was NOT filed — "
-                             "%s\n" % why)
-            return 2
-        record = build_record(body, role)
-        try:
-            path = append_record(root, record)
-        except OSError as exc:
-            # The same contract as `--edit`'s failed write: a named reason and exit 2, never a
-            # traceback exiting 1 — which is the LINT's code, and would read as "the item has
-            # findings" (r2 review, N2). The append makes no temp file, so there is none to remove.
-            # An ENCODE failure is not caught here and not meant to be: the body and the
-            # `COORD_AGENT` identity (`filed_by` / `edited_by`) are both decoded by the one
-            # primitive (`read_body` / `env_text`) to text with no lone surrogate.
-            sys.stderr.write("coord-ask-operator: the item meets the shape but was NOT filed — "
-                             "%s could not be written (%s: %s). A failure part-way through the "
-                             "write can leave a partial last line, which the renderer reports by "
-                             "line number and the next filing does not glue onto.\n"
-                             % (os.path.join(root, "filed.jsonl"), type(exc).__name__, exc))
-            return 2
+        record, path, rc = write_item(args, body, role)
+        if rc is not None:
+            return rc
 
     notice = filed_notice() if record is not None else None
-
     if args.json:
-        json.dump({"tool": "coord-ask-operator", "label": args.label, "clean": not found,
-                   "check_only": bool(args.check_only), "role": role,
-                   "edited" if args.edit else "filed": path, "item": record,
-                   "renderer_absent_notice": notice,
-                   "findings": [f.as_dict() for f in found]},
-                  sys.stdout, ensure_ascii=False, indent=2)
-        sys.stdout.write("\n")
-        return 1 if found else 0
-
-    if found:
-        report(found, args.label, sys.stdout)
-        return 1
-    if args.check_only:
-        sys.stdout.write("coord-ask-operator: %s meets the required operator-question shape. "
-                         "NOTHING WAS FILED — this was --check-only. Re-run without it to file.\n"
-                         % args.label)
-        return 0
-    if args.edit:
-        sys.stdout.write("coord-ask-operator: reworded %s in place (same id; the operator answers "
-                         "it as before)\n  %s\nRe-render the page (`operator-register.py --html`) "
-                         "so the operator reads the new wording.\n" % (record["id"], path))
-    else:
-        sys.stdout.write("coord-ask-operator: filed %s\n  %s\n" % (record["id"], path))
-    if notice:
-        sys.stdout.write("\n%s\n" % notice)
-    return 0
+        return emit_json(args, found, role, record, path, notice)
+    return emit_text(args, found, record, path, notice)
 
 
 if __name__ == "__main__":

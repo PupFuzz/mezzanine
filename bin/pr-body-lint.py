@@ -24,16 +24,16 @@
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it,
 #                     which is why this is a vendored copy and not an install step)
 #   upstream path     plugins/coord/templates/bin/pr-body-lint.py
-#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
-#   plugin version    coord 0.77.0
-#   upstream sha256   957f89e9e3c5d3eae85b2e91b4ed0dd531c922252cb1c51cc5b46c3cfe4929d0
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
+#   upstream sha256   361cda6345ad2c06538df8ebf2fdf0c6df18a7d760498a2e392c8ab06515bf13
 #
 # ⚠ THAT sha256 IS THE WHOLE UPSTREAM FILE AND IS **NOT** THE FIGURE `bin/vendor-pin-check.sh` PINS,
 # which is the BODY — this header excluded — and therefore a different number. Two figures, two
 # questions, so neither can be substituted for the other. Re-derive this one against a marketplace
 # clone (an agent's machine has one; a runner does not):
 #
-#   git show afaf9a10:plugins/coord/templates/bin/pr-body-lint.py | sha256sum
+#   git show 31191341:plugins/coord/templates/bin/pr-body-lint.py | sha256sum
 #
 # and re-derive the body pin with the command `bin/vendor-pin-check.sh` prints on a red.
 #
@@ -1092,10 +1092,10 @@ def audit_fields(body):
 # lint passes gets read differently by the gate (canon #5). `USER-GATING.md` § 2g owns what each
 # origin means and which one needs a design approval; `skills/release-pr/SKILL.md § PR body`'s IN
 # table owns the lines as part of the PR-body standard.
-ORIGIN_KINDS = ("operator-directive", "bug-fix", "test-only", "agent-originated", "bundle",
-                "reconcile")
+ORIGIN_KINDS = ("operator-directive", "bug-fix", "test-only", "refactor", "agent-originated",
+                "bundle", "reconcile")
 # The kinds whose reference must be a card, written `card#<n>`.
-_ORIGIN_CARD_KINDS = ("bug-fix", "test-only", "agent-originated")
+_ORIGIN_CARD_KINDS = ("bug-fix", "test-only", "refactor", "agent-originated")
 _CARD_REF_RE = re.compile(r"card#[0-9]+")
 # ⚠ A DECLARED RESTATEMENT, WITH A GUARD. The operator registry's item id is minted by
 # `coord-ask-operator` (`ITEM_ID_RE`), and this file cannot import it: it deploys as ONE file into
@@ -1122,6 +1122,50 @@ def _declared(body, name):
     return v, None
 
 
+def _read_origin(value):
+    """`Origin:`'s value read as `({"kind", "ref"}, None)`, or `(None, why)` when it cannot be."""
+    kind, _, ref = value.partition(" ")
+    ref = ref.strip()
+    if kind == BOT_ORIGIN:
+        return None, ("`%s` is not declared: the merge gate derives it from a PR GitHub reports as "
+                      "bot-authored, and no body may claim it" % BOT_ORIGIN)
+    if kind not in ORIGIN_KINDS:
+        return None, ("`%s` is not an origin; the line is `Origin: <kind> <ref>` with <kind> one of "
+                      "%s" % (kind, ", ".join("`%s`" % k for k in ORIGIN_KINDS)))
+    if kind in _ORIGIN_CARD_KINDS and not _CARD_REF_RE.fullmatch(ref):
+        return None, ("`Origin: %s` names its card as `card#<n>`, and the rest of the line is %r"
+                      % (kind, ref))
+    if kind == "operator-directive" and not (_CARD_REF_RE.fullmatch(ref)
+                                             or DESIGN_APPROVED_ID_RE.fullmatch(ref)):
+        return None, ("`Origin: operator-directive` names the directive as an operator register "
+                      "item (`opq-<digits>-<4 hex>`) or a card (`card#<n>`) — the two refs the "
+                      "merge gate can check — and the rest of the line is %r" % ref)
+    return {"kind": kind, "ref": ref}, None
+
+
+def _read_design_approved(value):
+    """`Design-approved:`'s value as `(item id, None)`, or `(None, why)` when it is not one."""
+    if DESIGN_APPROVED_ID_RE.fullmatch(value):
+        return value, None
+    return None, "%r is not an operator registry item id (`opq-<digits>-<4 hex>`)" % value
+
+
+def _read_tier(value):
+    """`Tier:`'s opening word as `(tier, None)`, or `(None, why)` when it is neither tier."""
+    word = value.split()[0].strip("*`_.,;:").upper() if value.split() else ""
+    if word in TIER_VALUES:
+        return word, None
+    return None, "`Tier: %s` opens with neither %s" % (
+        value, " nor ".join("`%s`" % t for t in TIER_VALUES))
+
+
+# `declarations`' key, the body line it reads, and the reader of that line's value — in the order
+# `faults` lists them.
+_DECLARATION_READERS = (("origin", "Origin", _read_origin),
+                        ("design_approved", "Design-approved", _read_design_approved),
+                        ("tier", "Tier", _read_tier))
+
+
 def declarations(body):
     """The body's provenance declarations: `{"origin", "design_approved", "tier", "faults"}`.
 
@@ -1132,50 +1176,12 @@ def declarations(body):
     an absent one, and never as a guess at what it meant. Read outside the body's fences, by the
     same grammar as every other machine-read line (`field_values`)."""
     out = {"origin": None, "design_approved": None, "tier": None, "faults": []}
-    value, why = _declared(body, "Origin")
-    if why:
-        out["faults"].append(("Origin", why))
-    elif value is not None:
-        kind, _, ref = value.partition(" ")
-        ref = ref.strip()
-        if kind == BOT_ORIGIN:
-            out["faults"].append(("Origin", "`%s` is not declared: the merge gate derives it from a "
-                                  "PR GitHub reports as bot-authored, and no body may claim it"
-                                  % BOT_ORIGIN))
-        elif kind not in ORIGIN_KINDS:
-            out["faults"].append(("Origin", "`%s` is not an origin; the line is `Origin: <kind> "
-                                  "<ref>` with <kind> one of %s"
-                                  % (kind, ", ".join("`%s`" % k for k in ORIGIN_KINDS))))
-        elif kind in _ORIGIN_CARD_KINDS and not _CARD_REF_RE.fullmatch(ref):
-            out["faults"].append(("Origin", "`Origin: %s` names its card as `card#<n>`, and the "
-                                  "rest of the line is %r" % (kind, ref)))
-        elif kind == "operator-directive" and not (_CARD_REF_RE.fullmatch(ref)
-                                                   or DESIGN_APPROVED_ID_RE.fullmatch(ref)):
-            out["faults"].append(("Origin", "`Origin: operator-directive` names the directive as an "
-                                  "operator register item (`opq-<digits>-<4 hex>`) or a card "
-                                  "(`card#<n>`) — the two refs the merge gate can check — and the "
-                                  "rest of the line is %r" % ref))
-        else:
-            out["origin"] = {"kind": kind, "ref": ref}
-    value, why = _declared(body, "Design-approved")
-    if why:
-        out["faults"].append(("Design-approved", why))
-    elif value is not None:
-        if DESIGN_APPROVED_ID_RE.fullmatch(value):
-            out["design_approved"] = value
-        else:
-            out["faults"].append(("Design-approved", "%r is not an operator registry item id "
-                                  "(`opq-<digits>-<4 hex>`)" % value))
-    value, why = _declared(body, "Tier")
-    if why:
-        out["faults"].append(("Tier", why))
-    elif value is not None:
-        word = value.split()[0].strip("*`_.,;:").upper() if value.split() else ""
-        if word in TIER_VALUES:
-            out["tier"] = word
-        else:
-            out["faults"].append(("Tier", "`Tier: %s` opens with neither %s" % (
-                value, " nor ".join("`%s`" % t for t in TIER_VALUES))))
+    for key, field, read in _DECLARATION_READERS:
+        value, why = _declared(body, field)
+        if why is None and value is not None:
+            out[key], why = read(value)
+        if why:
+            out["faults"].append((field, why))
     return out
 
 
@@ -1470,7 +1476,8 @@ def rule_declarations(body, author_type=None):
                            "`Origin:` is ABSENT from the body. Every PR declares where its change "
                            "came from — `Origin: operator-directive <opq-id | card#<n>>`, `Origin: "
                            "bug-fix card#<n>`, `Origin: test-only card#<n>` (a change to tests "
-                           "alone), `Origin: agent-originated card#<n>`, `Origin: bundle` on a "
+                           "alone), `Origin: refactor card#<n>` (a refactor or docs change with "
+                           "no behaviour change), `Origin: agent-originated card#<n>`, `Origin: bundle` on a "
                            "release or back-merge sync PR, or `Origin: reconcile` on a "
                            "`/coord:update` reconcile PR — and `coord-approve` refuses a PR without "
                            "one. %s" % _DECLARATION_OWNER))
@@ -1593,16 +1600,16 @@ VERSION_CLASSIFICATION = {
         "note": "a body carrying an `Origin:` line satisfies both versions",
     },
     # Still ONE-DIRECTIONAL when a kind is ADDED (card#12757 `test-only`, card#12618
-    # `reconcile`): a body declaring a kind in the OLDER set satisfies both versions. A new kind is
-    # well-formed only from the release that carries it — the earliest tag containing the commit
+    # `reconcile`, card#13487 `refactor`): a body declaring a kind in the OLDER set satisfies both
+    # versions. A new kind is well-formed only from the release that carries it — the earliest tag containing the commit
     # that adds it to `ORIGIN_KINDS` (`git tag --contains`), never a recalled version — so a
     # reviewer behind that release reads it as malformed. REMOVING a kind would make this a hard
     # flip, and this row must move with it.
     "origin-malformed": {
         "case": 1, "direction": "one-directional",
         "note": "a body whose `Origin:` kind is in the OLDER version's set satisfies both; a kind "
-                "added later (`test-only`, `reconcile`) is well-formed only from the release that "
-                "carries it",
+                "added later (`test-only`, `reconcile`, `refactor`) is well-formed only from the "
+                "release that carries it",
     },
     "design-approved-missing": {
         "case": 1, "direction": "one-directional",
@@ -1754,76 +1761,24 @@ def read_release_headings(path=RELEASE_HEADINGS_FILE):
     return parse_release_headings(raw, path)
 
 
-def main(argv):
-    ap = argparse.ArgumentParser(
-        prog="pr-body-lint",
-        description="Red on a PR body that does not meet `release-pr` SKILL.md § PR body — write "
-                    "it for the software installer. The PR's title decides how much of it: one "
-                    "opening `release:` gets the full standard, any other title everything but the "
-                    "release-only section set, scope line and merge-instruction rule (the "
-                    "header's RELEASE-SCOPE block owns the split), and no title at all the full "
-                    "standard.",
-        epilog="exit: 0 = meets the standard | 1 = at least one finding | 2 = a fault (usage, "
-               "input, or a crash): no verdict", allow_abbrev=False)
-    src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--body-file", help="read the body from this path (`-` for stdin)")
-    src.add_argument("--env", help="read the body from this ENVIRONMENT VARIABLE (CI: pass "
-                                   "${{ github.event.pull_request.body }} through `env:`)")
-    ap.add_argument("--author-type-env",
-                    help="read the PR AUTHOR'S ACCOUNT TYPE from this ENVIRONMENT VARIABLE (CI: "
-                         "pass ${{ github.event.pull_request.user.type }} through `env:`). The "
-                         "exact value `Bot` exempts the body from `Built:`, "
-                         "`**Coordinated in:**` and `Origin:` (with the `Design-approved:` an "
-                         "agent-originated origin needs), and from NOTHING else. Every other value "
-                         "— including an unset variable — is not a bot and those rows are required, "
-                         "which is also what happens when this flag is absent")
-    ttl = ap.add_mutually_exclusive_group()
-    ttl.add_argument("--title",
-                     help="the PR's TITLE, literally — what an author passes before `gh pr "
-                          "create --title`. A title opening `release:` is a release PR")
-    ttl.add_argument("--title-env",
-                     help="read the PR's TITLE from this ENVIRONMENT VARIABLE (CI: pass "
-                          "${{ github.event.pull_request.title }} through `env:`, for the "
-                          "injection reason `--env` states). With neither flag, or with an unset "
-                          "variable, the body is judged as a RELEASE PR body — the full standard")
-    ap.add_argument("--label", default="PR body",
-                    help="what to call the body in the output (default: %(default)s)")
-    ap.add_argument("--json", action="store_true",
-                    help="emit the result as JSON on stdout (the review path's transport)")
-    args = ap.parse_args(argv)
+def _write_json(label, body, author_type, title, release_headings, found):
+    """The `--json` result on stdout — the review path's transport."""
+    # `author_type` is emitted RAW — the value as read, `null` when none was given — and the
+    # exemption itself is NOT emitted beside it. A consumer that wants to know whether the
+    # audit rows were waived reads this field against the one rule (`author_is_bot`); a second
+    # boolean here would be that rule restated in the output, free to disagree with it. The
+    # TITLE is emitted RAW for the same reason, and the release scope is `judged_as_release`'s.
+    json.dump({"tool": "pr-body-lint", "label": label, "clean": not found,
+               "author_type": author_type, "title": title,
+               "release_headings": list(release_headings),
+               "fields": audit_fields(body),
+               "findings": [f.as_dict() for f in found]},
+              sys.stdout, ensure_ascii=False, indent=2)
+    sys.stdout.write("\n")
 
-    try:
-        body = read_body(args)
-    except ValueError as exc:
-        sys.stderr.write("pr-body-lint: %s\n" % exc)
-        return 2
 
-    author_type = read_author_type(args)
-    title = read_title(args)
-    release = judged_as_release(title)
-    # Read only for a release PR — the one run whose verdict it can change — so a non-release PR's
-    # outcome does not depend on the file at all, a malformed one included.
-    try:
-        release_headings = read_release_headings() if release else ()
-    except ValueError as exc:
-        sys.stderr.write("pr-body-lint: %s\n" % exc)
-        return 2
-    found = findings(body, author_type, title, release_headings)
-    if args.json:
-        # `author_type` is emitted RAW — the value as read, `null` when none was given — and the
-        # exemption itself is NOT emitted beside it. A consumer that wants to know whether the
-        # audit rows were waived reads this field against the one rule (`author_is_bot`); a second
-        # boolean here would be that rule restated in the output, free to disagree with it. The
-        # TITLE is emitted RAW for the same reason, and the release scope is `judged_as_release`'s.
-        json.dump({"tool": "pr-body-lint", "label": args.label, "clean": not found,
-                   "author_type": author_type, "title": title,
-                   "release_headings": list(release_headings),
-                   "fields": audit_fields(body),
-                   "findings": [f.as_dict() for f in found]},
-                  sys.stdout, ensure_ascii=False, indent=2)
-        sys.stdout.write("\n")
-        return 1 if found else 0
-
+def _write_scope_notes(author_type, title, release, release_headings):
+    """The text run's statements of how this body was scoped — printed on pass and fail alike."""
     # ⛔ AN EXEMPTION THAT FIRES SILENTLY IS THE ONE A LATER READER MIS-READS AS A CLEAN BODY. When
     # the two audit rows were waived, the run SAYS SO — on the pass path and the fail path alike,
     # because a bot PR that reds on some other rule must not look like a bot PR that was never
@@ -1859,20 +1814,23 @@ def main(argv):
                          "admitted by its exact text: %s.\n"
                          % (RELEASE_HEADINGS_FILE, ", ".join("`## %s`" % h for h in release_headings)))
 
+
+def _write_verdict(label, release, found):
+    """The text run's verdict and each finding; returns the exit status (0 clean, 1 findings)."""
     if not found:
         if release:
             sys.stdout.write("pr-body-lint: %s meets `release-pr` SKILL.md § PR body.\n"
-                             % args.label)
+                             % label)
         else:
             sys.stdout.write("pr-body-lint: %s meets every rule a non-release PR body is held "
-                             "to.\n" % args.label)
+                             "to.\n" % label)
         return 0
     if release:
         sys.stdout.write("pr-body-lint: %s does NOT meet `release-pr` SKILL.md § PR body — write "
-                         "it for the software installer.\n" % args.label)
+                         "it for the software installer.\n" % label)
     else:
         sys.stdout.write("pr-body-lint: %s does NOT meet the rules every PR body is held to.\n"
-                         % args.label)
+                         % label)
     for f in found:
         where = "line %d" % f.line if f.line else "the body"
         sys.stdout.write("\n  %s · %s\n    %s\n" % (where, f.rule, f.message))
@@ -1887,6 +1845,74 @@ def main(argv):
                          "is `skills/release-pr/SKILL.md § PR body`'s, in your coord install; every "
                          "other finding names the document that owns its rule.\n")
     return 1
+
+
+def _parser():
+    """The CLI's argument parser."""
+    ap = argparse.ArgumentParser(
+        prog="pr-body-lint",
+        description="Red on a PR body that does not meet `release-pr` SKILL.md § PR body — write "
+                    "it for the software installer. The PR's title decides how much of it: one "
+                    "opening `release:` gets the full standard, any other title everything but the "
+                    "release-only section set, scope line and merge-instruction rule (the "
+                    "header's RELEASE-SCOPE block owns the split), and no title at all the full "
+                    "standard.",
+        epilog="exit: 0 = meets the standard | 1 = at least one finding | 2 = a fault (usage, "
+               "input, or a crash): no verdict", allow_abbrev=False)
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--body-file", help="read the body from this path (`-` for stdin)")
+    src.add_argument("--env", help="read the body from this ENVIRONMENT VARIABLE (CI: pass "
+                                   "${{ github.event.pull_request.body }} through `env:`)")
+    ap.add_argument("--author-type-env",
+                    help="read the PR AUTHOR'S ACCOUNT TYPE from this ENVIRONMENT VARIABLE (CI: "
+                         "pass ${{ github.event.pull_request.user.type }} through `env:`). The "
+                         "exact value `Bot` exempts the body from `Built:`, "
+                         "`**Coordinated in:**` and `Origin:` (with the `Design-approved:` an "
+                         "agent-originated origin needs), and from NOTHING else. Every other value "
+                         "— including an unset variable — is not a bot and those rows are required, "
+                         "which is also what happens when this flag is absent")
+    ttl = ap.add_mutually_exclusive_group()
+    ttl.add_argument("--title",
+                     help="the PR's TITLE, literally — what an author passes before `gh pr "
+                          "create --title`. A title opening `release:` is a release PR")
+    ttl.add_argument("--title-env",
+                     help="read the PR's TITLE from this ENVIRONMENT VARIABLE (CI: pass "
+                          "${{ github.event.pull_request.title }} through `env:`, for the "
+                          "injection reason `--env` states). With neither flag, or with an unset "
+                          "variable, the body is judged as a RELEASE PR body — the full standard")
+    ap.add_argument("--label", default="PR body",
+                    help="what to call the body in the output (default: %(default)s)")
+    ap.add_argument("--json", action="store_true",
+                    help="emit the result as JSON on stdout (the review path's transport)")
+    return ap
+
+
+def main(argv):
+    args = _parser().parse_args(argv)
+
+    try:
+        body = read_body(args)
+    except ValueError as exc:
+        sys.stderr.write("pr-body-lint: %s\n" % exc)
+        return 2
+
+    author_type = read_author_type(args)
+    title = read_title(args)
+    release = judged_as_release(title)
+    # Read only for a release PR — the one run whose verdict it can change — so a non-release PR's
+    # outcome does not depend on the file at all, a malformed one included.
+    try:
+        release_headings = read_release_headings() if release else ()
+    except ValueError as exc:
+        sys.stderr.write("pr-body-lint: %s\n" % exc)
+        return 2
+    found = findings(body, author_type, title, release_headings)
+    if args.json:
+        _write_json(args.label, body, author_type, title, release_headings, found)
+        return 1 if found else 0
+
+    _write_scope_notes(author_type, title, release, release_headings)
+    return _write_verdict(args.label, release, found)
 
 
 if __name__ == "__main__":

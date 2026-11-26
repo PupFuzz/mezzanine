@@ -25,9 +25,9 @@
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE)
 #   upstream path     plugins/coord/templates/bin/pr-body-lint.selftest.py
-#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
-#   plugin version    coord 0.77.0
-#   upstream sha256   ca709194ca66a9bb5c712333c5f9072c8b5d80f43b66b25986ff0d7e09989d06
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
+#   upstream sha256   48204ae9b52ab62b81bc574d0f84eabe598c822dfc8c53be5bb878629087f476
 #                     — the WHOLE upstream file, NOT the body figure vendor-pin-check pins.
 #
 # ⚠ IT MUST BE RE-VENDORED IN THE SAME COMMIT AS THE TOOL. It resolves both `pr-body-lint.py` and
@@ -138,10 +138,12 @@ sha256 is taken before the first row and re-taken after the last, and a differen
 this suite rather than a note — a guard that edits the thing it guards has no way to say so.
 
 HERMETIC: no network, no `$HOME`, no coordination config. Everything it reads is in this
-directory, except ONE file: the workflow that runs the lint in CI, which `arm_i` step (9) reads to
+directory, except the workflow that runs the lint in CI, which `arm_i` step (9) reads to
 check that it passes the PR title (card#10493), and step (10) runs — its lint step's script, with
 `bash`, in throwaway local `git` repos shaped as a PR's merge-commit checkout — to check that a PR
-is judged by its BASE's copy of the lint (card#12387). The lint itself also reads a repo's declared release
+is judged by its BASE's copy of the lint (card#12387); and, in a copy with no `coord-ask-operator`
+beside it, the plugin manifest two directories up, `../../.claude-plugin/plugin.json`, which says
+whether that copy is the coord plugin's own. The lint itself also reads a repo's declared release
 headings from the directory it runs in (card#12387); every CLI row runs it in an empty directory
 of its own, except `arm_n`'s, which build the file they mean.
 
@@ -158,6 +160,28 @@ the path it tried and these two ways to point it elsewhere; every other arm stil
 It is never a skip: a vendored install that could not find its workflow would otherwise never
 check its own gate. `arm_k` builds a vendored copy and runs it both ways: with no input, and with
 `--workflow`.
+
+WHERE THE LINT IS, IS THE WORKFLOW'S (card#13778). Step (10) runs the workflow's lint step once
+under `bash -x` and reads off the trace the path it takes the base's copy from (`HEAD^1:<path>`, or
+`HEAD^:` / `HEAD~1:` / `HEAD~:`), then builds its PR checkouts with the lint there. So a repo that
+vendors under `.github/pr-body-lint/` is driven in its own layout, and the step's quotes, its `git`
+command and a path held in a variable do not matter. A revision spelled without that `HEAD` (a
+commit sha) is not recognised.
+
+A REPORT-ONLY WORKFLOW IS DECLARED, AND THE DECLARATION IS CHECKED (card#13778). A repo may run
+the lint with a wrapper that never fails a job on a finding; such a workflow judges each PR with
+the PR's own copy, so step (10) has nothing to drive. `--report-only` says so: step (10) is
+SKIPPED, every other arm and step (9) run. The flag is a failure on a workflow with an uncommented
+`HEAD^1:` (or alias) on any line; a judge that reaches the base by a spelling without one is not
+recognised, and the flag is taken at its word. Without the flag, a workflow whose lint step reads
+no base copy fails arm i, and the message names both remedies: the flag, and the spelling step (10)
+recognises. `arm_k` runs a vendored copy with the flag, on a report-only workflow.
+
+A SKIP IS NAMED AND COUNTED. Every skipped row prints a `SKIPPED:` line and the verdict line counts
+them. The rows that can skip: step (10) under `--report-only`, and M's id-pattern guard in a
+vendored copy, which ships no `coord-ask-operator` (in this plugin's own tree a missing one is a
+failure, and so is a plugin manifest that exists and cannot be read). `arm_k` asserts the vendored
+copy names M's skip.
 
 `arm_n` is the REPO-DECLARED RELEASE HEADINGS (card#12387): a release body carrying a heading the
 adopting repo declares passes; the same body with no file reds `heading-not-allowed` (its control);
@@ -221,6 +245,24 @@ def resolve_workflow(arg, environ):
 
 WORKFLOW = DEFAULT_WORKFLOW
 WORKFLOW_SOURCE = "the default, this plugin's own layout"
+# Set by `--report-only` (see the module docstring): the workflow never fails a job on a finding,
+# so it has no base-copy judge for `arm_i` step (10) to drive.
+REPORT_ONLY = False
+
+
+def in_coord_plugin(here):
+    """Whether `here` is the coord plugin's own `templates/bin/`, as `(answer, fault)`: the plugin
+    manifest two directories up names `coord`. No manifest, or one naming another plugin (a repo
+    that is itself a Claude plugin and vendors this suite), is `(False, None)`. A manifest that
+    exists and cannot be read or parsed answers nothing, so `fault` names it."""
+    path = os.path.join(here, "..", "..", ".claude-plugin", "plugin.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh).get("name") == "coord", None
+    except FileNotFoundError:
+        return False, None
+    except (OSError, ValueError) as exc:
+        return False, "%r exists and could not be read: %s" % (path, exc)
 
 # ⛔ THE PINS ARE LOAD-BEARING, NOT DECORATION, AND THEY ARE THE ONE PLACE A FIGURE IS WRITTEN
 # DOWN IN THIS FILE. "The known positive" is a CLAIM about WHICH revision of a real PR body this
@@ -301,6 +343,7 @@ TO: all
 CHECKS = 0
 FAILURES: list[str] = []
 SEEN_RED: list[str] = []
+SKIPPED: list[str] = []
 
 
 def check(name, cond, detail=""):
@@ -313,6 +356,24 @@ def check(name, cond, detail=""):
 
 def seen_red(name):
     SEEN_RED.append(name)
+
+
+def skipped(name):
+    """A row this layout cannot run. Printed by name on every run, pass or fail, and counted in
+    the verdict line, so a skip is never read as a row that ran."""
+    SKIPPED.append(name)
+
+
+def recorded(run):
+    """What `run()` records, `(failures, skips)`, read back and then removed, so a row can drive a
+    failing or skipping function without its outcome landing in this run's own verdict."""
+    global CHECKS
+    checks, n_fail, n_skip = CHECKS, len(FAILURES), len(SKIPPED)
+    run()
+    out = FAILURES[n_fail:], SKIPPED[n_skip:]
+    del FAILURES[n_fail:], SKIPPED[n_skip:]
+    CHECKS = checks
+    return out
 
 
 def sha256_file(path):
@@ -903,6 +964,27 @@ def arm_g_live_state(mod, td):
           "rule and nothing else", set(rules_on(mod, positive)) - set(rules_on(mod, negative))
           == {"live-state-reading"}, (rules_on(mod, positive), rules_on(mod, negative)))
 
+    _arm_g_rows(mod)
+
+    # ⛔ THE CONTROLS. The positive reds on older rules too, so "the positive reds" was true
+    # before this rule existed: unwire it, and the live-state finding must be what disappears.
+    _arm_g_rule_controls(mod, td, positive)
+
+    _arm_g_ignorecase_control(mod, td)
+
+    # ⛔ AND EACH NARROWING, REVERTED IN A COPY, MUST RE-RED ITS OWN LINES — while every shape's
+    # true-positive rows still red on that shape alone, so the copy reverted one narrowing rather
+    # than the rule.
+    _arm_g_narrowing_controls(td)
+
+    proc = run_cli(["--body-file", os.path.join(FIXTURE_DIR, FIXTURES["live_positive"][0])])
+    check("G the CLI exits 1 on the live-state positive and names the rule",
+          proc.returncode == 1 and "live-state-reading" in proc.stdout, proc.stdout[-400:])
+
+
+def _arm_g_rows(mod):
+    """G's one-line rows: each shape, each line not judged, each known false red, a quoted reading
+    and a fenced one."""
     for shape, line in LIVE_ROWS:
         check("G `%s` reds on %r, naming that shape alone" % (shape, line),
               _live_hits(mod, line) == [shape], _live_hits(mod, line))
@@ -928,8 +1010,9 @@ def arm_g_live_state(mod, td):
     check("G a reading that exists only INSIDE A FENCE is payload, not a finding",
           rules_on(mod, fenced) == [], rules_on(mod, fenced))
 
-    # ⛔ THE CONTROLS. The positive reds on older rules too, so "the positive reds" was true
-    # before this rule existed: unwire it, and the live-state finding must be what disappears.
+
+def _arm_g_rule_controls(mod, td, positive):
+    """G's controls on the rule: unwired, then each shape disabled — the answer must flip."""
     unwired = mutant(td, "live-state-unwired",
                      ("rule_banned_openers(rendered) + rule_live_state_reading(rendered)\n",
                       "rule_banned_openers(rendered)\n"))
@@ -954,6 +1037,9 @@ def arm_g_live_state(mod, td):
                  ([_live_hits(off, l) for l in own], [_live_hits(off, l) for l in others])):
             seen_red("G shape `%s`, driven red by a copy whose pattern can never match" % shape)
 
+
+def _arm_g_ignorecase_control(mod, td):
+    """G's control on the shape table's `re.IGNORECASE`."""
     cased = mutant(td, "live-state-ignorecase-dropped",
                    ("re.compile(pattern, re.IGNORECASE)", "re.compile(pattern)"))
     upper = next(line for _, line in LIVE_ROWS if "CI RED at" in line)
@@ -966,9 +1052,9 @@ def arm_g_live_state(mod, td):
         seen_red("G `re.IGNORECASE` on the shape table, driven red by a case-sensitive copy that "
                  "lets an upper-case `CI RED at <sha>` through")
 
-    # ⛔ AND EACH NARROWING, REVERTED IN A COPY, MUST RE-RED ITS OWN LINES — while every shape's
-    # true-positive rows still red on that shape alone, so the copy reverted one narrowing rather
-    # than the rule.
+
+def _arm_g_narrowing_controls(td):
+    """G's controls on each narrowing: reverted in a copy, its own lines must red again."""
     for i, (why, (shipped, pre_fix), lines) in enumerate(LIVE_NARROWINGS):
         rev = mutant(td, "live-narrowing-%d-reverted" % i, (shipped, pre_fix), count=-1)
         if check("G CONTROL: with the narrowing REVERTED (%s), its lines red again while every "
@@ -978,10 +1064,6 @@ def arm_g_live_state(mod, td):
                  ([_live_hits(rev, l) for l in lines],
                   [(s, _live_hits(rev, l)) for s, l in LIVE_ROWS if _live_hits(rev, l) != [s]])):
             seen_red("G narrowing — %s — driven red by a copy with its pre-fix spelling back" % why)
-
-    proc = run_cli(["--body-file", os.path.join(FIXTURE_DIR, FIXTURES["live_positive"][0])])
-    check("G the CLI exits 1 on the live-state positive and names the rule",
-          proc.returncode == 1 and "live-state-reading" in proc.stdout, proc.stdout[-400:])
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1074,6 +1156,20 @@ def arm_h_bot_author(mod, td):
 
     # ⛔ CONTROL 1 — the waiver itself. Unwire the early return and the bot body must red on both
     # rows again: the exemption is what produced the green, not a body that satisfied the rule.
+    _arm_h_unwired_control(td, both, no_rows)
+    # ⛔ CONTROL 2 — the DISCRIMINATOR, which is the security half and a different claim. Open it
+    # to "any non-empty value" and the rows this suite pins as NOT-a-bot must start passing. A
+    # green on the rows above is otherwise equally consistent with a lint that waives for anybody
+    # who passes anything at all.
+    _arm_h_discriminator_control(td, both, no_rows)
+
+    # THE CLI — what CI actually runs, including the `--env` + `--author-type-env` pair the shipped
+    # workflow invokes and the UNSET case an adopter on the old workflow will hit.
+    _arm_h_cli(td, no_rows)
+
+
+def _arm_h_unwired_control(td, both, no_rows):
+    """H's control on the waiver: unwired, the bot body must red on both rows again."""
     unwired = mutant(td, "bot-exemption-unwired",
                      ("    if author_is_bot(author_type):\n        return []\n", ""))
     if check("H CONTROL: with the bot exemption UNWIRED, the bot-authored body reds on both audit "
@@ -1086,27 +1182,9 @@ def arm_h_bot_author(mod, td):
                  "reds a Dependabot body on `built-missing` + `coordinated-missing` — the exact "
                  "measurement card#9927 was minted on")
 
-    # ⛔ CONTROL 2 — the DISCRIMINATOR, which is the security half and a different claim. Open it
-    # to "any non-empty value" and the rows this suite pins as NOT-a-bot must start passing. A
-    # green on the rows above is otherwise equally consistent with a lint that waives for anybody
-    # who passes anything at all.
-    opened = mutant(td, "bot-discriminator-open",
-                    ('    return (author_type or "").strip() == BOT_AUTHOR_TYPE',
-                     '    return bool((author_type or "").strip())'))
-    leaked = [v for v, _ in NOT_A_BOT if v and v.strip()
-              and rules_on(opened, no_rows, v) == []]
-    still = [v for v, _ in NOT_A_BOT if not (v or "").strip()
-             and rules_on(opened, no_rows, v) != both]
-    if check("H CONTROL: with the discriminator OPENED to any non-empty value, every non-empty "
-             "NOT-a-bot value — the author LOGIN spellings among them — wins the exemption, while "
-             "the empty ones still do not: the EXACT compare is what refuses them",
-             len(leaked) == len([v for v, _ in NOT_A_BOT if v and v.strip()]) and not still,
-             (leaked, still)):
-        seen_red("H the exact `== BOT_AUTHOR_TYPE` compare, driven red by an opened discriminator "
-                 "that hands the waiver to `User`, `bot`, `dependabot[bot]` and `app/dependabot`")
 
-    # THE CLI — what CI actually runs, including the `--env` + `--author-type-env` pair the shipped
-    # workflow invokes and the UNSET case an adopter on the old workflow will hit.
+def _arm_h_cli(td, no_rows):
+    """H through the CLI, the way CI runs it."""
     path = os.path.join(td, "no-audit-rows.md")
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(no_rows)
@@ -1166,6 +1244,25 @@ def arm_h_bot_author(mod, td):
     check("H CLI: `--json` with no author source carries `null` and the two findings",
           proc.returncode == 1 and '"author_type": null' in proc.stdout
           and '"clean": false' in proc.stdout, proc.stdout[:400])
+
+
+def _arm_h_discriminator_control(td, both, no_rows):
+    """H's control on the discriminator: opened to any non-empty value, the NOT-a-bot values must
+    win the waiver."""
+    opened = mutant(td, "bot-discriminator-open",
+                    ('    return (author_type or "").strip() == BOT_AUTHOR_TYPE',
+                     '    return bool((author_type or "").strip())'))
+    leaked = [v for v, _ in NOT_A_BOT if v and v.strip()
+              and rules_on(opened, no_rows, v) == []]
+    still = [v for v, _ in NOT_A_BOT if not (v or "").strip()
+             and rules_on(opened, no_rows, v) != both]
+    if check("H CONTROL: with the discriminator OPENED to any non-empty value, every non-empty "
+             "NOT-a-bot value — the author LOGIN spellings among them — wins the exemption, while "
+             "the empty ones still do not: the EXACT compare is what refuses them",
+             len(leaked) == len([v for v, _ in NOT_A_BOT if v and v.strip()]) and not still,
+             (leaked, still)):
+        seen_red("H the exact `== BOT_AUTHOR_TYPE` compare, driven red by an opened discriminator "
+                 "that hands the waiver to `User`, `bot`, `dependabot[bot]` and `app/dependabot`")
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -1232,15 +1329,7 @@ def arm_i_release_scope(mod, td):
               rules_on(mod, FEATURE_BODY, title=blank))
 
     # (4) THE TITLE PREDICATE — its prefix, its case and its transport.
-    for title in ("release: v1.4.0", "Release: v1.4.0", "RELEASE: v1.4.0", "  release: v1.4.0",
-                  "release: post-aimla-v1.0.0"):
-        check("I title %r is a RELEASE PR" % title, mod.judged_as_release(title) is True,
-              mod.judged_as_release(title))
-    for title in ("feat: add release notes", "fix(release-pr): scope the claim", "releases: x",
-                  "sync: merge main into dev post-v1.4.0 (Rule E)", "chore: release prep",
-                  "release v1.4.0"):
-        check("I title %r is NOT a release PR" % title, mod.judged_as_release(title) is False,
-              mod.judged_as_release(title))
+    _arm_i_title_predicate(mod)
 
     # (5) WHAT A NON-RELEASE PR IS STILL HELD TO — the rows whose owner is NOT § PR body's release
     # standard, each red ALONE so the row says which rule fired.
@@ -1280,6 +1369,54 @@ def arm_i_release_scope(mod, td):
           (got_feat, got_rel))
 
     # (7) THE CONTROLS — the predicate is what produced each answer above, in both directions.
+    _arm_i_predicate_controls(td, rel)
+
+    # ⛔ AND THE OTHER HALF OF THE SPLIT — WHICH RULES SIT OUTSIDE THE GATE. The three predicate
+    # mutants above cannot move a rule that runs whatever the predicate says, so rows (5), (5b) and
+    # (6) get their own controls: a copy that puts the rule back BEHIND the gate.
+    _arm_i_gate_controls(td, extra, live, still)
+
+    # (8) THE CLI — what the shipped workflow runs, title through `env:` beside body and author.
+    _arm_i_cli(td)
+
+    # (9) THE SHIPPED WORKFLOW PASSES THE TITLE. The lint cannot scope a PR nobody named, and a
+    # workflow that does not pass it runs every PR as a release — the defect, reinstated silently.
+    # WHICH workflow is an input (card#10719); one that cannot be read fails THIS step by name,
+    # and the arms after this one still run.
+    wf = WORKFLOW
+    try:
+        with open(wf, encoding="utf-8") as fh:
+            wf_text = fh.read()
+    except OSError as exc:
+        check("I the workflow that runs the lint could be read", False,
+              "could not read %r (from %s): %s. A repo that vendors this selftest keeps the "
+              "workflow elsewhere: pass `--workflow PATH` or set %s=PATH, e.g. "
+              "`--workflow .github/workflows/pr-body-lint.yml`"
+              % (wf, WORKFLOW_SOURCE, exc.strerror or exc, WORKFLOW_ENV))
+        return
+    check("I the shipped workflow passes the PR TITLE through `env:` and names it to the lint",
+          "COORD_PR_TITLE: ${{ github.event.pull_request.title }}" in wf_text
+          and re.search(r"--title-env COORD_PR_TITLE\b", wf_text) is not None, wf)
+
+    # (10) THE WORKFLOW JUDGES A PR WITH THE BASE'S COPY OF THE LINT (card#12387 item 5).
+    workflow_judges_with_base_copy(td, wf, wf_text)
+
+
+def _arm_i_title_predicate(mod):
+    """I's rows on `judged_as_release` alone: its prefix, its case and its transport."""
+    for title in ("release: v1.4.0", "Release: v1.4.0", "RELEASE: v1.4.0", "  release: v1.4.0",
+                  "release: post-aimla-v1.0.0"):
+        check("I title %r is a RELEASE PR" % title, mod.judged_as_release(title) is True,
+              mod.judged_as_release(title))
+    for title in ("feat: add release notes", "fix(release-pr): scope the claim", "releases: x",
+                  "sync: merge main into dev post-v1.4.0 (Rule E)", "chore: release prep",
+                  "release v1.4.0"):
+        check("I title %r is NOT a release PR" % title, mod.judged_as_release(title) is False,
+              mod.judged_as_release(title))
+
+
+def _arm_i_predicate_controls(td, rel):
+    """I's controls on the scope predicate, forced each way and with its no-title arm removed."""
     always = mutant(td, "release-scope-always",
                     ("    return not t or t.lower().startswith(RELEASE_TITLE_PREFIX)",
                      "    return True"))
@@ -1309,9 +1446,10 @@ def arm_i_release_scope(mod, td):
              got == [], got):
         seen_red("I the no-title arm, driven red by a copy that reads a blank title as a feature PR")
 
-    # ⛔ AND THE OTHER HALF OF THE SPLIT — WHICH RULES SIT OUTSIDE THE GATE. The three predicate
-    # mutants above cannot move a rule that runs whatever the predicate says, so rows (5), (5b) and
-    # (6) get their own controls: a copy that puts the rule back BEHIND the gate.
+
+def _arm_i_gate_controls(td, extra, live, still):
+    """I's controls on the rules that sit outside the release gate: moved behind it, they must stop
+    reding."""
     gate_anchor = ("        out += rule_scope_line(rendered) + rule_headings(rendered, "
                    "release_headings)\n")
     content_gated = mutant(td, "content-rules-release-only",
@@ -1334,7 +1472,9 @@ def arm_i_release_scope(mod, td):
         seen_red("I the every-PR rows (`built-missing`, `coordinated-missing`, `attribution-line`), "
                  "driven red by a copy that runs them on release PRs only")
 
-    # (8) THE CLI — what the shipped workflow runs, title through `env:` beside body and author.
+
+def _arm_i_cli(td):
+    """I through the CLI, the way the shipped workflow runs it."""
     fpath = os.path.join(td, "feature-body.md")
     with open(fpath, "w", encoding="utf-8", newline="") as fh:
         fh.write(FEATURE_BODY)
@@ -1367,28 +1507,6 @@ def arm_i_release_scope(mod, td):
     proc = run_cli(["--body-file", fpath, "--title", "x", "--title-env", "COORD_PR_TITLE"])
     check("I CLI: `--title` and `--title-env` together are a usage fault — one source, as for the "
           "body", proc.returncode == 2, (proc.returncode, proc.stderr[:200]))
-
-    # (9) THE SHIPPED WORKFLOW PASSES THE TITLE. The lint cannot scope a PR nobody named, and a
-    # workflow that does not pass it runs every PR as a release — the defect, reinstated silently.
-    # WHICH workflow is an input (card#10719); one that cannot be read fails THIS step by name,
-    # and the arms after this one still run.
-    wf = WORKFLOW
-    try:
-        with open(wf, encoding="utf-8") as fh:
-            wf_text = fh.read()
-    except OSError as exc:
-        check("I the workflow that runs the lint could be read", False,
-              "could not read %r (from %s): %s. A repo that vendors this selftest keeps the "
-              "workflow elsewhere: pass `--workflow PATH` or set %s=PATH, e.g. "
-              "`--workflow .github/workflows/pr-body-lint.yml`"
-              % (wf, WORKFLOW_SOURCE, exc.strerror or exc, WORKFLOW_ENV))
-        return
-    check("I the shipped workflow passes the PR TITLE through `env:` and names it to the lint",
-          "COORD_PR_TITLE: ${{ github.event.pull_request.title }}" in wf_text
-          and re.search(r"--title-env COORD_PR_TITLE\b", wf_text) is not None, wf)
-
-    # (10) THE WORKFLOW JUDGES A PR WITH THE BASE'S COPY OF THE LINT (card#12387 item 5).
-    workflow_judges_with_base_copy(td, wf, wf_text)
 
 
 # A narration body under a feature title: the real lint reds it on `banned-opener` and nothing else.
@@ -1505,20 +1623,22 @@ def git(cwd, *args):
                           env=git_env()).stdout.strip()
 
 
-def _pr_checkout(td, name, base_lint, head_lint, depth, merge=True, head_is_merge=False):
+def _pr_checkout(td, name, lint_rel, base_lint, head_lint, depth, merge=True,
+                 head_is_merge=False):
     """A clone shaped as `actions/checkout` leaves a `pull_request` run: the PR's MERGE commit
     (first parent the base, second the PR head) fetched at `depth`, and the PR head's sha — what
-    the event's `pull_request.head.sha` names. `base_lint` / `head_lint` are the bytes of
-    `bin/pr-body-lint.py` on each side, `None` for no file. `merge=False` checks out the PR head
-    itself instead — the checkout of an adopter who set `ref:` to the head sha. `head_is_merge`
-    makes the PR head a merge of the base INTO the PR branch ("Update branch"), so that head has
-    a second parent of its own and its first parent carries the PR's lint."""
+    the event's `pull_request.head.sha` names. `base_lint` / `head_lint` are the bytes of the lint
+    at `lint_rel` (the repo-relative path the workflow reads) on each side, `None` for no file.
+    `merge=False` checks out the PR head itself instead — the checkout of an adopter who set `ref:`
+    to the head sha. `head_is_merge` makes the PR head a merge of the base INTO the PR branch
+    ("Update branch"), so that head has a second parent of its own and its first parent carries
+    the PR's lint."""
     origin = os.path.join(td, name + "-origin")
     os.makedirs(origin)
     git(origin, "init", "-q")
 
     def commit(content, msg):
-        path = os.path.join(origin, "bin", "pr-body-lint.py")
+        path = os.path.join(origin, *lint_rel.split("/"))
         if content is None:
             if os.path.exists(path):
                 git(origin, "rm", "-q", path)
@@ -1550,34 +1670,176 @@ def _pr_checkout(td, name, base_lint, head_lint, depth, merge=True, head_is_merg
     return work, head
 
 
-def workflow_judges_with_base_copy(td, wf, wf_text):
-    with open(TOOL, encoding="utf-8") as fh:
-        real_lint = fh.read()
+# A revision naming the merge commit's first parent, the PR's base, with the `:` a path follows.
+BASE_REV = r"\bHEAD(?:\^1?|~1?):"
+# A base read in a lint step's `bash -x` trace, and one anywhere uncommented in a workflow's text.
+TRACED_BASE_READ_RE = re.compile(r"^\++ .*?%s([^\s'\"]+)" % BASE_REV, re.M)
+WF_BASE_READ_RE = re.compile(r"^[^#\n]*%s.*$" % BASE_REV, re.M)
+
+# A report-only workflow's lint step, in the shape agent-webhook-bridge runs: no base-copy judge.
+REPORT_ONLY_WF = """jobs:
+  pr-body-lint:
+    steps:
+      - name: lint this PR's body (reporting-only; exits 0 on findings)
+        env:
+          COORD_PR_TITLE: ${{ github.event.pull_request.title }}
+        run: >-
+          python3 .github/pr-body-lint/report.py --env COORD_PR_BODY --title-env COORD_PR_TITLE
+"""
+# A workflow whose lint step runs one script line, and a lint path no shipped workflow reads.
+JUDGE_WF = """jobs:
+  pr-body-lint:
+    steps:
+      - name: Lint the PR body
+        run: |
+          %s
+"""
+MOVED_LINT = ".github/pr-body-lint-moved/pr-body-lint.py"
+NO_JUDGE_HINT = ("either the workflow is report-only (it never fails a job on a finding): pass "
+                 "`--report-only`; or it judges with the base's copy in a spelling this suite "
+                 "cannot drive: name the step `Lint the PR body`, give it a `run: |` script, and "
+                 "have that script read the copy with `git` from `HEAD^1:<path>`, as the shipped "
+                 "workflow does")
+
+
+def _run_lint_step(td, script, checkout, *bash_args):
+    """The lint step's script, run in `checkout` as the workflow runs it on a PR whose body reds."""
+    work, head = checkout
+    runner_temp = os.path.join(td, "runner-temp")
+    os.makedirs(runner_temp, exist_ok=True)
+    env = git_env(COORD_PR_BODY=WF_RED_BODY, COORD_PR_AUTHOR_TYPE="User",
+                  COORD_PR_TITLE="fix: retry window", COORD_PR_HEAD_SHA=head,
+                  RUNNER_TEMP=runner_temp)
+    return subprocess.run(["bash", *bash_args, "-c", script], cwd=work, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace", timeout=120, env=env)
+
+
+def base_copy_judge(td, wf_text):
+    """The workflow's base-copy judge — its `Lint the PR body` step's `run: |` script and the path
+    that script reads the base's copy from — or None when there is no such script or it reads no
+    base copy. The path is READ OFF THE SCRIPT'S OWN TRACE, in a PR checkout that holds no lint, so
+    only the revision's spelling is assumed. The checkout is depth 2, what a base read needs;
+    whether the WORKFLOW fetches that much is for the rows to say. Reading the base is not judging
+    with it: the rows, not this, decide that."""
     try:
         script = _workflow_step_script(wf_text)
     except (StopIteration, ValueError):
-        check("I the lint step's `run:` script could be read out of the workflow", False, wf)
-        return
-    m = re.search(r"^\s+fetch-depth:\s*(\d+)\s*$", wf_text, re.M)
-    depth = int(m.group(1)) if m else 1   # `actions/checkout`'s default when the key is absent
-    runner_temp = os.path.join(td, "runner-temp")
-    os.makedirs(runner_temp, exist_ok=True)
+        return None
+    probe = tempfile.mkdtemp(dir=td)
+    proc = _run_lint_step(probe, script, _pr_checkout(probe, "probe", "none", None, None, 2), "-x")
+    m = TRACED_BASE_READ_RE.search(proc.stderr)
+    return (script, m.group(1)) if m else None
 
-    def run_step(checkout):
-        work, head = checkout
-        env = git_env(COORD_PR_BODY=WF_RED_BODY, COORD_PR_AUTHOR_TYPE="User",
-                      COORD_PR_TITLE="fix: retry window", COORD_PR_HEAD_SHA=head,
-                      RUNNER_TEMP=runner_temp)
-        return subprocess.run(["bash", "-c", script], cwd=work, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace", timeout=120, env=env)
+
+def report_only_step(wf, wf_text):
+    """Step (10) under `--report-only`: skipped and named, unless the workflow reads the base's
+    copy anywhere, which the flag contradicts. The text is searched rather than the step run, so a
+    blocking step under another name, or with a folded `run:`, is refused too."""
+    read = WF_BASE_READ_RE.search(wf_text)
+    if not check("I `--report-only` is given only for a workflow with no base-copy judge",
+                 read is None,
+                 "`--report-only` contradicts a workflow that judges with the base's copy: %s "
+                 "has the line %r; drop the flag" % (wf, read and read.group(0).strip())):
+        return
+    skipped("I (10) the base-copy judge: `--report-only` declares that %r never fails a job on a "
+            "finding, so a PR's own copy of the lint judges it and nothing here drives that" % wf)
+
+
+def _report_only_rows():
+    """`report_only_step` itself: refused on a workflow that reads the base's copy, however its
+    step is named or spelled, and a named skip on one that does not."""
+    judge = JUDGE_WF % "git cat-file -e 'HEAD^1:bin/pr-body-lint.py'"
+    for text, refused, what in (
+            (judge, True, "the shipped spelling of the base read"),
+            (judge.replace("'", '"'), True, "a double-quoted base read"),
+            (judge.replace("HEAD^1:", "HEAD~:"), True, "a base read through `HEAD~`"),
+            (JUDGE_WF % 'git show "HEAD^1:$lint"', True, "a base read of a path in a variable"),
+            (judge.replace("Lint the PR body", "judge"), True, "a step under another name"),
+            (judge.replace("run: |", "run: >-"), True, "a folded `run: >-`"),
+            (REPORT_ONLY_WF, False, "a report-only workflow"),
+            (REPORT_ONLY_WF + "# HEAD^1:bin/x\n", False, "a base read only in a comment")):
+        fails, skips = recorded(lambda text=text: report_only_step("wf.yml", text))
+        if refused:
+            ok = (len(fails) == 1 and not skips
+                  and "contradicts a workflow that judges with the base's copy" in fails[0])
+        else:
+            ok = not fails and len(skips) == 1 and skips[0].startswith("I (10) the base-copy judge")
+        check("I `--report-only` on %s is %s" % (what, "REFUSED" if refused else "a named skip"),
+              ok, (fails, skips))
+
+
+def workflow_judges_with_base_copy(td, wf, wf_text):
+    if REPORT_ONLY:
+        report_only_step(wf, wf_text)
+        return
+    with open(TOOL, encoding="utf-8") as fh:
+        real_lint = fh.read()
+    _base_copy_step(td, wf, wf_text, real_lint)
+    _report_only_rows()
+    _base_read_rows(td)
+    _no_judge_rows(td, real_lint)
+    _base_copy_relocated(td, real_lint)
+
+
+def _base_copy_step(td, wf, wf_text, real_lint):
+    """Step (10) on one workflow."""
+    judge = base_copy_judge(td, wf_text)
+    if not check("I the workflow's `Lint the PR body` step has a `run: |` script that reads the "
+                 "base's copy of the lint", judge is not None, "%s — %s" % (wf, NO_JUDGE_HINT)):
+        return
+    script, lint_rel = judge
+    m_depth = re.search(r"^\s+fetch-depth:\s*(\d+)\s*$", wf_text, re.M)
+    depth = int(m_depth.group(1)) if m_depth else 1   # `actions/checkout`'s default when absent
+
+    def run_step(checkout, script=script):
+        return _run_lint_step(td, script, checkout)
 
     # The merge-commit check compares HEAD^2 with the PR head the EVENT names; the rows below set
     # that variable themselves, so the workflow must be shown to pass it from the event.
     check("I the workflow passes the PR head sha from the event as COORD_PR_HEAD_SHA",
           "COORD_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}" in wf_text, wf)
+    _base_copy_rows(td, run_step, lint_rel, real_lint, depth)
+    _base_copy_control(td, run_step, script, lint_rel, real_lint)
 
+
+def _base_read_rows(td):
+    """`base_copy_judge` reads the same path out of each of these spellings of the read."""
+    for line, what in (("git cat-file -e 'HEAD^1:%s'", "single-quoted"),
+                       ('git cat-file -e "HEAD^1:%s"', "double-quoted"),
+                       ("git show HEAD^1:%s", "`git show`, unquoted"),
+                       ("git show HEAD~1:%s", "through `HEAD~1`"),
+                       ('lint=%s; git show "HEAD^1:$lint"', "a path in a variable")):
+        judge = base_copy_judge(td, JUDGE_WF % (line % MOVED_LINT))
+        check("I a base read spelled %s names the lint's path" % what,
+              judge is not None and judge[1] == MOVED_LINT, judge)
+
+
+def _no_judge_rows(td, real_lint):
+    """Step (10) itself, on workflows with no base-copy judge, which must fail it: one that reads
+    no base copy fails naming both remedies, and one that reads the base's copy but runs the PR's
+    fails on that PR's own edit."""
+    for text, what in ((REPORT_ONLY_WF, "a report-only workflow with no flag"),
+                       (JUDGE_WF % "python3 bin/pr-body-lint.py  # not HEAD^1:bin/pr-body-lint.py",
+                        "a step that names the base's copy only in a comment")):
+        fails, skips = recorded(lambda text=text: _base_copy_step(
+            tempfile.mkdtemp(dir=td), "wf.yml", text, real_lint))
+        check("I %s fails step (10), naming `--report-only` and the spelling it can drive" % what,
+              len(fails) == 1 and not skips and "`--report-only`" in fails[0]
+              and "`HEAD^1:<path>`" in fails[0], (fails, skips))
+    reads_only = JUDGE_WF % ("git cat-file -e 'HEAD^1:%s'; python3 %s --env COORD_PR_BODY "
+                             "--title-env COORD_PR_TITLE" % (MOVED_LINT, MOVED_LINT))
+    fails, _ = recorded(lambda: _base_copy_step(
+        tempfile.mkdtemp(dir=td), "wf.yml", reads_only, real_lint))
+    check("I a step that reads the base's copy and runs the PR's fails step (10) on an edit to the "
+          "lint",
+          any(f.startswith("I the workflow judges a PR that EDITS the lint") for f in fails), fails)
+
+
+def _base_copy_rows(td, run_step, lint_rel, real_lint, depth):
+    """I (10)'s rows: the base's copy judges an edit, the adoption PR's own copy judges it, and a
+    checkout that is not the PR's merge commit is a fault."""
     # The PR edits the lint to pass everything; the base's copy must still be the judge.
-    proc = run_step(_pr_checkout(td, "wf-edits-lint", real_lint, WF_LENIENT_LINT, depth))
+    proc = run_step(_pr_checkout(td, "wf-edits-lint", lint_rel, real_lint, WF_LENIENT_LINT, depth))
     check("I the workflow judges a PR that EDITS the lint with the BASE's copy — the PR's lenient "
           "copy does not wave its own red body through",
           proc.returncode == 1 and "banned-opener" in proc.stdout
@@ -1586,7 +1848,7 @@ def workflow_judges_with_base_copy(td, wf, wf_text):
 
     # The adoption PR: the base has no lint yet, so the copy the PR adds is the only judge — and the
     # run says that is what happened.
-    proc = run_step(_pr_checkout(td, "wf-adopts", None, real_lint, depth))
+    proc = run_step(_pr_checkout(td, "wf-adopts", lint_rel, None, real_lint, depth))
     check("I on the ADOPTION PR (no lint at the base) the workflow runs the copy the PR adds, and "
           "says so", proc.returncode == 1 and "banned-opener" in proc.stdout
           and "adopts the lint" in proc.stdout,
@@ -1599,7 +1861,7 @@ def workflow_judges_with_base_copy(td, wf, wf_text):
     for name, d, merge, head_is_merge in (("wf-shallow", 1, True, False),
                                           ("wf-head-ref", depth, False, False),
                                           ("wf-head-ref-merge", depth, False, True)):
-        proc = run_step(_pr_checkout(td, name, real_lint, WF_LENIENT_LINT, d, merge,
+        proc = run_step(_pr_checkout(td, name, lint_rel, real_lint, WF_LENIENT_LINT, d, merge,
                                      head_is_merge))
         check("I a checkout that is not this PR's merge commit (%s) is a fault (exit 2) that "
               "names the cause, never the PR's own copy" % name,
@@ -1607,15 +1869,37 @@ def workflow_judges_with_base_copy(td, wf, wf_text):
               and "merge commit" in proc.stdout + proc.stderr,
               (proc.returncode, proc.stdout[-300:], proc.stderr[-300:]))
 
-    # THE CONTROL: with the merge-commit check cut out of the script, the shallow checkout reads as
-    # the adoption PR and the PR's lenient copy judges it — the check is what refused it above.
+
+def _base_copy_relocated(td, real_lint):
+    """The fixtures follow the path the step reads. The plugin's own workflow reads `bin/`, so
+    without this row a suite that wrote `bin/` whatever the workflow said would pass here and fail
+    in every repo that vendors the lint elsewhere."""
+    copy = '"$RUNNER_TEMP/moved.py"'
+    judge = base_copy_judge(td, JUDGE_WF % (
+        "git show 'HEAD^1:%s' > %s && python3 %s --env COORD_PR_BODY --title-env COORD_PR_TITLE"
+        % (MOVED_LINT, copy, copy)))
+    if not check("I the moved lint's path is read off the step that names it", judge is not None):
+        return
+    script, lint_rel = judge
+    proc = _run_lint_step(td, script, _pr_checkout(td, "wf-relocated", lint_rel, real_lint,
+                                                   WF_LENIENT_LINT, 2))
+    check("I a workflow reading the lint from another path (%s) is driven with the lint THERE, "
+          "and still judges an edit with the base's copy" % MOVED_LINT,
+          proc.returncode == 1 and "banned-opener" in proc.stdout
+          and "lenient copy" not in proc.stdout,
+          (proc.returncode, proc.stdout[-500:], proc.stderr[-300:]))
+
+
+def _base_copy_control(td, run_step, script, lint_rel, real_lint):
+    """THE CONTROL: with the merge-commit check cut out of the script, the shallow checkout reads
+    as the adoption PR and the PR's lenient copy judges it — the check is what refused it above."""
     guard = re.search(r"^if [^\n]*COORD_PR_HEAD_SHA.*?HEAD\^2.*?^fi\n", script, re.M | re.S)
     if guard is None:
         check("I CONTROL: the lint step's merge-commit check could be found to cut out", False,
               script[:400])
         return
-    script = script.replace(guard.group(0), "")
-    proc = run_step(_pr_checkout(td, "wf-shallow-unguarded", real_lint, WF_LENIENT_LINT, 1))
+    proc = run_step(_pr_checkout(td, "wf-shallow-unguarded", lint_rel, real_lint,
+                                 WF_LENIENT_LINT, 1), script=script.replace(guard.group(0), ""))
     if check("I CONTROL: without the merge-commit check, a shallow checkout falls back to the PR's "
              "own lenient copy and passes", proc.returncode == 0 and "lenient copy" in proc.stdout,
              (proc.returncode, proc.stdout[-300:])):
@@ -1808,21 +2092,8 @@ def arm_o_merge_instruction(mod, td):
           and "`skills/release-pr/SKILL.md § PR body`" in hits[0].message,
           [(f.text, f.message[:120]) for f in hits])
 
-    for shape, line in MERGE_ROWS:
-        check("O `%s` reds on %r, naming that shape alone" % (shape, line),
-              _merge_hits(mod, line) == [shape], _merge_hits(mod, line))
-    for line in MERGE_SUBJECT_LINES:
-        got = rules_on(mod, _in_highlights(line), title=RELEASE_TITLE)
-        check("O a line naming a merge method as its SUBJECT passes: %r" % line, got == [], got)
-    bundled = COMPLIANT_BODY.replace("- #311 — read the env file\n",
-                                     "- #311 — read the env file\n" + MERGE_BUNDLED_LINE + "\n", 1)
-    check("O the bundled-line anchor applied", bundled != COMPLIANT_BODY)
-    got = rules_on(mod, bundled, title=RELEASE_TITLE)
-    check("O a changelog line about squash in the generated `## Bundled` section passes", got == [],
-          got)
-    for why, line in MERGE_NOT_JUDGED:
-        got = rules_on(mod, _in_highlights(line), title=RELEASE_TITLE)
-        check("O NOT judged — %s: %r" % (why, line), got == [], got)
+    _arm_o_rows(mod)
+
     in_bundled = COMPLIANT_BODY.replace("- #311 — read the env file\n",
                                         "- #311 — read the env file\n" + P467_LINE + "\n", 1)
     got = rules_on(mod, in_bundled, title=RELEASE_TITLE)
@@ -1853,6 +2124,35 @@ def arm_o_merge_instruction(mod, td):
 
     # ⛔ THE CONTROLS. Unwired, every positive above passes — the state before card#13034, in which
     # a fleet impl repo's release-PR body passed clean.
+    _arm_o_rule_controls(td, feature, in_bundled)
+
+    _arm_o_shape_controls(mod, td)
+    _arm_o_opener_control(td)
+
+
+def _arm_o_rows(mod):
+    """O's one-line rows: each shape reds alone, a merge method as a subject passes, and the
+    generated list and each residue are not judged."""
+    for shape, line in MERGE_ROWS:
+        check("O `%s` reds on %r, naming that shape alone" % (shape, line),
+              _merge_hits(mod, line) == [shape], _merge_hits(mod, line))
+    for line in MERGE_SUBJECT_LINES:
+        got = rules_on(mod, _in_highlights(line), title=RELEASE_TITLE)
+        check("O a line naming a merge method as its SUBJECT passes: %r" % line, got == [], got)
+    bundled = COMPLIANT_BODY.replace("- #311 — read the env file\n",
+                                     "- #311 — read the env file\n" + MERGE_BUNDLED_LINE + "\n", 1)
+    check("O the bundled-line anchor applied", bundled != COMPLIANT_BODY)
+    got = rules_on(mod, bundled, title=RELEASE_TITLE)
+    check("O a changelog line about squash in the generated `## Bundled` section passes", got == [],
+          got)
+    for why, line in MERGE_NOT_JUDGED:
+        got = rules_on(mod, _in_highlights(line), title=RELEASE_TITLE)
+        check("O NOT judged — %s: %r" % (why, line), got == [], got)
+
+
+def _arm_o_rule_controls(td, feature, in_bundled):
+    """O's controls on the rule: unwired, run on every PR, and judging `## Bundled` — the answer
+    must flip."""
     unwired = mutant(td, "merge-instruction-unwired",
                      ("        out += rule_merge_instruction(rendered)\n", ""))
     still = [line for _, line in MERGE_ROWS + (("", P467_LINE),)
@@ -1876,6 +2176,11 @@ def arm_o_merge_instruction(mod, td):
     if check("O CONTROL: with the `## Bundled` skip removed, a line under that heading reds — the "
              "skip is what keeps the generated list unjudged", got == ["merge-instruction"], got):
         seen_red("O the `## Bundled` skip, driven red by a copy that judges the generated list")
+
+
+def _arm_o_shape_controls(mod, td):
+    """O's controls on each shape: disabled, its own rows stop reding and every other shape's still
+    red."""
     for shape, _ in mod.MERGE_INSTRUCTIONS:
         off = mutant(td, "merge-shape-%s-disabled" % shape,
                      ('("%s",\n     r"(?:' % shape, '("%s",\n     r"(?!)(?:' % shape))
@@ -1887,6 +2192,10 @@ def arm_o_merge_instruction(mod, td):
                  and all(_merge_hits(off, l) for l in others),
                  ([_merge_hits(off, l) for l in own], [_merge_hits(off, l) for l in others])):
             seen_red("O shape `%s`, driven red by a copy whose pattern can never match" % shape)
+
+
+def _arm_o_opener_control(td):
+    """O's control on the clause-opening narrowing: dropped, the lines it withholds must red."""
     opener = mutant(td, "merge-opener-dropped", (r"(?<!\w )", ""), count=-1)
     withheld = (MERGE_SUBJECT_LINES[1], MERGE_SUBJECT_LINES[2], MERGE_NOT_JUDGED[0][1])
     reds = [line for line in withheld
@@ -1910,13 +2219,15 @@ def arm_m_provenance(mod, td):
           rules_on(mod, body("Origin: bug-fix card#7"), title=feat, raw=True) == [],
           rules_on(mod, body("Origin: bug-fix card#7"), title=feat, raw=True))
     for lines in (("**Origin:** operator-directive card#283",),
-                  ("Origin: operator-directive opq-1792846742-05a9",),
+                  ("Origin: operator-directive opq-1790000000-0dd1",),
                   ("Origin: bundle",),
-                  ("Origin: agent-originated card#7", "Design-approved: `opq-1792846742-05a9`"),
+                  ("Origin: agent-originated card#7", "Design-approved: `opq-1790000000-0dd1`"),
                   ("Origin: bug-fix card#7", "Tier: **RESERVED** money: payouts"),
                   ("Origin: bug-fix card#7", "Tier: routine"),
                   # card#12757: a change to tests alone names the card it was dispatched under.
                   ("Origin: test-only card#7",),
+                  # card#13487: a refactor or docs change with no behaviour change names its card.
+                  ("Origin: refactor card#12",),
                   # card#12618: a `/coord:update` reconcile PR carries no card and no opq.
                   ("Origin: reconcile",),
                   ("Origin: reconcile area 4 orientation re-sync",)):
@@ -1944,18 +2255,8 @@ def arm_m_provenance(mod, td):
         got = rules_on(mod, text, title=feat, raw=True)
         check("M `%s` reds on the body that violates exactly it, and nothing else" % rule,
               got == [rule], got)
-    # card#12618's control: a `/coord:update` area-4 reconcile PR body (the `Built:` value
-    # `docs/built-line.md` defines for it) reds without an origin and passes with `reconcile`.
-    area4 = ("Re-sync the impl orientation file to the installed plugin.\n\n"
-             "Built: in-session (docs/coordination)\n**Coordinated in:** acme/coordination#1\n")
-    check("M card#12618: an area-4 reconcile body with NO `Origin:` reds `origin-missing`",
-          rules_on(mod, area4, title="chore: coord:update reconcile", raw=True) == ["origin-missing"],
-          rules_on(mod, area4, title="chore: coord:update reconcile", raw=True))
-    check("M card#12618: the same body carrying `Origin: reconcile` passes",
-          rules_on(mod, area4 + "Origin: reconcile\n", title="chore: coord:update reconcile",
-                   raw=True) == [],
-          rules_on(mod, area4 + "Origin: reconcile\n", title="chore: coord:update reconcile",
-                   raw=True))
+    _arm_m_refactor_rows(mod, body, feat)
+    _arm_m_reconcile_rows(mod)
     # The `origin-missing` message spells the forms an author may write; every kind the one parser
     # accepts is among them, so the message cannot fall behind `ORIGIN_KINDS`.
     missing_msg = " ".join(f.message for f in mod.findings(body(), None, title=feat)
@@ -1978,19 +2279,8 @@ def arm_m_provenance(mod, td):
           "machine row the scope rule skips", "scope-line" not in rules_on(mod, rel, raw=True),
           rules_on(mod, rel, raw=True))
     # The id pattern is a declared restatement of `coord-ask-operator`'s, held equal here.
-    filer = os.path.join(HERE, "coord-ask-operator")
-    if os.path.exists(filer):
-        spec = importlib.util.spec_from_loader("pbl_cao", importlib.machinery.SourceFileLoader(
-            "pbl_cao", filer))
-        cao = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cao)
-        check("M `DESIGN_APPROVED_ID_RE` is `coord-ask-operator`'s `ITEM_ID_RE`, character for "
-              "character — the id the registry mints is the id this lint accepts",
-              mod.DESIGN_APPROVED_ID_RE.pattern == cao.ITEM_ID_RE.pattern,
-              (mod.DESIGN_APPROVED_ID_RE.pattern, cao.ITEM_ID_RE.pattern))
-    elif os.environ.get(NESTED_ENV) != "1":
-        check("M `coord-ask-operator` sits beside this suite, so the id-pattern guard can run",
-              False, filer)
+    _arm_m_id_pattern_guard(mod, td)
+
     unwired = mutant(td, "declarations-unwired",
                      ('           + rule_declarations(body or "", author_type))',
                       '           + [])'))
@@ -2003,6 +2293,95 @@ def arm_m_provenance(mod, td):
                    raw=True)
     check("M CLI: a body with no `Origin:` exits 1 naming `origin-missing`",
           proc.returncode == 1 and "origin-missing" in proc.stdout, proc.stdout[-300:])
+
+
+def _arm_m_refactor_rows(mod, body, feat):
+    """M's refusal rows on a `refactor` origin with no `card#<n>`."""
+    # card#13487: `refactor` is a known kind that names its card the way `bug-fix` does. The fault
+    # must be the card-ref one — an unknown kind's fault would refuse the same line for the wrong
+    # reason, and would pass this leg on a copy that does not know `refactor` at all. The second ref
+    # is one `operator-directive` accepts, so only the per-kind card check can refuse it.
+    for line in ("Origin: refactor", "Origin: refactor opq-1790000000-0dd1"):
+        got = [f for f in mod.findings(body(line), None, title=feat)
+               if f.rule == "origin-malformed"]
+        check("M card#13487: `%s` is refused as a `refactor` origin with no `card#<n>`" % line,
+              len(got) == 1 and "`Origin: refactor` names its card as `card#<n>`" in got[0].message,
+              [(f.rule, f.message) for f in mod.findings(body(line), None, title=feat)])
+
+
+def _arm_m_reconcile_rows(mod):
+    """M's rows on a `/coord:update` reconcile body, with and without its origin."""
+    # card#12618's control: a `/coord:update` area-4 reconcile PR body (the `Built:` value
+    # `docs/built-line.md` defines for it) reds without an origin and passes with `reconcile`.
+    area4 = ("Re-sync the impl orientation file to the installed plugin.\n\n"
+             "Built: in-session (docs/coordination)\n**Coordinated in:** acme/coordination#1\n")
+    check("M card#12618: an area-4 reconcile body with NO `Origin:` reds `origin-missing`",
+          rules_on(mod, area4, title="chore: coord:update reconcile", raw=True) == ["origin-missing"],
+          rules_on(mod, area4, title="chore: coord:update reconcile", raw=True))
+    check("M card#12618: the same body carrying `Origin: reconcile` passes",
+          rules_on(mod, area4 + "Origin: reconcile\n", title="chore: coord:update reconcile",
+                   raw=True) == [],
+          rules_on(mod, area4 + "Origin: reconcile\n", title="chore: coord:update reconcile",
+                   raw=True))
+
+
+def _arm_m_id_pattern_guard(mod, td):
+    """M's guard on the declared restatement: `DESIGN_APPROVED_ID_RE` equals `coord-ask-operator`'s
+    `ITEM_ID_RE`; and its rows on a tree with no `coord-ask-operator`."""
+    _arm_m_filer_absent_rows(td)
+    filer = os.path.join(HERE, "coord-ask-operator")
+    if os.path.exists(filer):
+        spec = importlib.util.spec_from_loader("pbl_cao", importlib.machinery.SourceFileLoader(
+            "pbl_cao", filer))
+        cao = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cao)
+        check("M `DESIGN_APPROVED_ID_RE` is `coord-ask-operator`'s `ITEM_ID_RE`, character for "
+              "character — the id the registry mints is the id this lint accepts",
+              mod.DESIGN_APPROVED_ID_RE.pattern == cao.ITEM_ID_RE.pattern,
+              (mod.DESIGN_APPROVED_ID_RE.pattern, cao.ITEM_ID_RE.pattern))
+    else:
+        _arm_m_filer_absent(HERE, filer)
+
+
+def _arm_m_filer_absent(here, filer):
+    """M's guard with no `coord-ask-operator` beside the suite: a failure in the plugin's own tree,
+    a named skip in a vendored copy, which ships the lint and not the registry tool, and a failure
+    naming the plugin manifest when that cannot be read, because then neither is known."""
+    in_plugin, fault = in_coord_plugin(here)
+    if in_plugin or fault:
+        check("M `coord-ask-operator` sits beside this suite, so the id-pattern guard can run",
+              False, filer if not fault else
+              "%s; whether this is the plugin's own tree is not known: %s" % (filer, fault))
+        return
+    skipped("M the id-pattern guard: %r is not beside this vendored copy, so "
+            "`DESIGN_APPROVED_ID_RE` is held equal to `ITEM_ID_RE` only in the plugin's own "
+            "run" % filer)
+
+
+def _arm_m_filer_absent_rows(td):
+    """`_arm_m_filer_absent` itself, under each state of the manifest two directories up."""
+    for n, (content, wanted, what) in enumerate((
+            (None, "skip", "no plugin manifest"),
+            (b'{"name": "another-plugin"}', "skip", "another plugin's manifest"),
+            (b'{"name": "coord"}', "filer", "this plugin's manifest"),
+            (b'{"name": "coord"', "manifest", "a manifest that does not parse"),
+            (b'{"name": "coord", "x": "\xe9"}', "manifest", "a manifest that is not UTF-8"))):
+        root = os.path.join(td, "m-manifest-%d" % n)
+        here = os.path.join(root, "templates", "bin")
+        os.makedirs(here)
+        if content is not None:
+            os.makedirs(os.path.join(root, ".claude-plugin"))
+            with open(os.path.join(root, ".claude-plugin", "plugin.json"), "wb") as fh:
+                fh.write(content)
+        fails, skips = recorded(lambda here=here: _arm_m_filer_absent(here, "no-such-filer"))
+        if wanted == "skip":
+            ok = not fails and len(skips) == 1 and "id-pattern guard" in skips[0]
+        else:
+            ok = (len(fails) == 1 and not skips and "no-such-filer" in fails[0]
+                  and ("could not be read" in fails[0]) == (wanted == "manifest"))
+        check("M with no `coord-ask-operator`, under %s, is %s"
+              % (what, {"skip": "a named skip", "filer": "a failure",
+                        "manifest": "a failure naming the manifest"}[wanted]), ok, (fails, skips))
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -2086,6 +2465,17 @@ def arm_n_repo_release_headings(td):
           (proc.returncode, proc.stderr[:300]))
 
     # (6) NON-RELEASE PRs ARE UNTOUCHED — the file changes nothing under a feature title, either way.
+    _arm_n_feature_pr(td, declared_file)
+
+    # (7) A LEADING UTF-8 BYTE-ORDER MARK IS NOT PART OF THE FIRST HEADING (fw#1405 r1). Left in
+    # place it is glued to line 1: that declaration silently admits nothing, and a `## …` line 1
+    # slips past the `#` fault in (5).
+    _arm_n_file_shape_faults(td, samd)
+
+
+def _arm_n_feature_pr(td, declared_file):
+    """N on a feature PR: the declared-headings file, present, absent or malformed, does not move
+    its verdict."""
     with_file = _rules_of(_release_headings_run(td, "feat-file", declared_file, FEATURE_BODY,
                                                 FEATURE_TITLE))
     without = _rules_of(_release_headings_run(td, "feat-none", None, FEATURE_BODY, FEATURE_TITLE))
@@ -2096,9 +2486,10 @@ def arm_n_repo_release_headings(td):
           with_file is not None and with_file == without == _rules_of(malformed)
           and malformed.returncode == 0, (with_file, without, malformed.returncode))
 
-    # (7) A LEADING UTF-8 BYTE-ORDER MARK IS NOT PART OF THE FIRST HEADING (fw#1405 r1). Left in
-    # place it is glued to line 1: that declaration silently admits nothing, and a `## …` line 1
-    # slips past the `#` fault in (5).
+
+def _arm_n_file_shape_faults(td, samd):
+    """N on the file's own shape: a leading BOM is not part of the first heading, and an unreadable
+    path is a fault."""
     bom = b"\xef\xbb\xbf"
     proc = _release_headings_run(td, "bom", bom + b"Boundary check\n", extra_h2)
     check("N a declared-headings file opening with a UTF-8 BOM still admits its FIRST heading",
@@ -2300,8 +2691,12 @@ def arm_l_version_classification(mod, td):
 # this file into its own `bin/` has no `../workflows/` beside it, and step (9) of arm i used to
 # raise there — so arms j and e never ran and that repo's CI redded on every PR. Only a copy in
 # that layout can show it, so this arm builds one (lint, this file, its fixtures, and a workflow
-# under `.github/workflows/` with a name of its own) and runs it twice, reading what the copy
-# PRINTS, not only its exit code.
+# under `.github/workflows/` with a name of its own) and runs it with no workflow, with that
+# workflow, and with `--report-only`, reading what the copy PRINTS, not only its exit code.
+# Every arm a copy runs, which is all of them but k itself.
+ARMS_RUN_RE = r"^pr-body-lint\.selftest: arms run: a b c d f g h i j l m n o e$"
+
+
 def _vendored_run(vend, args, env_over):
     env = dict(os.environ)
     env.pop(WORKFLOW_ENV, None)
@@ -2328,8 +2723,7 @@ def arm_k_vendored(td):
     check("K a vendored copy given no workflow does not crash — no traceback", "Traceback" not in out,
           out[-600:])
     check("K ...every arm after i still runs and reports (j and e included)",
-          re.search(r"^pr-body-lint\.selftest: arms run: a b c d f g h i j l m n o e$", proc.stdout, re.M)
-          is not None, proc.stdout[-600:])
+          re.search(ARMS_RUN_RE, proc.stdout, re.M) is not None, proc.stdout[-600:])
     check("K ...and the result is a FAILURE of arm i that names the path it tried and both ways to "
           "point it elsewhere — never a pass, never a skip",
           proc.returncode == 1 and "pr-body-lint.selftest: FAIL" in proc.stdout
@@ -2351,11 +2745,56 @@ def arm_k_vendored(td):
               "no workflow to copy in: %r (from %s): %s — arm i names the same path"
               % (WORKFLOW, WORKFLOW_SOURCE, exc.strerror or exc))
         return
-    proc = _vendored_run(vend, ["--workflow", real_wf],
-                         {WORKFLOW_ENV: os.path.join(vend, "no-such.yml")})
-    check("K `--workflow` pointing at the vendored workflow passes the whole copy, and wins over "
-          "the variable", proc.returncode == 0 and "pr-body-lint.selftest: ok" in proc.stdout,
-          (proc.returncode, proc.stdout[-800:]))
+    args = ["--workflow", real_wf] + (["--report-only"] if REPORT_ONLY else [])
+    proc = _vendored_run(vend, args, {WORKFLOW_ENV: os.path.join(vend, "no-such.yml")})
+    if not check("K `--workflow` pointing at the vendored workflow passes the whole copy, and wins "
+                 "over the variable",
+                 proc.returncode == 0 and "pr-body-lint.selftest: ok" in proc.stdout,
+                 (proc.returncode, proc.stdout[-800:])):
+        return
+    # (3) The copy ships no `coord-ask-operator`, so M's id-pattern guard cannot run there: the
+    # copy must say so by name and count it in its verdict, never pass as though it ran.
+    check("K ...and the vendored copy names M's id-pattern guard as SKIPPED and counts the skip in "
+          "its verdict line",
+          re.search(r"^    SKIPPED: M the id-pattern guard: ", proc.stdout, re.M) is not None
+          and re.search(r"^pr-body-lint\.selftest: ok \(.*; \d+ SKIPPED, each named above\)$",
+                        proc.stdout, re.M) is not None,
+          proc.stdout[-800:])
+    _arm_k_report_only(vend, proc.stdout)
+
+
+def _arm_k_report_only(vend, plain_out):
+    """(4) `--report-only` end to end, on a report-only workflow: the copy passes, and when that
+    workflow drops the PR title, step (9) is the one row that fails. Both runs skip step (10) by
+    name and run everything else `plain_out`, the run in (2), ran."""
+    def lines(out, label):
+        return set(re.findall(r"^    %s: (.*)$" % label, out, re.M))
+
+    wf = os.path.join(vend, ".github", "workflows", "report-only.yml")
+    for text, failing, verdict, what in (
+            (REPORT_ONLY_WF, [], "ok (", "that passes the title"),
+            (REPORT_ONLY_WF.replace(" --title-env COORD_PR_TITLE", ""),
+             ["I the shipped workflow passes the PR TITLE"], "FAIL (", "without the title")):
+        with open(wf, "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        proc = _vendored_run(vend, ["--workflow", wf, "--report-only"], {})
+        out = proc.stdout
+        fails = re.findall(r"^  - (.*)$", out, re.M)
+        check("K `--report-only`, report-only workflow %s: its failures are %s" % (what, failing),
+              proc.returncode == (1 if failing else 0) and len(fails) == len(failing)
+              and all(f.startswith(w) for f, w in zip(fails, failing)),
+              (proc.returncode, out[-800:]))
+        check("K ...and every arm and control but step (10)'s runs (%s)" % what,
+              re.search(ARMS_RUN_RE, out, re.M) is not None
+              and lines(plain_out, "seen red") - lines(out, "seen red")
+              <= {l for l in lines(plain_out, "seen red") if l.startswith("I the base-copy judge")},
+              (out[:300], lines(plain_out, "seen red") - lines(out, "seen red")))
+        skips = lines(out, "SKIPPED")
+        check("K ...and it names step (10)'s skip and counts every skip in its verdict (%s)" % what,
+              any(l.startswith("I (10) the base-copy judge: ") for l in skips)
+              and re.search(r"^pr-body-lint\.selftest: %s.*\b%d SKIPPED, each named above\)$"
+                            % (re.escape(verdict), len(skips)), out, re.M) is not None,
+              out[-800:])
 
 
 def arm_k_resolution():
@@ -2370,13 +2809,17 @@ def arm_k_resolution():
 
 
 def main(argv=None):
-    global mod_main, WORKFLOW, WORKFLOW_SOURCE, EMPTY_CWD
+    global mod_main, WORKFLOW, WORKFLOW_SOURCE, EMPTY_CWD, REPORT_ONLY
     ap = argparse.ArgumentParser(description="The PR-body lint's own controls.", allow_abbrev=False)
     ap.add_argument("--workflow", metavar="PATH",
                     help="the workflow that runs the lint (default: this plugin's "
                          "templates/workflows/pr-body-lint.yml; env %s)" % WORKFLOW_ENV)
+    ap.add_argument("--report-only", action="store_true",
+                    help="the workflow never fails a job on a finding, so it has no base-copy "
+                         "judge: arm i step (10) is SKIPPED and named, everything else runs")
     a = ap.parse_args(argv)
     WORKFLOW, WORKFLOW_SOURCE = resolve_workflow(a.workflow, os.environ)
+    REPORT_ONLY = a.report_only
     nested = os.environ.get(NESTED_ENV) == "1"
     before = sha256_file(TOOL)
     mod_main = load_tool()
@@ -2409,15 +2852,22 @@ def main(argv=None):
     check("the shipped file was not touched by this suite (sha256 before == after)",
           before == after, "%s -> %s" % (before, after))
 
+    return report()
+
+
+def report():
     for line in SEEN_RED:
         print("    seen red: %s" % line)
+    for line in SKIPPED:
+        print("    SKIPPED: %s" % line)
+    skips = "%d SKIPPED, each named above" % len(SKIPPED) if SKIPPED else ""
     if FAILURES:
-        print("pr-body-lint.selftest: FAIL")
+        print("pr-body-lint.selftest: FAIL" + (" (%s)" % skips if skips else ""))
         for f in FAILURES:
             print("  - %s" % f)
         return 1
     print("pr-body-lint.selftest: ok (%d checks; %d controls SEEN RED before their green was "
-          "believed)" % (CHECKS, len(SEEN_RED)))
+          "believed%s)" % (CHECKS, len(SEEN_RED), "; " + skips if skips else ""))
     return 0
 
 
