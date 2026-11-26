@@ -1,1 +1,0 @@
-- **card#13033** — **On the 3-D floor, a character entering the elevator stays in sight until the doors close.** A character or intern stepping into the cab is now seen standing inside it until the leaves have closed over it, and one arriving is seen inside the cab as the leaves open before it steps out, as on the 2-D floor; before, it vanished the moment it left the floor.
