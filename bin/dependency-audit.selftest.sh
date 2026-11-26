@@ -29,13 +29,15 @@
 # ShellCheck's findings on this file are recorded in bin/shell-lint.baseline.tsv rather than
 # annotated in the body, so the body stays upstream's.
 #
-# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `bin/dependency-selftest-lib.sh`,
-# `.github/workflows/dependency-audit.yml`, `.github/workflows/dependency-ref-matrix.yml` and
-# `bin/dependency-audit-fixtures/` move TOGETHER, from one upstream commit: the selftest extracts
-# and runs the workflows' own blocks against those fixtures, so a selftest from one revision over
-# workflows or fixtures from another reds (measured on the v0.77.0 refresh, card#13794). Copy each
-# upstream file over everything below its block, re-apply each file's declared edits, then re-pin
-# with the command `bin/vendor-pin-check.sh` prints on a red.
+# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `bin/dependency-advisory-notices.selftest.sh`,
+# `bin/dependency-advisory-notices-shape.selftest.sh`, `bin/dependency-selftest-lib.sh`,
+# `.github/workflows/dependency-audit.yml`, `.github/workflows/dependency-ref-matrix.yml`,
+# `.github/workflows/dependency-advisory-notices.yml` and `bin/dependency-audit-fixtures/` move
+# TOGETHER, from one upstream commit: the selftests extract and run the workflows' own blocks
+# against those fixtures, so a selftest from one revision over workflows or fixtures from another
+# reds (measured on the v0.77.0 refresh, card#13794). Copy each upstream file over everything below
+# its block, re-apply each file's declared edits, then re-pin with the command
+# `bin/vendor-pin-check.sh` prints on a red.
 # ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-audit.selftest.sh — proves the shipped dependency-advisory gate CAN FAIL, fails
 # for the right reason, and DISTINGUISHES an affected lockfile from a clean one (a check that

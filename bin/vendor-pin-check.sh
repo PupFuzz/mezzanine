@@ -89,7 +89,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # of any change to either owes a glance at the other.
 #
 # ⚠ THE PIN COLUMN IS A PROVENANCE STRING, NOT ALWAYS A BARE COMMIT. The mover rows were vendored
-# from a commit and name it. The `pr-body-lint`, `dependency-audit` and `dl-traceability` rows name BOTH the plugin
+# from a commit and name it. The `pr-body-lint`, `dependency-audit`, `dependency-advisory-notices` and `dl-traceability` rows name BOTH the plugin
 # version and the marketplace commit, because those answer different questions: the version is how a reader says
 # which release this install runs, the commit is what `git show <commit>:<upstream path>` needs to
 # reproduce the bytes. Each of those files' own header carries the same pair plus the WHOLE-FILE
@@ -106,6 +106,9 @@ MANIFEST=(
   ".github/workflows/dependency-ref-matrix.yml|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|cdbff931380dc3ad6b47e3edf466e45d3229889fed1bd8cdd048b87d05e69368|#"
   "bin/dependency-audit.selftest.sh|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|b16fc0af2e524c2dc12bb682d4195e9703641983d263e68aa96663dcafc990c5|#"
   "bin/dependency-selftest-lib.sh|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|05a5c4d411fd0fdc08cc2de3da8bbb9b9f8214d1215fa92d5811ed91e2c17592|#"
+  ".github/workflows/dependency-advisory-notices.yml|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|63c36f0361818fcfa6487798ab09da97b31c55cfcd262faded8408ea8dee9c58|#"
+  "bin/dependency-advisory-notices.selftest.sh|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|c77c9e79242e3a82f663e21733bfa5dccc5d32167e01e1ca71099eae3ae4a2a7|#"
+  "bin/dependency-advisory-notices-shape.selftest.sh|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|4f60270f4c02ff503a35361d67cdb28e05d64f98e6ec5ea973c41faf3d7bccd4|#"
   "bin/coord-ask-operator|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|507ca2e19763d03d5ebcc9bb9ce97c49944bd6ecec76dab7546e9503a5d46d19|#"
   "bin/_operator_registry.py|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|55571560eaaa204d727357dea9d68b59f34d32f041e14fd88f34849fcf80df4f|#"
   ".github/workflows/dl-traceability.yml|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|d64c7fc79f76eda5cfaf671b44bfacbb2647cc5e491f06c303c4c5aed3956e3d|#"
