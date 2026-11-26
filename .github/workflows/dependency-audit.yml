@@ -19,13 +19,8 @@
 #   (2) the CUSTOMIZE ZONE's pointer to the selftest names this repo's path
 #       (fragment: `runs verbatim (bin/dependency-audit.selftest.sh`).
 #
-# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `bin/dependency-selftest-lib.sh`,
-# `.github/workflows/dependency-audit.yml`, `.github/workflows/dependency-ref-matrix.yml` and
-# `bin/dependency-audit-fixtures/` move TOGETHER, from one upstream commit: the selftest extracts
-# and runs the workflows' own blocks against those fixtures, so a selftest from one revision over
-# workflows or fixtures from another reds (measured on the v0.77.0 refresh, card#13794). Copy each
-# upstream file over everything below its block, re-apply each file's declared edits, then re-pin
-# with the command `bin/vendor-pin-check.sh` prints on a red.
+# TO RE-VENDOR: this file moves with `bin/dependency-audit.selftest.sh`, whose header names the
+# whole set and the procedure.
 # ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-audit.yml — the CALLEE: one dependency-advisory audit of ONE ref, exposed as
 # a `workflow_call` so a single implementation serves every ref its caller matrixes over.

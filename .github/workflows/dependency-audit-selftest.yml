@@ -1,16 +1,22 @@
-# dependency-audit-selftest.yml — keep the scheduled dependency audit's refusals real, at PR time.
+# dependency-audit-selftest.yml — keep the scheduled dependency audit's refusals, and its advisory
+# notices, real at PR time.
 #
-# WHAT IT DOES. Runs `bin/dependency-audit.selftest.sh --workflows .github/workflows` over this
-# checkout; the argument names where this repository keeps the two workflows. The suite extracts the
-# shell of `.github/workflows/dependency-audit.yml` (the callee) and of the reporting job in
-# `.github/workflows/dependency-ref-matrix.yml` (the caller) verbatim from their marked blocks and
-# runs it against the vendored fixtures in `bin/dependency-audit-fixtures/`, with the network seams
-# replaced by fixture readers. What each leg asserts is the suite's own header; it is not
-# restated here.
+# WHAT IT DOES. Runs three suites over this checkout, each with `--workflows .github/workflows`, the
+# argument naming where this repository keeps the workflows:
+#   * `bin/dependency-audit.selftest.sh` extracts the shell of `.github/workflows/dependency-audit.yml`
+#     (the callee) and of the reporting job in `.github/workflows/dependency-ref-matrix.yml` (the
+#     caller) verbatim from their marked blocks and runs it against the vendored fixtures in
+#     `bin/dependency-audit-fixtures/`, with the network seams replaced by fixture readers.
+#   * `bin/dependency-advisory-notices.selftest.sh` runs the shell of
+#     `.github/workflows/dependency-advisory-notices.yml` the same way, against findings files and a
+#     fake GitHub issues API.
+#   * `bin/dependency-advisory-notices-shape.selftest.sh` reads that workflow's YAML, and what the
+#     callee and caller carry for it.
+# What each leg asserts is its suite's own header; it is not restated here.
 #
-# WHY IT EXISTS. The audit itself runs only on a schedule, from the default branch, so a PR that
-# breaks its shell would otherwise surface as a red scheduled run a day after the merge — or, worse,
-# as a green one over nothing. This lane is the PR-time half.
+# WHY IT EXISTS. The audit and the notices run only after a scheduled or dispatched audit on the
+# default branch, so a PR that breaks their shell would otherwise surface as a red run a day after
+# the merge — or, worse, as a green one over nothing. This lane is the PR-time half.
 #
 # NO `paths:` FILTER, DELIBERATELY — the same reasoning as `deploy-selftest.yml`: the suite is
 # seconds of bash, and a path-filtered workflow produces NO RUN, which reads as *pending* rather
@@ -42,3 +48,9 @@ jobs:
       # `bash` explicitly rather than relying on the executable bit surviving a checkout.
       - name: Self-test (every fail-closed leg, the discriminating pair, and the mutant controls)
         run: bash bin/dependency-audit.selftest.sh --workflows .github/workflows
+
+      - name: Self-test the advisory notices' shell (every leg and its mutant)
+        run: bash bin/dependency-advisory-notices.selftest.sh --workflows .github/workflows
+
+      - name: Self-test the advisory notices' YAML shape (every row and its refused rewrite)
+        run: bash bin/dependency-advisory-notices-shape.selftest.sh --workflows .github/workflows
