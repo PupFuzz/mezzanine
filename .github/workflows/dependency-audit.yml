@@ -1,14 +1,14 @@
-# ── VENDORED from coord 0.77.0 — the CALLEE of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
+# ── VENDORED from coord 0.79.0 — the CALLEE of the scheduled dependency-advisory audit. A body edit reds bin/vendor-pin-check.sh until declared below. ──
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/security/workflows/dependency-audit.yml
-#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
-#   plugin version    coord 0.77.0
-#   upstream sha256   628866da4af9d26bd5cd5566ccb6c4299278ed749d940767087500c99f0469d9
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
+#   upstream sha256   235d2e302ba6d3b7ade2e71a639a90b922c529975f29703dcfa211298469e3e3
 #
 # That sha256 is the WHOLE upstream file; `bin/vendor-pin-check.sh` pins the BODY (from the first
 # line that is neither blank nor a comment), which is a different figure. Re-derive this one
-# against a marketplace clone:   git show afaf9a10:plugins/coord/templates/security/workflows/dependency-audit.yml | sha256sum
+# against a marketplace clone:   git show 31191341:plugins/coord/templates/security/workflows/dependency-audit.yml | sha256sum
 #
 # DECLARED LOCAL EDITS — each is also a FRAGMENTS row in `bin/vendor-pin-check.sh`, which reds
 # when one leaves the body. Outside these edits, the text below this block was upstream's byte for
@@ -19,12 +19,13 @@
 #   (2) the CUSTOMIZE ZONE's pointer to the selftest names this repo's path
 #       (fragment: `runs verbatim (bin/dependency-audit.selftest.sh`).
 #
-# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `.github/workflows/dependency-audit.yml`,
-# `.github/workflows/dependency-ref-matrix.yml` and `bin/dependency-audit-fixtures/` move TOGETHER,
-# from one upstream commit: the selftest extracts and runs the workflows' own blocks against those fixtures, so a
-# selftest from one revision over workflows or fixtures from another reds (measured on the v0.77.0
-# refresh, card#13794). Copy each upstream file over everything below its block, re-apply each
-# file's declared edits, then re-pin with the command `bin/vendor-pin-check.sh` prints on a red.
+# TO RE-VENDOR: `bin/dependency-audit.selftest.sh`, `bin/dependency-selftest-lib.sh`,
+# `.github/workflows/dependency-audit.yml`, `.github/workflows/dependency-ref-matrix.yml` and
+# `bin/dependency-audit-fixtures/` move TOGETHER, from one upstream commit: the selftest extracts
+# and runs the workflows' own blocks against those fixtures, so a selftest from one revision over
+# workflows or fixtures from another reds (measured on the v0.77.0 refresh, card#13794). Copy each
+# upstream file over everything below its block, re-apply each file's declared edits, then re-pin
+# with the command `bin/vendor-pin-check.sh` prints on a red.
 # ── END MEZZANINE VENDOR HEADER ────────────────────────────────────────────────────────────────
 # dependency-audit.yml — the CALLEE: one dependency-advisory audit of ONE ref, exposed as
 # a `workflow_call` so a single implementation serves every ref its caller matrixes over.
@@ -58,14 +59,6 @@
 # would be one more thing to keep in step with the `err`/`fatal` calls below, and the copies
 # are what went false the last time this guarantee stopped being true.
 #
-# THE BUMP JOB (card#12253). On the INTEGRATION leg, a second job (`bump`, at the end of this file)
-# opens a lockfile bump PR for each finding whose fix the package manager's own resolver reaches
-# inside the declared ranges, against that leg's ref. The release leg is never bumped. It is ON by
-# default; it pushes and opens PRs as a GitHub App's bot, and needs that app's two repository secrets
-# (`ADVISORY_BUMP_APP_CLIENT_ID`, `ADVISORY_BUMP_APP_PRIVATE_KEY`): an unset one FAILS the job on every
-# integration-leg run, naming it. A personal token is not supported. The coord plugin's
-# `docs/DEPENDENCY-AUDIT.md` § "Bump PRs" owns the rules and § "The bump app" the setup.
-#
 # THE POPULATION STATEMENT IS EMITTED BEFORE ANY VERDICT and is exported as an OUTPUT, not
 # only logged. A caller's reporting job asserts on it, so a green over an empty population is
 # impossible to confuse with a green over audited lockfiles. (Anchor: a release's committed
@@ -95,33 +88,23 @@ on:
         description: The git ref to audit (the caller passes one matrix leg per audited branch).
         required: true
         type: string
+      # Deprecated: declared only so an older caller that still passes them starts instead of
+      # failing at startup (GitHub refuses an undeclared input or secret). Nothing reads them.
+      # Removed in 0.80.0 — docs/UPDATING.md has the caller edit.
       leg:
-        description: >-
-          Which leg `ref` is: `release` (audited, never bumped) or `integration` (audited, and
-          the bump job opens in-range fix PRs against it). The caller names it per matrix leg.
-          Absent while bump PRs are on is setup missing, and the bump job FAILS naming it.
+        description: Deprecated, ignored — delete it from your caller.
         required: false
         type: string
-        default: ''
       bump_prs:
-        description: >-
-          `on` (the default) or `off`. `off` is the explicit, recorded switch that turns the
-          bump job off; it is not the same state as a missing secret, which FAILS whenever a
-          bump is due. Any other value FAILS the bump job.
+        description: Deprecated, ignored — delete it from your caller.
         required: false
         type: string
-        default: 'on'
     secrets:
       ADVISORY_BUMP_APP_CLIENT_ID:
-        description: >-
-          The client ID of the GitHub App the bump job pushes and opens PRs as (the coord plugin's
-          docs/DEPENDENCY-AUDIT.md § "The bump app"). Unset while the integration leg bumps FAILS the
-          bump job, naming it.
+        description: Deprecated, ignored — delete it from your caller and your repository secrets.
         required: false
       ADVISORY_BUMP_APP_PRIVATE_KEY:
-        description: >-
-          That app's private key (PEM). Read by the token step only. Unset while the integration
-          leg bumps FAILS the bump job, naming it.
+        description: Deprecated, ignored — delete it from your caller and your repository secrets.
         required: false
     outputs:
       population:
@@ -140,22 +123,17 @@ on:
         description: >-
           JSON array, one object per AFFECTED row of either source (source "1" or "2",
           ecosystem, package, version, repo, ghsa, severity, range, patched) — the FINDINGS
-          lines in machine form, for the bump job. `[]` when neither source reported one;
-          EMPTY means the audit never exported it, and the bump job FAILS on that.
+          lines in machine form. `[]` when neither source reported one, or when the audit stopped
+          before reading them (then `status` is `error`); EMPTY means the audit never exported it.
         value: ${{ jobs.audit.outputs.affected }}
-
-# UTF-8 stdio for every python process this workflow starts (the bump job's tool), at workflow
-# scope so a job added later is covered too (the coord plugin's `docs/CUSTOMIZING.md` § UTF-8 stdio
-# in the shipped workflows owns the argument).
-env:
-  PYTHONUTF8: "1"
 
 # PERMISSIONS ARE GRANTED PER JOB, never once at workflow level (card#11434), as in the caller;
 # the selftest reds if a top-level `permissions:` comes back.
 jobs:
   audit:
     runs-on: ubuntu-latest
-    # Checks out the audited ref and reads public advisories; nothing here writes.
+    # Checks out the audited ref and reads public advisories; nothing here writes to the repository.
+    # The findings upload uses the run's own artifact credential, not this token.
     permissions:
       contents: read
     outputs:
@@ -204,6 +182,8 @@ jobs:
           # it has no access to — SOURCE2-FETCH-FAILED, not "clean". Swap in a PAT with read
           # access to those repos if that applies.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Where `export_findings` writes the findings file the upload step below sends on.
+          FINDINGS_FILE: ${{ runner.temp }}/dependency-audit-findings.json
         run: |
           set -euo pipefail
           # ============================ CUSTOMIZE ZONE ============================
@@ -288,11 +268,11 @@ jobs:
           list_json() { printf '%s' "$1" | jq -Rsc 'split("\n") | map(select(length > 0))'; }
           list_text() { printf '%s' "$1" | jq -Rsr 'split("\n") | map(select(length > 0)) | join(", ")'; }
           MANIFESTS=(); PKG_TSV="$WORK/packages.tsv"; : > "$PKG_TSV"
-          # The AFFECTED rows of BOTH sources in machine form, exported as `affected` for the bump
-          # job (card#12253). Created here, before any leg can fail, so a run that stopped early
-          # exports `[]` rather than nothing: that run is RED on its own named error, and its
-          # population's `status` is `error`, which the bump tool refuses (fw#1369 r1) — so this
-          # `[]` never reads as "nothing to bump". Nothing reads this file to decide the verdict.
+          # The AFFECTED rows of BOTH sources in machine form, exported as `affected`. Created here,
+          # before any leg can fail, so a run that stopped early exports `[]` rather than nothing:
+          # that run is RED on its own named error and its population's `status` is `error`, so a
+          # reader of `affected` checks `status` before taking `[]` as "no findings". Nothing reads
+          # this file to decide the verdict.
           : > "$WORK/affected.ndjson"
           err() {   # $1=code $2=detail. Recorded, printed, and RED at the verdict.
             AUDIT_ERRORS=$((AUDIT_ERRORS + 1))
@@ -912,10 +892,10 @@ jobs:
           # whichever exclusion flag the current scanner version spells.
           #
           # One `affected` row per (package, vulnerability) of the scanner's results — a global-
-          # database advisory reaches the bump job exactly as a repository advisory does. `patched`
+          # database advisory reaches `affected` exactly as a repository advisory does. `patched`
           # lists every `fixed` event of the OSV record's SEMVER and ECOSYSTEM ranges for this
-          # package (a GIT range's events are commit hashes, not versions); the bump tool picks the
-          # lowest one above the flagged version. `range` is display text only.
+          # package (a GIT range's events are commit hashes, not versions). `range` is display
+          # text only.
           S1_ROWS_JQ='
             def addterm($t): (if length == 0 then [""] else . end)
               | .[-1] |= (if . == "" then $t else . + ", " + $t end);
@@ -964,7 +944,7 @@ jobs:
             if [ "$n" -gt 0 ]; then
               FINDING_LINES="${FINDING_LINES}$(jq -r "$ONELINE_JQ"'.results[]?.packages[]? as $p | $p.vulnerabilities[]? | "  SOURCE1 \($p.package.ecosystem):\($p.package.name)@\($p.package.version) \(.id)" | oneline' "$WORK/osv.json")"$'\n'
               jq -c "$S1_ROWS_JQ" "$WORK/osv.json" >> "$WORK/affected.ndjson" \
-                || err SOURCE1-UNPARSEABLE "the scanner's findings could not be exported as affected rows for the bump job"
+                || err SOURCE1-UNPARSEABLE "the scanner's findings could not be exported as affected rows"
             fi
           }
           # --- end dep-audit-source1
@@ -1247,7 +1227,7 @@ jobs:
                 FINDINGS=$((FINDINGS + n))
                 FINDING_LINES="${FINDING_LINES}$(printf '%s' "$hits" | jq -r --arg p "$name" --arg v "$version" --arg r "$repo" "$ONELINE_JQ"'.[] | select(.verdict == "AFFECTED") | "  SOURCE2 \($p)@\($v) \(.ghsa) \(.severity) [\(.range)] \(.patched) (repo-level on \($r))" | oneline')"$'\n'
                 printf '%s' "$hits" | jq -c --arg e "$eco" --arg p "$name" --arg v "$version" --arg r "$repo" '.[] | select(.verdict == "AFFECTED") | {source: "2", ecosystem: $e, package: $p, version: $v, repo: $r, ghsa, severity, range, patched}' >> "$WORK/affected.ndjson" \
-                  || err SOURCE2-MATCH-FAILED "could not export $name@$version ($repo)'s findings as affected rows for the bump job"
+                  || err SOURCE2-MATCH-FAILED "could not export $name@$version ($repo)'s findings as affected rows"
               fi
             done < "$WORK/resolved.rows"
           }
@@ -1283,6 +1263,20 @@ jobs:
             printf '%s' "$ACCEPT_LINES"
             return 0
           }
+          # THE FINDINGS FILE, which the notices workflow (dependency-advisory-notices.yml) reads
+          # from this run's artifacts. The coord plugin's `docs/DEPENDENCY-AUDIT.md` § Advisory
+          # notices owns its fields and the rule for changing `schema`. It is written only from
+          # emit_outputs, so a run that dies before its verdict leaves no file, and a missing file
+          # means this ref said nothing, which the notices workflow treats apart from a clean ref.
+          export_findings() {   # $1=status $2=withdrawn IDs (JSON) $3=accepted IDs (JSON) -> $FINDINGS_FILE
+            local unresolved=""
+            if [ -f "$WORK/unresolved.tsv" ]; then unresolved="$(cut -f2 "$WORK/unresolved.tsv" | sort -u)"; fi
+            jq -sc --arg ref "${AUDIT_REF:-}" --arg status "$1" \
+              --argjson unresolved "$(list_json "$unresolved")" \
+              --argjson withdrawn "$2" --argjson accepted "$3" \
+              '{schema: 1, ref: $ref, status: $status, affected: ., unresolved: $unresolved,
+                accepted: $accepted, withdrawn: $withdrawn}' "$WORK/affected.ndjson" > "$FINDINGS_FILE"
+          }
           emit_outputs() {
             if [ -z "${GITHUB_OUTPUT:-}" ]; then
               # Boundary check, not defensive padding: without this file the audit cannot EXPORT
@@ -1290,8 +1284,10 @@ jobs:
               echo "AUDIT-ERROR[NO-GITHUB-OUTPUT] GITHUB_OUTPUT is unset; the population cannot be exported" >&2
               exit 1
             fi
-            local status=audited
+            local status=audited withdrawn accepted
             [ "$AUDIT_ERRORS" -eq 0 ] || status=error
+            withdrawn="$(list_json "$(printf '%s' "$WITHDRAWN_IDS" | sort -u)")"
+            accepted="$(list_json "$(printf '%s' "$ACCEPTED_IDS" | sort -u)")"
             # `error_codes` carries the NAMED reasons alongside the count, so a consumer can
             # assert on the exported population rather than on log text — a log line is
             # written by a printf that no counter has to agree with, which is exactly how a
@@ -1308,18 +1304,24 @@ jobs:
               --argjson codes "$(list_json "$ERROR_CODES")" \
               --argjson supported "$(list_json "$SUPPORTED_MANIFESTS")" \
               --argjson unsupported "$(list_json "$UNSUPPORTED_MANIFESTS")" \
-              --argjson withdrawn "$(list_json "$(printf '%s' "$WITHDRAWN_IDS" | sort -u)")" \
-              --argjson accepted "$(list_json "$(printf '%s' "$ACCEPTED_IDS" | sort -u)")" \
+              --argjson withdrawn "$withdrawn" --argjson accepted "$accepted" \
               '{ref: $ref, status: $status, manifests: $manifests, packages: $packages,
                 resolved: $resolved, unresolved: $unresolved, advisory_repos: $repos,
                 findings: $findings, errors: $errors, error_codes: $codes,
                 supported_manifests: $supported, unsupported_manifests: $unsupported,
                 withdrawn: $withdrawn, accepted: $accepted}')"
+            # Written before `findings_artifact` is output, so the upload step, which runs only
+            # when that output is set, never looks for a file that was not written.
+            export_findings "$status" "$withdrawn" "$accepted"
             {
               printf 'population=%s\n' "$POPULATION_JSON"
               printf 'findings=%s\n' "$FINDINGS"
               printf 'status=%s\n' "$status"
               printf 'affected=%s\n' "$(jq -sc '.' "$WORK/affected.ndjson")"
+              # The artifact name carries the ref with every character outside [A-Za-z0-9._-]
+              # written as `_`, so two refs that differ only there would share one name: the matrix
+              # must not hold such a pair (DEPENDENCY-AUDIT.md § Advisory notices).
+              printf 'findings_artifact=dependency-audit-findings-%s\n' "$(printf '%s' "${AUDIT_REF:-}" | tr -c 'A-Za-z0-9._-' '_')"
             } >> "$GITHUB_OUTPUT"
           }
           verdict() {
@@ -1347,165 +1349,39 @@ jobs:
           emit_outputs
           verdict
           # --- end dep-audit-main
-
-  # THE BUMP JOB (card#12253). On the leg the caller names `leg: integration`, every finding whose
-  # fix the package manager's own resolver reaches inside the declared ranges gets a lockfile bump
-  # PR against that leg's ref; a fix out of range is reported in the job summary for a human. The
-  # release leg is never bumped. The coord plugin's `docs/DEPENDENCY-AUDIT.md` § "Bump PRs" owns
-  # the rules, and `advisory-bump.py`'s docstring owns what one bump carries.
-  # `!cancelled()` rather than the default `success()`: the audit job is RED whenever it has a
-  # finding, which is exactly when this job has work. It reads the audit's `affected` and
-  # `population` outputs, never its log.
-  #
-  # ⛔ THE BUMP APP (operator ruling opq-1792926707-7f44). The job pushes, opens PRs and authors its
-  # commits as a GitHub App's bot, so GitHub reports each bump PR and every commit on it as that
-  # bot's and the coord plugin's EXISTING bot slot takes it: no `Origin:` line, nothing added to the
-  # origin vocabulary. There is no personal-token path: a PR a person's token opens is
-  # `User`-authored, which that slot does not cover, and a PR opened with GITHUB_TOKEN runs no CI.
-  bump:
-    needs: audit
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # The workflow token stays read-only: the push and the PR go through the bump app's
-    # installation token, and nothing here falls back to GITHUB_TOKEN.
-    permissions:
-      contents: read
-    env:
-      # CUSTOMIZE — where your repo keeps the bump tool (copied from the template's
-      # `advisory-bump.py`) and the optional per-repo hook it runs in each bump tree. A hook
-      # path with no file there means no hook.
-      BUMP_TOOL: .github/dependency-audit/advisory-bump.py
-      BUMP_HOOK: .github/dependency-audit/bump-hook
-    steps:
-      - name: Decide whether this leg opens bump PRs
-        id: gate
+      # Sends the findings file on to the notices workflow, which downloads it from this run.
+      # `!cancelled()` because a finding makes the Audit step exit 1, which is the normal case
+      # when there is something to tell; `findings_artifact` is set only once the file is written.
+      # Nothing is uploaded when notices are off, or on a GitHub Enterprise Server, where this
+      # action always fails and the notices workflow cannot run; the host test is the action's own.
+      # `overwrite: true` because re-running a failed leg uploads the same name again in the same run.
+      - name: Upload the findings file for the notices workflow
+        id: upload-findings
+        if: >-
+          !cancelled()
+          && steps.audit.outputs.findings_artifact != ''
+          && vars.DEPENDENCY_AUDIT_NOTICES != 'off'
+          && (github.server_url == 'https://github.com' || endsWith(github.server_url, '.ghe.com'))
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        # upload-reason: dependency-advisory-notices.yml downloads it from this run to open, update and close one issue per advisory
+        with:
+          name: ${{ steps.audit.outputs.findings_artifact }}
+          path: ${{ runner.temp }}/dependency-audit-findings.json
+          retention-days: 1
+          overwrite: true
+          if-no-files-found: error
+      # A failed upload fails this job, and no key may absorb it (a step that fails under
+      # `continue-on-error` reads as a pass to every job-level check). So the run says which failure
+      # this is, and what the audit itself concluded.
+      - name: Report a failed findings upload
+        if: ${{ !cancelled() && steps.upload-findings.outcome == 'failure' }}
         env:
-          BUMP_PRS: ${{ inputs.bump_prs }}
-          BUMP_LEG: ${{ inputs.leg }}
           AUDIT_REF: ${{ inputs.ref }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
         run: |
           set -euo pipefail
-          # --- dep-bump-gate
-          # The ONE place that decides whether this leg bumps and against which ref. The steps
-          # below run only on `run=true`, and take the ref they bump from `base`, which is set
-          # only on the integration leg — so the release ref can never be a bump's base.
-          # Three states stay apart: OFF (the caller's recorded `bump_prs: off`, green), setup
-          # missing (no `leg`, RED naming it), and a release leg (green, never bumped).
-          bump_gate() {
-            local out="${GITHUB_OUTPUT:?GITHUB_OUTPUT is unset; the gate cannot record its decision}"
-            case "${BUMP_PRS:-}" in
-              off)
-                printf 'BUMP PRS: OFF — switched off in the caller (`bump_prs: off`); leg %s opens none.\n' "'${AUDIT_REF:-?}'"
-                printf 'run=false\n' >> "$out"
-                return 0 ;;
-              on) ;;
-              *)
-                printf 'BUMP-GATE: RED — bump_prs is %s; it is `on` (the default) or `off`, nothing else.\n' "'${BUMP_PRS:-}'" >&2
-                return 1 ;;
-            esac
-            case "${BUMP_LEG:-}" in
-              integration)
-                [ -n "${AUDIT_REF:-}" ] || { printf 'BUMP-GATE: RED — the integration leg names no ref to bump.\n' >&2; return 1; }
-                printf 'BUMP PRS: ON — leg %s is the integration leg; in-range fixes are opened against it.\n' "'$AUDIT_REF'"
-                printf 'run=true\nbase=%s\n' "$AUDIT_REF" >> "$out" ;;
-              release)
-                printf 'BUMP PRS: leg %s is the release leg — audited, never bumped.\n' "'${AUDIT_REF:-?}'"
-                printf 'run=false\n' >> "$out" ;;
-              '')
-                printf 'BUMP-GATE: RED — setup missing: bump PRs are on (the default) and the caller names no `leg` for ref %s. Name each matrix leg `leg: release` or `leg: integration` in the caller and pass it as `leg:` (the coord plugin'\''s docs/DEPENDENCY-AUDIT.md § Bump PRs), or switch bump PRs off there with `bump_prs: off`.\n' "'${AUDIT_REF:-?}'" >&2
-                return 1 ;;
-              *)
-                printf 'BUMP-GATE: RED — leg is %s; it is `release` or `integration`, nothing else.\n' "'$BUMP_LEG'" >&2
-                return 1 ;;
-            esac
-          }
-          bump_gate
-          # --- end dep-bump-gate
-      # Setup missing is named here, before the token step, rather than left to that action's own
-      # input error: the step sees only whether each secret is set (`!= ''`), never its value.
-      - name: Check the bump app's secrets are set
-        if: ${{ steps.gate.outputs.run == 'true' }}
-        env:
-          HAS_CLIENT_ID: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID != '' }}
-          HAS_PRIVATE_KEY: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY != '' }}
-        run: |
-          set -euo pipefail
-          # --- dep-bump-app-secrets
-          # Both secrets set, or RED naming each missing one and the setup step. Never a fallback:
-          # no other token is read by this job, so a missing app is a red, not a quieter path.
-          bump_app_secrets() {
-            local missing=""
-            [ "${HAS_CLIENT_ID:-}" = "true" ] || missing="$missing ADVISORY_BUMP_APP_CLIENT_ID"
-            [ "${HAS_PRIVATE_KEY:-}" = "true" ] || missing="$missing ADVISORY_BUMP_APP_PRIVATE_KEY"
-            if [ -n "$missing" ]; then
-              printf 'BUMP-APP: RED — setup missing: the repository secret(s)%s are not set, so the bump app cannot sign in and NO bump is opened. Create the bump GitHub App, install it on this repository, and add both secrets (the coord plugin'\''s docs/DEPENDENCY-AUDIT.md § "The bump app"), then pass them from the caller by name; or switch bump PRs off in the caller with `bump_prs: off`. A personal token is not supported.\n' "$missing" >&2
-              return 1
-            fi
-            printf 'BUMP-APP: both bump-app secrets are set.\n'
-          }
-          bump_app_secrets
-          # --- end dep-bump-app-secrets
-      # The installation token, scoped to this repository (the action's default with no `owner` /
-      # `repositories`) and narrowed to the two permissions the job uses. It is masked, and revoked
-      # when the job ends. Only the identity and open steps below read it.
-      - name: Mint the bump app's installation token
-        id: app
-        if: ${{ steps.gate.outputs.run == 'true' }}
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
-        with:
-          client-id: ${{ secrets.ADVISORY_BUMP_APP_CLIENT_ID }}
-          private-key: ${{ secrets.ADVISORY_BUMP_APP_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        if: ${{ steps.gate.outputs.run == 'true' }}
-        with:
-          ref: ${{ steps.gate.outputs.base }}
-          persist-credentials: false   # the push goes through the app token in the open step, never a stored credential
-      # The workflow token is read by actions/checkout above (its default `token:`) to fetch, and
-      # `persist-credentials: false` leaves it nowhere a later step can use it: nothing in this job
-      # pushes or opens a PR with it.
-      # CUSTOMIZE — the package managers your lockfiles need, at your project's versions. npm comes
-      # with Node. Composer (2.7 or later: the tool passes `--minimal-changes`) resolves against the
-      # runner's PHP unless your composer.json sets `config.platform.php`; set that, or add a pinned
-      # PHP setup step here, so a bump never picks a version your production PHP cannot run.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
-        if: ${{ steps.gate.outputs.run == 'true' }}
-        with:
-          node-version: '20'
-      # The bot's commit identity: `<app-slug>[bot]` and its noreply address, read from GitHub's
-      # account record, which must say `Bot` — so every bump commit is the bot's, author and
-      # committer, which is what the merge gate's bot slot requires of every commit on the PR.
-      - name: Read the bump app's bot identity (app token)
-        id: identity
-        if: ${{ steps.gate.outputs.run == 'true' }}
-        env:
-          ADVISORY_BUMP_APP_TOKEN: ${{ steps.app.outputs.token }}
-          APP_SLUG: ${{ steps.app.outputs.app-slug }}
-        run: python3 "$BUMP_TOOL" identity --app-slug "$APP_SLUG" --output "$GITHUB_OUTPUT"
-      - name: Build one bump branch per in-range package (no token in this step)
-        id: plan
-        if: ${{ steps.gate.outputs.run == 'true' }}
-        env:
-          AFFECTED: ${{ needs.audit.outputs.affected }}
-          POPULATION: ${{ needs.audit.outputs.population }}
-          BUMP_BASE: ${{ steps.gate.outputs.base }}
-          BUMP_AUTHOR_NAME: ${{ steps.identity.outputs.name }}
-          BUMP_AUTHOR_EMAIL: ${{ steps.identity.outputs.email }}
-        run: >-
-          python3 "$BUMP_TOOL" plan --findings-env AFFECTED --population-env POPULATION
-          --base "$BUMP_BASE" --hook "$BUMP_HOOK" --plan-out "$RUNNER_TEMP/advisory-bump-plan.json"
-          --author-name "$BUMP_AUTHOR_NAME" --author-email "$BUMP_AUTHOR_EMAIL"
-      # It PREFLIGHTS the token's read of this repository first, on every run of the integration
-      # leg, and only then pushes and opens. A token GitHub refuses has already failed the identity
-      # step, naming the app's two secrets, so this read is a second check. It runs after a plan step that failed on ONE package too: the plan still carries the
-      # bumps that built, and the job is red on the plan step either way. It does not run when the
-      # identity step did not succeed (no app, so nothing to open with). The tool hands the token to
-      # `gh` (and to git through `gh auth git-credential`) in a child environment only — never on an
-      # argv, never echoed.
-      - name: Preflight the app token, then push and open the bump PRs
-        if: ${{ !cancelled() && steps.gate.outputs.run == 'true' && steps.identity.outcome == 'success' }}
-        env:
-          ADVISORY_BUMP_APP_TOKEN: ${{ steps.app.outputs.token }}
-        run: python3 "$BUMP_TOOL" open --plan "$RUNNER_TEMP/advisory-bump-plan.json"
+          # --- dep-audit-upload-failed
+          message="FINDINGS-UPLOAD-FAILED: ref $AUDIT_REF: the findings file for the advisory notices was not uploaded, which fails this job. The audit itself concluded '$AUDIT_OUTCOME'. The notices workflow clears nothing from this ref and opens nothing for it. Re-run this job, or set the Actions variable DEPENDENCY_AUDIT_NOTICES to off."
+          echo "::warning title=Findings upload failed::$message"
+          printf '%s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
+          # --- end dep-audit-upload-failed

@@ -1,6 +1,7 @@
 # dependency-audit-selftest.yml — keep the scheduled dependency audit's refusals real, at PR time.
 #
-# WHAT IT DOES. Runs `bin/dependency-audit.selftest.sh` over this checkout. The suite extracts the
+# WHAT IT DOES. Runs `bin/dependency-audit.selftest.sh --workflows .github/workflows` over this
+# checkout; the argument names where this repository keeps the two workflows. The suite extracts the
 # shell of `.github/workflows/dependency-audit.yml` (the callee) and of the reporting job in
 # `.github/workflows/dependency-ref-matrix.yml` (the caller) verbatim from their marked blocks and
 # runs it against the vendored fixtures in `bin/dependency-audit-fixtures/`, with the network seams
@@ -40,4 +41,4 @@ jobs:
 
       # `bash` explicitly rather than relying on the executable bit surviving a checkout.
       - name: Self-test (every fail-closed leg, the discriminating pair, and the mutant controls)
-        run: bash bin/dependency-audit.selftest.sh
+        run: bash bin/dependency-audit.selftest.sh --workflows .github/workflows

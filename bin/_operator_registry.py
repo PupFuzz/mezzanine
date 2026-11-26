@@ -9,8 +9,8 @@
 #
 #   upstream repo     PupFuzz/agent-board-framework  (PRIVATE — a public CI runner cannot clone it)
 #   upstream path     plugins/coord/templates/bin/_operator_registry.py
-#   vendored from     afaf9a10022fbcab33287155076b1267b422fce4   (marketplace, the v0.77.0 release merge)
-#   plugin version    coord 0.77.0
+#   vendored from     31191341a2176a81f5e15b6d72e80282a2df168c   (marketplace, the v0.79.0 release merge)
+#   plugin version    coord 0.79.0
 #   upstream sha256   55571560eaaa204d727357dea9d68b59f34d32f041e14fd88f34849fcf80df4f
 #                     — the WHOLE upstream file, NOT the body figure vendor-pin-check pins.
 #

@@ -69,9 +69,9 @@
 #
 # `bin/dependency-audit-fixtures/*` has no row either, for the same reason (JSON and lockfiles, no
 # header), and unlike the set above NOTHING pins it: upstream's selftest carries no per-fixture
-# sha256, so no check compares those files to the source. They were byte-identical to coord 0.77.0's
+# sha256, so no check compares those files to the source. They were byte-identical to coord 0.79.0's
 # `templates/security/fixtures/` when vendored, except the README, which names this path and drops
-# the rows for `shipped-imports/` and the bump tool, neither of which this repository carries.
+# the rows for `shipped-imports/`, which this repository does not carry.
 #
 # Usage: bash bin/vendor-pin-check.sh              # check every manifest row (exit 1 on drift)
 #        bash bin/vendor-pin-check.sh --selftest   # prove the check CAN fail, then that a
@@ -100,15 +100,16 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST=(
   "bin/promote-cards-by-token|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|796695b361003301c8b79f3f9606d6bcb5f4b002faa44f2b4120f687aa0ac973|#"
   "bin/promote-cards-by-token.selftest.sh|e2f131f796baa93a5aa9cec620969bcaa21ac7fe|258d8e7f083b6db44381e7bd1d8136d44a6914868db54b1809ec63227391d073|#"
-  "bin/pr-body-lint.py|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|c6ca3f40f358d5ad31b694afc529a65610d3531db5def368b6921cb138eb8580|#"
-  "bin/pr-body-lint.selftest.py|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|a8892fa4c8f72c766cf300bbd0e373ad20ae0810e5a3a4c211f8541ee8a602b4|#"
-  ".github/workflows/dependency-audit.yml|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|de4bb51daa38d32a4aa49ad08d6d6b0dfece866184567909ebddb064559896b6|#"
-  ".github/workflows/dependency-ref-matrix.yml|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|76c024172d58c429060a6a050bfc78815d40189eec612c4cbc4cd84537ae83f0|#"
-  "bin/dependency-audit.selftest.sh|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|02005685aec4ae17ff28000604b43cdb3a2232ab279090f9504e5c56c4c4e5b3|#"
-  "bin/coord-ask-operator|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|b28d8bf1a25b7cce7ec53e71513b45b149f3ce5b1a47ea18565b808e3d9376ba|#"
-  "bin/_operator_registry.py|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|55571560eaaa204d727357dea9d68b59f34d32f041e14fd88f34849fcf80df4f|#"
-  ".github/workflows/dl-traceability.yml|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|d64c7fc79f76eda5cfaf671b44bfacbb2647cc5e491f06c303c4c5aed3956e3d|#"
-  "bin/dl-traceability.selftest.sh|coord 0.77.0 @ afaf9a10022fbcab33287155076b1267b422fce4|a52a3d64e31d897a8c5d1da3bf68d0762a92cdb2960079fd60a5f59c8aaebb4a|#"
+  "bin/pr-body-lint.py|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|545b96d6cfe749263456fd18c56ddbfcde7a484f34b5c183bf394427d185171c|#"
+  "bin/pr-body-lint.selftest.py|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|541327a4b0a885b84898d1c7d3764b8fc26dfbf9e21965a24cee6e428326e18b|#"
+  ".github/workflows/dependency-audit.yml|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|c1687bcb0f5800402396b4b3937a184feac78bd6c63fa7a94e56b411cde8fd4f|#"
+  ".github/workflows/dependency-ref-matrix.yml|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|cdbff931380dc3ad6b47e3edf466e45d3229889fed1bd8cdd048b87d05e69368|#"
+  "bin/dependency-audit.selftest.sh|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|b16fc0af2e524c2dc12bb682d4195e9703641983d263e68aa96663dcafc990c5|#"
+  "bin/dependency-selftest-lib.sh|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|05a5c4d411fd0fdc08cc2de3da8bbb9b9f8214d1215fa92d5811ed91e2c17592|#"
+  "bin/coord-ask-operator|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|507ca2e19763d03d5ebcc9bb9ce97c49944bd6ecec76dab7546e9503a5d46d19|#"
+  "bin/_operator_registry.py|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|55571560eaaa204d727357dea9d68b59f34d32f041e14fd88f34849fcf80df4f|#"
+  ".github/workflows/dl-traceability.yml|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|d64c7fc79f76eda5cfaf671b44bfacbb2647cc5e491f06c303c4c5aed3956e3d|#"
+  "bin/dl-traceability.selftest.sh|coord 0.79.0 @ 31191341a2176a81f5e15b6d72e80282a2df168c|a52a3d64e31d897a8c5d1da3bf68d0762a92cdb2960079fd60a5f59c8aaebb4a|#"
   "server/public/js/vendor/three/three.module.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|104f56145899722094556490d787aae0617cc2fc3382f31df02d724ea1aee341|//"
   "server/public/js/vendor/three/three.core.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|613e370f76638fdef83926642bf256dc9615684922de1ce1f63a8583e5d78578|//"
   "server/public/js/vendor/three/examples/jsm/loaders/GLTFLoader.js|three 0.187.0 @ 7e89746a687bb88271253698fa108b1dd59825d0 (npm, r187)|532ac726e120039acbcd6cf54328c57acbf7b438176afaa6951257126d11bff1|//"
@@ -148,11 +149,8 @@ FRAGMENTS=(
   ".github/workflows/dependency-audit.yml|(1) the pinned osv-scanner install step|SHA256=ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
   ".github/workflows/dependency-audit.yml|(2) the CUSTOMIZE ZONE's pointer to this repo's selftest path|runs verbatim (bin/dependency-audit.selftest.sh"
   ".github/workflows/dependency-ref-matrix.yml|(1) the uses: slug names this repo|uses: PupFuzz/mezzanine/.github/workflows/dependency-audit.yml@dev"
-  ".github/workflows/dependency-ref-matrix.yml|(2) bump PRs switched off by operator decision, no secret handed over|bump_prs: 'off'"
-  "bin/dependency-audit.selftest.sh|(1) the callee path under .github/workflows/|ROOT/.github/workflows/dependency-audit.yml\""
-  "bin/dependency-audit.selftest.sh|(1) the fixtures path bin/dependency-audit-fixtures/|HERE/dependency-audit-fixtures\""
   "bin/dependency-audit.selftest.sh|(2) the card#11434 comment carries no private coordination reference|# card#11434 (backend) within card#11604:"
-  "bin/dependency-audit.selftest.sh|(3) the caller arm accepts the recorded bump_prs 'off'; remove when card#13796 ships|# MEZZANINE local edit (3)"
+  "bin/dependency-selftest-lib.sh|(1) the fixtures path bin/dependency-audit-fixtures/|HERE/dependency-audit-fixtures\""
   "bin/coord-ask-operator|card#13794 (1), the rt citation example spelled in two parts|\"rt\" + \"#1234\""
   "bin/coord-ask-operator|card#13794 (2), the closure-refusal docstring without a comment id|BLOCKER; a sola-pm ruling)."
 )
