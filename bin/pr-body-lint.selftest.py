@@ -2470,7 +2470,7 @@ def arm_n_repo_release_headings(td):
     # (7) A LEADING UTF-8 BYTE-ORDER MARK IS NOT PART OF THE FIRST HEADING (fw#1405 r1). Left in
     # place it is glued to line 1: that declaration silently admits nothing, and a `## …` line 1
     # slips past the `#` fault in (5).
-    _arm_n_file_shape_faults(td, samd)
+    _arm_n_file_shape_faults(td, extra_h2)
 
 
 def _arm_n_feature_pr(td, declared_file):
@@ -2487,7 +2487,7 @@ def _arm_n_feature_pr(td, declared_file):
           and malformed.returncode == 0, (with_file, without, malformed.returncode))
 
 
-def _arm_n_file_shape_faults(td, samd):
+def _arm_n_file_shape_faults(td, extra_h2):
     """N on the file's own shape: a leading BOM is not part of the first heading, and an unreadable
     path is a fault."""
     bom = b"\xef\xbb\xbf"

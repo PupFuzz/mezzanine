@@ -17,6 +17,8 @@
 #       rather than upstream's `fixtures/` (fragment: `HERE/dependency-audit-fixtures"`).
 #   Of the suites upstream's header below names, this repository carries only
 #   `bin/dependency-audit.selftest.sh`; the notices suites come with the notices workflow.
+#   ShellCheck's findings on this file are recorded in bin/shell-lint.baseline.tsv rather than
+#   annotated in the body, so the body stays upstream's.
 #
 # TO RE-VENDOR: this file moves with `bin/dependency-audit.selftest.sh`, whose header names the
 # whole set and the procedure.
