@@ -2,6 +2,7 @@
 
 namespace App\Fold;
 
+use App\Fleet\InternSpecies;
 use App\Ingest\Counters;
 use App\Ingest\KindRegistry;
 use App\Ingest\Wire;
@@ -648,6 +649,11 @@ class Projector
                 'close_source' => 'post_tool_use',   // the column's default; no close observed yet
             ] + $this->triple($e));
 
+            // The row's first moment as an open dispatch: its intern's species (card#13258, § 6.13).
+            if ($open['is_dispatch']) {
+                InternSpecies::ensure($e->seatRef, $callId);
+            }
+
             return;
         }
 
@@ -788,6 +794,12 @@ class Projector
 
         $call = $this->call($e->seatRef, $callId);
 
+        // card#13258: this spawn makes the row an OPEN DISPATCH for the first time when it inserts it, or when the
+        // row is open and its `tool.start` named a tool outside `DISPATCH_TOOLS` — the update below flips the flag.
+        // Then, and only then, the intern is allocated its species (§ 6.13). A row already an open dispatch had
+        // its moment; a closed row is no intern.
+        $becomesOpenDispatch = $call === null || ($call->closed_at === null && ! $call->is_dispatch);
+
         if ($call === null) {
             // The spawn is emitted immediately after its own `tool.start`, sharing the `call_id`
             // (D1 § 6.7) — but a batch boundary can fall between the two and batches arrive out of
@@ -821,6 +833,10 @@ class Projector
             'subagent_type' => $e->conforming('subagent_type', Wire::SUBAGENT_TYPE),
             'is_dispatch' => true,
         ]);
+
+        if ($becomesOpenDispatch) {
+            InternSpecies::ensure($e->seatRef, $callId);
+        }
 
         $this->touchCallApplied($call->id, $e);
     }

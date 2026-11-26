@@ -121,6 +121,8 @@ final class SeatObject
                 // the dispatch — never null (§ 8.2.1).
                 'activity_state' => (string) $c->activity_state,
                 'started_at' => Clock::wire($c->opened_at),
+                // card#13258: the intern's character (§ 6.13), `null` when its `intern_species` row is missing.
+                'species' => $c->species,
             ])->values()->all(),
             'subagents_open' => $subagents->count(),
 

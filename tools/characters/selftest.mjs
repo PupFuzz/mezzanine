@@ -14,9 +14,9 @@
 // the committed roster (`roster.json`), a synthetic roster of 50 seats, synthetic desks at § 8.1's cap.
 //
 // Since card#12443 a seat's BODY is the species D2 allocates and delivers (`character.species`, FLEET-STATE.md
-// § 6.13): the tree draws the species it is handed. Section 4 holds that, and section 6 holds an intern off the
-// seat's DELIVERED body. Each synthetic seat and desk is DELIVERED a species apart from its key's own draw, on
-// purpose, so a drawing taken from the key is seen.
+// § 6.13): the tree draws the species it is handed. Section 4 holds that for a seat and, since card#13258, section 6
+// for an intern, whose body D2 delivers too (`subagents[].species`). Each synthetic seat and desk is DELIVERED a
+// species apart from its key's own draw, on purpose, so a drawing taken from the key is seen.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -312,23 +312,30 @@ check(rosterCollisions === 0, `the committed roster: ${rosterCollisions} collisi
 check(fleetCollisions === 0, `the synthetic ${FLEET}-seat roster: ${fleetCollisions} collisions`);
 
 // ---- 6. the interns ----
-section("6. the interns: never the seat's body; no two drawings of a desk alike; the chibi head share");
-let sameBody = 0, deskDup = 0, chibiBad = 0, bodyRepeat = 0, bodyColourRepeat = 0;
-for (const { seat, interns } of desks) {
-  // The seat's DELIVERED body (card#12443), apart from its key's own draw: the one an intern must not wear.
+// Since card#13258 an intern's body is the species D2 allocates and delivers for it (`subagents[].species`), so the tree
+// owes it what it owes a seat: draw exactly the species it is handed, and, handed none, the intern key's own plain draw
+// (the sheet). The rule that keeps interns apart is the server's (FLEET-STATE.md § 6.13), not the tree's.
+section("6. the interns: drawn in exactly the species delivered; an intern key's plain draw; no two drawings of a desk alike; the chibi head share");
+const { pick } = await import(pathToFileURL(join(TREE, 'seed.js')).href);
+let forcedBad = [], deskDup = 0;
+for (const [d, { seat, interns }] of desks.entries()) {
   const seatSpecies = delivered(...seat);
-  const bodies = interns.map((k) => C.recipe(k, C.internSpeciesOf(k, seatSpecies)));
-  sameBody += bodies.filter((r) => r.species === seatSpecies).length;
-  const drawings = [C.standingFrame(seat[1], seatSpecies), ...interns.map((k) => C.chibiFrame(k, seatSpecies))];
-  chibiBad += interns.filter((k, n) => drawings[n + 1] !== C.frameDocument(k, { chibi: true, species: bodies[n].species })).length;
+  for (const [n, k] of interns.entries()) {
+    // every species on some intern of some desk: the desks × the cap cover the list many times over
+    const sp = KEYS[(d * CAP + n) % KEYS.length];
+    const laptopFrames = C.internFrames(k, sp).frames;
+    if (C.chibiFrame(k, sp) !== C.frameDocument(k, { chibi: true, species: sp }) || C.describe(k, sp).species !== sp
+      || laptopFrames[0] !== C.frameDocument(k, { chibi: true, laptop: true, species: sp })) forcedBad.push(`${k}:${sp}`);
+  }
+  // each intern delivered a species apart from its seat's and its siblings', as D2 allocates them while the list is open
+  const free = KEYS.filter((sp) => sp !== seatSpecies);
+  const drawings = [C.standingFrame(seat[1], seatSpecies), ...interns.map((k, n) => C.chibiFrame(k, free[n]))];
   if (new Set(drawings).size < drawings.length) deskDup++;
-  if (new Set(bodies.map((r) => r.species)).size < bodies.length) bodyRepeat++;
-  if (new Set(bodies.map((r) => `${r.species}/${r.pal}`)).size < bodies.length) bodyColourRepeat++;
 }
-check(sameBody === 0, `no intern of ${DESKS * CAP} wears its seat's delivered species (${sameBody} do)`);
+check(forcedBad.length === 0, `every intern of ${DESKS * CAP} is drawn in exactly the species it is handed — its chibi frame and its laptop still${forcedBad.length ? ` — not: ${forcedBad.slice(0, 3).join(', ')}` : ''}`);
+const plainBad = desks.flatMap((d) => d.interns).filter((k) => C.speciesOf(k) !== pick(k, C.SPECIES_FIELD, KEYS));
+check(plainBad.length === 0, `an intern key's own draw is the plain draw under SPECIES_FIELD, as any key's — no intern rule in the tree (${plainBad.length} differ)`);
 check(deskDup === 0, `no desk of ${DESKS} draws two identical documents (${deskDup} do)`);
-check(chibiBad === 0, `every intern is drawn as its own chibi frame in the body it is kept to beside its seat's delivered one (${chibiBad} are not)`);
-measure(`sibling repeat rates at the cap of ${CAP} (gate nothing): a repeated body on ${bodyRepeat}/${DESKS} desks (${(bodyRepeat / DESKS).toFixed(3)}), a repeated body and colourway on ${bodyColourRepeat}/${DESKS} (${(bodyColourRepeat / DESKS).toFixed(3)}), seed ${SEED}`);
 for (const sp of KEYS) {
   for (const v of [null, ...variantsOf(sp)]) {
     let key = `chibi/${sp}`;
@@ -1081,10 +1088,10 @@ check(C.CLIPS['intern-type'].length === C.INTERN_LOOP, `the intern's typing clip
 // ---- 9. the controls — each leg above is known to be able to say both things ----
 section('9. controls');
 const gaps = coverage(() => 0).filter(([, hit, total]) => hit !== total);
-// The interns leg's control (card#12443): kept off the seat key's OWN draw rather than its delivered body, some intern
-// wears the body its seat was allocated — so the leg above, reading the delivered body, is one that can fail.
-const keyedOff = desks.reduce((n, { seat, interns }) => n + interns.filter((k) => C.speciesOf(`${seat[0]}/${k}`) === delivered(...seat)).length, 0);
-check(keyedOff > 0, `CONTROL — interns kept off the seat key's own draw wear the seat's delivered body ${keyedOff} time(s), so section 6 discriminates`);
+// The interns leg's control (card#13258): an intern drawn in its key's own body rather than the species it is handed is
+// a different document for most species — so the forced-species leg above is one that can fail.
+const ownBody = desks[0].interns.map((k) => KEYS.filter((sp) => C.chibiFrame(k) !== C.chibiFrame(k, sp)).length);
+check(ownBody.every((n) => n === KEYS.length - 1), `CONTROL — an intern's own-draw frame differs from its frame in each of the ${KEYS.length - 1} other species, so section 6 discriminates`);
 check(gaps.length > 0, `CONTROL — a constant draw leaves ${gaps.length} list(s) unreached, so the reach assertion can fail`);
 check(wellFormed('<svg xmlns="http://www.w3.org/2000/svg"><g>a & b</g></svg>') !== null, 'CONTROL — an unescaped "&" is refused');
 check(wellFormed('<svg xmlns="http://www.w3.org/2000/svg"><g></svg>') !== null, 'CONTROL — an unclosed <g> is refused');

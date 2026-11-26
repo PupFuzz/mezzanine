@@ -13,12 +13,14 @@ use Tests\TestCase;
  * the interns' cap, a planned floor with a hallway, and the intern-walk, snack and turn-back runs whose walkers are in
  * flight — and `floor-world-probe.mjs` reads the world off each, the interns' seats on their couches included (the
  * couch measured off the kit's file, at one intern and at the cap), and each intern walker's rise onto its seat as it
- * steps back and fall off it as it steps off (card#13033).
+ * steps back and fall off it as it steps off (card#13033), and each piece stood against the wall its tile touches, its
+ * model's plan inside its obstacle rect (rule W, the plan's § 15.3).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE SCENES ARE BUILT ONCE PER TREE. The world is a pure function of a scene, so a plant in `floor-world.js` is read
  * over the shipped scenes; a plant in the scene's walls (`floor-walls.js`) rebuilds the scenes over the planted tree,
- * because that is where it moves what the world reads.
+ * because that is where it moves what the world reads — except rule W's reading, which the probe's own fixture reads
+ * through the planted `floor-walls.js` directly.
  *
  * ⚠ WHAT A GREEN HERE IS NOT: a drawing. The renderer that draws the world is slice 4's, and its browser leg owns what a
  * viewer sees; the character half of AT-D3-38 (the bodies, the clock) is slices 3 and 5's.
@@ -55,6 +57,7 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
         'two-visitors' => 'walkers',
         'idle-visit' => 'restroom',
         'intern-visit' => 'restroom',
+        'back-visit' => 'restroom',
         'two-at-the-door' => 'walkers',
         'queue-of-three' => 'walkers',
         'turn-mid-floor' => 'walkers',
@@ -99,12 +102,44 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
         extent: Object.freeze({ w: slab.box.w, d: slab.box.d }),', '        slab,
         camera: null,
         extent: Object.freeze({ w: slab.box.w, d: slab.box.d }),', 'frame', false],
-            'a bubble\'s anchor given its drawn y for depth' => ['../floor/floor-world.js',
+            'a name\'s anchor given its drawn y for depth' => ['../floor/floor-world.js',
                 'return Object.freeze({ x: el.x + el.w / 2, depth: desk.depth_y,', 'return Object.freeze({ x: el.x + el.w / 2, depth: el.y,', 'labels', false],
+            'the status stood at its desk\'s front, in front of its sitter' => ['../floor/floor-world.js',
+                'anchor: beside(PIN.hang),', 'anchor: Object.freeze({ ...beside(PIN.hang), depth: d.depth_y }),', 'beside', false],
+            'the status and the bubble reaching nothing, over their sitter\'s body' => ['../floor/floor-world.js',
+                'beside: character === undefined ? 0 : character.w / 2,', 'beside: 0,', 'beside', false],
+            'the bubble hanging from the status\'s point, over the status' => ['../floor/floor-world.js',
+                "anchor: beside(PIN.stand), model", "anchor: beside(PIN.hang), model", 'beside', false],
+            'the bubble at its 2-D height, apart from the status\'s point' => ['../floor/floor-world.js',
+                "anchor: beside(PIN.stand), model", "anchor: Object.freeze({ ...beside(PIN.stand), height: anchor3d(d.bubble, d).height }), model", 'beside', false],
+            'a label beside its sitter moved along the floor\'s x, not the camera\'s right (on the viewer\'s left from behind)' => ['../floor/floor-world.js',
+                'return { x: p.x + right.x * reach, y: p.y + anchor.height / UNIT, z: p.z + right.z * reach };', 'return { x: p.x + reach, y: p.y + anchor.height / UNIT, z: p.z };', 'beside', false],
             'a desk\'s chair stood in front of its slab, not behind it with its sitter' => ['../floor/floor-world.js',
                 "chair: part('chair', () => sitterZ),", "chair: part('chair', () => plan.y + plan.h * 2),", 'parts', false],
             'a standing piece placed at its cell\'s top, not its foot' => ['../floor/floor-world.js',
-                'at: at({ x: s.x + s.w / 2, y: s.y + s.h }),', 'at: at({ x: s.x + s.w / 2, y: s.y }),', 'pieces', false],
+                'return { at: at({ x: cx, y: foot }) };', 'return { at: at({ x: cx, y: s.y }) };', 'pieces', false],
+            'rule W\'s anchor ignored, every piece centred on its line (the front-row armchair over the floor\'s edge)' => ['../floor3d/furniture.js',
+                "return anchor === 'back' ? -box.min.z : anchor === 'front' ? -box.max.z : null;", 'return null;', 'standing', false],
+            'a side piece turned its back to the room' => ['../floor/floor-world.js',
+                'turn: left ? Math.PI / 2 : -Math.PI / 2,', 'turn: left ? -Math.PI / 2 : Math.PI / 2,', 'standing', false],
+            'a turned body not fitted inside its plan (the side-wall plant and armchair out of their rects)' => ['../floor3d/furniture.js',
+                'return plan === null ? 1 : Math.min(1, plan.w / w, plan.d / d);', 'return 1;', 'standing', false],
+            'the band\'s row dropped from the walls rule W reads (a top-row piece read free)' => ['../floor/floor-walls.js',
+                'const wallAt = (x, y) => y === f.y || bodies.has(`${x}:${y}`);', 'const wallAt = (x, y) => bodies.has(`${x}:${y}`);', 'standing', false],
+            'rule W\'s reach widened to the room\'s depth (a free piece read against the band)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = foot - 2 * T; y >= f.y; y -= T) {', 'standing', false],
+            'rule W\'s scan from the foot cell\'s own row (a piece painted with its foot on a wall run read against it, no depth left)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = foot - T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'standing', false],
+            'rule W\'s scan from the picture\'s top (a picture above the band\'s row read free)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = top; y >= top - T - CENTRING.reach; y -= T) {', 'standing', false],
+            'rule W\'s scan from the picture\'s top down, not from the foot up (a picture across a partition stood past it)' => ['../floor/floor-walls.js',
+                'for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {', 'for (let y = Math.max(top, f.y); y >= Math.max(top, f.y) - T - CENTRING.reach; y -= T) {', 'standing', false],
+            'a side restroom door\'s piece placed without its turn, its front to the floor\'s front beside the wall' => ['../floor/floor-world.js',
+                "turn: d.facing === 'right' ? -Math.PI / 2 : Math.PI / 2,", 'turn: 0,', 'pieces', false],
+            'a side restroom door\'s lintel left solid, a wall cell standing through the doorway' => ['../floor/floor-world.js',
+                'const y = door === undefined ? 0 : door.h / UNIT;', 'const y = 0;', 'restroom', false],
+            'the obstacle rule keeping a side door\'s tile, so a walker at its threshold stands in it (the lattice read off obstaclesOf())' => ['../floor/map-tiles.js',
+                "(c.kind !== RESTROOM_DOOR.kind || geometryOf(c).facing === 'back')", 'true', 'lattice', false],
             'a standing walker stood a cell back and across from its spot (into its snack table)' => ['../floor/route.js',
                 '        return { x: leg.at.x, y: leg.at.y, where, leg: k };', '        return { x: leg.at.x + 48, y: leg.at.y - 64, where, leg: k };', 'lattice', false],
             'the elevator\'s leaves closing after their span, not by its end' => ['../floor/floor-world.js',
@@ -137,10 +172,202 @@ class TheFloorIsTheScenesThirdRendererTest extends TestCase
                 'const lift = 0;', 'steps', false],
             'a bird flown along the chord, its arc\'s lift dropped' => ['../floor/floor-world.js',
                 'y: lerp(bird.from.y, bird.to.y) + bird.lift * 4 * u * (1 - u),', 'y: lerp(bird.from.y, bird.to.y),', 'birds', false],
+            'the cab as deep as it is wide' => ['../floor/floor-world.js',
+                'const [w, d, h] = [door.w, cmU(CAB.d), door.h];', 'const [w, d, h] = [door.w, door.w, door.h];', 'cab', false],
+            'the cab at its own size behind the doorway, its corners behind the band' => ['../floor/floor-world.js',
+                'const [w, d, h] = [door.w, cmU(CAB.d), door.h];', 'const [w, d, h] = [cmU(CAB.w), cmU(CAB.d), Math.min(cmU(CAB.h), ROOM_H_U)];', 'cab', false],
+            'the cab stood in front of the band, not behind it' => ['../floor/floor-world.js',
+                'const room = Object.freeze({ x: door.x, y: 0, z: z - d, w, h, d });', 'const room = Object.freeze({ x: door.x, y: 0, z, w, h, d });', 'cab', false],
+            'the cab started at the leaves\' seam, not the doorway\'s left jamb' => ['../floor/floor-world.js',
+                'cab: cabRoom({ x: at({ x: band.elevator.x, y: top }).x,', 'cab: cabRoom({ x: at({ x: band.elevator.seam, y: top }).x,', 'cab', false],
+            'the handrail\'s height at the door view\'s scale, not fitted to the doorway' => ['../floor/floor-world.js',
+                'const y = rail.y * up - s / 2;', 'const y = cmU(rail.y) - s / 2;', 'cab', false],
+            'a handrail stood off the outside of its wall' => ['../floor/floor-world.js',
+                'box(wall + into * off - s / 2, y,', 'box(wall - into * off - s / 2, y,', 'cab', false],
+            'a rider stepping in the cab carried past its far wall' => ['../floor/route.js',
+                'return { x: step.from.x + (step.to.x - step.from.x) * u, y: step.from.y + (step.to.y - step.from.y) * u, where, leg: k };',
+                'return { x: step.from.x + (step.to.x - step.from.x) * u, y: step.from.y + (step.to.y - step.from.y) * u - 200, where, leg: k };', 'cab', false],
+            'a rider hidden the moment it leaves the floor (the cab drawn empty as its leaves close)' => ['../floor/floor-world.js',
+                "const shown = p.where === 'floor' || (ride !== null && tMs >= ride.from && tMs < ride.to);", "const shown = p.where === 'floor';", 'cab', false],
+            'a rider kept in the cab once its leaves have shut (riding on, seen through the band)' => ['../floor/floor-world.js',
+                "const shown = p.where === 'floor' || (ride !== null && tMs >= ride.from && tMs < ride.to);", "const shown = p.where !== 'inside';", 'cab', false],
+            'the cab span read from the cab legs\' starts alone (a boarder gone as its last leg begins)' => ['../floor/route.js',
+                'to: Math.max(...legs.map((l) => l.start + l.frames)) * I,', 'to: Math.max(...legs.map((l) => l.start)) * I,', 'cab', false],
             'the birdhouse\'s picture row read as depth, not height' => ['../floor/floor-world.js',
                 'const onWall = (p) => Object.freeze({ x: at(p).x, y: (top - p.y + BIRD_LIFT) / UNIT, z: slab.box.z + BIRD_DEPTH });',
                 'const onWall = (p) => Object.freeze({ x: at(p).x, y: DESK_H_U + BIRD_LIFT / UNIT, z: at(p).z });', 'birds', false],
         ];
+    }
+
+    /**
+     * The bodies' routes the scenes must hold, so a green over them read every one: a seated character, an intern on its
+     * couch, a seat and an intern walking to and from the elevator, and each on a snack and a restroom break.
+     */
+    private const IDENTITY_ROUTES = ['desk', 'stool', 'A1', 'A2', 'A10 intern', 'A25', 'A25 intern', 'A26', 'A26 intern'];
+
+    /**
+     * ⛔ ONE CHARACTER IN BOTH VIEWS — every body the 2-D painter draws and the 3-D floor builds over these scenes is the
+     * same character, field by field (`character-identity-probe.mjs`): the operator saw a seat's interns wear its own body
+     * in 3-D, where 2-D kept them off it — and, since card#13258, every intern is drawn in both in its delivered species.
+     */
+    public function test_green_one_character_in_both_views(): void
+    {
+        $answer = $this->identity();
+
+        $this->assertSame([], $this->defects($answer));
+        $this->assertSame([], array_values(array_diff(self::IDENTITY_ROUTES, array_keys($answer['printed']['routes']))),
+            'a route the scenes hold no body on was read for nothing: '.json_encode($answer['printed']['routes']));
+        $this->assertSame($answer['printed']['bodies'], $answer['printed']['compared'], 'a body was not compared across the views');
+        // card#13258: every intern the scenes hold is delivered a species apart from its key's own draw, so a view that
+        // re-drew one from its key would be seen by the delivered leg.
+        $this->assertGreaterThan(0, $answer['printed']['delivered']['interns'], 'the scenes hold no intern — the delivered leg reads nothing');
+        $this->assertSame($answer['printed']['delivered']['interns'], $answer['printed']['delivered']['apart'],
+            'an intern of the scenes is delivered its key\'s own draw, where a re-draw from the key is invisible: '.json_encode($answer['printed']['delivered']));
+    }
+
+    /**
+     * Each plant moves one view's character off the other's, and reds the leg that names it.
+     *
+     * @return array<string, array{0: string, 1: string, 2: string, 3: string}>
+     */
+    public static function identityPlants(): array
+    {
+        return [
+            'a 3-D intern built in its seat\'s body (the operator\'s report, before card#13258)' => ['../floor/floor-world.js',
+                '                species: e.species,', '                species: character?.species ?? null,', 'delivered'],
+            'a 3-D intern built in its key\'s own body, its delivered species dropped' => ['../floor3d/body-paint.js',
+                'createCreature(document, C, key, { species: spec.species,', 'createCreature(document, C, key, { species: spec.chibi ? undefined : spec.species,', 'delivered'],
+            'a 3-D walking intern built as a seat' => ['../floor3d/body-paint.js',
+                'out.set(key, { key, species, chibi: w.chibi,', 'out.set(key, { key, species, chibi: false,', 'kind'],
+            'a 3-D face drawn as the key\'s own species, not its body\'s' => ['../floor3d/creature-paint.js',
+                'C.faceDocument(key, { species: body.species, pose, blink })', 'C.faceDocument(key, { species: undefined, pose, blink })', 'parts'],
+            'a 2-D couch intern drawn under its seat\'s key' => ['../floor/painter.js',
+                "characterFrames(e.key, e.asset, e.species, null, 'laptop');", "characterFrames(desk.seat_id, e.asset, e.species, null, 'laptop');", 'kind'],
+            'a 2-D couch intern drawn in its key\'s own body' => ['../floor/painter.js',
+                'characters.internFrames(seatId, species)', 'characters.internFrames(seatId)', 'delivered'],
+        ];
+    }
+
+    #[DataProvider('identityPlants')]
+    public function test_red_each_identity_plant_reds_its_leg(string $file, string $anchor, string $replacement, string $leg): void
+    {
+        $legs = $this->identity($this->mutatedModules([$file, $anchor, $replacement]))['legs'];
+
+        $this->assertNotSame([], $legs[$leg], "the plant did not red the {$leg} leg: ".json_encode(array_filter($legs)));
+    }
+
+    /**
+     * A seat object with no delivered species, and an intern with none, are § 9 F14's in both views — no body for either,
+     * never the key's own draw and never the seat's, each reported under its own asset — and the 3-D guard that keeps it
+     * so is seen red when it is planted away (`recipe()` draws the key's own body for an absent species).
+     */
+    public function test_a_character_with_no_species_has_no_body_in_either_view(): void
+    {
+        // The first scene with a desk that draws a character and seats an intern, that desk's seat object stripped.
+        [$scene, $d] = (function (): array {
+            foreach ($this->scenes(null) as $scene) {
+                foreach ($scene['scene']['desks'] as $d => $desk) {
+                    $kinds = array_column($desk['elements'], 'kind');
+
+                    if (in_array('character', $kinds, true) && in_array('stool', $kinds, true)) {
+                        return [$scene, $d];
+                    }
+                }
+            }
+
+            $this->fail('no scene holds a desk with a character and an intern — the leg reads nothing');
+        })();
+        $desk = &$scene['scene']['desks'][$d];
+        $owed = [];
+
+        foreach ($desk['elements'] as &$e) {
+            if ($e['kind'] === 'character') {
+                $e['species'] = null;
+                $owed[] = 'character:'.$desk['key'];
+            }
+
+            if ($e['kind'] === 'stool') {
+                $e['species'] = null;
+                $owed[] = 'intern:'.$e['key'];
+            }
+        }
+        unset($e, $desk);
+
+        $script = __DIR__.'/character-identity-probe.mjs';
+        $answer = $this->probe(['scenes' => [$scene]], null, $script);
+
+        $this->assertSame([], $this->defects($answer));
+
+        foreach (['2d', '3d'] as $view) {
+            $this->assertSame([], array_values(array_diff($owed, $answer['printed']['failed'][$view])), "the {$view} view did not report every character with no species");
+        }
+
+        $planted = $this->probe(['scenes' => [$scene]], $this->mutatedModules(['../floor3d/body-paint.js',
+            "if (typeof spec.species !== 'string') {", 'if (false) {']), $script)['legs'];
+
+        $this->assertNotSame([], $planted['coverage'], 'the plant did not red the coverage leg: '.json_encode(array_filter($planted)));
+    }
+
+    /**
+     * The tree's own drawing is read, not its rule: the tree's intern entries re-drawing an intern from its key — in 2-D
+     * alone, the views part (`fields`); in both views alike (`chibiFrame()`, `internFrames()` and `chibiParts()` all
+     * dropping the species they are handed), parity holds and only the `delivered` leg sees the intern out of its body.
+     */
+    public function test_red_the_tree_drawing_an_intern_from_its_key(): void
+    {
+        $twoD = [
+            ['index.js', "export function chibiFrame(internKey, species) {\n  return frameDocument(seatKey(internKey), { chibi: true, species });",
+                "export function chibiFrame(internKey, species) {\n  return frameDocument(seatKey(internKey), { chibi: true });"],
+            ['index.js', "export function internFrames(internKey, species) {\n  const key = seatKey(internKey);",
+                "export function internFrames(internKey, species) {\n  species = undefined;\n  const key = seatKey(internKey);"],
+        ];
+        $threeD = [['creatures-3d.js', "export function chibiParts(key, { species } = {}) {\n  return bodyParts(key, { species, chibi: true });",
+            "export function chibiParts(key, { species } = {}) {\n  return bodyParts(key, { chibi: true });"]];
+
+        $legs = $this->identity(null, $this->plantedTree($twoD))['legs'];
+
+        $this->assertNotSame([], $legs['fields'], 'the 2-D tree plant did not red the fields leg: '.json_encode(array_filter($legs)));
+        $this->assertNotSame([], $legs['delivered'], 'the 2-D tree plant did not red the delivered leg: '.json_encode(array_filter($legs)));
+
+        $legs = $this->identity(null, $this->plantedTree([...$twoD, ...$threeD]))['legs'];
+
+        $this->assertNotSame([], $legs['delivered'], 'the both-views tree plant did not red the delivered leg: '.json_encode(array_filter($legs)));
+        $this->assertSame([], $legs['fields'], 'the both-views tree plant parted the views — the control no longer shows what parity alone misses');
+    }
+
+    /** A copy of the character tree with each `[file, anchor, replacement]` applied once. */
+    private function plantedTree(array $edits): string
+    {
+        $tree = (string) tempnam(sys_get_temp_dir(), 'tree');
+        unlink($tree);
+        mkdir($tree);
+        $this->scratchDirs[] = $tree;
+        $this->copyTree((string) realpath(__DIR__.'/../../../../resources/characters'), $tree);
+
+        foreach ($edits as [$file, $anchor, $replacement]) {
+            $original = (string) file_get_contents($tree.'/'.$file);
+
+            $this->assertSame(1, substr_count($original, $anchor), "the tree plant's anchor is not in {$file} exactly once");
+            file_put_contents($tree.'/'.$file, str_replace($anchor, $replacement, $original));
+        }
+
+        return $tree;
+    }
+
+    /**
+     * The identity probe's answer over the shipped scenes, its client modules `$dir`'s and its character tree `$tree`'s.
+     *
+     * @return array{legs: array<string, list<string>>, printed: array<string, mixed>}
+     */
+    private function identity(?string $dir = null, ?string $tree = null): array
+    {
+        $payload = ['scenes' => $this->scenes(null)];
+
+        if ($tree === null) {
+            return $this->probe($payload, $dir, __DIR__.'/character-identity-probe.mjs');
+        }
+
+        return $this->probe($payload + ['tree' => $tree], $dir, __DIR__.'/character-identity-probe.mjs');
     }
 
     #[DataProvider('plants')]

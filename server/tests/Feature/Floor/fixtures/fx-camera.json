@@ -60,7 +60,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -435,7 +436,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -835,7 +837,8 @@
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:31.004Z"
+                  "started_at": "2026-08-23T14:23:31.004Z",
+                  "species": "carrot"
                 }
               ],
               "subagents_open": 1,
@@ -909,7 +912,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -927,7 +930,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -953,7 +956,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.300Z",
             "install_id": "aimla",
@@ -991,7 +994,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -1218,7 +1221,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1593,7 +1597,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1993,7 +1998,8 @@
                   "title": "draft the D1 event schema",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:31.004Z"
+                  "started_at": "2026-08-23T14:23:31.004Z",
+                  "species": "carrot"
                 }
               ],
               "subagents_open": 1,
@@ -2067,7 +2073,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2085,7 +2091,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -2111,7 +2117,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.300Z",
             "install_id": "aimla",
@@ -2149,7 +2155,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -2243,7 +2249,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2738,7 +2745,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3210,7 +3218,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3691,7 +3700,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5310,7 +5320,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5756,7 +5767,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -6475,7 +6487,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -6974,7 +6987,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -7337,7 +7351,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -7355,7 +7369,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": {
@@ -7373,7 +7387,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": {
@@ -7540,7 +7554,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -7903,7 +7918,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -7921,7 +7936,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": {
@@ -7939,7 +7954,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": {
@@ -8081,7 +8096,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z", "species": "carrot" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -8326,7 +8341,7 @@
               "open_calls": 1,
               "open_turn": true,
               "subagents": [
-                { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
+                { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z", "species": "carrot" }
               ],
               "subagents_open": 1,
               "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -8405,7 +8420,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8414,7 +8429,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8423,7 +8438,7 @@
         {
           "at_ms": 9300,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:23.300Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -8510,7 +8525,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z", "species": "carrot" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -9201,7 +9216,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z", "species": "carrot" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -9497,11 +9512,11 @@
       "messages": [
         {
           "at_ms": 1500,
-          "envelope": { "feed_version": 3, "t": "building.layout", "server_time": "2026-08-23T14:23:16.000Z", "layout_version": 4, "revision_id": 901 }
+          "envelope": { "feed_version": 4, "t": "building.layout", "server_time": "2026-08-23T14:23:16.000Z", "layout_version": 4, "revision_id": 901 }
         },
         {
           "at_ms": 4500,
-          "envelope": { "feed_version": 3, "t": "building.layout", "server_time": "2026-08-23T14:23:19.000Z", "layout_version": 5, "revision_id": 902 }
+          "envelope": { "feed_version": 4, "t": "building.layout", "server_time": "2026-08-23T14:23:19.000Z", "layout_version": 5, "revision_id": 902 }
         }
       ],
       "until_ms": 6000,
@@ -9561,7 +9576,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z", "species": "carrot" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -9858,7 +9873,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z", "species": "carrot" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "ingest endpoint", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -10084,7 +10099,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -10093,7 +10108,7 @@
         {
           "at_ms": 5000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:19.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -10102,7 +10117,7 @@
         {
           "at_ms": 16000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:30.000Z",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 }
@@ -10173,7 +10188,7 @@
                       "open_calls": 1,
                       "open_turn": true,
                       "subagents": [
-                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z" }
+                        { "call_id": "01K3TA6G7H8J9K0M1N2P3Q4R5T", "title": "draft the D1 event schema", "subagent_type": "coder", "activity_state": "working", "started_at": "2026-08-23T14:23:31.004Z", "species": "carrot" }
                       ],
                       "subagents_open": 1,
                       "task": { "title": "the ingest endpoint, its schema checks, its retry budget and the tests that hold every one of them to the published desi", "source": "board_card", "ref": "card#7338", "as_of": "2026-08-23T14:05:00.000Z", "degraded": false },
@@ -10363,7 +10378,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -10380,7 +10395,7 @@
         {
           "at_ms": 1500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "fleet": { "db": "ok", "fold": "ok", "sweep": "ok", "sweep_last_run_at": "2026-08-23T14:23:08.002Z", "ingest_last_receipt_at": "2026-08-23T14:23:14.201Z", "max_fold_lag_ms": 117, "seats_total": 4, "seats_live": 4 },
             "server_time": "2026-08-23T14:23:15.900Z"
@@ -10554,7 +10569,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -10976,7 +10992,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.000Z",
             "fleet": {
@@ -10994,7 +11010,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:14.650Z",
             "install_id": "aimla",
@@ -11020,7 +11036,7 @@
         {
           "at_ms": 2500,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "room.map",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",

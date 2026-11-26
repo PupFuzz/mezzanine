@@ -702,7 +702,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1653,7 +1654,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -2376,7 +2377,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3327,7 +3329,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -3424,7 +3426,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4381,7 +4384,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -4399,7 +4402,7 @@
         {
           "at_ms": 400,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "coord.thread",
             "server_time": "2026-08-23T14:23:14.800Z",
             "coord_thread": {
@@ -5067,7 +5070,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -5085,7 +5088,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -5162,7 +5165,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -6105,7 +6109,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -6123,7 +6127,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -6200,7 +6204,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -7143,7 +7148,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -7224,7 +7229,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -8167,7 +8173,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -8185,7 +8191,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -8203,7 +8209,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 4,
+            "feed_version": 5,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -8212,7 +8218,7 @@
         {
           "at_ms": 2100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.500Z",
             "install_id": "aimla",
@@ -8232,7 +8238,7 @@
         {
           "at_ms": 2200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.600Z",
             "reason": "reload",
@@ -8309,7 +8315,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -9253,7 +9260,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -9271,7 +9278,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -9289,7 +9296,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -9298,7 +9305,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -9312,7 +9319,7 @@
         {
           "at_ms": 12100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:26.500Z",
             "fleet": {
@@ -9399,7 +9406,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -10343,7 +10351,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -10361,7 +10369,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -10379,7 +10387,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -10388,7 +10396,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -10402,7 +10410,7 @@
         {
           "at_ms": 52100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:24:06.500Z",
             "fleet": {
@@ -10489,7 +10497,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -11433,7 +11442,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -11451,7 +11460,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -11469,7 +11478,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.reload",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload"
@@ -11478,7 +11487,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:16.400Z",
             "reason": "reload",
@@ -11561,7 +11570,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -12505,7 +12515,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -12523,7 +12533,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -12608,7 +12618,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -13551,7 +13562,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -13569,7 +13580,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.heartbeat",
             "server_time": "2026-08-23T14:23:15.400Z",
             "fleet": {
@@ -13650,7 +13661,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -14594,7 +14606,7 @@
         {
           "at_ms": 50,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.450Z",
             "fleet": {
@@ -14612,7 +14624,7 @@
         {
           "at_ms": 60,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:14.460Z",
             "reason": "unavailable",
@@ -14626,7 +14638,7 @@
         {
           "at_ms": 230160,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:27:04.560Z",
             "fleet": {
@@ -14644,7 +14656,7 @@
         {
           "at_ms": 231000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:27:05.400Z",
             "reason": "unavailable",
@@ -14731,7 +14743,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -15737,7 +15750,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -16681,7 +16695,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:14.500Z",
             "fleet": {
@@ -16699,7 +16713,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "feed.close",
             "server_time": "2026-08-23T14:23:15.400Z",
             "reason": "stalled",
@@ -16713,7 +16727,7 @@
         {
           "at_ms": 11100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "fleet.health",
             "server_time": "2026-08-23T14:23:25.500Z",
             "fleet": {

@@ -20,7 +20,8 @@
  * ⛔ DEPTH AGAINST HEIGHT (plan § 3.1's split, `anchor3d()`): the scene is a plan whose `y` is depth, except for what the
  * 2-D layout draws ABOVE a thing's foot — a bubble, a nameplate, the facts — whose offset above the foot is a HEIGHT. A
  * desk's element stands at the desk's own depth (`depth_y`, its furniture foot line) and at the height its centre is
- * drawn above the desk's foot: its sitter's feet, or the desk's foot line with nobody in it.
+ * drawn above the desk's foot: its sitter's feet, or the desk's foot line with nobody in it. The status and the bubble
+ * stand by the sitter instead, at its depth and beside it, the bubble over the status (`anchorPoint()`, `PIN`).
  *
  * ⛔ IT ADDS NO FACT AND READS NO FIELD THE SCENE DOES NOT CARRY (the scene's header's rule): every string on a label is
  * the scene's element's own, every wall the scene's `walls` (`floor/floor-walls.js`, the door view's classification),
@@ -32,14 +33,26 @@
  * monitor faces its sitter and an intern's laptop its intern. A sitter stands half the slab's depth behind the slab's
  * back edge: its chair's centre, chosen (no figure in the scene places a chair in plan).
  *
+ * ⛔ A PIECE STANDS AGAINST THE WALL ITS TILE TOUCHES, ITS BACK TO IT (rule W, plan § 15.3): a standing tile's rect is a
+ * picture, its foot line a picture-height in front of the wall an author drew it against. So a piece the scene read a
+ * wall for (`floor-walls.js`'s `standingAgainst()`, the entry's `against` and `face`) stands with its back on that wall's
+ * face, turned to face the room — `π` off a wall in front of it, `±π/2` off a side wall, along the tile's foot strip —
+ * and one the scene read none for stands behind its foot line, its front on it. Its `anchor` names the face on `at`, and
+ * its `plan` the box its body is fitted inside — its obstacle rect reaching to the wall's face — so a model deeper than
+ * its tile allows, once turned, shrinks in plan rather than standing in a lane or in its neighbour. The snack tables and
+ * the restroom door carry no reading and stand centred on their foot line as they always have; obstacles and routes
+ * read the rects, which rule W leaves alone.
+ *
  * `tests/Feature/Floor/floor-world-probe.mjs` drives it over the harness's scenes (`TheFloorIsTheScenesThirdRendererTest`).
  */
 
-import { COUCH_FOOTPRINT, LINE, STOOL_H, STOOL_PITCH, STOOL_W, couchFootprint, internOverdraw, union } from './desk-layout.js';
+import { COUCH_FOOTPRINT, LINE, STOOL_H, STOOL_PITCH, STOOL_W, couchFootprint, internOverdraw, union, walkerCharacter } from './desk-layout.js';
 import { deskSlab, monitorFrame } from './desk-geometry.js';
 import { DESK_H, MONITOR_TOP, PARTITION_H, ROOM_H, SCALE } from './door-view.js';
-import { pointAt } from './route.js';
+import { CAB, CAB_FITTINGS } from './cab-paint.js';
+import { cabSpan, pointAt } from './route.js';
 import { ELEVATOR_DOOR } from './scene.js';
+import { RESTROOM_DOOR } from './map-tiles.js';
 import { BIRD_LIFT, HOP_SCALE, arcLift } from './bird.js';
 import { keyOf } from '../wire/seat-key.js';
 
@@ -120,6 +133,42 @@ function couchesOf(e, at) {
     });
 }
 
+/** Centimetres in world units: the door view's `SCALE` (cm per scene px) and `UNIT`, as every height here. */
+const cmU = (cm) => cm / SCALE / UNIT;
+
+/**
+ * THE CAB BEHIND THE BAND's DOORWAY, IN UNITS — § 12's *Cab interior* room (`cab-paint.js`'s `CAB`, `CAB_FITTINGS`) as
+ * the 2-D band cab draws it: `drawCabInterior()` fits the room's cross-section to the doorway it is seen through, so
+ * here the cab's open front IS the band's doorway (`door`: its left edge `x`, its width `w` and height `h`, units) on the
+ * band's face (`z`), and it runs back `CAB.d` at the door view's scale — the depth the 2-D lens (`LANDING`) draws, as
+ * its eye's distance is that scale too. So its side walls stand on the jambs and its ceiling on the head, and every
+ * corner shows through the open doors. A fitting's measure across is fitted as the width is (`door.w` over `CAB.w`),
+ * up as the height is (`door.h` over `CAB.h`), and back at the door view's scale, as `drawCabInterior()` places it.
+ * `room` is its box (min corner and size, as a wall's), `kick` the kick plates' height up each side wall, `rails` and
+ * `posts` the handrails' bars and the posts they stand off their walls on (boxes; the bar square in section at its
+ * height), and `light` the ceiling light's panel (`x`, `z` its min corner, `w`, `d`) on the ceiling. Every rider's cab
+ * spot lies on its floor (`floor-world-probe.mjs`'s `cab` leg).
+ */
+function cabRoom(door, z) {
+    const [across, up] = [door.w / CAB.w, door.h / CAB.h];
+    const [w, d, h] = [door.w, cmU(CAB.d), door.h];
+    const { kick, rail, light } = CAB_FITTINGS;
+    const room = Object.freeze({ x: door.x, y: 0, z: z - d, w, h, d });
+    const box = (x, y, bz, bw, bh, bd) => Object.freeze({ x, y, z: bz, w: bw, h: bh, d: bd });
+    const [s, off, end] = [rail.h * up, rail.off * across, cmU(rail.end)];
+    const y = rail.y * up - s / 2;
+    // Each side wall's inner face, and the way into the room from it.
+    const walls = [[room.x, 1], [room.x + w, -1]];
+
+    return Object.freeze({
+        room,
+        kick: kick * up,
+        rails: Object.freeze(walls.map(([wall, into]) => box(wall + into * off - s / 2, y, room.z + end, s, s, d - 2 * end))),
+        posts: Object.freeze(walls.flatMap(([wall, into]) => [room.z + end, z - end].map((at) => box(Math.min(wall, wall + into * off), y, at - s / 2, off, s, s)))),
+        light: Object.freeze({ x: door.x + (w - light.w * across) / 2, z: room.z + (d - cmU(light.d)) / 2, w: light.w * across, d: cmU(light.d) }),
+    });
+}
+
 /** How far in front of the back wall's face a bird at the birdhouse stands, in units — clear of the band's picture. */
 const BIRD_DEPTH = 0.08;
 
@@ -166,22 +215,41 @@ function footOf(desk) {
 }
 
 /**
+ * Which point of a label's own box stands on its anchor's point, as fractions of the box's width and height from its
+ * top-left (`CSS2DObject`'s `center`): a label over its element is centred there; beside a sitter the status hangs from
+ * the point and the bubble stands on it, both reaching right, so the two meet at one line and neither covers the other
+ * at any zoom — a label's size is screen px, which no gap in the world would hold.
+ */
+export const PIN = Object.freeze({
+    centre: Object.freeze({ x: 0.5, y: 0.5 }),
+    hang: Object.freeze({ x: 0, y: 0 }),
+    stand: Object.freeze({ x: 0, y: 1 }),
+});
+
+/**
  * Where one of a desk's drawn elements stands (plan § 3.1's split): its centre's `x`, the desk's depth, and the height
- * its centre is drawn above the desk's foot — 0 for one drawn at or below the foot. Scene px throughout.
+ * its centre is drawn above the desk's foot — 0 for one drawn at or below the foot. Scene px throughout. Its label is
+ * centred on that point (`beside` null: the status and the bubble stand beside their sitter instead).
  *
  * @param {{x: number, y: number, w: number, h: number}} el
  * @param {object} desk the scene's desk
- * @returns {{x: number, depth: number, height: number}}
+ * @returns {{x: number, depth: number, height: number, beside: null, pin: {x: number, y: number}}}
  */
 export function anchor3d(el, desk) {
-    return Object.freeze({ x: el.x + el.w / 2, depth: desk.depth_y, height: Math.max(0, footOf(desk) - (el.y + el.h / 2)) });
+    return Object.freeze({ x: el.x + el.w / 2, depth: desk.depth_y, height: Math.max(0, footOf(desk) - (el.y + el.h / 2)), beside: null, pin: PIN.centre });
 }
 
-/** A label's anchor as a world point on `slab`. */
-export function anchorPoint(slab, anchor) {
+/**
+ * A label's anchor as a world point on `slab`, seen by a camera whose right is `right` (a horizontal unit vector, `{x, z}`:
+ * the camera's own `x` axis, which `OrbitControls` keeps level). A centred anchor (`beside` null) is its point from every
+ * side; an anchor `beside` its sitter is moved `beside` scene px along `right`, so its label — its left edge on the point
+ * (`PIN`) — begins that far to the viewer's right of the sitter's centre line from every side the camera orbits to.
+ */
+export function anchorPoint(slab, anchor, right) {
     const p = worldOf(slab, { x: anchor.x, y: anchor.depth });
+    const reach = (anchor.beside ?? 0) / UNIT;
 
-    return { ...p, y: p.y + anchor.height / UNIT };
+    return { x: p.x + right.x * reach, y: p.y + anchor.height / UNIT, z: p.z + right.z * reach };
 }
 
 /**
@@ -191,6 +259,12 @@ export function anchorPoint(slab, anchor) {
  * gets on or off — and is lifted as it crosses its couch: from the floor at the footprint's front edge to its seat's
  * height at its foot, in proportion to the way between, so it rises onto the cushion as it steps back and comes down
  * as it steps off, and stands at the seat's height where it is then drawn seated.
+ *
+ * ⛔ `shown` IS WHETHER THE 3-D FLOOR DRAWS IT THERE: on the floor, always (at its walk's end it stands where it stopped
+ * until the next paint seats it, its body the desk's under one key); in the cab, through the walk's cab span
+ * (`route.js`'s `cabSpan()`, the span the 2-D painter draws its cab element through) — at its spot in the cab's room,
+ * which `worldOf()` already lifts inside `cabRoom()`'s box, so the opening leaves reveal it and the closing ones cover
+ * it, and once they have shut it is gone; `inside` the restroom door, never.
  */
 export function walkerAt(slab, walker, tMs) {
     const p = pointAt(walker.effect, tMs);
@@ -205,7 +279,10 @@ export function walkerAt(slab, walker, tMs) {
     const step = seat !== null && Math.abs(p.x - seat.foot.x) < 1e-6 && p.y > seat.foot.y - 1e-6 && p.y <= seat.front + COUCH_FOOTPRINT.depth;
     const lift = step ? seat.lift * Math.min(1, Math.max(0, (seat.front - p.y) / (seat.front - seat.foot.y))) : 0;
 
-    return Object.freeze({ ...w, y: w.y + lift, where: p.where, step });
+    const ride = p.where === 'cab' ? cabSpan(walker.effect) : null;
+    const shown = p.where === 'floor' || (ride !== null && tMs >= ride.from && tMs < ride.to);
+
+    return Object.freeze({ ...w, y: w.y + lift, where: p.where, step, shown });
 }
 
 /** The key a walker is drawn under: an intern's (A10), a break's walker's (A25, A26), or its seat's (A1, A2). */
@@ -360,7 +437,7 @@ export function floorWorld(scene) {
             interns: Object.freeze(of('stool').map((e) => Object.freeze({
                 key: e.key,
                 call_id: e.call_id,
-                seat_species: e.seat_species,
+                species: e.species,
                 chibi: true,
                 laptop: e.activity === 'working',
                 lid: 'intern',
@@ -378,6 +455,18 @@ export function floorWorld(scene) {
 
         // The desk's labels in their one order — name, status, chip, facts, bubble (plan § 3.9).
         const label = (kind, el, fields) => labels.push(Object.freeze({ key: d.key, kind, anchor: anchor3d(el, d), ...fields }));
+        // The sitter's own words — what its screen shows and its bubble — stand beside it, on the viewer's right, clear of
+        // the body (the operator's ruling of 2026-11-19: they stood in front of the sitter, covering it): at the sitter's
+        // depth and centre line, a line above the monitor's top, reaching the character's half-width — the frame the 3-D
+        // body is drawn inside — the status hanging from that point and the bubble standing on it (`PIN`). At a
+        // placeholder's desk, where no body is drawn, they start on the seat's line.
+        const beside = (pin) => Object.freeze({
+            x: d.anchor_x,
+            depth: sitterZ,
+            height: MONITOR_TOP / SCALE + LINE,
+            beside: character === undefined ? 0 : character.w / 2,
+            pin,
+        });
         const [name] = of('nameplate');
         const [chip] = of('chip');
         const facts = d.elements.filter((e) => FACT_KINDS.includes(e.kind) && typeof e.text === 'string');
@@ -387,11 +476,11 @@ export function floorWorld(scene) {
         }
 
         if (monitor !== undefined) {
-            // The screen's strings (the operator's Q4 answer): what the monitor shows, floated over the monitor's top.
+            // The screen's strings (the operator's Q4 answer): what the monitor shows.
             labels.push(Object.freeze({
                 key: d.key,
                 kind: 'status',
-                anchor: Object.freeze({ x: monitorAt.x + monitorAt.w / 2, depth: d.depth_y, height: MONITOR_TOP / SCALE + LINE }),
+                anchor: beside(PIN.hang),
                 lit: monitor.lit,
                 text: monitor.lit === 'off' ? null : screenText?.text ?? null,
             }));
@@ -408,7 +497,7 @@ export function floorWorld(scene) {
         }
 
         if (d.bubble !== null) {
-            label('bubble', d.bubble, { model: d.bubble });
+            labels.push(Object.freeze({ key: d.key, kind: 'bubble', anchor: beside(PIN.stand), model: d.bubble }));
         }
     }
 
@@ -446,21 +535,122 @@ export function floorWorld(scene) {
         }
     }
 
-    // The restroom doors (§ 6.7): each door tile's leaf and its slider's field at the rects the 2-D painter draws them,
-    // stood on the tile's foot line — a rect on a standing tile's face-on picture, its rows heights above that line.
+    // A wall cell of a side door's doorway is CUT to a lintel from the tile's height to the wall's top (§ 6.7 item 2): its
+    // box raised, not a body of its own; a partition no taller than the door has no body there. `cell` is the scene's.
+    const walls = Object.freeze(scene.walls.flatMap((w) => {
+        const corner = at(w);
+        const full = w.kind === 'edge' ? ROOM_H_U : PARTITION_H_U;
+        const door = (scene.restroom_doors ?? []).find((d) => d.facing !== 'back' && w.x === d.doorway.x && w.y >= d.doorway.y && w.y < d.doorway.y + d.doorway.h);
+        const y = door === undefined ? 0 : door.h / UNIT;
+
+        return y >= full ? [] : [Object.freeze({
+            id: `wall:${w.x}:${w.y}`,
+            kind: w.kind,
+            cell: Object.freeze({ x: w.x, y: w.y }),
+            box: Object.freeze({ x: corner.x, y, z: corner.z, w: w.size / UNIT, h: full - y, d: w.size / UNIT }),
+        })];
+    }));
+
+    // The restroom doors (§ 6.7 item 2), each the scene's leaf timeline and field spans at the scene's rects. A `back`
+    // door's recess (where its leaf stands) and sign are rects on the tile's face-on picture, stood on its foot line, their
+    // rows heights above it. A door set into a SIDE wall stands in the wall's plane: `at` the wall face's foot centre over
+    // the doorway, `jambs` the doorway's back and near ends (`z`), `bar` its leaf's box in the wall's thickness over the
+    // recess's heights (scaled from its back jamb, its least `z`), `plate` the flag and `sign` its field, each the scene's
+    // rect lifted as a height over the foot line and standing in the near jamb's plane (`z`), and `wall` the ids of the wall
+    // column it is set into — the run of wall cells through the doorway, which the cut-away lowers its lintels with.
+    const columnOf = (d) => {
+        const T = d.doorway.w;
+        const rows = new Set(scene.walls.filter((w) => w.x === d.doorway.x).map((w) => w.y));
+        let [from, to] = [d.doorway.y, d.doorway.y + d.doorway.h - T];
+
+        while (rows.has(from - T)) {
+            from -= T;
+        }
+
+        while (rows.has(to + T)) {
+            to += T;
+        }
+
+        return walls.filter((w) => w.cell.x === d.doorway.x && w.cell.y >= from && w.cell.y <= to).map((w) => w.id).filter((id, k, ids) => ids.indexOf(id) === k);
+    };
     const restroomDoors = (scene.restroom_doors ?? []).map((d) => {
-        const foot = d.y + d.h;
+        // a side door's rects stand over its doorway's foot line, which is the wall's grid (`restroomDoorGeometry()`)
+        const foot = d.facing === 'back' ? d.y + d.h : d.doorway.y + d.doorway.h;
         const onTile = (r) => Object.freeze({ x: at(r).x, w: r.w / UNIT, y: (foot - (r.y + r.h)) / UNIT, h: r.h / UNIT });
+        const shared = { id: d.id, facing: d.facing, leaf: d.leaf, occupied: d.occupied };
+
+        if (d.facing === 'back') {
+            return Object.freeze({ ...shared, at: at({ x: d.x + d.w / 2, y: foot }), recess: onTile(d.recess), sign: onTile(d.sign) });
+        }
+
+        const near = at({ x: d.face, y: foot }).z;
+        const recess = onTile(d.recess);
+        const bar = at(d.bar);
 
         return Object.freeze({
-            id: d.id,
-            at: at({ x: d.x + d.w / 2, y: foot }),
-            recess: onTile(d.recess),
-            sign: onTile(d.sign),
-            leaf: d.leaf,
-            occupied: d.occupied,
+            ...shared,
+            at: at({ x: d.face, y: d.doorway.y + d.doorway.h / 2 }),
+            jambs: Object.freeze([at(d.doorway).z, near]),
+            bar: Object.freeze({ x: bar.x, w: d.bar.w / UNIT, y: recess.y, h: recess.h, z: bar.z, d: d.bar.h / UNIT }),
+            plate: Object.freeze({ ...onTile(d.plate), z: near }),
+            sign: Object.freeze({ ...onTile(d.sign), z: near }),
+            wall: Object.freeze(columnOf(d)),
         });
     });
+    // Rule W: a piece the scene read a wall for (`against`) stands with its back on that wall's face, turned to face the
+    // room; one it read none for stands behind its foot line, its front on it; a piece the rule leaves out (no `against`
+    // on its entry) stands centred on its foot line, as it always has. `plan` is the box, across and deep in the piece's
+    // own frame (units), its body is fitted inside: its obstacle rect, reaching to the wall's face — a side piece along
+    // its tile's foot strip, `min(w, h)` long.
+    const standing = (s) => {
+        const cx = s.x + s.w / 2;
+        const foot = s.y + s.h;
+        const plan = (w, d) => Object.freeze({ w: w / UNIT, d: d / UNIT });
+
+        switch (s.against) {
+            case undefined:
+                return { at: at({ x: cx, y: foot }) };
+            case null:
+                return { at: at({ x: cx, y: foot }), anchor: 'front', plan: plan(s.w, s.h) };
+            case 'back':
+                return { at: at({ x: cx, y: s.face }), anchor: 'back', plan: plan(s.w, foot - s.face) };
+            case 'front':
+                return { at: at({ x: cx, y: s.face }), turn: Math.PI, anchor: 'back', plan: plan(s.w, s.h) };
+            default: {
+                const strip = Math.min(s.w, s.h);
+                const left = s.against === 'left';
+
+                return {
+                    at: at({ x: s.face, y: foot - strip / 2 }),
+                    turn: left ? Math.PI / 2 : -Math.PI / 2,
+                    anchor: 'back',
+                    plan: plan(strip, left ? s.x + s.w - s.face : s.face - s.x),
+                };
+            }
+        }
+    };
+    // A side door's piece by its cell: the frame turned into the wall's plane, its front toward the room, standing at the
+    // doorway; its inputs the wall's thickness and the flag in the piece's frame — out from the wall face (`gap` to the
+    // plate, `out` across it) and its heights over the foot — so the theme's flag stands where the world's plate does.
+    const sideDoors = new Map((scene.restroom_doors ?? []).map((d, k) => [`${d.room}#${d.x}:${d.y}`, [d, restroomDoors[k]]]).filter(([, [d]]) => d.facing !== 'back'));
+    const pieceOf = (s) => {
+        const side = sideDoors.get(`${s.room}#${s.x}:${s.y}`);
+
+        if (s.kind !== RESTROOM_DOOR.kind || side === undefined) {
+            return standing(s);
+        }
+
+        const [d, w] = side;
+        const p = d.plate;
+
+        return {
+            at: w.at,
+            turn: d.facing === 'right' ? -Math.PI / 2 : Math.PI / 2,
+            facing: d.facing,
+            wall: d.doorway.w / UNIT,
+            flag: Object.freeze({ gap: (d.facing === 'right' ? d.face - (p.x + p.w) : p.x - d.face) / UNIT, out: p.w / UNIT, y: w.plate.y, h: w.plate.h }),
+        };
+    };
 
     // An intern walker's seat: its stool's foot, the plan depth of its couch's front edge, and the height it sits at.
     const seatOf = (fx) => {
@@ -472,7 +662,8 @@ export function floorWorld(scene) {
         key: walkerKey(fx),
         animation_id: fx.animation_id,
         chibi: typeof fx.intern_key === 'string',
-        species: fx.species ?? null,
+        // the character it is, as the 2-D painter draws it: the tree's key and the species beside it
+        character: walkerCharacter(fx),
         seat: seatOf(fx),
         effect: fx,
     }));
@@ -493,21 +684,15 @@ export function floorWorld(scene) {
             ]),
             clock: onBand(band.clock),
             windows: Object.freeze(band.windows.map(onBand)),
+            // The cab behind the doorway the band cuts for it: the leaves' rect, as the 2-D band cab is fitted to it.
+            cab: cabRoom({ x: at({ x: band.elevator.x, y: top }).x, w: band.elevator.w / UNIT, h: band.elevator.h / UNIT }, slab.box.z),
         }),
-        walls: Object.freeze(scene.walls.map((w) => {
-            const corner = at(w);
-
-            return Object.freeze({
-                id: `wall:${w.x}:${w.y}`,
-                kind: w.kind,
-                box: Object.freeze({ x: corner.x, y: 0, z: corner.z, w: w.size / UNIT, h: w.kind === 'edge' ? ROOM_H_U : PARTITION_H_U, d: w.size / UNIT }),
-            });
-        })),
+        walls,
         pieces: Object.freeze(scene.scenery.map((s) => Object.freeze({
             kind: s.kind,
             room: s.room,
             cell: Object.freeze({ x: s.x, y: s.y }),
-            at: at({ x: s.x + s.w / 2, y: s.y + s.h }),
+            ...pieceOf(s),
             w: s.w / UNIT,
             h: s.h / UNIT,
             decoration: s.decoration,

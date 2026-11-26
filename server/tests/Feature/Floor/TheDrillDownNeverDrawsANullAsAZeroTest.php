@@ -43,6 +43,8 @@ class TheDrillDownNeverDrawsANullAsAZeroTest extends TestCase
         'action.parent_call_id' => ['action.parent_call_id', 'absent'],
         'subagents[].title' => ['interns.rows.0.label', 'words'],
         'subagents[].subagent_type' => ['interns.rows.0.type', 'absent'],
+        // card#13258: the intern's body, drawn on the floor (§ 8) and never in the panel's list.
+        'subagents[].species' => null,
         'task.ref' => ['task.ref', 'absent'],
         'context.used_tokens' => ['context.numerals', 'words'],
         // § 5.6's cell reads "as above" — the `used_tokens` row's words, for the one element both draw.

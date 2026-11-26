@@ -131,22 +131,73 @@ if (JSON.stringify(stillZs.marks?.levels) !== JSON.stringify(C.zLevels(0).map(()
     legs.still.push(`A6's still is ${JSON.stringify(stillZs)} — not the asleep pose with every z at full brightness`);
 }
 
-// ── an edge row: the walk steps while it runs and stands once it has ended ──
-const fx = { frames: 12, frame_interval_ms: 250, elapsed_ms: 0 };
-const span = fx.frames * fx.frame_interval_ms;
+// ── a walker: the walk clip steps only inside a `walk` leg; on every other leg, and after the walk, it stands ──
+// One trip with a leg of every kind the scene builds — a snack table's and a restroom door's `stand`, the restroom's
+// `inside` wait, a call button's press, a cab ride entered by its step and the elevator's `step` stand, an intern's
+// `seat` — each between two walks. The leg covering an instant is found here by its own half-open frames.
+const I = 250;
+const pt = (x, y) => ({ x, y });
+const walkLeg = (start, frames, a, b) => ({ kind: 'walk', start, frames, points: [a, b], length: Math.hypot(b.x - a.x, b.y - a.y) });
+const trip = {
+    frames: 54,
+    frame_interval_ms: I,
+    elapsed_ms: 0,
+    legs: [
+        walkLeg(0, 8, pt(0, 0), pt(80, 0)),
+        { kind: 'stand', start: 8, frames: 8, at: pt(80, 0), why: 'snack' },
+        walkLeg(16, 4, pt(80, 0), pt(80, 40)),
+        { kind: 'stand', start: 20, frames: 4, at: pt(80, 40), why: 'door' },
+        { kind: 'inside', start: 24, frames: 6, at: pt(80, 40) },
+        walkLeg(30, 4, pt(80, 40), pt(40, 40)),
+        { kind: 'stand', start: 34, frames: 2, at: pt(40, 40), why: 'press' },
+        walkLeg(36, 4, pt(40, 40), pt(40, 80)),
+        { kind: 'cab', start: 40, frames: 4, at: pt(40, 90), enter: { from: pt(40, 80), frames: 2 } },
+        { kind: 'stand', start: 44, frames: 2, at: pt(40, 80), why: 'step' },
+        { kind: 'seat', start: 46, frames: 4, at: pt(40, 80) },
+        walkLeg(50, 4, pt(40, 80), pt(0, 80)),
+    ],
+};
+const tripSpan = trip.frames * I;
+const covering = (t) => trip.legs.find((l) => t >= l.start * I && t < (l.start + l.frames) * I) ?? null;
+const sampled = new Set();
+const stepped = new Set();
 
-for (const since of [0, 260, 1010, span - 1, span, span + 5000]) {
-    const { t, running } = K.inFlightAt(fx, span, since);
-    const pose = K.walkAt(C, fx, t, running);
-    const want = since < span ? C.CLIPS.walk[Math.floor(since / 250) % C.CLIPS.walk.length] : C.CLIPS.walk[0];
+for (let since = 0; since <= tripSpan + 1000; since += 125) {
+    const { t, running } = K.inFlightAt(trip, tripSpan, since);
+    const got = K.walkAt(C, trip, t, running);
+    const leg = running ? covering(t) : null;
+    const want = leg?.kind === 'walk' ? C.CLIPS.walk[Math.floor(t / I) % C.CLIPS.walk.length] : C.CLIPS.walk[0];
+    const name = leg === null ? 'ended' : `${leg.kind}${leg.why === undefined ? '' : `:${leg.why}`}`;
 
-    if (t !== since || running !== since < span || pose !== want) {
-        legs.walk.push(`the walk at ${since} ms reads t ${t}, running ${running}, pose ${pose} — not ${since} ms, ${since < span}, ${want}`);
+    sampled.add(name);
+
+    if (leg?.kind === 'walk' && got.pose !== C.CLIPS.walk[0]) {
+        stepped.add(leg.start);
+    }
+
+    if (got.pose !== want || got.leg !== (leg?.kind ?? null)) {
+        legs.walk.push(`the walker at ${since} ms (${name}) shows ${got.pose} on a ${got.leg} leg — not ${want} on ${leg?.kind ?? null}`);
     }
 }
 
-if (K.inFlightAt({ ...fx, frames: 0 }, span, 10).running) {
-    legs.walk.push('a walk drawn without its motion (frames 0) reads as running');
+for (const name of ['walk', 'stand:snack', 'stand:door', 'inside', 'stand:press', 'cab', 'stand:step', 'seat', 'ended']) {
+    if (!sampled.has(name)) {
+        legs.walk.push(`CONTROL: no instant on the trip's ${name} leg was read`);
+    }
+}
+
+if (stepped.size !== trip.legs.filter((l) => l.kind === 'walk').length) {
+    legs.walk.push(`CONTROL: the walker stepped off its standing frame on ${stepped.size} of the trip's walk legs — the stride was not seen`);
+}
+
+// Without its motion (reduced motion: `frames` 0) the walker stands on every leg, its walks included.
+for (const since of [0, 1010, 9 * I, 31 * I]) {
+    const still = { ...trip, frames: 0 };
+    const { t, running } = K.inFlightAt(still, tripSpan, since);
+
+    if (running || K.walkAt(C, still, t, running).pose !== C.CLIPS.walk[0]) {
+        legs.walk.push(`the walker drawn without its motion steps at ${since} ms`);
+    }
 }
 
 if (printed.reads === 0) {

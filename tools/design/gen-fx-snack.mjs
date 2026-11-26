@@ -39,6 +39,7 @@ const WALL = 3;
 const SNACK_TABLE = 14;
 const SNACK_TABLE_LOW = 15;
 const RESTROOM_DOOR = 16;
+const FLOOR_LAMP = 9;
 const cells = (cols, rows) => cols.flatMap((c) => rows.map((r) => [c, r]));
 const span = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 /** name → edits: { layer, cells: [[col, row]…], from: the gid each cell holds on the default, to: the gid it gets }. */
@@ -72,11 +73,13 @@ const VARIANTS = {
     'restroom-none': [
         { layer: 'furniture', cells: [[214, 81]], from: RESTROOM_DOOR, to: 0 },
     ],
-    // a wall from below the low table down to the front edge at x 1600, and along y 560 to the door: the door's forecourt
-    // is closed off, so no route reaches its threshold
+    // a wall from below the low table down to the front edge at x 1600, and along y 560 to the right wall: the door's
+    // forecourt is closed off, so no route reaches its threshold. card#13033: the run along y 560 reaches the right wall
+    // (cols 214–221) — with the door set into that wall its tile is no obstacle, and a run that stopped at the tile left
+    // the forecourt open above it, where every desk routed in at `feet`.
     'restroom-sealed': [
         { layer: 'walls', cells: cells([200], span(70, 86)), from: 0, to: WALL },
-        { layer: 'walls', cells: cells(span(201, 213), [70]), from: 0, to: WALL },
+        { layer: 'walls', cells: cells(span(201, 221), [70]), from: 0, to: WALL },
     ],
     // a pocket round the door's forecourt — x 1608 down to the front edge, y 600 along to the door — entered through an
     // 80 px gap in its top wall (x 1,624–1,704), narrower than a seat's body and the `clear` tier's margins: the floor
@@ -86,15 +89,24 @@ const VARIANTS = {
         { layer: 'walls', cells: cells([201], span(75, 86)), from: 0, to: WALL },
         { layer: 'walls', cells: cells([202, 213], [75]), from: 0, to: WALL },
     ],
-    // card#12841: the door moved up the right wall to (1,712, 496) — its tile x 1,712–1,776, y 360–504 — both snack tables
-    // lifted to make room, and a wall at x 1,664 from y 496 to 608: the door's forecourt is a corridor three lattice cells
-    // wide straight down in front of the door and inside its lane, so a walker coming out and one going in both walk the
-    // lane's whole depth, and the first spot `spotsNear()` finds with no lane is in it
+    // card#12841, re-cut by card#13033 for the door set into the right wall: the door kept at its cell (1,712, 648), the
+    // left floor lamp lifted, and walls along y 576 (x 1,600–1,640 and 1,728–1,776) and along y 664 (x 1,600–1,776) — the
+    // doorway's approach is a corridor y 584–664 straight into the room from the wall, inside the door's lane, entered from
+    // the channel through an 88 px gap (x 1,640–1,728) and open at its left end, so a walker coming out and one going in
+    // both cross the lane, and the first spot `spotsNear()` finds with no lane is on the approach's axis
     'restroom-corridor': [
+        { layer: 'furniture', cells: [[197, 82]], from: FLOOR_LAMP, to: 0 },
+        { layer: 'walls', cells: cells([...span(200, 204), ...span(216, 221)], [72]), from: 0, to: WALL },
+        { layer: 'walls', cells: cells(span(200, 221), [83]), from: 0, to: WALL },
+    ],
+    // card#13033: a door that touches no side wall — the committed corridor of card#12841 with its door five columns off
+    // the right wall, at (1,672, 496), its tile x 1,672–1,736, y 360–504 — so the face-on `back` door, its threshold under
+    // its centre, its recess clip and its plates stay exercised once every shipped map's door is set into a wall
+    'restroom-back': [
         { layer: 'furniture', cells: [[213, 51]], from: SNACK_TABLE, to: 0 },
         { layer: 'furniture', cells: [[216, 61]], from: SNACK_TABLE_LOW, to: 0 },
         { layer: 'furniture', cells: [[214, 81]], from: RESTROOM_DOOR, to: 0 },
-        { layer: 'furniture', cells: [[214, 62]], from: 0, to: RESTROOM_DOOR },
+        { layer: 'furniture', cells: [[209, 62]], from: 0, to: RESTROOM_DOOR },
         { layer: 'walls', cells: cells([208], span(62, 75)), from: 0, to: WALL },
     ],
 };
@@ -185,12 +197,12 @@ function run({ note, at_s, seats = {}, deltas = [], beats = null, until_ms, map 
     const linksAt = (ms) => new Map([...seeded, ...linkDeltas.filter((m) => m.at_ms < ms).map((m) => [m.seat, m.patch.link_state])]);
     for (const ms of beats ?? range(500, until_ms, 15000)) {
         const fleet = { db: 'ok', fold: 'ok', sweep: 'ok', sweep_last_run_at: server(ms - 2000), ingest_last_receipt_at: server(ms), max_fold_lag_ms: 50, ...counts(linksAt(ms)) };
-        messages.push({ at_ms: ms, envelope: { feed_version: 3, t: 'feed.heartbeat', server_time: server(ms), fleet } });
+        messages.push({ at_ms: ms, envelope: { feed_version: 4, t: 'feed.heartbeat', server_time: server(ms), fleet } });
     }
     for (const m of deltas) {
         messages.push(m.t === 'room.map'
-            ? { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
-            : { at_ms: m.at_ms, envelope: { feed_version: 3, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
+            ? { at_ms: m.at_ms, envelope: { feed_version: 4, t: 'room.map', server_time: server(m.at_ms), install_id: 'aimla', map_version: m.map_version, revision_id: m.revision_id } }
+            : { at_ms: m.at_ms, envelope: { feed_version: 4, t: 'seat.delta', server_time: server(m.at_ms), install_id: 'aimla', seat_id: m.seat, state_version: m.v, at: server(m.at_ms), changed: Object.keys(m.patch), patch: m.patch } });
     }
     messages.sort((a, b) => a.at_ms - b.at_ms);
     return { note, http, messages, until_ms, floor: clone(tpl.floor), ...(reduce ? { reduce: true } : {}) };
@@ -502,7 +514,7 @@ function chained(old) {
         msgs.push({
             at_ms: 35000,
             envelope: {
-                feed_version: 3,
+                feed_version: 4,
                 t: 'seat.delta',
                 server_time: iso(E + 35),
                 install_id: 'aimla',
@@ -704,7 +716,7 @@ function restroomRuns() {
         const at = dwellAt(fx, 20);
         const v1 = SEATS['aimla-impl-1'].state_version;
 
-        r.messages.push({ at_ms: at, envelope: { feed_version: 3, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
+        r.messages.push({ at_ms: at, envelope: { feed_version: 4, t: 'seat.delta', server_time: iso(E + at / 1000), install_id: 'aimla', seat_id: 'aimla-impl-1', state_version: v1 + 1, at: iso(E + at / 1000), changed: ['action', 'longest_open_call', 'open_calls'], patch: { action: null, longest_open_call: null, open_calls: 0 } } });
         r.messages.sort((a, b) => a.at_ms - b.at_ms);
         runs['busy-visit'] = r;
         notes['busy-visit'] = `\`aimla-impl-1\`, \`working\` at an open call, through its restroom break (${breakNote(I1, E + 5)}, 5 s after clock 0) with the line, its desk keeping its facts and drawing no task bubble; at ${at} ms, twenty seconds into the dwell, the call closes with the turn open (A3 → A4, \`working → working\`): the visit goes on. ${clock(E)}.`;
@@ -777,6 +789,8 @@ function restroomRuns() {
     notes['feed-dies-inside'] = `idle-visit (${aNote}), the stream silent from 0.5 s, so F1's verdict lands at 45.5 s, inside: the visit finishes and no other starts.`;
     runs['no-door'] = make({ at_s: A, until_ms: 40000, map: `@json:${MAPS}/restroom-none.json` });
     notes['no-door'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-none.json\`, the shipped default without the door's tile: a floor with no restroom.`;
+    runs['back-visit'] = make({ at_s: A, until_ms: aUntil, map: `@json:${MAPS}/restroom-back.json` });
+    notes['back-visit'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-back.json\`, whose door touches no side wall: the face-on \`back\` door — its threshold under its centre, its walker inside drawn in the recess clip — through the whole visit.`;
     runs['restroom-no-route'] = make({ at_s: A, until_ms: 40000, map: `@json:${MAPS}/restroom-sealed.json` });
     notes['restroom-no-route'] = `idle-visit (${aNote}) over \`fixtures/maps/restroom-sealed.json\`, the shipped default with walls closing the door's forecourt off: its threshold stands where no route reaches.`;
     runs['map-removes-door'] = make({ at_s: A, until_ms: thirtyIn + 20000,
@@ -890,6 +904,11 @@ function restroomRuns() {
         // lane-two-at-the-door: two-at-the-door's walkers and breaks over the corridor — the second waits outside the lane
         // and leaves its spot once the first, on its way out down the corridor, is clear of it.
         runs['lane-two-at-the-door'] = make({ at_s: T, until_ms: tUntil, seats: { 'aimla-impl-1': IDLE_SEAT }, map: corridor });
+        // card#13033: the same over the `back` door's corridor. At a door set into a side wall the walker coming out leaves the
+        // lane — one body's height past the threshold — within a frame of the door freeing behind it, so only a `back` door's
+        // corridor shows a visitor released as the leaf closes walking into the lane while the first is still in it.
+        runs['lane-two-at-the-back-door'] = make({ at_s: T, until_ms: tUntil, seats: { 'aimla-impl-1': IDLE_SEAT }, map: `@json:${MAPS}/restroom-back.json` });
+        notes['lane-two-at-the-back-door'] = `lane-two-at-the-door's walkers and breaks over \`fixtures/maps/restroom-back.json\`, whose \`back\` door's forecourt is a corridor down its lane: the second waits at a spot outside the lane and leaves it once the first, walking out down the corridor, is clear of the lane. ${clock(T)}.`;
         notes['lane-two-at-the-door'] = `two-at-the-door's walkers and breaks (${breakNote(I2, T + 5)} 5 s after clock 0, ${breakNote(I1, T + 5 + tGap)} ${tGap} s after it) over \`fixtures/maps/restroom-corridor.json\`, whose door's forecourt is a corridor down its lane: the second waits at a spot outside the lane and leaves it once the first, walking out down the corridor, is clear of the lane. ${clock(T)}.`;
 
         // lane-straight-in: aimla-impl-1's break comes as aimla-impl-2 is about to come out, timed so that its walk straight
@@ -1021,9 +1040,9 @@ function restroomRuns() {
     }
 
     const ORDER = ['idle-visit', 'busy-visit', 'blocked-visit', 'intern-visit', 'two-at-the-door', 'three-at-the-door', 'queue-of-three', 'restroom-past-the-last-spot',
-        'lane-two-at-the-door', 'lane-straight-in',
+        'lane-two-at-the-door', 'lane-two-at-the-back-door', 'lane-straight-in',
         'recall-waiting', 'recall-inside', 'recall-closing', 'leave-inside', 'intern-stop-inside', 'intern-arrives-in-its-break', 'seat-arrives-in-its-break', 'intern-leave-resync', 'snack-then-restroom', 'restroom-then-snack',
-        'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
+        'reload-inside', 'reload-inside-viewer', 'reload-queue', 'next-visit', 'no-door', 'back-visit', 'restroom-no-route', 'restroom-feed-down', 'feed-dies-inside',
         'map-removes-door', 'stilled-inside', ...lateNames];
 
     return {

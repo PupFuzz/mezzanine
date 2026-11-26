@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Fleet\InternSpecies;
 use App\Fold\Fold;
+use App\Ingest\Counters;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 /**
  * `docs/design/FLEET-STATE.md § 2.1`'s **fold** process: a long-lived supervised daemon, polling
@@ -27,6 +30,8 @@ class FoldCommand extends Command
         $max = $this->option('max-passes') !== null ? (int) $this->option('max-passes') : null;
         $passes = 0;
 
+        $this->seedInternSpecies();
+
         do {
             $applied = $fold->pass();
             $passes++;
@@ -45,5 +50,35 @@ class FoldCommand extends Command
         } while (true);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * card#13258's deploy window, closed before the first claim: `bin/deploy.sh` migrates before it restarts the
+     * daemons, so the previous release's worker can insert open dispatch rows after the migration's backfill and
+     * allocate them nothing. This worker is the only one running (`bin/supervision.sh`'s `flock -n`) and has written
+     * nothing yet, so `InternSpecies::seed()` — the migration's own backfill — is the one writer of those rows here.
+     *
+     * ⛔ A THROW HERE NEVER STOPS THE FOLD. The seed's rows are a rendering fact; the fold is the plane's
+     * derivation, and a worker that died on its seed would freeze every seat to give a few interns a body. So it is
+     * logged and counted (`intern_species_seed_failed`, § 7.2), the interns it did not reach render `null` — FLOOR.md
+     * § 9 F14 — and the worker folds. A store too broken for the count to be written is one the first pass fails on
+     * too.
+     */
+    private function seedInternSpecies(): void
+    {
+        try {
+            $written = InternSpecies::seed();
+        } catch (\Throwable $e) {
+            Log::error('mezzanine.fold: the intern species seed failed, so any open intern it did not reach has no '
+                .'species and renders as missing art (F14); the fold proceeds: '.$e->getMessage());
+            Counters::global(InternSpecies::SEED_FAILED);
+
+            return;
+        }
+
+        if ($written['open'] !== [] || $written['closed'] > 0) {
+            Log::info(sprintf('mezzanine.fold: the intern species seed gave %d open and %d closed dispatch call(s) a species.',
+                count($written['open']), $written['closed']));
+        }
     }
 }

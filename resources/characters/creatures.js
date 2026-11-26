@@ -1110,7 +1110,7 @@ const APPROVED = {
   },
   raccoon: {
     kind: 'animal', label: 'raccoon-ish', added: 'card#12796',
-    pals: [['#8a7f78', '#efe9e2', '#3a3236'], ['#9a8a7a', '#f2ebe0', '#45362e'], ['#7a7470', '#e9e6e2', '#2e2a2c'], ['#a89a86', '#f6efe2', '#4f4034'], ['#857a84', '#efe8ee', '#3a3040']],
+    pals: [['#8a7f78', '#efe9e2', '#3a3236'], ['#9a8a7a', '#f2ebe0', '#45362e'], ['#7a7470', '#e9e6e2', '#2e2a2c'], ['#a89a86', '#f6efe2', '#4f4034'], ['#7d6878', '#efe8ee', '#3a3040']],
     hats: ['beanie', 'beret', 'straw', 'flower', 'ladybug'], necks: ['scarf', 'neckerchief', 'bow'], extras: ['glasses', 'satchel', 'mug', 'book'],
     shape: {
       profiles: {
@@ -1832,42 +1832,19 @@ export const SPECIES_FIELD = 'species:s3';
 
 /**
  * The species a key draws — since card#12443 the server's PREFERENCE for a seat (D2 § 6.13 allocates the body it
- * delivers, starting from this draw) and the harness's own sheet; the painter never draws a seat from it. An
- * intern's key (`seat~<call_id>`, § 10.4) never draws its seat's body: `internSpeciesOf()` below, handed here the
- * seat key's own draw, which is what a sheet with nothing delivered shows.
+ * delivers, starting from this draw) and the harness's own sheet; the painter never draws a seat or an intern from it.
+ * An intern key (`seat~<call_id>`, § 10.4) is a key like any other here: its body on a floor is its own delivered
+ * `subagents[].species` (card#13258), and this is what a sheet with nothing delivered shows.
  * @param {string} key @returns {string}
  */
 export function speciesOf(key) {
-  const own = pick(key, SPECIES_FIELD, SPECIES_KEYS);
-  const cut = key.indexOf('~');
-
-  if (cut < 0) {
-    return own;
-  }
-
-  return internSpeciesOf(key, speciesOf(key.slice(0, cut)));
-}
-
-/**
- * The species an intern draws beside a seat whose body is `seatSpecies` — on a floor, the seat's DELIVERED species
- * (`character.species`, card#12443), never the seat key's own draw. Its own draw, and where that lands on the seat's
- * body, a re-draw under a field of its own over the other species: a pure function of the intern's key and that one
- * value (decision 54), reading no sibling.
- * @param {string} key the intern key `seat~<call_id>` @param {string} seatSpecies @returns {string}
- */
-export function internSpeciesOf(key, seatSpecies) {
-  const own = pick(key, SPECIES_FIELD, SPECIES_KEYS);
-
-  if (own !== seatSpecies) {
-    return own;
-  }
-
-  return pick(key, 'species-redraw', SPECIES_KEYS.filter((s) => s !== seatSpecies));
+  return pick(key, SPECIES_FIELD, SPECIES_KEYS);
 }
 
 /**
  * A key's recipe: one independent draw per named field (seed.js's `draw`). `force` is the species to draw the body as —
- * a seat's DELIVERED species (`character.species`, card#12443) — and every other field is still the key's own draw.
+ * a seat's or an intern's DELIVERED species (`character.species`, card#12443; `subagents[].species`, card#13258) — and
+ * every other field is still the key's own draw.
  * A forced species this tree does not hold is a throw naming it, which the painter draws as FLOOR.md § 9 F14's
  * placeholder; it never falls back to the key's own body.
  */

@@ -16,6 +16,12 @@
  * file writes them and decides none. The name is a link to the desk's drill-down, and a plain click opens the panel in
  * place, as the 2-D floor's desks do; focusing it is handed to the renderer, which moves the camera's target to it.
  *
+ * ⛔ THE STATUS AND THE BUBBLE STAND BESIDE THEIR SITTER, ON THE VIEWER's RIGHT: each anchor carries a reach
+ * (`floor-world.js`'s `anchorPoint()`), its point is moved that far along the camera's right on every frame (`place()`),
+ * and its element stands on the point by the corner the anchor's `pin` names — the status hanging from it, the bubble
+ * standing on it — so each begins clear of the body from every side the camera orbits to and the two never cover each
+ * other. Every other label is centred on its point.
+ *
  * ⛔ LABELS THAT WOULD OVERLAP ARE CULLED, NEVER REMOVED (plan § 3.7: stage 1's `cullOverlaps()`, reused): after each
  * render the drawn labels' boxes are read off the stage and the cull keeps, in `PRIORITY`'s order and the desks' reading
  * order within it, each label that overlaps none already kept; a culled label is made transparent and lets the pointer
@@ -29,11 +35,20 @@
  *
  * ⛔ A PRESS ON A LABEL IS THE LABEL's: the container stops a pointer press from reaching the camera's controls, which
  * would otherwise capture the pointer and swallow the link's click.
+ *
+ * ⛔ THE ELEVATOR IS A CONTROL (`FLOOR.md` § 4.5, as on the 2-D floor): while the world has a band, the layer's FIRST
+ * element — the band is the room's back, first in reading order — is the doorway's button, `role="button"`, a tab stop
+ * with an accessible name and `data-key="elevator"` (the page's focus target after a ride), standing at the doorway's
+ * centre. A click on it, Enter and Space each call the page's `ride` once; it says `aria-disabled` while a ride is in
+ * flight (`riding()`), when the screen refuses the press; focusing it moves the camera's target to the doorway, as a
+ * desk's name does to its desk. It shows only while it holds the keyboard's focus and lets the pointer through: a
+ * pointer's press on the doorway is the renderer's (`floor-paint.js`), read off the drawn doorway itself.
  */
 
 import { CSS2DObject } from '../vendor/three/examples/jsm/renderers/CSS2DRenderer.js';
 import { anchorPoint } from '../floor/floor-world.js';
 import { cullOverlaps, readingOrder } from '../building/stack-model.js';
+import { ELEVATOR_NAME } from '../floor/cab-paint.js';
 
 /** Which labels win a contended place on the stage, first to last: every desk's name, then its status, chip, bubble, facts. */
 const PRIORITY = Object.freeze(['name', 'status', 'chip', 'bubble', 'facts']);
@@ -63,17 +78,42 @@ function linesOf(label) {
  *
  * @param {HTMLElement} container
  * @param {object} group the scene's `Group` the label objects stand in
- * @param {{select: function(string): void, link: function(string): string, focused: function(object): void}} hooks
- *        open a desk's panel, the desk's drill-down URL, and a desk's name label taking focus (the world's desk)
+ * @param {{select: function(string): void, link: function(string): string,
+ *          focused: function({x: number, z: number}, string): void, ride: function(): void}} hooks
+ *        open a desk's panel, the desk's drill-down URL, a control taking focus — the point on the floor it stands over
+ *        and what it is (a desk's seat, the elevator) — and the elevator's press
  */
-export function floorLabels(container, group, { select, link, focused }) {
+export function floorLabels(container, group, { select, link, focused, ride }) {
     const document = container.ownerDocument;
     /** `idOf()` → `{ object, element, lines, desk, kind }` */
     const held = new Map();
     /** the held labels' ids in document order */
     let order = [];
+    /** the slab the labels' anchors stand on, the world's */
+    let slab = null;
 
     container.addEventListener('pointerdown', (event) => event.stopPropagation());
+
+    const elevator = document.createElement('div');
+    const elevatorObject = new CSS2DObject(elevator);
+    /** the doorway the control stands at, the world's (`band.elevator`) */
+    let doorway = null;
+
+    elevator.className = 'floor3d-label floor3d-elevator';
+    elevator.dataset.key = 'elevator';
+    elevator.tabIndex = 0;
+    elevator.setAttribute('role', 'button');
+    elevator.setAttribute('aria-label', ELEVATOR_NAME);
+    elevator.textContent = 'Elevator';
+    elevator.addEventListener('click', () => ride());
+    // A `role="button"` activates on Enter and on Space; Space's default would scroll the page.
+    elevator.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            ride();
+        }
+    });
+    elevator.addEventListener('focus', () => focused({ x: doorway.x + doorway.w / 2, z: doorway.z }, 'the elevator'));
 
     const make = (label, desk) => {
         const element = document.createElement(label.kind === 'name' ? 'a' : 'div');
@@ -87,19 +127,26 @@ export function floorLabels(container, group, { select, link, focused }) {
                 event.preventDefault();
                 select(desk.seat_id);
             });
-            element.addEventListener('focus', () => focused(held.get(idOf(label)).desk));
+            element.addEventListener('focus', () => {
+                const { slab, seat_id: seat } = held.get(idOf(label)).desk;
+
+                focused({ x: (slab.left + slab.right) / 2, z: (slab.back + slab.front) / 2 }, seat);
+            });
         }
 
         const object = new CSS2DObject(element);
 
+        // the point of its box the world stands on the anchor's point (`PIN`)
+        object.center.set(label.anchor.pin.x, label.anchor.pin.y);
+
         group.add(object);
 
-        return { object, element, lines: null, desk, kind: label.kind, raised: null };
+        return { object, element, lines: null, desk, kind: label.kind, raised: null, anchor: label.anchor };
     };
 
     const write = (entry, label) => {
         const lines = linesOf(label);
-        const sig = JSON.stringify([lines, label.lit ?? null, label.render_state ?? null]);
+        const sig = JSON.stringify([lines, label.render_state ?? null]);
 
         if (sig === entry.lines) {
             return;
@@ -121,10 +168,6 @@ export function floorLabels(container, group, { select, link, focused }) {
 
                 return line;
             }));
-        }
-
-        if (label.kind === 'status') {
-            element.dataset.lit = label.lit;
         }
 
         if (label.kind === 'chip') {
@@ -152,10 +195,33 @@ export function floorLabels(container, group, { select, link, focused }) {
 
     return {
         /**
-         * The world's labels, held: each written, stood at its anchor and in its place in the container's order; a label
-         * the world no longer carries is removed.
+         * The world's labels, held: each written, given its anchor (stood there by `place()`, each frame) and in its place
+         * in the container's order — after the elevator's control, while the world has a band; a label the world no longer
+         * carries is removed.
          */
         sync(world) {
+            doorway = world.band?.elevator ?? null;
+            slab = world.slab;
+
+            if (doorway === null) {
+                group.remove(elevatorObject);
+                elevator.remove();
+            } else {
+                // re-adding a child removes it first, and `CSS2DObject` takes its element out of the page on a removal —
+                // which would drop the keyboard's focus on every paint
+                if (elevatorObject.parent !== group) {
+                    group.add(elevatorObject);
+                }
+
+                elevatorObject.position.set(doorway.x + doorway.w / 2, doorway.y + doorway.h / 2, doorway.z);
+
+                if (container.firstElementChild !== elevator) {
+                    container.insertBefore(elevator, container.firstElementChild);
+                }
+            }
+
+            const first = doorway === null ? 0 : 1;
+
             const desks = new Map(world.desks.map((d) => [d.key, d]));
             const raises = new Map(world.effects.filter((e) => e.kind === 'desk' && e.effect.animation_id === 'A11' && e.effect.frames > 0).map((e) => [e.key, e.effect]));
             const desksInOrder = readingOrder(world.desks.map((d) => ({ key: d.key, at: { x: d.slab.left, y: d.slab.back } }))).map((d) => d.key);
@@ -185,17 +251,27 @@ export function floorLabels(container, group, { select, link, focused }) {
                 const entry = held.get(id);
 
                 entry.desk = desk;
+                entry.anchor = label.anchor;
                 write(entry, label);
 
                 if (label.kind === 'facts') {
                     raise(entry, label, raises.get(label.key));
                 }
-                entry.object.position.copy(anchorPoint(world.slab, label.anchor));
 
-                if (container.children[i] !== entry.element) {
-                    container.insertBefore(entry.element, container.children[i] ?? null);
+                if (container.children[first + i] !== entry.element) {
+                    container.insertBefore(entry.element, container.children[first + i] ?? null);
                 }
             });
+        },
+
+        /**
+         * Every label stood at its anchor as the camera whose right is `right` sees it (`anchorPoint()`) — each frame,
+         * before the labels are rendered, so a label beside its sitter stays on the viewer's right as the camera turns.
+         */
+        place(right) {
+            for (const entry of held.values()) {
+                entry.object.position.copy(anchorPoint(slab, entry.anchor, right));
+            }
         },
 
         /** The overlap cull over the labels the last render drew (the header's rule). */
@@ -216,6 +292,15 @@ export function floorLabels(container, group, { select, link, focused }) {
             }
 
             return culled.size;
+        },
+
+        /** A ride in flight, or none: the elevator's control says whether it answers a press. */
+        riding(inFlight) {
+            if (inFlight) {
+                elevator.setAttribute('aria-disabled', 'true');
+            } else {
+                elevator.removeAttribute('aria-disabled');
+            }
         },
 
         /** How many labels are held. */

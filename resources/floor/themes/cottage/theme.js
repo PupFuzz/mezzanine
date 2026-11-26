@@ -33,6 +33,7 @@
 // drawing primitives and where a wall's strips and free ends are, are the themes' shared ones (`../paint.js`).
 
 import { brushes, doc, draw, f, finite, leafPath, mix, pick, rr, stream, wallRuns } from '../paint.js';
+import { dressings3d } from './pieces-3d.js';
 
 /** The paint rules (§ 10.6, the creatures' own): the shade, the highlight and the line colour. */
 export const RULES = Object.freeze({ shade: '#3d2b3c', highlight: '#fff6e6', line: '#3a2420' });
@@ -610,14 +611,15 @@ export function surfaces() {
  * A STANDING SCENERY PIECE (§ 10.6 item 6), at its tile's cell rect, its foot on the cell's floor line, sized by the
  * cell: a painted bookcase, a plant in a woven basket, a tripod floor lamp, a rattan armchair, a knitted pouf, a pile
  * of books, the snack corner's two tea tables (`teaTable()`), the restroom's door (`restroomDoor()`), which the scene
- * hands its `sign` and `plate` rects as well, or one of card#12844's kinds (`moreScenery()`). A kind it does not know
+ * hands its `sign` and `plate` rects as well — and, for a door set into a side wall (card#13033), its `facing`, the `view`
+ * it is drawn for and, in plan, its `doorway` and `leaf` — or one of card#12844's kinds (`moreScenery()`). A kind it does not know
  * draws nothing, as the house theme's does. The floor lamp's light is § 6.3's decorative glow, the painter's; the
  * theme draws no glow of its own.
  *
  * @param {{kind: string, w: number, h: number, seed: string, index: number}} input the kind, the cell's size,
  *        the grid's seed and the cell's index
  */
-export function scenery({ kind, w, h, seed, index, sign = null, plate = null }) {
+export function scenery({ kind, w, h, seed, index, sign = null, plate = null, facing = 'back', view = 'plan', doorway = null, leaf = null }) {
     finite(w, h);
 
     const pen = new Pen();
@@ -743,7 +745,7 @@ export function scenery({ kind, w, h, seed, index, sign = null, plate = null }) 
     } else if (kind === 'snack-table' || kind === 'snack-table-low') {
         s.push(teaTable(pen, SNACK[kind], w, foot));
     } else if (kind === 'restroom-door') {
-        s.push(restroomDoor(pen, w, foot, sign, plate));
+        s.push(restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf }));
     } else {
         s.push(moreScenery(pen, kind, key, w, h, cx, foot, next));
     }
@@ -824,9 +826,30 @@ function floorPlant(pen, key, w, h, cx, foot, next) {
  * empty, and the painter draws the leaf over it and the vacant / occupied field inside the rim. No text, no light,
  * nothing that moves. `sign` and `plate` are the scene's (§ 12's *Restroom plates*), in the cell's px; a rect not handed
  * is not drawn.
+ *
+ * card#13033 — a door set into a SIDE wall is drawn by `view`, as the house theme's is: `plan`, on the wall strip over the
+ * doorway — the recess over the leaf's span, the white jambs and the sill — with the FLAG SIGN on a navy bracket from the
+ * wall face; `flag`, the flag plate alone.
  */
-function restroomDoor(pen, w, foot, sign, plate) {
+function restroomDoor(pen, w, foot, { sign, plate, facing, view, doorway, leaf }) {
     const P = PALETTE['restroom-door'];
+
+    if (facing !== 'back' && view === 'flag') {
+        return flagPlate(pen, plate, sign);
+    }
+
+    if (facing !== 'back') {
+        const inside = facing === 'right' ? doorway.x - 3 : doorway.x + doorway.w;
+        const bracket = facing === 'right' ? plate.x + plate.w : doorway.x + doorway.w;
+
+        return rimmed(`<path d="${rr(doorway.x, doorway.y, doorway.w, doorway.h, 1)}" fill="${pen.face(P.frame, 0.2, 0.16)}" stroke="${line(P.frame)}" stroke-width=".8"/>`
+            + `<path d="${rr(doorway.x, leaf.y, doorway.w, leaf.h, 0.5)}" fill="${pen.v([[0, P.recess], [1, shade(P.recess, 0.3)]])}"/>`
+            + `<path d="${rr(inside, doorway.y, 3, doorway.h, 1)}" fill="${pen.face(P.sill, 0.2, 0.15)}" stroke="${line(P.sill)}" stroke-width=".6"/>`)
+            + [plate.y + 5, plate.y + plate.h - 8].map((y) => `<path d="${rr(bracket, y, 2, 3, 0.5)}" fill="${P.figure}"/>`).join('')
+            + flagPlate(pen, plate, sign);
+    }
+
+    // The head stands 22 px under the tile's top, under the sign plate.
     const top = 22;
     const out = [shadow(pen, w / 2 + 2, foot, w * 0.5, 3, 0.28)];
 
@@ -838,23 +861,45 @@ function restroomDoor(pen, w, foot, sign, plate) {
         + `<path d="${rr(-1, foot - 4, w + 2, 4, 1)}" fill="${pen.face(P.sill, 0.2, 0.15)}" stroke="${line(P.sill)}" stroke-width=".6"/>`));
 
     if (plate !== null) {
-        const { x, y, w: pw, h: ph } = plate;
-        const ink = P.figure;
-        const fig = (fx, skirt) => `<circle cx="${f(fx)}" cy="${f(y + ph * 0.3)}" r="${f(ph * 0.14)}" fill="${ink}"/>`
-            + (skirt
-                ? `<path d="M${f(fx)} ${f(y + ph * 0.46)}L${f(fx + ph * 0.24)} ${f(y + ph * 0.86)}H${f(fx - ph * 0.24)}Z" fill="${ink}"/>`
-                : `<path d="${rr(fx - ph * 0.12, y + ph * 0.46, ph * 0.24, ph * 0.4, ph * 0.08)}" fill="${ink}"/>`);
-
-        out.push(rimmed(`<path d="${rr(x, y, pw, ph, ph / 2)}" fill="${pen.face(P.plate, 0.12, 0.18)}" stroke="${ink}" stroke-width="1.4"/>`
-            + fig(x + pw * 0.36, false) + fig(x + pw * 0.64, true)));
+        out.push(rimmed(`<path d="${rr(plate.x, plate.y, plate.w, plate.h, plate.h / 2)}" fill="${pen.face(P.plate, 0.12, 0.18)}" stroke="${P.figure}" stroke-width="1.4"/>`
+            + pictogram(plate)));
     }
 
     if (sign !== null) {
-        out.push(`<path d="${rr(sign.x - 1.5, sign.y - 1.5, sign.w + 3, sign.h + 3, 3)}" fill="none" stroke="${P.rim}" stroke-width="2"/>`
-            + `<path d="${rr(sign.x - 2.5, sign.y - 2.5, sign.w + 5, sign.h + 5, 3.5)}" fill="none" stroke="${line(P.rim)}" stroke-width=".6"/>`);
+        out.push(signRim(sign));
     }
 
     return out.join('');
+}
+
+/** The restroom pictogram — two round-headed figures side by side, one in a triangle skirt — across `r`, in the plate's navy. */
+function pictogram({ x, y, w: pw, h: ph }) {
+    const ink = PALETTE['restroom-door'].figure;
+    const fig = (fx, skirt) => `<circle cx="${f(fx)}" cy="${f(y + ph * 0.3)}" r="${f(ph * 0.14)}" fill="${ink}"/>`
+        + (skirt
+            ? `<path d="M${f(fx)} ${f(y + ph * 0.46)}L${f(fx + ph * 0.24)} ${f(y + ph * 0.86)}H${f(fx - ph * 0.24)}Z" fill="${ink}"/>`
+            : `<path d="${rr(fx - ph * 0.12, y + ph * 0.46, ph * 0.24, ph * 0.4, ph * 0.08)}" fill="${ink}"/>`);
+
+    return fig(x + pw * 0.36, false) + fig(x + pw * 0.64, true);
+}
+
+/** The slider plate's brass rim round the scene's `sign` rect, where the painter draws the vacant / occupied field. */
+function signRim(sign) {
+    const P = PALETTE['restroom-door'];
+
+    return `<path d="${rr(sign.x - 1.5, sign.y - 1.5, sign.w + 3, sign.h + 3, 3)}" fill="none" stroke="${P.rim}" stroke-width="2"/>`
+        + `<path d="${rr(sign.x - 2.5, sign.y - 2.5, sign.w + 5, sign.h + 5, 3.5)}" fill="none" stroke="${line(P.rim)}" stroke-width=".6"/>`;
+}
+
+/**
+ * card#13033 — THE FLAG SIGN (FLOOR.md § 6.7 item 2): a cream plate in a navy border at `plate`, the pictogram in its upper
+ * 18 px and the slider's rim at `sign` in its lower half — one drawing for the floor page's plan and the door view's `flag`.
+ */
+function flagPlate(pen, plate, sign) {
+    const P = PALETTE['restroom-door'];
+
+    return rimmed(`<path d="${rr(plate.x, plate.y, plate.w, plate.h, 6)}" fill="${pen.face(P.plate, 0.12, 0.18)}" stroke="${P.figure}" stroke-width="1.4"/>`
+        + pictogram({ x: plate.x, y: plate.y, w: plate.w, h: 18 })) + signRim(sign);
 }
 
 /**
@@ -1526,4 +1571,14 @@ function moreScenery(pen, kind, key, w, h, cx, foot, next) {
     }
 
     return s.join('');
+}
+
+/**
+ * § 10.6 item 1's optional `dressing3d` (card#13033): what this theme stands on a kit piece of `kind` in 3-D — the tea
+ * table's cloth, teapot, cake stand and teacups, laid out as `teaTable()` draws them from the same `SNACK` and
+ * `PALETTE` — with the height and depth the kit's table is fitted to, or `null` for a kind it does not dress. This theme
+ * exports no `piece3d`: the kinds the kit lacks are drawn by the house theme's.
+ */
+export function dressing3d(kind, inputs) {
+    return dressings3d(PALETTE, SNACK, kind, inputs);
 }

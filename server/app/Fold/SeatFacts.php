@@ -365,15 +365,26 @@ final class SeatFacts
      * a change in the ninth subagent is still a change to the seat's state even when the wire
      * elides it.
      *
+     * Each with its intern's `species` (card#13258, § 6.13) by a LEFT JOIN on `intern_species`'s primary key:
+     * `null` exactly when the open dispatch row has no row there, which is that section's invariant broken, and
+     * the wire says so rather than inventing a body. The species never moves while the call is open, so it rides
+     * the delta that announces the intern and is never a delta of its own.
+     *
      * @return Collection<int, object>
      */
     public static function openSubagents(int $seatRef): Collection
     {
         return DB::table('calls')
-            ->where('seat_ref', $seatRef)
-            ->whereNull('closed_at')
-            ->where('is_dispatch', true)
-            ->orderByDesc('opened_at')
-            ->get(['call_id', 'title', 'subagent_type', 'activity_state', 'opened_at']);
+            ->leftJoin('intern_species', function ($join): void {
+                $join->on('intern_species.seat_ref', '=', 'calls.seat_ref')->on('intern_species.call_id', '=', 'calls.call_id');
+            })
+            ->where('calls.seat_ref', $seatRef)
+            ->whereNull('calls.closed_at')
+            ->where('calls.is_dispatch', true)
+            ->orderByDesc('calls.opened_at')
+            ->get([
+                'calls.call_id', 'calls.title', 'calls.subagent_type', 'calls.activity_state', 'calls.opened_at',
+                'intern_species.species',
+            ]);
     }
 }

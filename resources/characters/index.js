@@ -12,7 +12,7 @@
 // ⛔ Every entry point returns standalone SVG DOCUMENTS. The painter turns each into a
 // SVG `data:` URI (UTF-8, encodeURIComponent) — this tree carries no URI, and no text naming one.
 
-import { EXPRESSIONS, INTERN_LOOP, SLEEP_LOOP, crestOfKey, headClearOfKey, expressionOf, frameDocument, internSpeciesOf, markerLevel, sleepDocument } from './creatures.js';
+import { EXPRESSIONS, INTERN_LOOP, SLEEP_LOOP, crestOfKey, headClearOfKey, expressionOf, frameDocument, markerLevel, sleepDocument } from './creatures.js';
 import { draw, seatKey } from './seed.js';
 
 export { seatKey, fnv1a32, draw } from './seed.js';
@@ -21,7 +21,7 @@ export { seatKey, fnv1a32, draw } from './seed.js';
 export { BONES, BONE_PARENT, POSES, CLIPS, bodyParts, chibiParts } from './creatures-3d.js';
 export {
   SPECIES, SPECIES_KEYS, SPECIES_FIELD, WITHHELD, EYES, MOUTHS, BLUSH, BROWS, SIZES, STOUT, TILTS, ACCENTS, GREENS,
-  RIM, RIM_W, FOOT, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, internSpeciesOf, recipe, describe, chibiGeometry, frameDocument,
+  RIM, RIM_W, FOOT, SEAT_RECT, SEAT_VIEWBOX, CHIBI_STOOL, CHIBI_VIEWBOX, CHIBI_HEAD_SHARE, speciesOf, recipe, describe, chibiGeometry, frameDocument,
   EYE_K, BROW_K, MOUTH_K, EXPRESSIONS, expressionOf,
   SLEEP_LOOP, SLEEP_ZS, Z_LARGE, Z_A0, Z_A1, Z_RATIO, Z_T0, Z_GAP, Z_TOP, Z_GLOW, Z_HALO, Z_HALO_OPACITY,
   CREST_TOP, STAND_TOP, FACE_TOP, standEntry, crestOfKey, headClearOfKey, MARKER_WEIGHT, MARKER_SPREAD, zLevels, markerLevel, zStand, zLargeFor, sleepDocument,
@@ -64,14 +64,13 @@ export function walkFrames(seatId, species) {
 /**
  * THE INTERN'S CHIBI FRAME — handed the intern key `seat~<call_id>` in the seat's place
  * (`floor/desk-layout.js`'s `internKey()`): the same recipe re-proportioned and upright, its head at least
- * half the drawn height, for the stool's rect. `seatSpecies` is the body the intern must not wear — its seat's
- * DELIVERED species (card#12443), never the seat key's own draw; omitted, the seat key's draw (the sheet).
- * @param {string} internKey @param {string} [seatSpecies] @returns {string} an SVG document
+ * half the drawn height, for the stool's rect. `species` is the body, as `standingFrame()`'s: on a floor the intern's
+ * own DELIVERED `subagents[].species` (card#13258, D2 § 6.13), forced as it is given; omitted, the intern key's own
+ * draw (the sheet).
+ * @param {string} internKey @param {string} [species] @returns {string} an SVG document
  */
-export function chibiFrame(internKey, seatSpecies) {
-  const key = seatKey(internKey);
-  const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);
-  return frameDocument(key, { chibi: true, species });
+export function chibiFrame(internKey, species) {
+  return frameDocument(seatKey(internKey), { chibi: true, species });
 }
 
 /**
@@ -79,13 +78,12 @@ export function chibiFrame(internKey, seatSpecies) {
  * laptop, as `{ frames, loopFrom }` in `poseFrames()`'s shape — `frames[0]` the STILL (A23's reduced-motion form and
  * its form whenever the row draws no motion: the laptop on the lap, no sway) and `frames[1 ..]` the typing sway,
  * `INTERN_LOOP` frames at the loop rate, which a moving render steps from the intern's own `loopOffset()`.
- * `seatSpecies` is `chibiFrame()`'s: the seat's delivered species, which the intern never wears (card#12443).
- * @param {string} internKey @param {string} [seatSpecies]
+ * `species` is `chibiFrame()`'s: the intern's own delivered body.
+ * @param {string} internKey @param {string} [species]
  * @returns {{frames: string[], loopFrom: number}}
  */
-export function internFrames(internKey, seatSpecies) {
+export function internFrames(internKey, species) {
   const key = seatKey(internKey);
-  const species = seatSpecies === undefined ? undefined : internSpeciesOf(key, seatSpecies);
   const frames = [frameDocument(key, { chibi: true, laptop: true, species })];
   for (let i = 0; i < INTERN_LOOP; i++) frames.push(frameDocument(key, { chibi: true, laptop: true, sway: i, species }));
   return { frames, loopFrom: 1 };

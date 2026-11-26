@@ -32,8 +32,8 @@
 import { ANIMATION_SET, LOOP_FPS, SNACK_HELD, loops } from '../wire/animation-set.js';
 import { BAND_H, ELEVATOR, footprintsIntersect, mapDesks, mapGrid, thresholdOf } from './floor-layout.js';
 import { floorTheme } from './floor-theme.js';
-import { PLANE_KINDS, RESTROOM_DOOR, RESTROOM_PLATES, mapTiles, sceneryInput } from './map-tiles.js';
-import { deskSlabs, floorCell, wallBodies } from './floor-walls.js';
+import { PLANE_KINDS, RESTROOM_DOOR, mapTiles, obstaclesOf, planPlates, sceneryInput } from './map-tiles.js';
+import { deskSlabs, floorCell, restroomDoorGeometry, standingAgainst, wallBodies, wallKeys } from './floor-walls.js';
 import { tilesetUrl } from './tileset.js';
 import { BUBBLE_GAP, BUBBLE_MAX_W, BUBBLE_PAD, BUBBLE_TITLE_LINES, CHARACTER_SCALE, LINE, STOOL_FRAME, STOOL_H, STOOL_W, bubbleSeat, characterCentre, characterOverdraw, cloudOutline, deskAnchor, deskLayout, characterAsset, couchFootprints, deskRects, fit, furnitureAsset, internKey, internSolid, seatSolid, stoolSlots, TRAIL_REACH, trailCircles, trailFoot, union, wrap } from './desk-layout.js';
 import { bubbleLayout } from '../desk/task-bubble.js';
@@ -41,6 +41,7 @@ import { CLEARANCE, CLEARANCE_TIERS, blockedFor, cellAt, cellCentre, lattice, po
 import { perchPoint } from './bird.js';
 import { keyOf } from '../wire/seat-key.js';
 import { SNACK_LINES } from './snack-lines.js';
+import { RESTROOM_RETURN_LINES, SNACK_RETURN_LINES } from './return-lines.js';
 
 // The pure readers a page without this module's scene machinery also needs (the cab's door view, card#12987) live
 // in modules that import no animation; each name stays readable from here.
@@ -406,27 +407,31 @@ export function snackDay(draw, key, day, chain = SNACK_CHAIN) {
 /**
  * card#12785 — ONE BREAK (§ 6.6 item 4): the break of walker `key` that begins at absolute second `start` — its dwell,
  * `45 + draw(key, 'snack-dwell:' + start) mod 31` seconds, and its food line, `draw(key, 'snack-line:' + start) mod` the
- * length of `snack-lines.js`'s list (drawn only for a busy walker, § 6.6 item 4) — the character tree's one seeded draw over
- * the walker's key (the seat's, or the intern's `<seat key>~<call_id>`) and the break's own second, so every viewer and
- * every reload draw one break, one dwell and one line.
+ * length of `snack-lines.js`'s list (drawn only for a busy walker, § 6.6 item 4), and its return line (card#13521),
+ * `draw(key, 'snack-return-line:' + start) mod` the length of `return-lines.js`'s snack list — the character tree's one
+ * seeded draw over the walker's key (the seat's, or the intern's `<seat key>~<call_id>`) and the break's own second, so
+ * every viewer and every reload draw one break, one dwell and one line each way.
  */
 export function snackBreak(draw, key, start) {
     return Object.freeze({
         start_s: start,
         dwell_s: SNACK_DWELL_S.min + (draw(key, `snack-dwell:${start}`) % (SNACK_DWELL_S.max - SNACK_DWELL_S.min + 1)),
         line: draw(key, `snack-line:${start}`) % SNACK_LINES.length,
+        return_line: draw(key, `snack-return-line:${start}`) % SNACK_RETURN_LINES.length,
     });
 }
 
 /**
  * card#12786 — ONE RESTROOM BREAK (§ 6.7 item 4): the break of walker `key` that begins at absolute second `start` — its
- * dwell inside, `90 + draw(key, 'restroom-dwell:' + start) mod 61` seconds (§ 12's *Restroom dwell*). Its line is the one
- * fixed string (`RESTROOM_LINE`), so it draws none.
+ * dwell inside, `90 + draw(key, 'restroom-dwell:' + start) mod 61` seconds (§ 12's *Restroom dwell*). Its line out is the
+ * one fixed string (`RESTROOM_LINE`), so it draws none; its return line (card#13521) is `draw(key, 'restroom-return-line:'
+ * + start) mod` the length of `return-lines.js`'s restroom list.
  */
 export function restroomBreak(draw, key, start) {
     return Object.freeze({
         start_s: start,
         dwell_s: RESTROOM_DWELL_S.min + (draw(key, `restroom-dwell:${start}`) % (RESTROOM_DWELL_S.max - RESTROOM_DWELL_S.min + 1)),
+        return_line: draw(key, `restroom-return-line:${start}`) % RESTROOM_RETURN_LINES.length,
     });
 }
 
@@ -732,18 +737,31 @@ export function queueSpacing(character) {
  * door that no waiting walker's feet stand in, and no incoming walker's feet enter while an outgoing one's are in it. As
  * wide as the doorway — `span`, or a seat's drawn body plus both *Walker clearance* side margins where that is wider, so a
  * narrower door widens it rather than shrinks it — centred on `foot`, the doorway's centre on its floor line, and from that
- * line down one drawn body's height (`walkerSize()`), so a walker standing outside it is drawn wholly below the doorway's
- * foot. One lane, sized to the seat, for seats and interns alike. A rect `{x, y, w, h}` in scene px.
+ * line into the room one drawn body's height (`walkerSize()`), so a walker standing outside it is drawn wholly below the
+ * doorway's foot. One lane, sized to the seat, for seats and interns alike.
+ * A rect `{x, y, w, h}` in scene px.
+ *
+ * card#13033: a door set into a SIDE wall (`facing` `right` or `left`) turns the rule with it — `foot` the doorway's centre
+ * on the wall face, the span along the wall, the depth from the face into the room, one body's height `past` the
+ * threshold's line (`restroomLane()` hands it).
  *
  * @param {{x: number, y: number}} foot
  * @param {number} span the doorway's width, px
  * @param {{w: number, h: number}} character the seat character's rect
+ * @param {'back'|'right'|'left'} facing the wall the doorway is in
+ * @param {number} past how far into the room from the doorway's line the threshold's line lies, px — the lane runs one
+ *        drawn body's height past it (0 at a back door and the elevator, whose lane starts on the doorway's line)
  */
-export function doorLane(foot, span, character) {
+export function doorLane(foot, span, character, facing = 'back', past = 0) {
     const body = walkerSize(character);
     const w = Math.max(span, body.w + 2 * CLEARANCE.margin);
+    const depth = past + body.h;
 
-    return Object.freeze({ x: foot.x - w / 2, y: foot.y, w, h: body.h });
+    if (facing === 'back') {
+        return Object.freeze({ x: foot.x - w / 2, y: foot.y, w, h: depth });
+    }
+
+    return Object.freeze({ x: facing === 'right' ? foot.x - depth : foot.x, y: foot.y - w / 2, w: depth, h: w });
 }
 
 /**
@@ -763,14 +781,30 @@ export function elevatorLane(band, character) {
 /**
  * card#12841 — § 12's *RESTROOM LANE* (§ 6.7 item 3 rule 2; the operator's answer to § 14 item 47 Q3, 2026-11-04: the same
  * etiquette at the restroom door): `doorLane()` in front of a restroom door's leaf — its span the leaf's, the recess it
- * fills (`RESTROOM_RECESS`), centred on the leaf at the tile's foot. The door's threshold lies inside it: its centre is
- * within the door's width and at most one lattice cell below the foot, and the lane is wider than the door.
+ * fills (`RESTROOM_RECESS`), centred on the leaf at the tile's foot, one body's height deep. The door's threshold lies
+ * inside it: its centre is within the door's width and at most one lattice cell below the foot, and the lane is wider than
+ * the door.
  *
- * @param {{x: number, y: number, w: number, h: number}} door the door's tile rect, scene px
+ * card#13033 — a door set into a SIDE wall: its span the doorway's, centred on the doorway's centre line along the wall,
+ * from the wall face into the room to one body's height PAST THE THRESHOLD's line (*Elevator lane*'s *from the threshold's
+ * floor line*, which at a back door is the doorway's own line and at a side door lies the wall's halo into the room). A
+ * side door with no threshold serves nobody and has no lane.
+ *
+ * @param {{x: number, y: number, w: number, h: number, facing: string, face: ?number, doorway: ?object}} door the door's
+ *        tile rect, scene px, and its geometry (`restroomDoorGeometry()`)
+ * @param {?{x: number, y: number}} threshold the door's threshold
  * @param {{w: number, h: number}} character the seat character's rect
  */
-export function restroomLane(door, character) {
-    return doorLane({ x: door.x + RESTROOM_RECESS.x + RESTROOM_RECESS.w / 2, y: door.y + door.h }, RESTROOM_RECESS.w, character);
+export function restroomLane(door, threshold, character) {
+    if (door.facing === 'back') {
+        return doorLane({ x: door.x + RESTROOM_RECESS.x + RESTROOM_RECESS.w / 2, y: door.y + door.h }, RESTROOM_RECESS.w, character);
+    }
+
+    if (threshold === null) {
+        return null;
+    }
+
+    return doorLane({ x: door.face, y: door.doorway.y + door.doorway.h / 2 }, door.doorway.h, character, door.facing, Math.abs(door.face - threshold.x));
 }
 
 /**
@@ -1324,16 +1358,41 @@ export function buildScene(frame, input) {
         return grid === null || f === null ? null : { x: f.x, y: f.y, w: f.width, h: f.height, cell: { w: grid.tilewidth, h: grid.tileheight } };
     });
     const landingAt = extents.findLastIndex((e, i) => e !== null && holds(grids[i], e));
-    // The walkable model's obstacles (§ 6.2's walk note item 3): every `wall` tile and every standing kind's tile, at
-    // the rect the floor would draw it, read from the map's cells — whether or not the theme draws them.
+    // Each drawn grid's cells, in tile order — read once, for the walls, the obstacles and the scenery alike.
+    const cellsByGrid = new Map(grids.flatMap((g, i) => (extents[i] === null ? [] : [[g, mapTiles(g.map, g.origin, tilesetFor, g.install_id)]])));
+
+    // ── The standing walls (`floor-walls.js`): every `wall` cell an `edge` or a `partition` of its footprint, as the cab's
+    // door view stands them — what the 3-D floor's world lifts (`floor-world.js`), and what a restroom door's facing is read
+    // off (card#13033) before any scenery is drawn. A floor whose every room is mapless draws no room grid (F16), and so no
+    // wall.
+    const wallGridOf = new Map(grids.flatMap((g, i) => (extents[i] === null ? [] : [[g, {
+        map: g.map,
+        origin: g.origin,
+        footprint: { x: extents[i].x, y: extents[i].y, width: extents[i].w, height: extents[i].h },
+        room: g.install_id !== null,
+        seed: g.seed,
+        cells: cellsByGrid.get(g),
+    }]])));
+    const wallGrids = [...wallGridOf.values()];
+    const wallCell = wallGrids.some((g) => g.room) ? floorCell(wallGrids) : null;
+    const walls = wallCell === null ? [] : wallBodies(wallGrids, (g) => g.cells, wallCell, deskSlabs(wallGrids, wallCell));
+    // The same bodies as keys, which rule W reads each standing piece's wall off (`standingAgainst()`).
+    const wallSet = wallKeys(walls);
+    // card#13033 (§ 6.7 item 2): each restroom door's geometry from the wall it is set into, once per door, read by the
+    // obstacles, the door, its scenery and the painter. A floor with no room grid stands no wall, so its doors face `back`.
+    const doorGeometry = new Map(grids.flatMap((g) => (cellsByGrid.get(g) ?? []).filter((c) => c.kind === RESTROOM_DOOR.kind).map((c) => {
+        const wg = wallGridOf.get(g);
+
+        return [c, restroomDoorGeometry(c, wg, walls, wallCell ?? mapGrid(wg.map).tileheight)];
+    })));
+    const geometryOf = (cell) => doorGeometry.get(cell);
+    // The walkable model's obstacles (§ 6.2's walk note item 3): `obstaclesOf()`'s, over every drawn grid's cells.
     const obstacles = [];
     // card#12749 (§ 6.6 items 2 and 3): the snack corner's tables, read off the map by kind like every standing tile —
     // the client never finds a place for one — whether or not the theme draws them.
     const snackTables = [];
-    // card#12786 (§ 6.7 items 2 and 3): the restroom doors, read off the map by kind the same way.
+    // card#12786 (§ 6.7 items 2 and 3): the restroom doors, read off the map by kind the same way, each with its geometry.
     const restroomDoors = [];
-    // Each drawn grid's cells, in tile order — what the walls below are read from without tiling a map twice.
-    const cellsByGrid = new Map();
 
     grids.forEach((g, i) => {
         const extent = extents[i];
@@ -1342,21 +1401,17 @@ export function buildScene(frame, input) {
             return;
         }
 
-        const cells = mapTiles(g.map, g.origin, tilesetFor, g.install_id);
+        const cells = cellsByGrid.get(g);
 
-        cellsByGrid.set(g, cells);
+        obstacles.push(...obstaclesOf(cells, standing, geometryOf));
 
         for (const c of cells) {
-            if (c.kind === 'wall' || standing.includes(c.kind)) {
-                obstacles.push(Object.freeze({ x: c.x, y: c.y, w: c.w, h: c.h }));
-            }
-
             if (SNACK_TABLES[c.kind] !== undefined && standing.includes(c.kind)) {
                 snackTables.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index }));
             }
 
             if (c.kind === RESTROOM_DOOR.kind && standing.includes(c.kind)) {
-                restroomDoors.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index }));
+                restroomDoors.push(Object.freeze({ id: `${g.install_id ?? ''}#${c.layer ?? ''}#${c.index}`, room: g.install_id, kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, index: c.index, geometry: geometryOf(c) }));
             }
         }
         const of = (kind) => tileRegions(cells.filter((c) => c.kind === kind))
@@ -1390,15 +1445,24 @@ export function buildScene(frame, input) {
                 continue;
             }
 
-            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', sceneryInput(cell, g.seed));
+            const door = cell.kind === RESTROOM_DOOR.kind ? geometryOf(cell) : null;
+            const doc = docOf(`theme:${theme.name}/scenery:${cell.kind}`, 'scenery', sceneryInput(cell, g.seed, door));
 
             if (doc === null) {
                 continue;
             }
 
             const decoration = typeof cell.properties?.decoration === 'string' ? cell.properties.decoration : null;
+            // card#13033: a side door's document is drawn at its drawing box over the wall (`draw`); the cell rect stays the
+            // piece's, which the 3-D floor stands.
+            const side = door !== null && door.facing !== 'back' ? { facing: door.facing, draw: door.draw } : {};
+            // Rule W (plan § 15.3): the wall a piece stands against, which the 3-D floor turns and stands it by; the snack
+            // tables (their visitors stand at the tile's corners) and the door (its own geometry) keep their placement.
+            const standsBy = cell.kind !== RESTROOM_DOOR.kind && SNACK_TABLES[cell.kind] === undefined
+                ? standingAgainst(cell, wallGridOf.get(g), wallSet, wallCell ?? mapGrid(g.map).tileheight)
+                : {};
 
-            scenery.push(Object.freeze({ room: g.install_id, kind: cell.kind, x: cell.x, y: cell.y, w: cell.w, h: cell.h, decoration, doc }));
+            scenery.push(Object.freeze({ room: g.install_id, kind: cell.kind, x: cell.x, y: cell.y, w: cell.w, h: cell.h, decoration, doc, ...side, ...standsBy }));
 
             // § 6.3's decorative glow — a floor lamp's — the painter's, inside the tile of the piece it lights.
             if (decoration !== null) {
@@ -1418,20 +1482,6 @@ export function buildScene(frame, input) {
             }
         }
     });
-
-    // ── The standing walls (`floor-walls.js`): every `wall` cell an `edge` or a `partition` of its footprint, as the cab's
-    // door view stands them — what the 3-D floor's world lifts (`floor-world.js`), and nothing the 2-D painter reads. A
-    // floor whose every room is mapless draws no room grid (F16), and so no wall.
-    const wallGrids = grids.flatMap((g, i) => (extents[i] === null ? [] : [{
-        map: g.map,
-        origin: g.origin,
-        footprint: { x: extents[i].x, y: extents[i].y, width: extents[i].w, height: extents[i].h },
-        room: g.install_id !== null,
-        seed: g.seed,
-        cells: cellsByGrid.get(g),
-    }]));
-    const wallCell = wallGrids.some((g) => g.room) ? floorCell(wallGrids) : null;
-    const walls = wallCell === null ? [] : wallBodies(wallGrids, (g) => g.cells, wallCell, deskSlabs(wallGrids, wallCell));
 
     // ── Desks: inside their slots, the later `id` on top; F21's notices per room ──────────────
     const desks = [];
@@ -1689,9 +1739,9 @@ export function buildScene(frame, input) {
  * still drawn at its desk (`recalled`: the held field left `SNACK_HELD` — a recall walks it home, § 6.6 item 5), and
  * whether it is BUSY (`busy`: its held state is `working` — the seat's `render_state`, the intern's `activity_state` —
  * card#12785, whose walker carries a food thought); `schedule(key, fromS, toS)`, `snackBreaks()` over the scene's seeded
- * draw; `thought(line, effect)`, the food thought's bubble laid out for `snack-lines.js`'s line `line` over a trip's
- * walker; and `plan(walker, break,
- * taken)`, the trip itself.
+ * draw; `thoughts(effect)`, a trip's two bubbles over its walker (`tripThoughts()`) — its food line from
+ * `snack-lines.js` and its return line from `return-lines.js` (card#13521); and `plan(walker, break, taken)`, the trip
+ * itself.
  *
  * `plan()` answers `null` where the floor holds no table of the walker's height (a plain floor, nothing to narrate),
  * `{ no_route }` where no such table can be reached (narrated once by the screen for a desk inside a room's grid),
@@ -1771,7 +1821,7 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 call_id: stool.call_id,
                 slot: stool.slot,
                 intern_seat_key: internKey(desk.seat_id, stool.call_id),
-                seat_species: model.species ?? null,
+                species: stool.species ?? null,
                 activity_state: stool.activity,
                 anchor: slotFoot(desk, stool.slot, box, character),
                 in_room: desk.slot_rect !== null,
@@ -1850,16 +1900,17 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
                 cause: null,
                 install_id: w.install_id,
                 seat_id: w.seat_id,
-                ...(intern
-                    ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, seat_species: w.seat_species, slot: w.slot }
-                    : { species: w.species }),
+                species: w.species,
+                ...(intern ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, slot: w.slot } : {}),
                 walker_key: w.key,
                 leg_kind: 'snack',
                 start_s: schedule.start_s,
                 dwell_s: schedule.dwell_s,
                 // card#12785: the break's food line, an index into `snack-lines.js`'s list — drawn only while the walker
-                // is busy, which the screen reads off the walker each render (`thought` on the effect it hands the painter).
+                // is busy, which the screen reads off the walker each render (`thought` on the effect it hands the painter);
+                // card#13521: its return line, an index into `return-lines.js`'s snack list, under the same condition.
                 line: schedule.line,
+                return_line: schedule.return_line,
                 table: best.t.id,
                 table_kind: best.t.kind,
                 spot: Object.freeze({ table: best.t.id, index: k, at: s.at, spacing }),
@@ -1882,7 +1933,7 @@ function snackCorner(tables, desks, models, anchors, walking, input, box) {
         tables: Object.freeze(ordered),
         walkers: Object.freeze(walkers),
         schedule: (key, fromS, toS) => (draw === null ? [] : snackBreaks(draw, key, fromS, toS)),
-        thought: (line, effect) => snackThought(SNACK_LINES[line], input.measure, effect),
+        thoughts: (effect) => tripThoughts(SNACK_LINES[effect.line], SNACK_RETURN_LINES[effect.return_line], input.measure, effect),
         plan,
         spot: (tableId, k) => {
             const t = ordered.find((x) => x.id === tableId);
@@ -1907,10 +1958,11 @@ const NO_SPOT = Object.freeze({ full: true });
 /**
  * card#12786 — THE RESTROOM DOOR OF ONE SCENE (FLOOR.md § 6.7 items 2–5): `doors`, the map's restroom doors, each with its
  * threshold (`null` where none is open) and the rects the painter draws its leaf, its field and its occupant at; `schedule
- * (key, fromS, toS)`, the walker's restroom chain (`snackBreaks()` under `RESTROOM_CHAIN`); `thought(effect)`, the restroom
- * line's bubble over a visit's walker; `spot(doorId, k)`; and `plan(walker, break, { from, taken, turn, clear })`, the
- * visit — `turn(doorId)` the frame, from the visit's start, the door is free for it, and `clear(doorId)` (card#12841) the
- * frame every walker who came out of it before is clear of its lane (§ 12's *Restroom lane*, each door's `lane`).
+ * (key, fromS, toS)`, the walker's restroom chain (`snackBreaks()` under `RESTROOM_CHAIN`); `thoughts(effect)`, a visit's
+ * two bubbles over its walker (`tripThoughts()`) — the restroom line and its return line (card#13521); `spot(doorId, k)`;
+ * and `plan(walker, break, { from, taken, turn, clear })`, the visit — `turn(doorId)` the frame, from the visit's start,
+ * the door is free for it, and `clear(doorId)` (card#12841) the frame every walker who came out of it before is clear of
+ * its lane (§ 12's *Restroom lane*, each door's `lane`).
  *
  * The walkers are the snack corner's (`snack.walkers`), each with its `restroom_eligible` hold. `plan()` answers `null`
  * where the floor holds no door (or reduced motion, or no seeded draw), `{ no_route }` where no door's threshold can be
@@ -1942,8 +1994,50 @@ function restroomDoor(doors, snack, walking, input, box) {
 
         return blockedFor(grid, { key: null, anchor: centre }, CLEARANCE_TIERS[0])[c[1] * grid.cols + c[0]] === 0;
     };
+    // card#13033 — a SIDE door's: beside the doorway's centre line, *Walker clearance*'s depth plus 1 px into the room from
+    // the wall face, snapped; where that cell is not open at `clear`, the next cell on its row into the room that is, no
+    // deeper than one drawn body's height from the face — the search STOPPING at the first blocked cell past the wall's own
+    // halo (centre farther than half the body plus the side margin from the face), which is another piece's or a desk's:
+    // a visitor never stands on the far side of it. None, no threshold.
+    const sideThresholdOf = (d) => {
+        const g = d.geometry;
+        const inward = g.facing === 'right' ? -1 : 1;
+        const yc = g.doorway.y + g.doorway.h / 2;
+        const start = cellAt(grid, { x: g.face + inward * (CLEARANCE.depth + 1), y: yc });
+
+        if (start === null) {
+            return null;
+        }
+
+        for (let col = start[0]; col >= 0 && col < grid.cols; col += inward) {
+            const c = [col, start[1]];
+            const from = Math.abs(cellCentre(grid, c).x - g.face);
+
+            if (from > seat.h) {
+                return null;
+            }
+
+            if (clearAt(c)) {
+                return Object.freeze(cellCentre(grid, c));
+            }
+
+            if (from > seat.w / 2 + CLEARANCE.margin) {
+                return null;
+            }
+        }
+
+        return null;
+    };
     const thresholdOf = (d) => {
-        const under = grid === null ? null : cellAt(grid, { x: d.x + d.w / 2, y: d.y + d.h + CLEARANCE.depth + 1 });
+        if (grid === null) {
+            return null;
+        }
+
+        if (d.geometry.facing !== 'back') {
+            return sideThresholdOf(d);
+        }
+
+        const under = cellAt(grid, { x: d.x + d.w / 2, y: d.y + d.h + CLEARANCE.depth + 1 });
 
         if (under === null) {
             return null;
@@ -1967,15 +2061,29 @@ function restroomDoor(doors, snack, walking, input, box) {
         return first === null ? null : Object.freeze({ x: first.centre.x, y: first.centre.y });
     };
     const clear = snack.tables.map((t) => snack.spot(t.id, 0)?.at ?? null).filter((p) => p !== null);
-    const at = (d, r) => Object.freeze({ x: d.x + r.x, y: d.y + r.y, w: r.w, h: r.h });
-    const placed = ordered.map((d) => Object.freeze({
-        ...d,
-        threshold: thresholdOf(d),
-        sign: at(d, RESTROOM_PLATES.sign),
-        plate: at(d, RESTROOM_PLATES.plate),
-        recess: at(d, RESTROOM_RECESS),
-        lane: restroomLane(d, character),
-    }));
+    const at = (o, r) => Object.freeze({ x: o.x + r.x, y: o.y + r.y, w: r.w, h: r.h });
+    // Each door's rects in scene px: a `back` door's on its tile; a side door's on its drawing box (§ 12's *Restroom
+    // plates*), its leaf the painter's bar over the doorway. `recess` is the tile's face-on recess on every door: a back
+    // door's leaf stands in it, and a side door's leaf in 3-D takes its heights (`floor-world.js`). A side door's `sign`
+    // and `plate` stand its flag at its heights over the foot line, which the 3-D floor lifts; `field` is where this page's
+    // painter draws the slider's field, on the plan's flag lowered onto the doorway (`planPlates()`) — a back door's `sign`.
+    const placed = ordered.map(({ geometry, ...d }) => {
+        const p = geometry.plates;
+        const box = geometry.draw ?? d;
+        const threshold = thresholdOf({ ...d, geometry });
+
+        return Object.freeze({
+            ...d,
+            facing: geometry.facing,
+            threshold,
+            sign: at(box, p.sign),
+            plate: at(box, p.plate),
+            field: at(box, geometry.facing === 'back' ? p.sign : planPlates(p).sign),
+            recess: at(d, RESTROOM_RECESS),
+            ...(geometry.facing === 'back' ? {} : { face: geometry.face, doorway: geometry.doorway, bar: at(box, p.leaf) }),
+            lane: restroomLane({ ...d, ...geometry }, threshold, character),
+        });
+    });
     const spotsOf = new Map();
     // Spot 0 is the threshold; spots 1, 2, … are `spotsNear()`'s from it — which skips the threshold, inside the lane, so
     // it is passed as a `clear` point to keep the waiting spots *Queue spacing* from the walker standing there.
@@ -2086,13 +2194,14 @@ function restroomDoor(doors, snack, walking, input, box) {
             cause: null,
             install_id: w.install_id,
             seat_id: w.seat_id,
-            ...(intern
-                ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, seat_species: w.seat_species, slot: w.slot }
-                : { species: w.species }),
+            species: w.species,
+            ...(intern ? { intern_key: w.key, call_id: w.call_id, intern_seat_key: w.intern_seat_key, slot: w.slot } : {}),
             walker_key: w.key,
             leg_kind: 'restroom',
             start_s: brk.start_s,
             dwell_s: brk.dwell_s,
+            // card#13521: the walk back's line, an index into `return-lines.js`'s restroom list.
+            return_line: brk.return_line,
             restroom: d.id,
             threshold: thr,
             // card#12841: the door's lane, which the holder reads this walker's way out of (`laneFrame()`).
@@ -2127,7 +2236,7 @@ function restroomDoor(doors, snack, walking, input, box) {
     return Object.freeze({
         doors: Object.freeze(placed),
         schedule: (key, fromS, toS) => (draw === null ? [] : snackBreaks(draw, key, fromS, toS, RESTROOM_CHAIN)),
-        thought: (effect) => snackThought(RESTROOM_LINE, input.measure, effect),
+        thoughts: (effect) => tripThoughts(RESTROOM_LINE, RESTROOM_RETURN_LINES[effect.return_line], input.measure, effect),
         plan,
         spot: (doorId, k) => {
             const d = placed.find((x) => x.id === doorId);
@@ -2135,6 +2244,27 @@ function restroomDoor(doors, snack, walking, input, box) {
             return d === undefined ? null : spots(d)(k);
         },
     });
+}
+
+/**
+ * card#13521 — A TRIP's TWO BUBBLES (FLOOR.md § 6.6 item 4, § 6.7 item 4): `thought`, the one its walker carries out and
+ * at its spot or door (`out`), and `return_thought`, the one it carries on its walk home (`back`), each laid out by
+ * `snackThought()`. The painters choose between them by the walker's time (`thoughtAt()`).
+ */
+function tripThoughts(out, back, measure, effect) {
+    return Object.freeze({ thought: snackThought(out, measure, effect), return_thought: snackThought(back, measure, effect) });
+}
+
+/**
+ * card#13521 — THE BUBBLE A WALKER CARRIES `ms` INTO ITS EFFECT (FLOOR.md § 6.6 item 4, § 6.7 item 4): its `return_thought`
+ * from the first frame of its walk home — a trip's last leg — and its `thought` before it; `null` for an effect that
+ * carries neither. The one reading both painters make: the 2-D painter at each glide's walk's first frame, the 3-D floor
+ * at the walker's time each frame.
+ */
+export function thoughtAt(effect, ms) {
+    const home = effect.legs[effect.legs.length - 1];
+
+    return (ms >= home.start * effect.frame_interval_ms ? effect.return_thought : effect.thought) ?? null;
 }
 
 /**
@@ -2820,8 +2950,9 @@ function internWalks(row, base, frame, interns, band, moving, character, box, wa
             anchor,
             leg_kind: kind,
             activity_state: element.activity_state ?? null,
-            // card#12443: the body the intern must not wear — its seat's delivered species.
-            seat_species: frame.desks.desks[seat]?.species ?? null,
+            // card#13258: the intern's own delivered body, read off the element itself — for a departure the PREVIOUS
+            // seat object's element (`advanceSlots()`'s `lost`), which the current frame's desk no longer holds.
+            species: element.species ?? null,
             lattice_key: walking.key,
             size: INTERN_SIZE,
             frame: Object.freeze({ w: STOOL_FRAME, h: STOOL_H }),

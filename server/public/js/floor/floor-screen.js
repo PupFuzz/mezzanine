@@ -72,7 +72,7 @@
  * machine is `wire/ride.js`'s `Ride`, which the lobby screen holds too (card#12113: one ride, one module); this
  * screen constructs it with what is the floor's own — `endsRide()`, the departure's one ending predicate; the
  * stop the page stands at, its floor's key and name; and the stops' source, `plates()` of the composed floors,
- * re-derived on every frame — and asks it on every frame for `frame.ride` (`rideFrame()`) and `scene.ride`
+ * re-derived on every frame, each floor's `href` its route on the page's kind (`floorRoute()`) — and asks it on every frame for `frame.ride` (`rideFrame()`) and `scene.ride`
  * (`sceneRide()`, the leaves and the view behind the cab's doors, with the floor's model behind them attached by
  * `floor/door-views.js`, whose press-time fetches wake the page as they land: card#12987). The press is accepted
  * only on a frame that drew a scene, and the arrival flag `arriveByRide()` records is consumed by the first render that draws one,
@@ -106,6 +106,25 @@ import { keyOf } from '../wire/seat-key.js';
 
 /** § 9 F17: what the floors a screen still holds are labelled while the last request failed. */
 export const LAST_KNOWN_LAYOUT = 'last known layout';
+
+/** A trip's walker that carries no thought, out or home (card#13521: `scene.js`'s `tripThoughts()` shape). */
+const NO_THOUGHTS = Object.freeze({ thought: null, return_thought: null });
+
+/** The path segments each route kind puts between the floor's segment and the seat's (§ 4.4): the 3-D floor's `3d`. */
+export const ROUTE_SEGMENTS = Object.freeze({ '2d': Object.freeze([]), '3d': Object.freeze(['3d']) });
+
+/**
+ * § 4.4's floor-page URL on a route kind — `/floor/{floor}`, `/floor/{floor}/3d`, each with `/{seat}` after it when a
+ * desk is open. The one statement of the shape: the page writes its address with it, and the cab's stops on a floor
+ * page take their route from it, so a ride begun on the 3-D floor arrives on the destination's 3-D floor.
+ *
+ * @param {'2d'|'3d'} route
+ * @param {string} floor
+ * @param {string|null} seat
+ */
+export function floorRoute(route, floor, seat) {
+    return `/${['floor', floor, ...ROUTE_SEGMENTS[route], ...(seat === null ? [] : [seat])].map(encodeURIComponent).join('/')}`;
+}
 
 /**
  * § 4.4's floor segment, resolved against the composed floors by ONE precedence (card#13117, § 4.4):
@@ -261,8 +280,8 @@ export class FloorScreen {
      * @param {object} building a `wire/building.js` `Building` — the layout and each room's map
      * @param {{now: function(): number}} clock the browser's own clock
      * @param {object} log `wire/animation-log.js`'s `createAnimationLog()`
-     * @param {object} [options] `{ floor, seat, reduce, local_time, surface, wake }` —
-     *        `local_time` reads the VIEWER's civil time and exists because a build host has one time
+     * @param {object} [options] `{ floor, seat, route, reduce, local_time, surface, wake }` —
+     *        `route` the page's route kind, `'2d'` or `'3d'` (`floorRoute()`); `local_time` reads the VIEWER's civil time and exists because a build host has one time
      *        zone and § 4.2's sky has four phases; the viewer's own `Date` is the default. `surface`
      *        (required) is the drawing's size in CSS px, any positive size (§ 4.5). `wake` is the
      *        page's render request, asked each time a ride's press-time fetch answers (card#12987).
@@ -283,8 +302,10 @@ export class FloorScreen {
         this.#camera = createCamera(options.surface);
         this.#room = new RoomClock(clock, options.local_time);
 
-        // The cab's stops — the plaques, which the ride offers and whose floors the door view draws.
-        const stops = () => plates(this.#snapshotShape(), this.#building.floors, null, this.#building.authored);
+        // The cab's stops — the plaques, which the ride offers and whose floors the door view draws — each floor's `href`
+        // its route on this page's kind (§ 4.5): the ride arrives on the route kind it began on.
+        const stops = () => plates(this.#snapshotShape(), this.#building.floors, null, this.#building.authored)
+            ?.map((plate) => ({ ...plate, href: floorRoute(options.route, plate.floor, null) })) ?? null;
 
         this.#ride = new Ride({
             clock,
@@ -830,13 +851,14 @@ export class FloorScreen {
         // stops.
         const walkers = new Map((plain.snack?.walkers ?? []).map((w) => [w.key, w]));
         // card#12786 (§ 6.7 item 4): every restroom visitor, busy or idle, carries the restroom line from its walk out to its
-        // walk home — none on a recall's walk home, which is no break.
+        // walk home — none on a recall's walk home, which is no break. card#13521: each trip that carries a thought out
+        // carries its return line home beside it (`thoughts()`), the painters switching at the walk home's first frame.
         const current = this.#inFlight.current(now).map((fx) => (fx.animation_id === 'A10' && typeof fx.intern_key === 'string'
             ? Object.freeze({ ...fx, held_activity: heldOf(fx) })
             : fx.animation_id === 'A25'
-                ? Object.freeze({ ...fx, thought: fx.leg_kind === 'snack' && walkers.get(fx.walker_key)?.busy === true ? plain.snack.thought(fx.line, fx) : null })
+                ? Object.freeze({ ...fx, ...(fx.leg_kind === 'snack' && walkers.get(fx.walker_key)?.busy === true ? plain.snack.thoughts(fx) : NO_THOUGHTS) })
                 : fx.animation_id === 'A26'
-                    ? Object.freeze({ ...fx, thought: fx.leg_kind === 'restroom' ? plain.restroom.thought(fx) : null })
+                    ? Object.freeze({ ...fx, ...(fx.leg_kind === 'restroom' ? plain.restroom.thoughts(fx) : NO_THOUGHTS) })
                     : fx));
         // card#12786: each restroom door's leaf and field at this instant, in frames from `doors_at` — the painter's.
         const doorsNow = this.#inFlight.restroomDoors(now);

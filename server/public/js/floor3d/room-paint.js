@@ -9,40 +9,55 @@
  * picture from the scene, as the painter draws them, so A17's room tick is a cut — the picture drawn again.
  *
  * ⛔ WHAT MOVES IN THE ROOM IS THE SCENE's, STEPPED A FRAME AT A TIME FROM THE PAINT (plan § 3.5's A1, A2, A5, A15 and A26
- * rows): the elevator's two leaves — boxes over the doorway in front of the cab's dark interior, as wide as the walks'
- * leaf timeline says (`floorWorld()`'s `doors`, read by `leafLevel()`), narrowing toward the frame as the 2-D leaves do;
+ * rows): the elevator's two leaves — boxes over the doorway, as wide as the walks' leaf timeline says (`floorWorld()`'s
+ * `doors`, read by `leafLevel()`) or, while the viewer's ride holds them (`scene.ride`, § 4.5), as the ride's phase says
+ * (`cab-paint.js`'s `rideLeafLevel()`, the table the 2-D leaves are drawn from, moving continuously and not at the loop's
+ * rate), narrowing toward the frame as the 2-D leaves do, in front of the cab's room, which stands behind the band's open
+ * doorway (`cabGeometry()`) and does not move;
  * each restroom door's leaf over its recess and its slider's field, vacant or occupied, at the scene's rects (§ 6.7 item
- * 2: the leaf and the field are the renderer's, never the theme's); a desk's screen cross-fading from what it showed to
+ * 2: the leaf and the field are the renderer's, never the theme's) — a door set into a side wall its leaf in the wall's
+ * thickness, sliding toward the back jamb, and its field on the flag; a desk's screen cross-fading from what it showed to
  * what it shows over A5's frames (the old picture a second plane, the transient term's); and A15's replay marker sweeping
  * the screen while its held rendering moves (`clip-clock.js`'s `screen`), still at rest otherwise. Under reduced motion
  * each is drawn at its end: the leaves where the timeline leaves them, the screen with no fade.
  *
- * ⛔ THE CUT-AWAY (plan § 3.7): each frame the segment from the eye to the target is tested against the walls and the
- * band (`cutaway()`); every one it meets is lowered to `CUTAWAY_H` over `CUTAWAY_MS` (a cut under reduced motion), and
- * raised again when clear — each wall on its own, an instance of its height's mesh. A desk and a character are never cut.
+ * ⛔ THE CUT-AWAY (plan § 3.7): each frame the segment from the eye to the target is tested against the walls
+ * (`cutaway()`); every one it meets is lowered to `CUTAWAY_H` over `CUTAWAY_MS` (a cut under reduced motion), and
+ * raised again when clear — each wall on its own, an instance of its height's mesh. A side restroom door's LINTEL (a wall
+ * box standing from the door's height, `box.y`) lowers to nothing, and whenever any wall of its column is met. The band
+ * always stands: the eye is held in front of its face (`view-limits.js`'s `confine()`). A desk and a character are
+ * never cut.
  *
  * ⛔ A RASTERISED PICTURE WAKES THE FRAME when it answers (`wake`), so a room drawn before its pictures is drawn again.
+ *
+ * ⛔ THE DOORWAY's HIT AREA (`isDoorway()`): a plane over the elevator's frame, in front of its leaves, that draws
+ * nothing — what a pointer's ray meets for the doorway, its leaves and its opening alike, open or shut.
  */
 
 import {
     BoxGeometry,
+    BufferGeometry,
     CanvasTexture,
+    Color,
+    Float32BufferAttribute,
     Group,
     InstancedMesh,
     Matrix4,
     Mesh,
     MeshBasicMaterial,
-    MeshToonMaterial,
+    Plane,
     PlaneGeometry,
     SRGBColorSpace,
 } from '../vendor/three/three.module.js';
-import { CUTAWAY_H, CUTAWAY_MS, cutaway } from './view-limits.js';
+import { toon } from './toon.js';
+import { CUTAWAY_H, CUTAWAY_MS, cutaway, doorwayView } from './view-limits.js';
 import { rasterise } from './svg-texture.js';
 import { REPLAY_LOOP, heldAt } from './clip-clock.js';
 import { onTerm } from './terms.js';
 import { leafLevel } from '../floor/scene.js';
 import { SKY_PAINT } from '../floor/floor-layout.js';
 import { textureSize } from '../building/stack-model.js';
+import { CAB_SHADE, CAB_STYLE, cabTheme, rideLeafLevel } from '../floor/cab-paint.js';
 
 /** A texture over a canvas, in the sheet's colour space. */
 function textureOf(canvas) {
@@ -55,8 +70,140 @@ function textureOf(canvas) {
 
 /** How narrow a leaf is fully open, a share of its shut width — the 2-D leaves' `scaleX(.12)` (`cab-paint.js`). */
 const LEAF_OPEN = 0.12;
-/** How deep the elevator's leaves and the cab's interior stand in front of the back wall's face, units. */
+/** How deep the elevator's leaves stand in front of the back wall's face, units. */
 const LEAF_DEPTH = 0.03;
+/** A side restroom door's field's thickness, units: a shade thicker than the theme's flag, so both its faces show it. */
+const FIELD_T = 0.012;
+
+/** How far under the cab's ceiling its light's panel hangs, units — clear of the ceiling's own face. */
+const LIGHT_DROP = 0.002;
+
+/**
+ * Each surface of the cab's room by the `CAB_STYLE` class the 2-D cab paints it with, and how deep its shade is at the far
+ * end (`CAB_SHADE`): the side walls' and their kick plates', the floor's, and the ceiling's, which is the far wall's even
+ * shade too. The handrails and the light are unshaded, as the 2-D cab draws them.
+ */
+const CAB_SURFACES = Object.freeze({
+    back: ['cab-back', CAB_SHADE.ceiling],
+    side: ['cab-side', CAB_SHADE.side],
+    kick: ['cab-kick', CAB_SHADE.side],
+    floor: ['cab-floor', CAB_SHADE.floor],
+    ceiling: ['cab-ceiling', CAB_SHADE.ceiling],
+    rail: ['cab-rail', 0],
+    light: ['cab-light', 0],
+});
+
+/**
+ * THE CAB's COLOURS, AS THE 2-D CAB PAINTS THEM: each surface's fill under `CAB_STYLE` (`floor/cab-paint.js`, the colours'
+ * one home), with the house theme's elevator palette carried as `cabTheme()` carries it onto the cab dialog — the band
+ * cab's fallback (`.band-cab`, the sheet's door frame and lamp) answering with none — and the shade's ink
+ * (`.cab-shade-stop`). The page's own style engine computes them, in a hidden shadow tree so the rules reach nothing else
+ * on the page, and each is read back as sRGB bytes through a one-pixel canvas, whatever form the engine writes a mixed
+ * colour in. Answers `read(palette)`: `{ surface: [r, g, b] }` and `ink`.
+ */
+function cabColours(document) {
+    const host = document.createElement('div');
+    const root = host.attachShadow({ mode: 'open' });
+    const cells = Object.values(CAB_SURFACES).map(([cls]) => `<rect class="${cls}"/>`).join('');
+
+    host.hidden = true;
+    root.innerHTML = `<style>${CAB_STYLE}</style><svg><g class="band-cab">${cells}<linearGradient><stop class="cab-shade-stop"/></linearGradient></g></svg>`;
+    document.body.append(host);
+
+    const group = root.querySelector('.band-cab');
+    const pixel = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    const bytes = (colour) => {
+        pixel.clearRect(0, 0, 1, 1);
+        pixel.fillStyle = '#000';
+        pixel.fillStyle = colour;
+        pixel.fillRect(0, 0, 1, 1);
+
+        return [...pixel.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+    };
+    const style = (cls) => document.defaultView.getComputedStyle(root.querySelector(`.${cls}`));
+
+    return (palette) => {
+        cabTheme(group, palette);
+
+        return {
+            surfaces: Object.fromEntries(Object.entries(CAB_SURFACES).map(([name, [cls]]) => [name, bytes(style(cls).fill)])),
+            ink: bytes(style('cab-shade-stop').stopColor),
+        };
+    };
+}
+
+/**
+ * THE CAB's ROOM AS ONE GEOMETRY (one draw call): the world's `cab` (`floorWorld()`'s band) moved by `offset` into the
+ * band's frame — the floor, the ceiling, the far wall and the two side walls, each turned to face INTO the room so it is
+ * drawn from inside and seen through from outside (the room is open above, as the floor is); the kick plates the side walls'
+ * feet; the light's panel just under the ceiling; and the handrails and their posts as boxes. Each vertex carries its
+ * surface's colour (`colours`, `cabColours()`'s) shaded toward the ink by its depth into the room, as the 2-D cab's
+ * overlays shade each surface from the open front to the far wall.
+ */
+function cabGeometry(cab, offset, colours) {
+    const { room, kick, light } = cab;
+    const [x0, x1, y1, z0, z1] = [room.x, room.x + room.w, room.h, room.z, room.z + room.d];
+    const positions = [];
+    const tints = [];
+    const linear = new Color();
+    const tint = (surface, z) => {
+        const [base, far] = [colours.surfaces[surface], CAB_SURFACES[surface][1]];
+        const k = (far * (z1 - z)) / room.d;
+        const [r, g, b] = base.map((c, i) => (c + (colours.ink[i] - c) * k) / 255);
+
+        linear.setRGB(r, g, b, SRGBColorSpace);
+
+        return [linear.r, linear.g, linear.b];
+    };
+    // A quad of `corners` turned to face along `want`, in `surface`'s colour.
+    const quad = (surface, corners, want) => {
+        const [a, b, c] = corners;
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        const v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        const turned = n[0] * want[0] + n[1] * want[1] + n[2] * want[2] < 0 ? [...corners].reverse() : corners;
+
+        for (const p of [0, 1, 2, 0, 2, 3].map((i) => turned[i])) {
+            positions.push(p[0] - offset.x, p[1], p[2] - offset.z);
+            tints.push(...tint(surface, p[2]));
+        }
+    };
+    // A box's six faces, each facing out.
+    const box = (surface, { x, y, z, w, h, d }) => {
+        const [xa, xb, ya, yb, za, zb] = [x, x + w, y, y + h, z, z + d];
+
+        quad(surface, [[xa, ya, za], [xa, ya, zb], [xa, yb, zb], [xa, yb, za]], [-1, 0, 0]);
+        quad(surface, [[xb, ya, za], [xb, ya, zb], [xb, yb, zb], [xb, yb, za]], [1, 0, 0]);
+        quad(surface, [[xa, ya, za], [xb, ya, za], [xb, ya, zb], [xa, ya, zb]], [0, -1, 0]);
+        quad(surface, [[xa, yb, za], [xb, yb, za], [xb, yb, zb], [xa, yb, zb]], [0, 1, 0]);
+        quad(surface, [[xa, ya, za], [xb, ya, za], [xb, yb, za], [xa, yb, za]], [0, 0, -1]);
+        quad(surface, [[xa, ya, zb], [xb, ya, zb], [xb, yb, zb], [xa, yb, zb]], [0, 0, 1]);
+    };
+
+    quad('floor', [[x0, 0, z0], [x1, 0, z0], [x1, 0, z1], [x0, 0, z1]], [0, 1, 0]);
+    quad('ceiling', [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], [0, -1, 0]);
+    quad('back', [[x0, 0, z0], [x1, 0, z0], [x1, y1, z0], [x0, y1, z0]], [0, 0, 1]);
+
+    for (const [x, into] of [[x0, 1], [x1, -1]]) {
+        quad('kick', [[x, 0, z0], [x, 0, z1], [x, kick, z1], [x, kick, z0]], [into, 0, 0]);
+        quad('side', [[x, kick, z0], [x, kick, z1], [x, y1, z1], [x, y1, z0]], [into, 0, 0]);
+    }
+
+    const ly = y1 - LIGHT_DROP;
+
+    quad('light', [[light.x, ly, light.z], [light.x + light.w, ly, light.z], [light.x + light.w, ly, light.z + light.d], [light.x, ly, light.z + light.d]], [0, -1, 0]);
+
+    for (const part of [...cab.rails, ...cab.posts]) {
+        box('rail', part);
+    }
+
+    const geometry = new BufferGeometry();
+
+    geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new Float32BufferAttribute(tints, 3));
+
+    return geometry;
+}
 
 /** The screen's picture, px. */
 const SCREEN = Object.freeze({ w: 256, h: 160 });
@@ -73,28 +220,30 @@ const SCREEN = Object.freeze({ w: 256, h: 160 });
  * @param {object} ctx.room the group the planes, band and screens stand in (the `fixed` term)
  * @param {object} ctx.walls the group the walls stand in
  * @param {function(): object} ctx.art the art modules, once the page has them
+ * @param {function(): ({frame: string, lamp: string}|null)} ctx.cabPalette the house theme's elevator palette, or `null`
  */
-export function floorRoom({ document, renderer, cssColour, reduce, wake, room, walls: wallGroup, art }) {
+export function floorRoom({ document, renderer, cssColour, reduce, wake, room, walls: wallGroup, art, cabPalette }) {
     let world = null;
+    /** the viewer's ride as the last paint read it (`scene.ride`), or `null` */
+    let ride = null;
     let paintedAt = 0;
     /** the scene's loop rate, frames a second — the rate every frame count this file reads is in */
     let loopFps = 4;
 
     // ── the walls and the cut-away ─────────────────────────────────────────────────────────────
     const wallBox = new BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5);
-    /** wall id → `{ mesh, index, box, h }`, `h` the height it is drawn at now */
+    /** wall id → `{ mesh, index, box, h, column }`, `h` the height it is drawn at now, `column` a lintel's door's wall ids */
     let walls = new Map();
     let wallMeshes = [];
     /** the wall ids the walls were last stood for — a map edit that moves a wall stands them again */
     let stoodWalls = null;
     let band = null;
-    let bandH = 1;
     let lastStep = null;
     // The walls in the theme's door-view partition colour (`PALETTE.view`, which every theme carries), set on each paint.
-    const wallMaterial = new MeshToonMaterial();
+    const wallMaterial = toon();
 
     const placeWall = (w) => {
-        const m = new Matrix4().makeTranslation(w.box.x, 0, w.box.z).multiply(new Matrix4().makeScale(w.box.w, w.h, w.box.d));
+        const m = new Matrix4().makeTranslation(w.box.x, w.box.y, w.box.z).multiply(new Matrix4().makeScale(w.box.w, w.h, w.box.d));
 
         w.mesh.setMatrixAt(w.index, m);
         w.mesh.instanceMatrix.needsUpdate = true;
@@ -110,9 +259,10 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         const dt = lastStep === null ? 0 : now - lastStep;
         const rate = reduce ? Infinity : dt / CUTAWAY_MS;
         let moving = false;
-        const toward = (h, full, lowered) => {
-            const goal = lowered ? CUTAWAY_H : full;
-            const step = Math.min(Math.abs(goal - h), (full - CUTAWAY_H) * rate);
+        // Toward `full`, or lowered to `low`, at the rate that covers the way between in `CUTAWAY_MS`.
+        const toward = (h, full, lowered, low = CUTAWAY_H) => {
+            const goal = lowered ? low : full;
+            const step = Math.min(Math.abs(goal - h), (full - low) * rate);
             const next = h + Math.sign(goal - h) * step;
 
             moving ||= next !== goal;
@@ -123,7 +273,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         lastStep = now;
 
         for (const [id, w] of walls) {
-            const h = toward(w.h, w.box.h, cut.has(id));
+            // A lintel stands above `CUTAWAY_H`, so a stub of it would float: it lowers to nothing, and with its whole
+            // column, so the eye through any of that wall sees the doorway open and no lintel over a lowered wall.
+            const h = w.column === null
+                ? toward(w.h, w.box.h, cut.has(id))
+                : toward(w.h, w.box.h, cut.has(id) || w.column.some((c) => cut.has(c)), 0);
 
             if (h !== w.h) {
                 w.h = h;
@@ -132,8 +286,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         }
 
         if (band !== null) {
-            bandH = toward(bandH * world.band.h, world.band.h, cut.has('band')) / world.band.h;
-            band.scale.y = bandH;
+            clipCab(eye);
         }
 
         return moving;
@@ -148,6 +301,9 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         wallMeshes = [];
         walls = new Map();
 
+        // each lintel's column: the wall a side door is set into (`floorWorld()`'s `restroom_doors[].wall`)
+        const columns = new Map(world.restroom_doors.filter((d) => d.facing !== 'back').flatMap((d) => d.wall.map((id) => [id, d.wall])));
+
         for (const kind of ['edge', 'partition']) {
             const of = world.walls.filter((w) => w.kind === kind);
 
@@ -158,7 +314,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             const mesh = onTerm(new InstancedMesh(wallBox, wallMaterial, of.length), 'walls');
 
             of.forEach((w, index) => {
-                const held = { mesh, index, box: w.box, h: w.box.h };
+                const held = { mesh, index, box: w.box, h: w.box.h, column: w.box.y > 0 ? columns.get(w.id) ?? null : null };
 
                 walls.set(w.id, held);
                 placeWall(held);
@@ -193,7 +349,7 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         picture.height = height;
 
         const texture = textureOf(picture);
-        const mesh = onTerm(new Mesh(geometry, new MeshToonMaterial({ map: texture })), 'fixed');
+        const mesh = onTerm(new Mesh(geometry, toon({ map: texture })), 'fixed');
 
         draw(picture).then(() => {
             texture.needsUpdate = true;
@@ -288,6 +444,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
                 }
 
                 await put(doc(1 + b.windows.length));
+
+                // The doorway through the elevator's surround is open: the cab's room stands behind it (`alphaTest`).
+                const e = at(b.elevator);
+
+                g.clearRect(e.x * k, e.y * k, e.w * k, e.h * k);
                 await put(doc(2 + b.windows.length));
 
                 const cl = b.clock;
@@ -314,9 +475,9 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
                     }
                 }
             });
+            band.material.alphaTest = 0.5;
             band.position.set(world.band.x, 0, world.band.z);
-            band.scale.y = bandH;
-            // The doorway's cab and leaves stand on the band, so the cut-away lowers them with it.
+            // The doorway's cab and leaves stand on the band, in its frame.
             band.add(doorway);
             room.add(band);
             roomParts.push(band);
@@ -325,26 +486,68 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
 
     // ── the elevator's leaves and the cab behind them ─────────────────────────────────────────
     const doorBox = new BoxGeometry(1, 1, 1).translate(0.5, 0.5, 0.5);
-    const leafMaterial = new MeshToonMaterial({ color: cssColour('--door') || '#dbe5ee' });
-    const cabMaterial = new MeshBasicMaterial({ color: cssColour('--scene-ink') || '#3b2f2a' });
+    const leafMaterial = toon({ color: cssColour('--door') || '#dbe5ee' });
+    // The cab is lit by its own light, not the floor's: unlit, as the 2-D cab's flat fills and overlays are. It is clipped
+    // to what its doorway shows (`clipCab()`), so it never stands over or beside the band, which it lies behind.
+    const cabClip = [new Plane(), new Plane(), new Plane(), new Plane()];
+    const cab = onTerm(new Mesh(new BufferGeometry(), new MeshBasicMaterial({ vertexColors: true, clippingPlanes: cabClip })), 'fixed');
     const doorway = new Group();
-    const cab = onTerm(new Mesh(doorBox, cabMaterial), 'fixed');
     const leaves = [onTerm(new Mesh(doorBox, leafMaterial), 'fixed'), onTerm(new Mesh(doorBox, leafMaterial), 'fixed')];
+    // on no term's layer and never drawn: it is the pointer's
+    const hit = new Mesh(new PlaneGeometry(1, 1).translate(0.5, 0.5, 0), new MeshBasicMaterial({ visible: false }));
+    const readCab = cabColours(document);
+    let cabKey = null;
+    /** The cab's colours as the page resolved them (`cabColours()`), for the browser leg. */
+    let cabRead = null;
 
-    doorway.add(cab, ...leaves);
+    doorway.add(cab, ...leaves, hit);
 
-    /** The doorway's boxes at frame `f` of the walks' leaf timeline: the cab's interior, and each leaf as wide as it is shut. */
-    const placeDoorway = (f) => {
+    /** The doorway's hit area over its frame; and the cab's room for the world's band in the elevator palette, built again when either changes. */
+    const standCab = () => {
+        const frame = world.band.elevator;
+
+        hit.position.set(frame.x - world.band.x, frame.y, LEAF_DEPTH * 2);
+        hit.scale.set(frame.w, frame.h, 1);
+
+        const palette = cabPalette();
+        const key = JSON.stringify([world.band.cab, world.band.x, world.band.z, palette]);
+
+        if (key === cabKey) {
+            return;
+        }
+
+        cabKey = key;
+        cab.geometry.dispose();
+        cabRead = readCab(palette);
+        cab.geometry = cabGeometry(world.band.cab, world.band, cabRead);
+    };
+
+    /** THE CAB SEEN ONLY THROUGH ITS DOORWAY (`doorwayView()`), from `eye`: its open front, the band always standing. */
+    const clipCab = (eye) => {
+        const r = world.band.cab.room;
+        const view = doorwayView(eye, { x: r.x, y: r.y, z: r.z + r.d, w: r.w, h: r.h });
+
+        cab.visible = view !== null;
+
+        for (const [k, { normal, constant }] of (view ?? []).entries()) {
+            cabClip[k].normal.set(normal.x, normal.y, normal.z);
+            cabClip[k].constant = constant;
+        }
+    };
+
+    /**
+     * The doorway's leaves, each as wide as it is shut: `open`, the ride's (0 shut to 1 open), or else at frame `f` of the
+     * walks' leaf timeline.
+     */
+    const placeDoorway = (f, open) => {
         const at = (r, z, depth) => [r.x - world.band.x, r.y, z, r.w, r.h, depth];
         const set = (mesh, [x, y, z, w, h, d]) => {
             mesh.position.set(x, y, z);
             mesh.scale.set(w, h, d);
         };
-        const shut = 1 - (1 - LEAF_OPEN) * leafLevel(world.doors, f);
+        const shut = 1 - (1 - LEAF_OPEN) * (open ?? leafLevel(world.doors, f));
         const [left, right] = world.band.leaves;
 
-        // the cab's dark interior fills the doorway the two leaves close
-        set(cab, at({ x: left.x, y: left.y, w: right.x + right.w - left.x, h: left.h }, 0.002, LEAF_DEPTH * 0.5));
         // the left leaf narrows toward the frame's left, the right toward its right (`.elevator-leaf`'s transform origins)
         set(leaves[0], at({ ...left, w: left.w * shut }, LEAF_DEPTH * 0.5, LEAF_DEPTH));
         set(leaves[1], at({ ...right, x: right.x + right.w * (1 - shut), w: right.w * shut }, LEAF_DEPTH * 0.5, LEAF_DEPTH));
@@ -371,18 +574,35 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
         }));
     };
 
-    /** Each restroom door at frame `f` of its timeline: its leaf as wide as it is shut, from its recess's left, and its field. */
+    /**
+     * Each restroom door at frame `f` of its timeline: its leaf as long as it is shut and its field, vacant or occupied. A
+     * `back` door's leaf narrows from its recess's left; a side door's stands in the wall's thickness and slides into the
+     * wall toward the back jamb (its box's least `z`), and its field lies on the flag, a shade thicker than the plate so
+     * both faces show it.
+     */
     const placeRestroom = (f) => {
         for (const { leaf, field, door } of restroom.values()) {
-            const r = door.recess;
             const shut = 1 - (1 - LEAF_OPEN) * leafLevel(door.leaf, f);
             const inside = door.occupied.some((o) => f >= o.start && f < o.start + o.frames);
+            const s = door.sign;
 
-            leaf.position.set(r.x, r.y, door.at.z + 0.006);
-            leaf.scale.set(r.w * shut, r.h, LEAF_DEPTH);
-            // in front of the theme's sign plate, which the field is drawn on
-            field.position.set(door.sign.x, door.sign.y, door.at.z + 0.034);
-            field.scale.set(door.sign.w, door.sign.h, 0.01);
+            if (door.facing === 'back') {
+                const r = door.recess;
+
+                leaf.position.set(r.x, r.y, door.at.z + 0.006);
+                leaf.scale.set(r.w * shut, r.h, LEAF_DEPTH);
+                // in front of the theme's sign plate, which the field is drawn on
+                field.position.set(s.x, s.y, door.at.z + 0.034);
+                field.scale.set(s.w, s.h, 0.01);
+            } else {
+                const b = door.bar;
+
+                leaf.position.set(b.x, b.y, b.z);
+                leaf.scale.set(b.w, b.h, b.d * shut);
+                field.position.set(s.x, s.y, s.z - FIELD_T / 2);
+                field.scale.set(s.w, s.h, FIELD_T);
+            }
+
             field.material = inside ? occupied : vacant;
         }
     };
@@ -549,11 +769,12 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
          */
         paint(worldIn, sceneIn, colour, at) {
             world = worldIn;
+            ride = sceneIn.ride ?? null;
             paintedAt = at;
             loopFps = sceneIn.loop_fps;
             wallMaterial.color.set(colour);
 
-            const wallKey = world.walls.map((w) => w.id).join(' ');
+            const wallKey = world.walls.map((w) => `${w.id}@${w.box.y}`).join(' ');
 
             if (wallKey !== stoodWalls) {
                 stoodWalls = wallKey;
@@ -561,6 +782,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             }
 
             standRoom(sceneIn);
+
+            if (world.band !== null) {
+                standCab();
+            }
+
             standRestroom();
             standScreens();
         },
@@ -582,7 +808,11 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             const waits = [placeScreens(since)];
 
             if (world.band !== null) {
-                placeDoorway(f);
+                // the ride's leaves move continuously (§ 12's *Ride door motion*): a frame a display refresh while they do
+                const riding = rideLeafLevel(ride, since);
+
+                placeDoorway(f, riding?.open ?? null);
+                waits.push(riding?.moving ? 0 : null);
             }
 
             placeRestroom(f);
@@ -598,25 +828,47 @@ export function floorRoom({ document, renderer, cssColour, reduce, wake, room, w
             return real.length === 0 ? null : Math.min(...real);
         },
 
-        /** One frame's cut-away at `now` for the eye and the target; true while a wall or the band is still moving. */
+        /** One frame's cut-away at `now` for the eye and the target; true while a wall is still moving. */
         cutaway: applyCutaway,
+
+        /** Whether a pointer's ray met the elevator's doorway (the header's hit area) in `object`. */
+        isDoorway: (object) => object === hit,
 
         /** The loop has stopped: the next frame's tween starts from rest. */
         rested() {
             lastStep = null;
         },
 
-        /** The walls' heights now, by id, and the band's — what the browser leg reads. */
-        heights: () => ({ walls: [...walls].map(([id, w]) => [id, w.h]), band: band === null ? null : bandH * world.band.h }),
+        /** The walls' heights now, by id — what the browser leg reads. */
+        heights: () => ({ walls: [...walls].map(([id, w]) => [id, w.h]) }),
 
         /**
          * What the browser leg reads of the room's moving parts and its at-rest members: each leaf's drawn width against
-         * its shut one, each restroom door's, the screens fading, and the members § 6's fixed term is counted from.
+         * its shut one, each restroom door's, the screens fading, the cab's resolved colours, and the members § 6's fixed
+         * term is counted from.
          */
         inspect: () => ({
             leaves: world === null || world.band === null ? null : leaves.map((l, k) => [l.scale.x, world.band.leaves[k].w]),
-            restroom: [...restroom.values()].map(({ leaf, field, door }) => ({ id: door.id, leaf: [leaf.scale.x, door.recess.w], occupied: field.material === occupied })),
+            restroom: [...restroom.values()].map(({ leaf, field, door }) => ({
+                id: door.id,
+                facing: door.facing,
+                at: door.at,
+                leaf: door.facing === 'back' ? [leaf.scale.x, door.recess.w] : [leaf.scale.z, door.bar.d],
+                // a side door's drawn boxes beside the world's: the leaf's and the field's min corner and size
+                drawn: door.facing === 'back' ? null : { leaf: [...leaf.position.toArray(), ...leaf.scale.toArray()], field: [...field.position.toArray(), ...field.scale.toArray()], bar: door.bar, sign: door.sign },
+                occupied: field.material === occupied,
+            })),
+            // each lintel as drawn: its foot (the instance's translation), its height now and its full height, and whether
+            // a wall of its column is lowered
+            lintels: [...walls].filter(([, w]) => w.column !== null).map(([id, w]) => {
+                const m = new Matrix4();
+
+                w.mesh.getMatrixAt(w.index, m);
+
+                return { id, foot: m.elements[13], y: w.box.y, h: w.h, full: w.box.h, column: w.column.some((c) => walls.get(c)?.column === null && walls.get(c).h < walls.get(c).box.h - 1e-6) };
+            }),
             fading: [...screens.values()].filter((x) => x.fade !== null).length,
+            cab: cabRead,
             members: { planes: world === null ? 0 : world.planes.length, band: band === null ? 0 : 1, screens: screens.size, restroom: restroom.size },
         }),
     };

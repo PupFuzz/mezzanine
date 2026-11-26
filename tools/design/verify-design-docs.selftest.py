@@ -187,6 +187,7 @@ An anchor matching NOTHING is a hard error, never a skip -- that is the false-cl
 directory exists against.  No kind writes the value it perturbs into this file.
 """
 
+import json
 import pathlib
 import re
 import shutil
@@ -906,16 +907,20 @@ PLANTS = [
         "meets `desks` object id",
     ),
     (
-        # card#12786 G-scenery leg 4 over the FILE: the restroom door moved down to the grid's last row, its foot on the
-        # front edge, so the row its threshold would stand on lies outside the grid. The anchor takes the THIRD tile layer's
-        # data (`furniture`) whole, and the `door-down` kind moves the one cell carrying the door's GID -- the tileset's
-        # `restroom-door` tile, read out of the checkout -- five rows down, so the plant stores no GID of its own.
+        # card#12786, card#13033 G-scenery leg 4 over the FILE: a `wall` column painted at x 1,712 (col 214) from row 70 to
+        # the front edge, in front of the door set into the right wall. Its `clear` halo blocks the threshold's row from the
+        # wall's own halo out to x 1,670.25, so the first cell past the wall's band, x 1,732, is the column's and the side
+        # search STOPS there: no threshold. Without the stop the search walks on past the column to (1,668, 628), so this
+        # plant reds only with the stop rule; a column at x 1,688 reds either way (its halo reaches past the search's
+        # depth), and one at x 1,680 leaves (1,732, 628) open -- both measured with `walk-probe.mjs`'s `walks` and `walls`.
+        # The anchor takes the SECOND tile layer's data (`walls`) whole, and the `wall-column` kind writes there the GID
+        # that layer's own first cell carries, so the plant stores no GID of its own.
         "verify-floor.py",
         "resources/floor/default.tmj",
-        r"(\"data\":\[[\s\S]*?\"data\":\[[\s\S]*?\"data\":\[\n)([^\]]*)(\])",
-        "door-down",
-        "the restroom door moved onto the front edge, where no threshold stands, which G-scenery leg 4 must refuse as a "
-        "door that serves nobody (card#12786)",
+        r"(\"data\":\[[\s\S]*?\"data\":\[\n)([^\]]*)(\])",
+        "wall-column",
+        "a wall column in front of the restroom door set into the right wall, past which no visitor stands, which "
+        "G-scenery leg 4 must refuse as a door that serves nobody (card#12786, card#13033)",
         "has no threshold open at `clear`",
     ),
     (
@@ -1197,16 +1202,14 @@ HOLDS = [
 ]
 
 
-def _door_down(rows):
-    """The furniture layer's rows with the restroom door's cell moved five rows down -- its GID read off the tileset."""
-    tsx = (ROOT / "resources/floor/tiles/floor-plane.tsx").read_text()
-    tid = int(re.search(r'<tile id="(\d+)">\s*<properties>\s*<property name="kind" value="restroom-door"/>', tsx).group(1))
-    gid = str(tid + 1)
+def _wall_column(rows, col=214, top=70):
+    """The walls layer's rows with column `col` walled from row `top` to the last row -- the layer's own first GID."""
     lines = rows.split("\n")
     cells = [l.strip().rstrip(",").split(", ") if l.strip() else [] for l in lines]
-    r = next(i for i, c in enumerate(cells) if gid in c)
-    c = cells[r].index(gid)
-    cells[r][c], cells[r + 5][c] = "0", gid
+    data = [i for i, c in enumerate(cells) if c]
+    gid = cells[data[0]][0]
+    for r in data[top:]:
+        cells[r][col] = gid
     return "\n".join("    " + ", ".join(v) + ("," if l.rstrip().endswith(",") else "") if v else l for l, v in zip(lines, cells))
 
 def _box_height():
@@ -1245,8 +1248,10 @@ MUTATIONS = {
     # The first GID the anchored layer places, written at the anchored cell (G-scenery leg 2).
     "piece-cell": lambda m: (m.group(1) + re.search(r'[1-9]\d*', m.group(1)[m.group(1).rindex('"data":['):].replace('"data":[', '', 1)).group(0)
                              if re.search(r'[1-9]', m.group(1)[m.group(1).rindex('"data":['):]) else m.group(1) + m.group(2)) + m.group(3),
-    # card#12786: the restroom door's cell moved five rows down (G-scenery leg 4).
-    "door-down": lambda m: m.group(1) + _door_down(m.group(2)) + m.group(3),
+    # card#13033: a wall column in front of the side door (G-scenery leg 4).
+    "wall-column": lambda m: m.group(1) + _wall_column(m.group(2)) + m.group(3),
+    # card#13033: G-scenery leg 4 keeping a side door's own rect among its blocking rects (the drift check's plant).
+    "keep-door": lambda m: m.group(1) + "blocking = blocking" + m.group(3),
     # The previous object's `x` and `width` are the first of each after the layer's name in
     # group(1); `x + width - 1` is the last pixel column of its half-open span.
     "overlap": lambda m: (m.group(1)
@@ -1441,6 +1446,52 @@ if premise_failures:
 
 failures = []
 print(f"planting against {len(FILES)} tracked files, copied per run\n")
+
+# card#13033 — THE DRIFT CHECK over G-scenery leg 4's copy of the obstacle rule. `verify-floor.py` cannot import
+# `map-tiles.js`'s `obstaclesOf()`, so it restates it; this holds the restatement to the module's own answer over the
+# shipped default: leg 4's status line (the door's facing, its threshold, the blocking rects it searched) against
+# `walk-probe.mjs`'s `restroom` answer (the facing `restroomDoorGeometry()` reads, the threshold over the lattice built on
+# `obstaclesOf()`, and that list's length). Its plant leaves a side door's own rect in leg 4's list, which must move the
+# reading. A drift reds this harness absolutely -- unlike a plant's differential, a copy that disagrees with its module
+# is wrong whatever else the tree carries.
+LEG4 = re.compile(r"G-scenery leg 4 [^\n]*?faces `(\w+)` and has its threshold at \(([\d.]+), ([\d.]+)\), open at `clear` for "
+                  r"the seat's body over (\d+) blocking rects")
+
+
+def leg4_reading(out):
+    m = LEG4.search(out)
+    return None if m is None else (m.group(1), (float(m.group(2)), float(m.group(3))), int(m.group(4)))
+
+
+def probe_reading():
+    proc = subprocess.run(["node", str(ROOT / "server/tests/Feature/Floor/walk-probe.mjs"), str(ROOT / "server/public/js/wire")],
+                          input='{"mode": "restroom"}', capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise SystemExit(f"CONTROL: walk-probe.mjs's `restroom` mode failed, so the drift check has no module answer:\n{proc.stderr[-2000:]}")
+    answer = json.loads(proc.stdout)
+    if len(answer["placed"]) != 1 or answer["placed"][0]["threshold"] is None:
+        raise SystemExit(f"CONTROL: walk-probe.mjs places {len(answer['placed'])} door(s) on the shipped default, or none with a "
+                         f"threshold, so the drift check has nothing to compare")
+    door = answer["placed"][0]
+    return door["facing"], (float(door["threshold"]["x"]), float(door["threshold"]["y"])), answer["obstacles"]
+
+
+KEEP_DOOR = (r"(\n    if facing != \"back\":\n        )(blocking = \[b for b in blocking if b != \(x, y, w_t, h_t\)\])(\n)")
+print("── verify-floor.py G-scenery leg 4 against walk-probe.mjs (card#13033 drift check)")
+_module = probe_reading()
+_copy = leg4_reading(run_verifier("verify-floor.py")[1])
+_kept = leg4_reading(run_verifier("verify-floor.py", ("tools/design/verify-floor.py", KEEP_DOOR, "keep-door"))[1])
+if _copy != _module:
+    failures.append(f"verify-floor.py: G-scenery leg 4 reads {_copy} where walk-probe.mjs, over map-tiles.js's obstaclesOf(), "
+                    f"reads {_module} -- the Python copy of the obstacle rule has drifted from the module")
+    print(f"   ✗ leg 4 {_copy} ≠ the module's {_module}")
+elif _kept == _module:
+    failures.append("verify-floor.py: with a side door's own rect left among leg 4's blocking rects its reading still equals "
+                    "walk-probe.mjs's, so the drift check cannot see the copy drift")
+    print(f"   ✗ the plant (the side door's rect kept) left leg 4's reading at {_kept}")
+else:
+    print(f"   ✓ leg 4 reads {_copy}, the module's own; with the side door's rect kept it reads {_kept}")
+print()
 
 for tool, rel, anchor, kind, what, expect in PLANTS:
     print(f"── {tool}")

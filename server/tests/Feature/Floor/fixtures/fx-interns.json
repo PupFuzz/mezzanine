@@ -237,7 +237,7 @@
         {
           "at_ms": 1000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:15.400Z",
             "install_id": "aimla",
@@ -256,56 +256,64 @@
                   "title": "slice 1",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:15.400Z"
+                  "started_at": "2026-08-23T14:23:15.400Z",
+                  "species": "turtle"
                 },
                 {
                   "call_id": "MCBER9GSAVH650000000000000",
                   "title": "slice 2",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:16.400Z"
+                  "started_at": "2026-08-23T14:23:16.400Z",
+                  "species": "potato"
                 },
                 {
                   "call_id": "6Z4PBH9H12NNE0000000000000",
                   "title": null,
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:17.400Z"
+                  "started_at": "2026-08-23T14:23:17.400Z",
+                  "species": "dragonfruit"
                 },
                 {
                   "call_id": "RJXYYS29R9S370000000000000",
                   "title": "slice 4",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:18.400Z"
+                  "started_at": "2026-08-23T14:23:18.400Z",
+                  "species": "pepper"
                 },
                 {
                   "call_id": "A5P6J2V1EGXH10000000000000",
                   "title": "slice 5",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:19.400Z"
+                  "started_at": "2026-08-23T14:23:19.400Z",
+                  "species": "pig"
                 },
                 {
                   "call_id": "WREE5AKS5R2ZA0000000000000",
                   "title": "slice 6",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:20.400Z"
+                  "started_at": "2026-08-23T14:23:20.400Z",
+                  "species": "rabbit"
                 },
                 {
                   "call_id": "EB7PRKCHWZ6D40000000000000",
                   "title": "slice 7",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:21.400Z"
+                  "started_at": "2026-08-23T14:23:21.400Z",
+                  "species": "cat"
                 },
                 {
                   "call_id": "0Y0YBV59K6AVD0000000000000",
                   "title": "slice 8",
                   "subagent_type": "coder",
                   "activity_state": "working",
-                  "started_at": "2026-08-23T14:23:22.400Z"
+                  "started_at": "2026-08-23T14:23:22.400Z",
+                  "species": "elephant"
                 }
               ],
               "subagents_open": 8,
@@ -316,7 +324,7 @@
         {
           "at_ms": 2000,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.400Z",
             "install_id": "aimla",
@@ -372,56 +380,64 @@
               "title": "slice 1",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:15.400Z"
+              "started_at": "2026-08-23T14:23:15.400Z",
+              "species": "turtle"
             },
             {
               "call_id": "MCBER9GSAVH650000000000000",
               "title": "slice 2",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:16.400Z"
+              "started_at": "2026-08-23T14:23:16.400Z",
+              "species": "potato"
             },
             {
               "call_id": "6Z4PBH9H12NNE0000000000000",
               "title": null,
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:17.400Z"
+              "started_at": "2026-08-23T14:23:17.400Z",
+              "species": "dragonfruit"
             },
             {
               "call_id": "RJXYYS29R9S370000000000000",
               "title": "slice 4",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:18.400Z"
+              "started_at": "2026-08-23T14:23:18.400Z",
+              "species": "pepper"
             },
             {
               "call_id": "A5P6J2V1EGXH10000000000000",
               "title": "slice 5",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:19.400Z"
+              "started_at": "2026-08-23T14:23:19.400Z",
+              "species": "pig"
             },
             {
               "call_id": "WREE5AKS5R2ZA0000000000000",
               "title": "slice 6",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:20.400Z"
+              "started_at": "2026-08-23T14:23:20.400Z",
+              "species": "rabbit"
             },
             {
               "call_id": "EB7PRKCHWZ6D40000000000000",
               "title": "slice 7",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:21.400Z"
+              "started_at": "2026-08-23T14:23:21.400Z",
+              "species": "cat"
             },
             {
               "call_id": "0Y0YBV59K6AVD0000000000000",
               "title": "slice 8",
               "subagent_type": "coder",
               "activity_state": "working",
-              "started_at": "2026-08-23T14:23:22.400Z"
+              "started_at": "2026-08-23T14:23:22.400Z",
+              "species": "elephant"
             }
           ],
           "subagents_open": 9,

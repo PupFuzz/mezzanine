@@ -29,8 +29,9 @@ use Illuminate\Support\Facades\DB;
  * ⛔ CREATING A SEAT ALLOCATES ITS CHARACTER, ONCE (card#12443, `docs/design/FLEET-STATE.md § 6.13`). This is the
  * one application writer of `seats`, so the allocation lives here: the transaction's FIRST statement locks the
  * one-row `species_allocation_lock` mutex, on every path, and a new seat's `species` is chosen by
- * `App\Fleet\CharacterAllocation` over the live population read under it. A re-issue for an existing seat writes
- * no species. One attempt, no retry loop: the mutex row is locked by nothing else, so the allocation's own locks
+ * `App\Fleet\CharacterAllocation` over the characters read under it — the live seats and the open interns. A re-issue for an existing seat writes
+ * no species. One attempt, no retry loop: the mutex row is locked only by seat creations and by
+ * `InternSpecies::seed()` (card#13258), which waits on no lock a creation holds, so the allocation's own locks
  * have no deadlock partner — and a re-issue locks the existing seat's rows in `App\Fleet\SeatLock`'s order, the
  * order every other writer of that pair takes them in, so it waits behind them rather than closing a cycle
  * (card#12461).
@@ -105,7 +106,7 @@ final class SeatTokens
         $written = DB::transaction(function () use ($seatId, $by, $prefix, $hash, $now) {
             // ⛔ THE SPECIES MUTEX IS THE TRANSACTION'S FIRST STATEMENT, ON EVERY PATH (card#12443,
             // docs/design/FLEET-STATE.md § 6.13). Two creations serialise on this one row, which nothing else
-            // locks. FIRST is literal: under REPEATABLE READ the read view every plain read answers from is opened
+            // locks but `InternSpecies::seed()` (card#13258). FIRST is literal: under REPEATABLE READ the read view every plain read answers from is opened
             // by the transaction's first plain read and never refreshed, so a plain read taken above this lock
             // would fix a snapshot from before an allocation that committed while this one waited — and the
             // population read below would allocate that seat's species again.
@@ -199,8 +200,9 @@ final class SeatTokens
     }
 
     /**
-     * The new seat's species, by § 6.13's rules over the live population — read here, under the mutex the
-     * transaction opened with. A new seat is in no room, so it is on no floor: rule 2 has nothing to read
+     * The new seat's species, by § 6.13's rules over every character in the building — the live seats and the open
+     * interns (card#13258, the operator's Q1 (a): a new seat avoids an intern's body as it avoids a seat's) — read
+     * here, under the mutex the transaction opened with. A new seat is in no room, so it is on no floor: rule 2 has nothing to read
      * (operator ruling 2026-11-10, card#13117 § 13 Q6 (a) — *the seat's floor, or nothing while it has none*).
      *
      * The preference key is the `seat_id` alone, the key the client's draw seeds the character from
@@ -211,7 +213,7 @@ final class SeatTokens
     {
         return CharacterAllocation::choose(
             $seatId,
-            CharacterAllocation::livePopulation(),
+            CharacterAllocation::characters(),
             static fn (): array => [],
             SpeciesList::current(),
         );

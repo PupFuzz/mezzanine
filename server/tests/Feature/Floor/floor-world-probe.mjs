@@ -11,9 +11,21 @@
  * off the frame and reds; everything else — the strings, the walkers' points, the heights — is compared with the
  * scene's own elements and `route.js`'s `pointAt()`, which the module must reproduce and does not own.
  *
+ * ⛔ THE STATUS AND THE BUBBLE STAND BESIDE THEIR SITTER (the `beside` leg): each on its sitter's line, reaching the
+ * character's half-width, and stood by `anchorPoint()` that far along the camera's right — on the viewer's right, at its
+ * height — at every twelfth of a turn of the camera; a desk's two at one point above its monitor's top, the status
+ * hanging from it and the bubble standing on it (`PIN`), so neither covers the other; every other label centred on its
+ * point at its desk's depth.
+ *
  * ⛔ A WALKER's POINT IS LEGAL (slice 5, the AT-D3-23/-31/-32/-33/-36 replays): every sampled point a walker stands at
- * on the floor lifts inside the floor and on OPEN lattice — in no wall cell and in no standing piece's cell the scene
- * draws (its decorations aside, which are walked over) — read off the scene's own `walls` and `scenery`.
+ * on the floor, and every restroom threshold a visitor stands at, lifts inside the floor and on OPEN lattice — in none of
+ * the walkable model's obstacles, by its one rule (`map-tiles.js`'s `obstaclesOf()`, imported, never copied) over the
+ * scene's own `walls` and the standing pieces it draws (their decorations aside, which are walked over), so a restroom
+ * door set into a side wall is floor here as it is to the router.
+ *
+ * ⛔ A RESTROOM DOOR SET INTO A SIDE WALL STANDS IN IT (card#13033): its piece at the wall face over the doorway, turned to
+ * face the room with its flag end on the near jamb; its leaf's box in the wall's thickness; its flag and field on the near
+ * jamb's plane; every wall cell of its doorway a lintel from the door's height, named in its column.
  *
  * ⛔ WHAT MOVES OFF A WALKER IS THE SCENE's (slice 5): the elevator's leaf timeline is the walks' door spans, each open
  * after `ELEVATOR_DOOR.open` frames and shut at its end; each restroom door's leaf and field are the scene's timeline at
@@ -34,6 +46,24 @@
  * couch's front edge, its seat's at the foot, and never moves the wrong way or by more between two samples than the seat's
  * height over the front edge's distance from the foot allows for the plan distance between them.
  *
+ * ⛔ THE CAB IS § 12's *CAB INTERIOR* BEHIND THE DOORWAY, AND EVERY RIDER STANDS IN IT (the `cab` leg): the band's cab
+ * room is `CAB`'s fitted to the doorway as the 2-D band cab draws it — its open front the leaves' rect on the band's
+ * face, centred on their seam, its depth `CAB.d` at the door view's `SCALE`, its top at or below the band's; its kick
+ * plates, handrails, posts and light are `CAB_FITTINGS`' inside it, each measure fitted as its axis is.
+ * Every walker sampled along its whole walk stands, in a cab leg, on the cab's floor in front of its far wall, and
+ * everywhere else in front of the band's face — so none is drawn behind the cab's far wall or behind the band outside it.
+ * And it is shown (`walkerAt()`'s `shown`) where the 2-D floor draws it: on the floor, in the cab only inside a cab leg —
+ * an arrival as its leaves open, a boarder until they have shut — and never inside a restroom's door.
+ *
+ * ⛔ A PIECE STANDS AGAINST THE WALL ITS TILE TOUCHES (the `standing` leg, rule W — `docs/design/plan-13033-stage2-3d-floor.md`
+ * § 15.3): every standing piece but the snack tables and the restroom door carries the scene's reading of its wall, the
+ * plan's § 15.4 reading of the shipped default pinned row by row; each such piece's model — the kit's file through
+ * `furniture.js`'s `fitted()`, or every theme's part list through `placedParts()` — lies in plan inside its obstacle rect
+ * reaching to its wall's face, its back on that face (a free piece's front on its foot line), a free piece unturned. A
+ * fixture map with one piece against each wall (the band, also under a picture taller than the room reaches; a partition
+ * behind, one the picture crosses and one in front; the left wall flush, the right a cell off), one in open floor and one
+ * with its foot on a wall run (free) is read through `standingAgainst()` here, as the scene reads it, and lifted.
+ *
  * ⚠ WHAT IT DOES NOT SEE: whether every `wall` cell of a map has a body (the walls are read off the scene, whose
  * `walls` the door view's classification answers; that classification's own coverage is `door-view.selftest.mjs`'s),
  * and whether a route avoids other desks' slots (the scene's walk tests own the route; this probe holds that the world
@@ -41,6 +71,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { registerHooks } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -49,20 +80,92 @@ const floor = join(wire, '..', 'floor');
 const W = await import(pathToFileURL(join(floor, 'floor-world.js')).href);
 const { pointAt } = await import(pathToFileURL(join(floor, 'route.js')).href);
 const { deskSlab } = await import(pathToFileURL(join(floor, 'desk-geometry.js')).href);
-const { ELEVATOR_DOOR, leafLevel } = await import(pathToFileURL(join(floor, 'scene.js')).href);
+const { ELEVATOR_DOOR, SNACK_TABLES, leafLevel } = await import(pathToFileURL(join(floor, 'scene.js')).href);
 const { BIRD_LIFT } = await import(pathToFileURL(join(floor, 'bird.js')).href);
 const { keyOf } = await import(pathToFileURL(join(wire, 'seat-key.js')).href);
 const { COUCH_FOOTPRINT, STOOL_CAP, STOOL_FRAME, couchFootprint } = await import(pathToFileURL(join(floor, 'desk-layout.js')).href);
 const KIT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', 'resources', 'floor', 'models', 'kenney-furniture-kit');
-const { FILES } = await import(pathToFileURL(join(KIT, 'map.js')).href);
+const { DRESSED, FILES, PIECE3D } = await import(pathToFileURL(join(KIT, 'map.js')).href);
+const { CAB, CAB_FITTINGS } = await import(pathToFileURL(join(floor, 'cab-paint.js')).href);
+const { SCALE } = await import(pathToFileURL(join(floor, 'door-view.js')).href);
+const { RESTROOM_DOOR, mapTiles, obstaclesOf } = await import(pathToFileURL(join(floor, 'map-tiles.js')).href);
+const { standingAgainst, wallBodies, wallKeys } = await import(pathToFileURL(join(floor, 'floor-walls.js')).href);
+const { readTileset, tilesetUrl } = await import(pathToFileURL(join(floor, 'tileset.js')).href);
+// The vendored Three's examples import it as the bare `three` (the page's import map); here, the same file.
+const THREE = pathToFileURL(join(wire, '..', 'vendor', 'three', 'three.module.js')).href;
+
+registerHooks({ resolve: (specifier, context, next) => (specifier === 'three' ? { url: THREE, shortCircuit: true } : next(specifier, context)) });
+
+const { Box3, Vector3 } = await import(THREE);
+const { GLTFLoader } = await import(pathToFileURL(join(wire, '..', 'vendor', 'three', 'examples', 'jsm', 'loaders', 'GLTFLoader.js')).href);
+const { fitted, placedParts } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'furniture.js')).href);
+const { placementsOf } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'furniture-placements.js')).href);
+const { DETAIL, partGeometry } = await import(pathToFileURL(join(wire, '..', 'floor3d', 'part-geometry.js')).href);
+const THEMES = join(KIT, '..', '..', 'themes');
+const registry = await import(pathToFileURL(join(THEMES, 'index.js')).href);
+/** Every theme's own `piece3d()` — a theme that exports none is drawn in another's, so it adds no part list here. */
+const PIECE3DS = (await Promise.all(registry.THEMES.map((t) => import(pathToFileURL(join(THEMES, t, 'theme.js')).href))))
+    .map((m) => m.piece3d).filter((f) => typeof f === 'function');
 
 const { scenes } = JSON.parse(readFileSync(0, 'utf8'));
 const EPS = 1e-6;
 const near = (a, b) => Math.abs(a - b) < EPS;
-const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], walls: [], walkers: [], lattice: [], labels: [], status: [], doors: [], restroom: [], effects: [], birds: [] };
-const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0 };
+const legs = { frame: [], desks: [], facing: [], parts: [], interns: [], seating: [], steps: [], pieces: [], standing: [], walls: [], walkers: [], lattice: [], labels: [], beside: [], status: [], doors: [], restroom: [], effects: [], birds: [], cab: [] };
+const printed = { scenes: scenes.length, desks: 0, parts: 0, interns: 0, couches: 0, seated: {}, steps: 0, stepSamples: 0, pieces: 0, standing: {}, standingRows: 0, shrunk: {}, sideDoorPieces: 0, sideDoors: 0, backDoors: 0, lintels: 0, thresholds: 0, walls: { edge: 0, partition: 0 }, walkers: 0, sampled: 0, labels: {}, beside: {}, runs: {}, doorSpans: 0, restroomDoors: 0, birds: 0, rings: 0, deskRows: 0, cabs: 0, cabSamples: 0, cabShown: { shown: 0, hidden: 0 }, offCabSamples: 0 };
 const WORLD_MEMBERS = ['band', 'desks', 'doors', 'effects', 'extent', 'labels', 'pieces', 'planes', 'restroom_doors', 'slab', 'walkers', 'walls'];
 const LABEL_ORDER = ['name', 'status', 'chip', 'facts', 'bubble'];
+/** The labels that stand beside their sitter, on the viewer's right, rather than centred on their desk, each with the
+ *  corner of its box it stands on its point by: the status hangs from the point, the bubble stands on it. */
+const BESIDE = ['status', 'bubble'];
+const BESIDE_PIN = { status: { x: 0, y: 0 }, bubble: { x: 0, y: 1 } };
+/** The camera's azimuths the `beside` leg stands each such label at: a full turn, in twelfths. */
+const AZIMUTHS = Array.from({ length: 12 }, (_, k) => (k * Math.PI) / 6);
+
+/**
+ * What keeps a status or bubble label `l` of the scene's desk `d` (the world's `w`) from standing beside its sitter on the
+ * viewer's right, clear of its body, from every side: its anchor on the sitter's centre line and at its depth, reaching
+ * the character's half-width (none at a desk that draws no character), above the monitor's top, standing on its point
+ * by its kind's corner (`BESIDE_PIN`), and — at each of `AZIMUTHS`, the camera's right an orbit camera's `x` axis there —
+ * its world point that reach along the camera's right from the sitter, at its height.
+ */
+function besideDefects(l, d, w, character, slab, X, Z) {
+    const defects = [];
+    const reach = character === undefined ? 0 : character.w / 2;
+    const seat = w.sitter?.at ?? null;
+    const pin = BESIDE_PIN[l.kind];
+
+    if (l.anchor.beside !== reach) {
+        defects.push(`${d.key}'s ${l.kind} reaches ${l.anchor.beside} px beside its sitter, not the character's half-width ${reach}`);
+    }
+
+    if (l.anchor.pin?.x !== pin.x || l.anchor.pin?.y !== pin.y) {
+        defects.push(`${d.key}'s ${l.kind} stands on its point by ${JSON.stringify(l.anchor.pin)}, not ${JSON.stringify(pin)}`);
+    }
+
+    if (!(l.anchor.height > W.MONITOR_TOP_U * W.UNIT)) {
+        defects.push(`${d.key}'s ${l.kind} stands at ${l.anchor.height} px, not above the monitor's top`);
+    }
+
+    if (seat === null ? !(Z(l.anchor.depth) < w.slab.back) : !near(Z(l.anchor.depth), seat.z) || !near(X(l.anchor.x), seat.x)) {
+        defects.push(`${d.key}'s ${l.kind} stands at x ${X(l.anchor.x)}, z ${Z(l.anchor.depth)} — not on its sitter's line ${seat === null ? 'behind its slab' : `at x ${seat.x}, z ${seat.z}`}`);
+
+        return defects;
+    }
+
+    for (const azimuth of AZIMUTHS) {
+        const right = { x: Math.cos(azimuth), z: -Math.sin(azimuth) };
+        const p = W.anchorPoint(slab, l.anchor, right);
+        const off = { x: p.x - X(l.anchor.x), z: p.z - Z(l.anchor.depth) };
+        const along = off.x * right.x + off.z * right.z;
+        const across = off.x * right.z - off.z * right.x;
+
+        if (!near(along, reach / W.UNIT) || !near(across, 0) || !near(p.y, l.anchor.height / W.UNIT)) {
+            defects.push(`${d.key}'s ${l.kind} seen at azimuth ${azimuth.toFixed(2)} stands ${along} along the camera's right and ${across} across it, ${p.y} up — not ${reach / W.UNIT} to the viewer's right at ${l.anchor.height / W.UNIT}`);
+        }
+    }
+
+    return defects;
+}
 const FACT_KINDS = ['label', 'currency', 'lag', 'gauge-pct', 'badge', 'flag', 'stool-more', 'quiet-age'];
 
 /**
@@ -357,8 +460,11 @@ for (const { run, i, scene } of scenes) {
         for (const l of own) {
             printed.labels[l.kind] = (printed.labels[l.kind] ?? 0) + 1;
 
-            if (l.anchor.depth !== d.depth_y) {
-                legs.labels.push(`${at} ${d.key}'s ${l.kind} label stands at depth ${l.anchor.depth}, not its desk's ${d.depth_y}`);
+            if (BESIDE.includes(l.kind)) {
+                besideDefects(l, d, w, character, world.slab, X, Z).forEach((defect) => legs.beside.push(`${at} ${defect}`));
+                printed.beside[l.kind] = (printed.beside[l.kind] ?? 0) + 1;
+            } else if (l.anchor.depth !== d.depth_y || l.anchor.beside !== null || l.anchor.pin?.x !== 0.5 || l.anchor.pin?.y !== 0.5) {
+                legs.labels.push(`${at} ${d.key}'s ${l.kind} label stands at depth ${l.anchor.depth}${l.anchor.beside === null ? '' : `, ${l.anchor.beside} px beside`} by ${JSON.stringify(l.anchor.pin)}, not centred at its desk's ${d.depth_y}`);
             }
 
             const el = element[l.kind];
@@ -366,7 +472,7 @@ for (const { run, i, scene } of scenes) {
             if (el !== undefined && el !== null) {
                 const height = Math.max(0, foot - (el.y + el.h / 2));
 
-                if (!near(l.anchor.height, height) || !near(l.anchor.x, el.x + el.w / 2)) {
+                if (!BESIDE.includes(l.kind) && (!near(l.anchor.height, height) || !near(l.anchor.x, el.x + el.w / 2))) {
                     legs.labels.push(`${at} ${d.key}'s ${l.kind} label stands ${l.anchor.height} px up at x ${l.anchor.x}, not its element's ${height} at ${el.x + el.w / 2}`);
                 }
 
@@ -386,6 +492,19 @@ for (const { run, i, scene } of scenes) {
 
         if (JSON.stringify(factLabel?.model?.map((f) => f.text) ?? []) !== JSON.stringify(facts.map((e) => e.text))) {
             legs.labels.push(`${at} ${d.key}'s facts label reads ${JSON.stringify(factLabel?.model?.map((f) => f.text) ?? [])}, the painter's ${JSON.stringify(facts.map((e) => e.text))}`);
+        }
+
+        // A desk's status and bubble at one point, so the status hanging from it and the bubble standing on it never meet.
+        const words = own.filter((l) => BESIDE.includes(l.kind));
+
+        if (words.length === 2) {
+            const [a, b] = words.map((l) => l.anchor);
+
+            printed.beside.pairs = (printed.beside.pairs ?? 0) + 1;
+
+            if (a.x !== b.x || a.depth !== b.depth || a.height !== b.height || a.beside !== b.beside) {
+                legs.beside.push(`${at} ${d.key}'s status stands at ${JSON.stringify(a)} and its bubble at ${JSON.stringify(b)} — not one point`);
+            }
         }
 
         // The status (the operator's Q4 answer): the monitor's own strings, the off form for a dark one.
@@ -414,12 +533,37 @@ for (const { run, i, scene } of scenes) {
         legs.pieces.push(`${at} the world's pieces are not the scene's standing tiles, both ways`);
     }
 
+    // A side restroom door, by its cell: the scene's own door, whose wall face and doorway place its piece.
+    const sideDoorAt = (s) => (scene.restroom_doors ?? []).find((d) => d.facing !== 'back' && d.room === s.room && d.x === s.x && d.y === s.y);
+
     scene.scenery.forEach((s, k) => {
         const p = world.pieces[k];
+        const side = s.kind === 'restroom-door' ? sideDoorAt(s) : undefined;
 
         printed.pieces++;
 
-        if (p !== undefined && !same(p.at, X(s.x + s.w / 2), Z(s.y + s.h))) {
+        if (p !== undefined && side !== undefined) {
+            // Set into the wall: at the wall face over the doorway's centre, turned so its front faces the room (away from
+            // the wall, `−x` for a `right` door) and its flag end — `+x` in its frame for `right`, `−x` for `left` — lands on
+            // the doorway's near jamb; its flag the scene's plate in its frame.
+            printed.sideDoorPieces++;
+
+            const into = side.facing === 'right' ? -1 : 1;
+            const turn = p.turn ?? 0;
+            const nearEnd = Z(side.doorway.y + side.doorway.h / 2) - Math.sin(turn) * -into * p.w / 2;
+            const plate = side.plate;
+            const gap = side.facing === 'right' ? side.face - (plate.x + plate.w) : plate.x - side.face;
+            const foot = side.doorway.y + side.doorway.h;
+            const flag = { gap: gap / W.UNIT, out: plate.w / W.UNIT, y: (foot - (plate.y + plate.h)) / W.UNIT, h: plate.h / W.UNIT };
+
+            if (!same(p.at, X(side.face), Z(side.doorway.y + side.doorway.h / 2)) || !near(Math.sin(turn), into) || !near(nearEnd, Z(side.doorway.y + side.doorway.h))) {
+                legs.pieces.push(`${at} the side door at ${s.x},${s.y} stands at ${JSON.stringify(p.at)} turned ${turn} — not at its wall face over the doorway's centre, facing the room with its flag end on the near jamb`);
+            }
+
+            if (p.facing !== side.facing || !near(p.wall, side.doorway.w / W.UNIT) || p.flag === undefined || Object.keys(flag).some((key) => !near(p.flag[key], flag[key]))) {
+                legs.pieces.push(`${at} the side door at ${s.x},${s.y} hands its theme ${JSON.stringify({ facing: p.facing, wall: p.wall, flag: p.flag })}, not its ${side.facing} facing, the wall's thickness and its plate ${JSON.stringify(flag)}`);
+            }
+        } else if (p !== undefined && s.against === undefined && !same(p.at, X(s.x + s.w / 2), Z(s.y + s.h))) {
             legs.pieces.push(`${at} ${s.kind} at ${s.x},${s.y} stands at ${JSON.stringify(p.at)}, not at its cell's foot line`);
         }
 
@@ -428,35 +572,146 @@ for (const { run, i, scene } of scenes) {
         }
     });
 
-    // ── the walls: every standing wall cell a box, as tall as its footprint position makes it ──
+    // ── the walls: every standing wall cell a box, as tall as its footprint position makes it — but over a side restroom
+    // door's doorway, where it is CUT to a lintel from the door's height, and a partition no taller has no box ──
     const ids = (xs) => xs.map((w) => w.id).sort().join(' ');
+    const doorwayOf = (c) => (scene.restroom_doors ?? []).find((d) => d.facing !== 'back' && c.x === d.doorway.x && c.y >= d.doorway.y && c.y < d.doorway.y + d.doorway.h);
+    const planes = [...scene.planes].sort((a, b) => (a.install_id === null) - (b.install_id === null));
+    const expected = scene.walls.map((c) => {
+        const f = planes.find((p) => c.x >= p.x && c.x < p.x + p.w && c.y >= p.y && c.y < p.y + p.h);
+        const edge = f !== undefined && (c.x === f.x || c.x + c.size === f.x + f.w || c.y + c.size === f.y + f.h);
+        const full = edge ? W.ROOM_H_U : W.PARTITION_H_U;
+        const door = doorwayOf(c);
+        const y = door === undefined ? 0 : door.h / W.UNIT;
 
-    if (ids(world.walls) !== ids(scene.walls.map((w) => ({ id: `wall:${w.x}:${w.y}` })))) {
-        legs.walls.push(`${at} the world's walls are not the scene's, both ways`);
+        return { c, f, edge, full, y, standing: y < full };
+    });
+
+    if (ids(world.walls) !== ids(expected.filter((x) => x.standing).map(({ c }) => ({ id: `wall:${c.x}:${c.y}` })))) {
+        legs.walls.push(`${at} the world's walls are not the scene's, both ways, less a partition over a side door's doorway`);
     }
 
-    const planes = [...scene.planes].sort((a, b) => (a.install_id === null) - (b.install_id === null));
+    const kept = world.walls[Symbol.iterator]();
 
-    scene.walls.forEach((c, k) => {
-        const w = world.walls[k];
-        const f = planes.find((p) => c.x >= p.x && c.x < p.x + p.w && c.y >= p.y && c.y < p.y + p.h);
+    for (const { c, f, edge, full, y, standing: stands } of expected) {
         const T = c.size;
+        const w = stands ? kept.next().value : undefined;
+
+        if (!stands) {
+            continue;
+        }
 
         if (w === undefined || f === undefined) {
             legs.walls.push(`${at} the wall cell at ${c.x},${c.y} has no box, or stands on no plane`);
 
-            return;
+            continue;
         }
-
-        const edge = c.x === f.x || c.x + T === f.x + f.w || c.y + T === f.y + f.h;
-        const height = edge ? W.ROOM_H_U : W.PARTITION_H_U;
 
         printed.walls[edge ? 'edge' : 'partition']++;
+        printed.lintels += y > 0 ? 1 : 0;
 
-        if (w.kind !== (edge ? 'edge' : 'partition') || !near(w.box.h, height) || !same(w.box, X(c.x), Z(c.y)) || !near(w.box.w, T / W.UNIT)) {
-            legs.walls.push(`${at} the wall at ${c.x},${c.y} is a ${w.kind} ${w.box.h} units tall at ${JSON.stringify(w.box)} — its footprint makes it an ${edge ? 'edge' : 'partition'} ${height} tall`);
+        if (w.kind !== (edge ? 'edge' : 'partition') || !near(w.box.y, y) || !near(w.box.h, full - y) || !same({ ...w.box, y: 0 }, X(c.x), Z(c.y)) || !near(w.box.w, T / W.UNIT)) {
+            legs.walls.push(`${at} the wall at ${c.x},${c.y} is a ${w.kind} from ${w.box.y} to ${w.box.y + w.box.h} units at ${JSON.stringify(w.box)} — its footprint makes it an ${edge ? 'edge' : 'partition'} ${full} tall, from ${y}`);
         }
-    });
+    }
+
+    // ── the cab: § 12's *Cab interior* behind the band's doorway, and every rider in it ─────────────
+    if (scene.band !== null) {
+        printed.cabs++;
+
+        const cab = world.band.cab;
+        const r = cab.room;
+        const cm = (v) => v / SCALE / W.UNIT;
+        const front = Z(top);
+        const seam = X(scene.band.elevator.seam);
+        const within = (b, o) => b.x > o.x - EPS && b.x + b.w < o.x + o.w + EPS && b.y > o.y - EPS && b.y + b.h < o.y + o.h + EPS && b.z > o.z - EPS && b.z + b.d < o.z + o.d + EPS;
+        const leaves = world.band.leaves;
+
+        // The 2-D band cab is `CAB`'s room fitted to its doorway: across and up by the doorway over `CAB`, back at the
+        // door view's scale (the landing lens's) — so the open front is the doorway, and a fitting scales as its axis does.
+        const door = { x: leaves[0].x, w: leaves[1].x + leaves[1].w - leaves[0].x, y: leaves[0].y, h: leaves[0].h };
+        const [across, up] = [door.w / CAB.w, door.h / CAB.h];
+
+        if (!near(r.x, door.x) || !near(r.w, door.w) || !near(r.y, door.y) || !near(r.h, door.h) || !near(r.d, cm(CAB.d)) || !near(r.y, 0)) {
+            legs.cab.push(`${at} the cab's room is ${r.w} × ${r.d} × ${r.h} units at x ${r.x}, y ${r.y} — not the doorway's ${door.w} × ${door.h} at x ${door.x} on the floor, ${CAB.d} cm deep at the door view's scale`);
+        }
+
+        if (r.y + r.h > world.band.h + EPS) {
+            legs.cab.push(`${at} the cab's top stands at ${r.y + r.h} units, over the band's ${world.band.h}`);
+        }
+
+        if (!near(r.x + r.w / 2, seam) || !near(r.z + r.d, front)) {
+            legs.cab.push(`${at} the cab's room is centred at x ${r.x + r.w / 2} with its open front at z ${r.z + r.d} — not on the leaves' seam (${seam}) at the band's face (${front}), running back`);
+        }
+
+        if (!near(cab.kick, CAB_FITTINGS.kick * up)) {
+            legs.cab.push(`${at} the kick plates are ${cab.kick} units high, not ${CAB_FITTINGS.kick} cm of the cab's ${CAB.h} fitted to the doorway's height`);
+        }
+
+        // Each bar inside the room, its centre `off` from its own wall at the rail's height; each post from a wall to a bar.
+        cab.rails.forEach((b, k) => {
+            const wall = k === 0 ? r.x : r.x + r.w;
+
+            if (!within(b, r) || !near(Math.abs(b.x + b.w / 2 - wall), CAB_FITTINGS.rail.off * across) || !near(b.y + b.h / 2, CAB_FITTINGS.rail.y * up) || !near(b.d, r.d - 2 * cm(CAB_FITTINGS.rail.end))) {
+                legs.cab.push(`${at} a handrail stands at ${JSON.stringify(b)} — not inside the room, ${CAB_FITTINGS.rail.off} cm off its wall at ${CAB_FITTINGS.rail.y} cm (fitted), its wall's length but ${CAB_FITTINGS.rail.end} cm at each end`);
+            }
+        });
+
+        if (cab.posts.length !== 4 || cab.posts.some((b) => !within(b, r) || !(near(b.x, r.x) || near(b.x + b.w, r.x + r.w)))) {
+            legs.cab.push(`${at} the handrails' posts are ${JSON.stringify(cab.posts)} — not four inside the room, each standing on a side wall`);
+        }
+
+        const L = cab.light;
+
+        if (!near(L.w, CAB_FITTINGS.light.w * across) || !near(L.d, cm(CAB_FITTINGS.light.d)) || !near(L.x + L.w / 2, seam) || !near(L.z + L.d / 2, r.z + r.d / 2)) {
+            legs.cab.push(`${at} the ceiling's light is ${JSON.stringify(L)} — not ${CAB_FITTINGS.light.w} cm (fitted) × ${CAB_FITTINGS.light.d} cm in the ceiling's middle`);
+        }
+
+        // Every walker, sampled along its whole walk: in its cab legs it stands on the cab's floor, between its side walls
+        // and in front of its far wall; everywhere else it stands in front of the band's face — so no walker is ever
+        // behind the cab's far wall, and none behind the band outside the cab.
+        for (const w of world.walkers) {
+            const span = Math.max(...w.effect.legs.map((l) => l.start + l.frames)) * w.effect.frame_interval_ms;
+            const SAMPLES = 400;
+
+            for (let k = 0; k <= SAMPLES; k++) {
+                const t = (span * k) / SAMPLES;
+                const got = W.walkerAt(world.slab, w, t);
+
+                if (got === null) {
+                    continue;
+                }
+
+                // Shown as the 2-D floor draws it: on the floor; in the cab only inside a cab leg, so the closing leaves
+                // cover a boarder and the opening ones reveal an arrival; never inside the restroom's door.
+                const I = w.effect.frame_interval_ms;
+                const riding = w.effect.legs.some((l) => l.kind === 'cab' && t >= l.start * I && t < (l.start + l.frames) * I);
+                const want = got.where === 'floor' || (got.where === 'cab' && riding);
+
+                if (got.shown !== want) {
+                    legs.cab.push(`${at} ${w.key} at ${Math.round(t)} ms (${got.where}) is ${got.shown ? 'shown' : 'hidden'} — the 2-D floor draws it ${want ? 'there' : 'nowhere'} then`);
+                    break;
+                }
+
+                if (got.where === 'cab') {
+                    printed.cabSamples++;
+                    printed.cabShown[got.shown ? 'shown' : 'hidden']++;
+
+                    if (!(got.x > r.x + EPS && got.x < r.x + r.w - EPS && got.z > r.z + EPS && got.z < front + EPS && near(got.y, 0))) {
+                        legs.cab.push(`${at} ${w.key} at ${Math.round(t)} ms in the cab stands at ${got.x},${got.y},${got.z} — off the cab's floor (${r.x}…${r.x + r.w} × ${r.z}…${front})`);
+                        break;
+                    }
+                } else {
+                    printed.offCabSamples++;
+
+                    if (got.z < front - EPS) {
+                        legs.cab.push(`${at} ${w.key} at ${Math.round(t)} ms (${got.where}) stands at z ${got.z}, behind the band's face (${front}) outside the cab`);
+                        break;
+                    }
+                }
+            }
+        }
+    }
 
     // ── the walkers: every effect in flight with legs, its point the route's, lifted, inside the floor ──
     const flying = scene.effects.filter((fx) => (fx.legs?.length ?? 0) > 0);
@@ -465,9 +720,13 @@ for (const { run, i, scene } of scenes) {
         legs.walkers.push(`${at} the world's walkers are not the scene's effects in flight, both ways`);
     }
 
-    // The cells no walker stands in: the walls, and every standing piece the scene draws but a decoration.
-    const blocked = [...scene.walls.map((c) => ({ x: c.x, y: c.y, w: c.size, h: c.size, what: `the ${c.kind} wall` })),
-        ...scene.scenery.filter((t) => !t.decoration).map((t) => ({ x: t.x, y: t.y, w: t.w, h: t.h, what: `the ${t.kind}` }))];
+    // The cells no walker stands in: the walkable model's own obstacles (`obstaclesOf()`, the rule the scene's lattice is
+    // built from) over the scene's walls and every standing piece it draws but a decoration — so a door set into a side
+    // wall is floor here as it is to the router.
+    const geometryOf = (c) => (scene.restroom_doors ?? []).find((d) => d.room === c.room && d.x === c.x && d.y === c.y) ?? { facing: 'back' };
+    const blocked = obstaclesOf([...scene.walls.map((c) => ({ kind: 'wall', x: c.x, y: c.y, w: c.size, h: c.size })),
+        ...scene.scenery.filter((t) => !t.decoration)], [...new Set(scene.scenery.map((t) => t.kind))], geometryOf)
+        .map((r) => ({ ...r, what: `the ${r.kind}` }));
     const inside = (p, r) => p.x > r.x + EPS && p.x < r.x + r.w - EPS && p.y > r.y + EPS && p.y < r.y + r.h - EPS;
 
     printed.runs[run] = (printed.runs[run] ?? 0) + world.walkers.length;
@@ -497,6 +756,18 @@ for (const { run, i, scene } of scenes) {
 
             if (cell !== undefined) {
                 legs.lattice.push(`${at} ${w.key} (${w.animation_id}) at ${Math.round(t)} ms stands at ${p.x},${p.y}, inside ${cell.what}'s cell at ${cell.x},${cell.y}`);
+            }
+        }
+
+        // The threshold a restroom visitor stands at on the floor either side of its `inside` leg (the leg's `at`): open
+        // lattice too — at a side door it lies inside the door's tile, which only the obstacle rule returns to the floor.
+        for (const leg of w.effect.legs.filter((l) => l.kind === 'inside')) {
+            printed.thresholds++;
+
+            const cell = blocked.find((r) => inside(leg.at, r));
+
+            if (cell !== undefined) {
+                legs.lattice.push(`${at} ${w.key} (${w.animation_id}) stands at its door's threshold ${leg.at.x},${leg.at.y}, inside ${cell.what}'s cell at ${cell.x},${cell.y}`);
             }
         }
 
@@ -579,6 +850,53 @@ for (const { run, i, scene } of scenes) {
         legs.restroom.push(`${at} the world holds ${world.restroom_doors.length} restroom doors, the scene ${doors.length}`);
     }
 
+    // A door set into a side wall stands in the wall's plane: its leaf's box in the wall's thickness between the jambs over
+    // the recess's heights, its flag and field the scene's plate and sign lifted onto the near jamb's plane, and every wall
+    // cell of its doorway a lintel from the door's height, named in its column with the rest of the wall it is set into.
+    const sideDoorDefects = (d, w, foot) => {
+        const lift = (r) => ({ x: X(r.x), w: r.w / W.UNIT, y: (foot - (r.y + r.h)) / W.UNIT, h: r.h / W.UNIT });
+        const nearZ = Z(d.doorway.y + d.doorway.h);
+        const recess = lift(d.recess);
+        const want = {
+            at: { x: X(d.face), y: 0, z: Z(d.doorway.y + d.doorway.h / 2) },
+            jambs: [Z(d.doorway.y), nearZ],
+            bar: { x: X(d.bar.x), w: d.bar.w / W.UNIT, y: recess.y, h: recess.h, z: Z(d.bar.y), d: d.bar.h / W.UNIT },
+            plate: { ...lift(d.plate), z: nearZ },
+            sign: { ...lift(d.sign), z: nearZ },
+        };
+        const differs = (a, b) => a === undefined || Object.keys(b).some((key) => !near(a[key], b[key]));
+
+        printed.sideDoors++;
+
+        for (const name of Object.keys(want)) {
+            if (differs(w[name], want[name])) {
+                legs.restroom.push(`${at} restroom ${d.id}'s ${name} stands at ${JSON.stringify(w[name])}, not ${JSON.stringify(want[name])} in its wall`);
+            }
+        }
+
+        const bar = want.bar;
+        const [inWall, between] = [bar.x > X(d.doorway.x) - EPS && bar.x + bar.w < X(d.doorway.x + d.doorway.w) + EPS, bar.z > want.jambs[0] - EPS && bar.z + bar.d < nearZ + EPS];
+
+        if (!inWall || !between) {
+            legs.restroom.push(`${at} restroom ${d.id}'s leaf ${JSON.stringify(bar)} is not in the wall's thickness between its jambs`);
+        }
+
+        const rows = world.walls.filter((x) => near(x.box.x, X(d.doorway.x)) && x.box.z > Z(d.doorway.y) - EPS && x.box.z < nearZ - EPS);
+        const column = new Set(world.walls.filter((x) => near(x.box.x, X(d.doorway.x))).map((x) => x.id));
+
+        if (rows.some((x) => x.box.y < d.h / W.UNIT - EPS)) {
+            legs.restroom.push(`${at} restroom ${d.id}'s doorway has a wall standing through it below the door's height: ${JSON.stringify(rows.filter((x) => x.box.y < d.h / W.UNIT - EPS).map((x) => x.id))}`);
+        }
+
+        if (!Array.isArray(w.wall) || rows.some((x) => !w.wall.includes(x.id)) || w.wall.some((id) => !column.has(id))) {
+            legs.restroom.push(`${at} restroom ${d.id}'s column ${JSON.stringify(w.wall)} does not name its doorway's lintels and only the wall it is set into`);
+        }
+
+        if (JSON.stringify(w.leaf) !== JSON.stringify(d.leaf) || JSON.stringify(w.occupied) !== JSON.stringify(d.occupied) || w.facing !== d.facing) {
+            legs.restroom.push(`${at} restroom ${d.id}'s facing, leaf or field is not the scene's`);
+        }
+    };
+
     doors.forEach((d, k) => {
         const w = world.restroom_doors[k];
         const foot = d.y + d.h;
@@ -588,6 +906,14 @@ for (const { run, i, scene } of scenes) {
         if (w === undefined) {
             return;
         }
+
+        if (d.facing !== 'back') {
+            sideDoorDefects(d, w, d.doorway.y + d.doorway.h);
+
+            return;
+        }
+
+        printed.backDoors++;
 
         for (const name of ['recess', 'sign']) {
             const r = d[name];
@@ -676,6 +1002,261 @@ for (const { run, i, scene } of scenes) {
     }
 }
 
+// ── rule W (plan § 15.3): each piece stands against the wall its tile touches, its back on it, or behind its foot line ──
+// The kit's boxes, as the furniture fits them: each file the kind map names, loaded by Three's own loader.
+const kitBoxes = new Map(await Promise.all(Object.entries(FILES).map(async ([kind, file]) => {
+    const b = readFileSync(join(KIT, file));
+    const gltf = await new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset, b.byteOffset + b.length), '');
+
+    return [kind, new Box3().setFromObject(gltf.scene)];
+})));
+/** A first-party part list's box, as the furniture merges it: every part built at the floor's facets. */
+const partsBox = (parts) => parts.reduce((box, part) => {
+    const g = partGeometry(part, DETAIL.seat);
+
+    g.computeBoundingBox();
+    box.union(g.boundingBox);
+    g.dispose();
+
+    return box;
+}, new Box3());
+/** Whether rule W covers a kind: every standing kind but the snack tables and the restroom door, which keep their place. */
+const covered = (kind) => SNACK_TABLES[kind] === undefined && kind !== RESTROOM_DOOR.kind;
+
+/**
+ * § 15.4's reading of the shipped default (`resources/floor/default.tmj`), each piece by its kind and its rect's top-left
+ * in map px: the wall it stands against. A scene room drawn over the default carries every row.
+ */
+const DEFAULT_MAP = Object.freeze({
+    'armchair@1064,32': 'back',
+    'aquarium@536,24': 'back',
+    'floor-lamp@1144,8': 'back',
+    'globe@1184,48': 'back',
+    'water-cooler@1224,16': 'back',
+    'bookcase@1704,16': 'back',
+    'plant@1744,192': 'right',
+    'plant@8,384': 'left',
+    'bookcase@16,520': 'left',
+    'floor-lamp@1576,536': null,
+    'armchair@16,632': 'left',
+});
+
+/**
+ * Rule W's three checks over one scene's world (`at` names it): every covered piece's 3-D plan inside its obstacle rect
+ * extended to its wall's face, its wall side on that face (a free piece's front on its foot line), and a free piece
+ * unturned; `expect(s)` is the wall a piece must read (`undefined` where nothing pins it).
+ */
+function standingLeg(scene, world, at, expect) {
+    const top = scene.band === null ? scene.extent.y : scene.band.y + scene.band.h;
+    const D = (scene.extent.y + scene.extent.h - top) / W.UNIT;
+    const Wd = scene.extent.w / W.UNIT;
+    // World units back to scene px, the inverse of the probe's own frame.
+    const px = (x) => (x + Wd / 2) * W.UNIT + scene.extent.x;
+    const py = (z) => (z + D / 2) * W.UNIT + top;
+    const placed = placementsOf(world, DRESSED, null);
+    const queue = new Map([...placed].map(([kind, ps]) => [kind, [...ps]]));
+
+    scene.scenery.forEach((s, k) => {
+        const piece = world.pieces[k];
+        // The placement made of this piece: the kind's next, in the world's order.
+        const p = queue.get(s.kind)?.shift();
+        const where = `${at} ${s.kind} at ${s.x},${s.y}`;
+
+        if (!covered(s.kind)) {
+            if (s.against !== undefined || piece.anchor !== undefined) {
+                legs.standing.push(`${where} is read for a wall (${s.against}, anchor ${piece.anchor}), where rule W leaves it as it stood`);
+            }
+
+            return;
+        }
+
+        printed.standing[String(s.against)] = (printed.standing[String(s.against)] ?? 0) + 1;
+
+        if (s.against === undefined) {
+            legs.standing.push(`${where} carries no rule-W reading`);
+
+            return;
+        }
+
+        const want = expect(s);
+
+        if (want !== undefined) {
+            printed.standingRows++;
+
+            if (s.against !== want) {
+                legs.standing.push(`${where} reads ${s.against}, not the ${want} it stands against`);
+            }
+        }
+
+        // The model's plan through the furniture's own matrix: a kit file's box fitted, or every theme's part list placed.
+        const boxes = FILES[s.kind] !== undefined
+            ? [kitBoxes.get(s.kind).clone().applyMatrix4(fitted(kitBoxes.get(s.kind), p))]
+            : PIECE3D.includes(s.kind) ? PIECE3DS.map((piece3d) => piece3d(s.kind, { w: p.w, h: p.h, px: 1 / W.UNIT })).filter((parts) => parts !== null)
+                .map((parts) => { const b = partsBox(parts); return b.applyMatrix4(placedParts(b, p)); }) : [];
+
+        // How far a kit body was shrunk in plan to fit its rect (its width across the turn, over its tile's): printed, the
+        // figure the plan's § 15.3 as-built note derives from here rather than restates.
+        if (FILES[s.kind] !== undefined) {
+            const m = fitted(kitBoxes.get(s.kind), p).elements;
+            const k = (Math.hypot(m[0], m[1], m[2]) * kitBoxes.get(s.kind).getSize(new Vector3()).x) / p.w;
+
+            if (k < 1 - 1e-9) {
+                printed.shrunk[`${s.kind}@${s.x},${s.y}`] = Number(k.toFixed(3));
+            }
+        }
+
+        if (boxes.length === 0) {
+            legs.standing.push(`${where} has no model this probe can measure`);
+        }
+
+        // The obstacle rect, reaching to the wall's face on the walled side (the strip between them is closed at the wall).
+        const r = { x0: s.x, y0: s.y, x1: s.x + s.w, y1: s.y + s.h };
+
+        if (s.against === 'back') r.y0 = Math.min(r.y0, s.face);
+        if (s.against === 'left') r.x0 = Math.min(r.x0, s.face);
+        if (s.against === 'right') r.x1 = Math.max(r.x1, s.face);
+
+        const E = 1e-6;
+
+        for (const b of boxes) {
+            const plan = { x0: px(b.min.x), x1: px(b.max.x), y0: py(b.min.z), y1: py(b.max.z) };
+            const fmt = (q) => `x ${q.x0.toFixed(2)}–${q.x1.toFixed(2)}, y ${q.y0.toFixed(2)}–${q.y1.toFixed(2)}`;
+
+            if (plan.x0 < r.x0 - E || plan.x1 > r.x1 + E || plan.y0 < r.y0 - E || plan.y1 > r.y1 + E) {
+                legs.standing.push(`${where} (${s.against}) stands its body over ${fmt(plan)}, outside its obstacle rect to the wall, ${fmt(r)}`);
+            }
+
+            const side = { back: plan.y0, front: plan.y1, left: plan.x0, right: plan.x1, null: plan.y1 }[String(s.against)];
+            const face = s.against === null ? s.y + s.h : s.face;
+
+            if (!(Math.abs(side - face) < 1e-6)) {
+                legs.standing.push(`${where} (${s.against}) has its ${s.against === null ? 'front' : 'back'} at ${side.toFixed(3)}, not on ${s.against === null ? 'its foot line' : 'the wall\'s face'} ${face}`);
+            }
+        }
+
+        if (s.against === null && piece.turn !== undefined) {
+            legs.standing.push(`${where} stands free and is turned ${piece.turn}`);
+        }
+    });
+}
+
+for (const { run, i, scene } of scenes) {
+    const planes = new Map(scene.planes.map((q) => [q.install_id, q]));
+
+    standingLeg(scene, W.floorWorld(scene), `[${run} #${i}]`, (s) => {
+        const q = planes.get(s.room);
+        const key = `${s.kind}@${s.x - q.x},${s.y - q.y}`;
+
+        return Object.hasOwn(DEFAULT_MAP, key) ? DEFAULT_MAP[key] : undefined;
+    });
+}
+
+// The fixture: one piece against each wall a room offers — the band (a picture's top on the footprint's top row, and one
+// above it), a partition behind it and one its picture crosses (`back`), a partition under its foot line (`front`), the
+// left wall flush and the right wall a cell off (`left`, `right`) — and one in open floor and one with its foot on a
+// wall run (free: never against that run with no depth behind its back), read through
+// `standingAgainst()` over `mapTiles()` and the wall bodies, as the scene reads them, and lifted by the world.
+{
+    const T = 8;
+    const cols = 40;
+    const rows = 40;
+    // Each kind's tile id in `floor-plane.tsx` past its `firstgid`: the low bookcase, the narrow plant.
+    const gid = { wall: 3, armchair: 10, globe: 25, bookcase: 5, 'water-cooler': 17, plant: 8, aquarium: 23 };
+    const walls = new Array(cols * rows).fill(0);
+    const furniture = new Array(cols * rows).fill(0);
+    const put = (layer, col, row, g) => { layer[row * cols + col] = g; };
+
+    for (let c = 0; c < cols; c++) {
+        put(walls, c, 0, gid.wall);
+        put(walls, c, rows - 1, gid.wall);
+    }
+
+    for (let r = 0; r < rows; r++) {
+        put(walls, 0, r, gid.wall);
+        put(walls, cols - 1, r, gid.wall);
+    }
+
+    for (let c = 10; c <= 24; c++) {
+        put(walls, c, 20, gid.wall);
+    }
+
+    // A partition the low bookcase's picture crosses, below the armchair's foot.
+    for (let c = 12; c <= 20; c++) {
+        put(walls, c, 31, gid.wall);
+    }
+
+    // A partition run under a water cooler's own foot cell.
+    for (let c = 26; c <= 31; c++) {
+        put(walls, c, 24, gid.wall);
+    }
+
+    // [kind, the column of its left edge, the row of its foot cell, the wall it must read, that wall's face]
+    const pieces = [
+        ['aquarium', 3, 12, 'back', 0],
+        // a picture taller than the room reaches above it: its top above the band's row
+        ['water-cooler', 6, 8, 'back', 0],
+        // a picture crossing a partition: the body stands in front of the wall nearest its foot, not the band beyond it
+        ['bookcase', 12, 36, 'back', 256],
+        // its foot painted on a wall run: free, never against the run with no depth left behind its back
+        ['water-cooler', 26, 24, null, null],
+        ['armchair', 12, 28, 'back', 168],
+        ['globe', 14, 19, 'front', 160],
+        ['bookcase', 29, 34, 'right', 312],
+        ['water-cooler', 1, 37, 'left', 8],
+        ['plant', 30, 20, null, null],
+    ];
+
+    for (const [kind, col, row] of pieces) {
+        put(furniture, col, row, gid[kind]);
+    }
+
+    const map = {
+        width: cols, height: rows, tilewidth: T, tileheight: T, orientation: 'orthogonal',
+        tilesets: [{ firstgid: 1, source: 'tiles/floor-plane.tsx' }],
+        layers: [
+            { type: 'tilelayer', name: 'walls', width: cols, height: rows, data: walls, visible: true, opacity: 1 },
+            { type: 'tilelayer', name: 'furniture', width: cols, height: rows, data: furniture, visible: true, opacity: 1 },
+        ],
+    };
+    const TSX = readFileSync(join(KIT, '..', '..', 'tiles', 'floor-plane.tsx'), 'utf8');
+    const tileset = readTileset(TSX, tilesetUrl(map.tilesets[0].source));
+    const g = { map, origin: { x: 0, y: 0 }, footprint: { x: 0, y: 0, width: cols * T, height: rows * T }, room: true, seed: 'standing' };
+    const cells = mapTiles(map, g.origin, () => tileset, 'standing');
+    const bodies = wallKeys(wallBodies([g], () => cells, T, []));
+    const scenery = cells.filter((c) => c.kind !== 'wall').map((c) => Object.freeze({
+        room: 'standing', kind: c.kind, x: c.x, y: c.y, w: c.w, h: c.h, decoration: null, doc: null, ...standingAgainst(c, g, bodies, T),
+    }));
+    const scene = {
+        extent: { x: 0, y: 0, w: cols * T, h: rows * T }, band: null, desks: [], effects: [], planes: [], walls: [], restroom_doors: [],
+        doors: [], slot_feet: {}, scenery,
+    };
+    const expected = new Map(pieces.map(([kind, col, row, against, face]) => [`${kind}@${col * T}`, { against, face }]));
+
+    if (scenery.length !== pieces.length) {
+        legs.standing.push(`[fixture] the fixture map stands ${scenery.length} pieces, not its ${pieces.length}`);
+    }
+
+    for (const s of scenery) {
+        const want = expected.get(`${s.kind}@${s.x}`);
+
+        if (want !== undefined && s.face !== want.face) {
+            legs.standing.push(`[fixture] ${s.kind} at ${s.x},${s.y} reads its wall's face at ${s.face}, not ${want.face}`);
+        }
+    }
+
+    standingLeg(scene, W.floorWorld(scene), '[fixture]', (s) => expected.get(`${s.kind}@${s.x}`)?.against);
+}
+
+// Rule W read over every wall it reads and over open floor, and § 15.4's pinned rows each read.
+if (['back', 'left', 'right', 'front', 'null'].some((k) => !(printed.standing[k] > 0)) || printed.standingRows < Object.keys(DEFAULT_MAP).length) {
+    legs.standing.push(`CONTROL: the scenes and the fixture hold no piece against some wall, none free, or not every pinned row — ${JSON.stringify({ standing: printed.standing, rows: printed.standingRows })}`);
+}
+
+// The labels beside their sitters read at both kinds and as a desk's pair: scenes with none measured none of it.
+if (BESIDE.some((kind) => !(printed.beside[kind] > 0)) || !(printed.beside.pairs > 0)) {
+    legs.beside.push(`CONTROL: the scenes hold no ${BESIDE.join(' or ')} label to stand beside its sitter, or no desk with both — ${JSON.stringify(printed.beside)}`);
+}
+
 // The controls: a population this probe reads nothing of is a pass that measured nothing.
 if (printed.desks === 0 || printed.parts === 0 || printed.interns === 0 || printed.pieces === 0 || printed.walls.edge === 0 || printed.walls.partition === 0
     || printed.sampled === 0 || (printed.labels.bubble ?? 0) === 0) {
@@ -684,6 +1265,16 @@ if (printed.desks === 0 || printed.parts === 0 || printed.interns === 0 || print
 
 if (printed.doorSpans === 0 || printed.restroomDoors === 0 || printed.birds === 0 || printed.rings === 0 || printed.deskRows === 0) {
     legs.frame.push(`CONTROL: the scenes hold no door span, restroom door, bird, ring or desk row to read — ${JSON.stringify(printed)}`);
+}
+
+// A door set into a side wall read as a door, a piece and its lintels: none of them is a side door the probe measured.
+if (printed.sideDoors === 0 || printed.sideDoorPieces === 0 || printed.lintels === 0 || printed.backDoors === 0 || printed.thresholds === 0) {
+    legs.restroom.push(`CONTROL: the scenes hold no restroom door set into a side wall, its piece or a lintel, no face-on door, or no visitor at a threshold, to read — ${JSON.stringify({ sideDoors: printed.sideDoors, pieces: printed.sideDoorPieces, lintels: printed.lintels, backDoors: printed.backDoors, thresholds: printed.thresholds })}`);
+}
+
+// The cab read with riders in it: a population of no cab sample measured no rider.
+if (printed.cabs === 0 || printed.cabSamples === 0 || printed.offCabSamples === 0 || printed.cabShown.shown === 0 || printed.cabShown.hidden === 0) {
+    legs.cab.push(`CONTROL: the scenes hold no cab, or no walker sampled in a cab leg or out of one, or none shown or hidden in the cab — ${JSON.stringify({ cabs: printed.cabs, cabSamples: printed.cabSamples, cabShown: printed.cabShown, offCabSamples: printed.offCabSamples })}`);
 }
 
 // The seating read at the fewest and the most interns a desk seats: one, and the cap.

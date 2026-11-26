@@ -96,7 +96,7 @@ function delta(at, seat, v, patch, clockOf) {
     const changed = Object.keys(patch);
     const when = clockOf(at);
 
-    return { at_ms: at, envelope: { feed_version: 3, t: 'seat.delta', server_time: when, install_id: 'aimla', seat_id: seat, state_version: v, at: when, changed, patch } };
+    return { at_ms: at, envelope: { feed_version: 4, t: 'seat.delta', server_time: when, install_id: 'aimla', seat_id: seat, state_version: v, at: when, changed, patch } };
 }
 
 /** A run: the template's bytes, its messages with `added` merged in time order, its note and its horizon. */

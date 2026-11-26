@@ -10,8 +10,14 @@
 //   node tools/design/floor3d.browser.mjs --selftest   every row, then every row again under each of its PLANTs, each of
 //                                                      which must red
 //   node tools/design/floor3d.browser.mjs --out <dir>  also save the operator's reading pictures: the entry pose, a turned
-//                                                      pose, a close view, a view with the band cut away, the cap floor,
-//                                                      the leaves open, a walker, the marks, a bird and reduced motion
+//                                                      pose, a close view, a view with a wall cut away, a walk in
+//                                                      from the entry to the back wall and one from a close view, the
+//                                                      cap floor, the leaves open, the cab through them, a walker, the
+//                                                      marks, a bird, the restroom door in its side wall, reduced
+//                                                      motion, the cap floor at night and by day, each from the
+//                                                      entry and close to a desk, at 1,400 × 1,000, and a desk's
+//                                                      status beside its sitter from in front of the desk and from
+//                                                      behind it
 //   …and --chrome <path> or $CHROME, as every browser tool here.
 //
 // ⛔ THE PAGE IS READ THROUGH ITS OWN INSTRUMENT: `#floor3d-canvas`'s `inspect()` (`floor3d/main.js`) — the camera, the
@@ -41,12 +47,23 @@ const argOf = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i +
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const L = await import(pathToFileURL(join(JS, 'floor3d', 'view-limits.js')).href);
-const { HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-model.js')).href);
+const { FOV, HOME_POLAR } = await import(pathToFileURL(join(JS, 'building', 'stack-model.js')).href);
 const { LOOP_FPS } = await import(pathToFileURL(join(JS, 'wire', 'animation-set.js')).href);
+const { PAN_STEP_PX, turnOf } = await import(pathToFileURL(join(JS, 'wire', 'camera.js')).href);
 const KITMAP = await import(pathToFileURL(join(KIT, 'map.js')).href);
 const CLOCK = await import(pathToFileURL(join(JS, 'floor3d', 'clip-clock.js')).href);
+const { CAB_SHADE } = await import(pathToFileURL(join(JS, 'floor', 'cab-paint.js')).href);
+const { LOOK, poolShows } = await import(pathToFileURL(join(JS, 'floor3d', 'look.js')).href);
+const { skyPhase } = await import(pathToFileURL(join(JS, 'floor', 'floor-layout.js')).href);
 const CHARACTERS = await import(pathToFileURL(join(REPO, 'resources', 'characters', 'index.js')).href);
 const REDUCE = [{ name: 'prefers-reduced-motion', value: 'reduce' }];
+/**
+ * The face row's patch, a strip along the eyes' line through the face's point: a share of the body's height each side
+ * across (the eyes' centres stand about 0.08 of it either side, the desk's monitor farther) and a third of that up and
+ * down (the nose, a body part drawn whatever the face atlas holds, stands below it) — so the strip reaches the eyes
+ * however close the zoom came, and holds no ink without the face.
+ */
+const FACE_PATCH = 0.1;
 /** How late the kit's files answer in the loop row's restart leg, ms — after the page has drawn and settled. */
 const LATE_KIT_MS = 15000;
 /** How long the loop row counts frames at rest with held loops running, s (a paint or two may land in it). */
@@ -81,7 +98,7 @@ const BUDGET = { calls: 260, triangles: 150000, textureMB: 128, glbMB: 2, walls:
 
 /**
  * § 6's fixed term derived from the room's own members (plan § 6: *each counted from the world's own members*): a plane
- * per grid, the band, the contact discs, a screen per monitor, the doorway's cab and two leaves with a band, and each
+ * per grid, the band, the ground shade, a screen per monitor, the doorway's cab and two leaves with a band, and each
  * restroom door's leaf and field.
  */
 const fixedOf = (m) => m.planes + m.band + 1 + m.screens + 3 * m.band + 2 * m.restroom;
@@ -107,12 +124,34 @@ const expectedFrame = (r, ms) => {
 };
 const LONG_TASK_MS = 1500;
 
+/** `run` with the viewer's clock at `hour`:00 — how the look row puts the windows' sky in a phase. A17 reads the page's
+ *  civil hour, and the page's `Date` is the run's (`served-pages.mjs`: `floor.local_hours:local_minutes` on 2026-08-23,
+ *  in UTC), so the hour is set in the run and the page opened in UTC; nothing reads the host's clock. */
+const atHour = (run, hour) => ({ ...run, floor: { ...run.floor, local_hours: hour, local_minutes: 0 } });
+
 /** For a picture only: the camera's target moved to a desk (its name focused) and the eye zoomed in `notches` steps. */
 const closeUp = async (p, key, notches) => {
   await p.ev(`document.querySelector('.floor3d-name[data-key="${key}"]')?.focus()`);
   await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < ${notches}; k++) b.click(); })()`);
   // a damped dolly eases in over many frames
   await sleep(2500);
+};
+
+/**
+ * The page's inspection once its frame loop has drawn what was asked and rested: no frame drawn in `ms`. A read straight
+ * after a gesture can land between the controls' own update on a pointer move and the frame that clamps it — a pose no
+ * frame draws — and on a loaded host that frame can be hundreds of ms late. Only for a row whose run moves nothing
+ * held under motion, where the loop rests.
+ */
+const rested = async (p, ms = 400) => {
+  let i = await p.inspect();
+  for (let k = 0; k < 60; k++) {
+    await sleep(ms);
+    const next = await p.inspect();
+    if (next.frames === i.frames) return next;
+    i = next;
+  }
+  return i;
 };
 
 /** Primitives a kit file carries, read off its own JSON chunk — `k` of § 6's furniture term is the most of them. */
@@ -122,6 +161,9 @@ const primitives = (file) => {
   return j.meshes.reduce((n, m) => n + m.primitives.length, 0);
 };
 const K = Math.max(...Object.values(KITMAP.FILES).map(primitives));
+/** § 6's furniture term: each of the 22 kinds and parts at most `k` calls, and a dressed kind's dressing one more. */
+const DRESSINGS = KITMAP.DRESSED.length;
+const FURNITURE = 22 * K + DRESSINGS;
 
 // ── the runs ──────────────────────────────────────────────────────────────────────────────────
 /** floor_rides with no stream messages after the snapshot: nothing but the viewer wakes the page. */
@@ -209,9 +251,9 @@ const capFloor = () => {
 
 // ── the page ──────────────────────────────────────────────────────────────────────────────────
 /** A browser on the row's server at `path`, drawn: the renderer built, its bodies and labels there, the kit answered. */
-async function open(chrome, c, { path = '/floor/aimla/3d', w = 1280, h = 800, kit = true } = {}) {
+async function open(chrome, c, { path = '/floor/aimla/3d', w = 1280, h = 800, kit = true, timezone = null } = {}) {
   const s = await serve(c);
-  const b = await browser(chrome, w, h, 'never', { media: c.media ?? [] });
+  const b = await browser(chrome, w, h, 'never', { media: c.media ?? [], ...(timezone === null ? {} : { timezone }) });
   const errors = [];
   const glb = new Map();
   await b.page('Runtime.enable');
@@ -232,17 +274,26 @@ async function open(chrome, c, { path = '/floor/aimla/3d', w = 1280, h = 800, ki
   const mouse = (type, x, y, extra = {}) => b.page('Input.dispatchMouseEvent', { type, x, y, ...extra });
   const stage = await ev(`(() => { const r = document.getElementById('floor-drawing').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; })()`);
   const mid = { x: stage.x + stage.w / 2, y: stage.y + stage.h / 2 };
-  const drag = async (dx, dy, { button = 'left', steps = 12, at = mid } = {}) => {
+  // The stage point nearest its centre where the canvas itself takes the pointer — where a person grabs the floor, not a
+  // label lying over it (a label takes its own pointer events, and a drag begun on it never reaches the controls).
+  const grab = async () => {
+    const at = await ev(`(() => { const r = document.getElementById('floor-drawing').getBoundingClientRect(); const canvas = document.getElementById('floor3d-canvas'); for (let k = 0; k <= Math.min(r.width, r.height) / 2; k += 8) for (let a = 0; a < 16; a++) { const x = r.left + r.width / 2 + k * Math.cos((a * Math.PI) / 8), y = r.top + r.height / 2 + k * Math.sin((a * Math.PI) / 8); if (document.elementFromPoint(x, y) === canvas) return { x, y }; } return null; })()`);
+    if (at === null) throw new Error('no point of the stage near its centre shows the canvas — every one is under a label');
+    return at;
+  };
+  // `modifiers` is the protocol's bit field: 1 Alt, 2 Ctrl, 4 Meta, 8 Shift.
+  const drag = async (dx, dy, { button = 'left', steps = 12, at = null, modifiers = 0 } = {}) => {
+    at ??= await grab();
     const buttons = button === 'left' ? 1 : 2;
-    await mouse('mouseMoved', at.x, at.y);
-    await mouse('mousePressed', at.x, at.y, { button, buttons, clickCount: 1 });
-    for (let k = 1; k <= steps; k++) await mouse('mouseMoved', at.x + (dx * k) / steps, at.y + (dy * k) / steps, { button, buttons });
-    await mouse('mouseReleased', at.x + dx, at.y + dy, { button, buttons: 0, clickCount: 1 });
+    await mouse('mouseMoved', at.x, at.y, { modifiers });
+    await mouse('mousePressed', at.x, at.y, { button, buttons, clickCount: 1, modifiers });
+    for (let k = 1; k <= steps; k++) await mouse('mouseMoved', at.x + (dx * k) / steps, at.y + (dy * k) / steps, { button, buttons, modifiers });
+    await mouse('mouseReleased', at.x + dx, at.y + dy, { button, buttons: 0, clickCount: 1, modifiers });
   };
   const wheel = (deltaY, n = 1) => (async () => { for (let k = 0; k < n; k++) await mouse('mouseWheel', mid.x, mid.y, { deltaX: 0, deltaY }); })();
   const key = async (k, code, shift = false) => {
     const mod = shift ? 8 : 0;
-    await b.page('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers: mod, windowsVirtualKeyCode: { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Tab: 9 }[k] ?? 0 });
+    await b.page('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers: mod, windowsVirtualKeyCode: { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Tab: 9, PageUp: 33, PageDown: 34 }[k] ?? 0 });
     await b.page('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers: mod });
   };
   const settle = async (ms = 1200) => { await sleep(ms); return inspect(); };
@@ -281,8 +332,8 @@ const deg = (r) => (r * 180) / Math.PI;
 /** The desks in reading order — the world's own figures, sorted here by back edge, then left edge, then key. */
 const readingOrder = (desks) => [...desks].sort((a, b) => a.back - b.back || a.left - b.left || (a.key < b.key ? -1 : 1)).map((d) => d.key);
 const KINDS = ['name', 'status', 'chip', 'facts', 'bubble'];
-/** What the label layer holds, in document order: `[key, kind, display, text, width]`. */
-const LABELS = `[...document.getElementById('floor3d-labels').children].map((e) => [e.dataset.key, e.dataset.kind, e.style.display, e.textContent, e.getBoundingClientRect().width, e.tagName])`;
+/** What the label layer holds, in document order, but the elevator's control (the `ride` row's): `[key, kind, display, text, width]`. */
+const LABELS = `[...document.getElementById('floor3d-labels').children].filter((e) => e.dataset.key !== 'elevator').map((e) => [e.dataset.key, e.dataset.kind, e.style.display, e.textContent, e.getBoundingClientRect().width, e.tagName])`;
 const orderDefects = (labels, desks) => {
   const d = [];
   const want = readingOrder(desks);
@@ -299,6 +350,22 @@ const orderDefects = (labels, desks) => {
 
 // ── the plants: each one textual edit of a served file ───────────────────────────────────────
 const P = (file, from, to) => ({ file, from, to });
+/** WCAG AA's contrast floor for the labels' 12 px text. */
+const AA = 4.5;
+/** The most of a status's or a bubble's plaque that may be its own colour: a quarter of the scene, at least, shows through
+ *  (`FLOOR.md` § 12's *3-D thought plaques* row). */
+const PLAQUE_MOST = 0.75;
+/** A computed CSS colour — `rgb()`, `rgba()` or `color(srgb …)` — as `[r, g, b, alpha]`, each 0 to 1. */
+const rgba = (css) => {
+  const n = css.match(/[\d.]+/g).map(Number);
+  return css.startsWith('color(') ? [n[0], n[1], n[2], n[3] ?? 1] : [n[0] / 255, n[1] / 255, n[2] / 255, n[3] ?? 1];
+};
+/** WCAG 2's contrast ratio of two sRGB colours, each `[r, g, b]` 0 to 1. */
+const contrast = (a, b) => {
+  const lum = (c) => c.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((t, v, k) => t + v * [0.2126, 0.7152, 0.0722][k], 0);
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+};
 const PAINT = 'js/floor3d/floor-paint.js';
 const CLIP = 'js/floor3d/clip-clock.js';
 const TRANSIENT = 'js/floor3d/transient-paint.js';
@@ -312,8 +379,9 @@ const ROWS = {
     what: 'the page draws: no uncaught exception, a WebGL 2 canvas, the bodies, the furniture and the labels; the entry pose at the home tilt; every label one element in reading order, each name a link; the kit\'s files requested once each',
     base: { run: lateDesk() },
     plants: [
-      ['the entry pose not set from its spherical figures (the camera left at the origin)', { plant: [P(PAINT, '            camera.position.set(position.x, position.y, position.z);\n            controls.update();\n        }\n    };', '            controls.update();\n        }\n    };')] }],
-      ['a label appended after the render rather than inserted at its place', { plant: [P('js/floor3d/floor-labels.js', '                if (container.children[i] !== entry.element) {', '                if (false) {')] }],
+      ['the entry pose not set from its spherical figures (the camera left at the origin)', { plant: [P(PAINT, '            camera.position.set(position.x, position.y, position.z);\n            controls.update();\n            pose = { eye: position, target };', '            controls.update();\n            pose = { eye: position, target };')] }],
+      ['the entry fitted to the stage before its first measure', { plant: [P(PAINT, '        view = limits(world.extent, surface, character);', '        view = limits(world.extent, { width: 1, height: 1 }, character);')] }],
+      ['a label appended after the render rather than inserted at its place', { plant: [P('js/floor3d/floor-labels.js', '                if (container.children[first + i] !== entry.element) {', '                if (false) {')] }],
       ['a kit file requested for every placement', { plant: [P('js/floor3d/furniture.js', '        if (!requests.has(file)) {', '        if (true) {')] }],
     ],
     async run(chrome, c) {
@@ -329,6 +397,12 @@ const ROWS = {
         if (webgl !== 'ready') d.push(`the page reads data-webgl=${webgl}, not a WebGL 2 canvas`);
         if (!i.desks.some((x) => x.key === LATE)) d.push('CONTROL: the late desk never arrived — the order after a late desk was not measured');
         if (Math.abs(deg(i.polar) - deg(HOME_POLAR)) > 0.5 || Math.abs(i.azimuth) > 1e-3) d.push(`the entry pose is polar ${deg(i.polar).toFixed(2)}°, azimuth ${deg(i.azimuth).toFixed(2)}° — not ${deg(HOME_POLAR)}° from the front`);
+        // the entry's distance the one that frames the room on this stage as measured (the floor's extent is the eye's
+        // bound's sides and back less the gap), not one fitted before the stage was
+        const extent = { w: -2 * (i.limits.bound.eye.min.x - i.limits.bound.gap), d: -2 * (i.limits.bound.eye.min.z - i.limits.bound.gap) };
+        const { position: ep, target: et } = L.limits(extent, { width: p.stage.w, height: p.stage.h }, { w: CHARACTERS.SCENE_W, h: CHARACTERS.SCENE_H }).entry;
+        const fits = Math.hypot(ep.x - et.x, ep.y - et.y, ep.z - et.z);
+        if (Math.abs(i.distance - fits) > 1e-6 * fits) d.push(`the entry stands ${i.distance.toFixed(4)} from its target — not ${fits.toFixed(4)}, the distance that frames the room on the ${p.stage.w} × ${p.stage.h} stage`);
         const labels = await p.ev(LABELS);
         d.push(...orderDefects(labels, i.desks));
         const ids = labels.map(([k, kind]) => `${k}/${kind}`);
@@ -351,7 +425,7 @@ const ROWS = {
           await p.settle(2500);
           writeFileSync(join(argOf('--out'), 'floor3d-close.png'), await p.shot());
         }
-        return { defects: d, facts: { bodies: i.bodies, labels: labels.length, glb: p.glb.size, polar: deg(i.polar).toFixed(2), late: labels.findIndex(([k]) => k === LATE) } };
+        return { defects: d, facts: { bodies: i.bodies, labels: labels.length, glb: p.glb.size, polar: deg(i.polar).toFixed(2), distance: i.distance.toFixed(3), late: labels.findIndex(([k]) => k === LATE) } };
       } finally { p.close(); }
     },
   },
@@ -387,7 +461,7 @@ const ROWS = {
     what: 'the 3-D URL survives the first paint, a desk\'s panel and the back button, and a reload of the seat form opens that desk',
     base: { run: 'floor_rides' },
     plants: [
-      ['`routeOf()` ignoring the route kind', { plant: [P('js/floor/floor-page.js', "return `/${['floor', floor, ...kind, ...(seat === null ? [] : [seat])]", "return `/${['floor', floor, ...(seat === null ? [] : [seat])]")] }],
+      ['`routeOf()` ignoring the route kind', { plant: [P('js/floor/floor-page.js', '        return floorRoute(route, floor, seat);', "        return floorRoute('2d', floor, seat);")] }],
       ['`seatSegment()` ignoring the route kind', { plant: [P('js/floor/floor-page.js', '        const at = 2 + kind.length;', '        const at = 2;')] }],
     ],
     async run(chrome, c) {
@@ -417,14 +491,18 @@ const ROWS = {
   },
 
   camera: {
-    what: 'the camera: a drag down never takes the eye below the floor, a pan past the floor leaves the target in its box, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, a wheel at the dolly limit scrolls the page',
+    what: 'the camera: a drag down never takes the eye below the floor, a right-drag and Shift + ArrowUp carry the eye into the office and stop it at the back wall, a pan across stops it at each side wall, a vertical pan slides along the floor, Fit returns to the home tilt, the zoom-in button brings the eye closer and zoom-out takes it back, Page Up / Page Down and Alt + a vertical drag raise and lower the eye and the target together within the room\'s height and turn nothing, and with the target on the floor Page Down lowers the eye alone, tilting toward level, and Page Up retraces it, Shift + a left-drag still pans along the floor, a wheel at the dolly limit scrolls the page',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['`maxPolarAngle` widened past 90°', { plant: [P('js/floor3d/view-limits.js', 'export const MAX_POLAR = (88 * Math.PI) / 180;', 'export const MAX_POLAR = (120 * Math.PI) / 180;')] }],
-      ['the target clamp dropped', { plant: [P(PAINT, '        const t = controls.target;\n        const was = t.clone();', '        return;\n        const t = controls.target;\n        const was = t.clone();')] }],
-      ['screen-space panning', { plant: [P(PAINT, '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
+      ['the confinement dropped (the eye free)', { plant: [P(PAINT, '            pose = confineControls(controls, view.bound, pose);', '')] }],
+      ['screen-space panning', { plant: [P('js/floor3d/view-limits.js', '    controls.screenSpacePanning = false;', '    controls.screenSpacePanning = true;')] }],
       ['a notch in handed to the controls as the distance times the notch', { plant: [P('js/floor3d/camera-acts.js', '            const scale = ZOOM_STEP ** -Math.abs(notches);', '            const scale = ZOOM_STEP ** Math.abs(notches);')] }],
       ['the wheel never released at a limit', { plant: [P(PAINT, "        controls.enableZoom = !(view !== null && event.deltaY !== 0 && atLimit);", '        controls.enableZoom = true;')] }],
+      ['a rise that moves the target alone (the view turns)', { plant: [P('js/floor3d/camera-acts.js', '        position.set(position.x, position.y + both + alone, position.z);', '')] }],
+      ['Page Down that stops at the floor (the eye never lowered alone)', { plant: [P('js/floor3d/camera-acts.js', '            both = Math.max(h, -target.y);', '            both = h;')] }],
+      ['the Alt press left to the controls (Alt + drag turns)', { plant: [P(PAINT, '                        event.stopImmediatePropagation();\n', '')] }],
+      ['the Alt drag never reaching the rise', { plant: [P(PAINT, '                        acts.rise(event.clientY - rising.y);', '')] }],
     ],
     async run(chrome, c) {
       const p = await open(chrome, c);
@@ -451,6 +529,69 @@ const ROWS = {
         i = await p.settle(400);
         f.zoom.push(i.distance);
         if (!(i.distance > f.zoom[1] + 1e-6)) d.push(`the zoom-out button took the eye from ${f.zoom[1].toFixed(3)} to ${i.distance.toFixed(3)} — not farther`);
+        // Page Up / Page Down: the target and the eye lifted by one vector — angles and distance kept — within the box
+        const sub = (a, b) => a.map((v, k) => v - b[k]);
+        const kept = (what, a, b) => {
+          const off = sub(sub(b.eye, b.target), sub(a.eye, a.target)).map(Math.abs);
+          if (Math.max(...off) > 1e-6 || Math.abs(a.polar - b.polar) > 1e-6 || Math.abs(a.azimuth - b.azimuth) > 1e-6) d.push(`${what} turned or moved the eye apart from the target: offset change ${off.map((v) => v.toExponential(1))}, polar ${deg(a.polar).toFixed(3)}° → ${deg(b.polar).toFixed(3)}°, azimuth ${deg(a.azimuth).toFixed(3)}° → ${deg(b.azimuth).toFixed(3)}°`);
+        };
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        let at = await p.inspect();
+        for (let k = 0; k < 3; k++) await p.key('PageUp', 'PageUp');
+        i = await p.settle(400);
+        f.rise = [at.target[1], i.target[1]];
+        if (!(i.target[1] > at.target[1] + 1e-3)) d.push(`three Page Ups took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not up`);
+        kept('Page Up', at, i);
+        at = i;
+        const top = i.limits.bound.target.max.y;
+        for (let k = 0; k < 400 && i.target[1] < top - 1e-6; k++) { await p.key('PageUp', 'PageUp'); if (k % 8 === 7) i = await p.inspect(); }
+        i = await p.settle(300);
+        f.top = i.target[1];
+        if (Math.abs(i.target[1] - top) > 1e-6) d.push(`Page Up held left the target at y ${i.target[1].toFixed(3)}, not the room's height ${top}`);
+        kept('Page Up to the top', at, i);
+        at = i;
+        // down to the floor, a press at a time: while the target is above it, the two move together
+        for (let k = 0; k < 400 && i.target[1] > 1e-6; k++) { await p.key('PageDown', 'PageDown'); i = await rested(p, 250); }
+        f.bottom = i.target[1];
+        if (Math.abs(i.target[1]) > 1e-6) d.push(`Page Down held left the target at y ${i.target[1].toFixed(4)}, not the floor`);
+        kept('Page Down to the floor', at, i);
+        // THE CARVE-OUT (the operator's answer to card#13033's Q4): with the target on the floor, Page Down lowers the
+        // eye alone — the target stays, the eye comes straight down, the view tilts toward level and faces the same way —
+        // and Page Up retraces it, the eye back where it stood before the two lift together again
+        at = i;
+        for (let k = 0; k < 3; k++) await p.key('PageDown', 'PageDown');
+        i = await rested(p);
+        f.alone = { eye: [at.eye[1], i.eye[1]], polar: [deg(at.polar), deg(i.polar)], target: i.target[1] };
+        if (Math.abs(i.target[1]) > 1e-6 || !(i.eye[1] < at.eye[1] - 1e-3) || !(i.polar > at.polar + 1e-6) || Math.abs(i.azimuth - at.azimuth) > 1e-6 || Math.abs(i.eye[0] - at.eye[0]) > 1e-6 || Math.abs(i.eye[2] - at.eye[2]) > 1e-6) {
+          d.push(`three Page Downs with the target on the floor took the eye ${at.eye.map((v) => v.toFixed(3))} → ${i.eye.map((v) => v.toFixed(3))}, the target's y to ${i.target[1].toFixed(4)}, the polar ${deg(at.polar).toFixed(3)}° → ${deg(i.polar).toFixed(3)}° — not the eye alone straight down, tilting toward level`);
+        }
+        for (let k = 0; k < 3; k++) await p.key('PageUp', 'PageUp');
+        i = await rested(p);
+        f.retraced = { eye: i.eye[1], target: i.target[1] };
+        if (Math.abs(i.target[1]) > 1e-6 || Math.max(...sub(i.eye, at.eye).map(Math.abs)) > 1e-6) d.push(`three Page Ups after them left the eye at ${i.eye.map((v) => v.toFixed(3))} and the target's y at ${i.target[1].toFixed(4)} — not back at ${at.eye.map((v) => v.toFixed(3))} with the target on the floor`);
+        // Alt + a drag down the stage raises, up it lowers — and turns nothing
+        at = i;
+        await p.drag(0, 160, { modifiers: 1 });
+        i = await p.settle(400);
+        f.altRise = [at.target[1], i.target[1]];
+        if (!(i.target[1] > at.target[1] + 1e-3)) d.push(`Alt + a drag down took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not up`);
+        kept('Alt + a drag down', at, i);
+        at = i;
+        // a drag up lowering the target to within a pixel's rise of the floor, so the two move together (the controls'
+        // pan rate, as `rise()` takes it) — past the floor the eye would go on alone, the carve-out above
+        await p.drag(0, -Math.floor(at.target[1] * p.stage.h / (2 * at.distance * Math.tan(Math.PI / 8))), { modifiers: 1 });
+        i = await p.settle(400);
+        f.altRise.push(i.target[1]);
+        if (!(i.target[1] < at.target[1] - 1e-3)) d.push(`Alt + a drag up took the target's y from ${at.target[1].toFixed(3)} to ${i.target[1].toFixed(3)} — not down`);
+        kept('Alt + a drag up', at, i);
+        // Shift + a left-drag: still the controls' pan, along the floor at the raised height
+        at = i;
+        await p.drag(0, 120, { modifiers: 8 });
+        i = await p.settle(600);
+        f.shiftPan = [at.target, i.target];
+        if (Math.abs(i.target[1] - at.target[1]) > 1e-6 || Math.abs(i.target[2] - at.target[2]) < 0.05) d.push(`Shift + a left-drag moved the target ${at.target.map((v) => v.toFixed(2))} → ${i.target.map((v) => v.toFixed(2))} — not along the floor`);
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        i = await p.settle(600);
         // a vertical right-drag: along the floor, never up
         const before = i.target;
         await p.drag(0, 120, { button: 'right' });
@@ -458,12 +599,55 @@ const ROWS = {
         f.pan = [before, i.target];
         if (Math.abs(i.target[1] - before[1]) > 1e-6) d.push(`a vertical pan moved the target's y ${before[1]} → ${i.target[1]} — up the screen, not along the floor`);
         if (Math.abs(i.target[2] - before[2]) < 0.05) d.push('a vertical pan did not move the target along the floor');
-        // a pan far past the floor: the target stays in its box
-        for (let k = 0; k < 4; k++) await p.drag(3 * p.stage.w, 0, { button: 'right' });
+        // into the office: right-drags forward carry the eye in and stop it at the back wall's face; then across, to each
+        // side wall — the eye past no bound after any drag, and its distance and angles kept
+        const eyeOut = (what, at) => {
+          const { min, max } = at.limits.bound.eye;
+          if (at.eye[0] < min.x - 1e-6 || at.eye[0] > max.x + 1e-6 || at.eye[2] < min.z - 1e-6 || at.eye[2] > max.z + 1e-6) d.push(`${what} left the eye at ${at.eye.map((v) => v.toFixed(3))}, past the bound ${JSON.stringify(at.limits.bound.eye)}`);
+        };
+        const walk = async (what, dx, dy, until) => {
+          let at = await p.inspect();
+          const from = at;
+          for (let k = 0; k < 12 && !until(at); k++) { await p.drag(dx, dy, { button: 'right' }); at = await rested(p); eyeOut(what, at); }
+          // rule A: a walk keeps the eye's height, its pitch, the way it faces and its distance from the target
+          if (Math.abs(at.eye[1] - from.eye[1]) > 1e-6 || Math.abs(at.distance - from.distance) > 1e-6 || Math.abs(at.polar - from.polar) > 1e-6 || Math.abs(at.azimuth - from.azimuth) > 1e-6) d.push(`${what} changed the eye's height ${from.eye[1].toFixed(3)} → ${at.eye[1].toFixed(3)}, the distance ${from.distance.toFixed(3)} → ${at.distance.toFixed(3)}, the pitch or the facing — not a walk`);
+          return at;
+        };
+        await p.ev(`document.getElementById('floor-fit').click()`);
         i = await p.settle(600);
-        const box = i.limits.box;
-        f.far = i.target;
-        if (i.target[0] < box.min.x - 1e-6 || i.target[0] > box.max.x + 1e-6 || i.target[2] < box.min.z - 1e-6 || i.target[2] > box.max.z + 1e-6) d.push(`a pan past the floor left the target at ${i.target.map((v) => v.toFixed(2))}, outside its box`);
+        const back = i.limits.bound.eye.min.z;
+        i = await walk('a right-drag forward', 0, 300, (at) => at.eye[2] <= back + 1e-6);
+        f.inside = i.eye;
+        if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`right-drags forward left the eye at z ${i.eye[2].toFixed(3)} — not in the office at the back wall's face (${back.toFixed(3)})`);
+        if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-walk-in.png'), await p.shot());
+        for (const [dx, side] of [[p.stage.w / 2, 'min'], [-p.stage.w / 2, 'max']]) {
+          const wall = i.limits.bound.eye[side].x;
+          i = await walk(`a right-drag across to the ${side} side`, dx, 0, (at) => Math.abs(at.eye[0] - wall) < 1e-6);
+          if (Math.abs(i.eye[0] - wall) > 1e-6 || Math.abs(i.eye[2] - back) > 1e-6) d.push(`right-drags across left the eye at ${i.eye.map((v) => v.toFixed(3))} — not in the ${side} corner (${wall.toFixed(3)}, ${back.toFixed(3)})`);
+        }
+        f.corner = i.eye;
+        // Shift + ArrowUp from the entry: the keys' pan, the same way in
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        i = await p.settle(600);
+        for (let k = 0; k < 400 && i.eye[2] > back + 1e-6; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 8 === 7) { i = await rested(p); eyeOut('Shift + ArrowUp', i); } }
+        i = await rested(p);
+        eyeOut('Shift + ArrowUp held', i);
+        f.keysIn = i.eye;
+        if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`Shift + ArrowUp held left the eye at z ${i.eye[2].toFixed(3)} — not at the back wall's face (${back.toFixed(3)})`);
+        // For pictures only: zoomed in from the entry and walked into the office with the keys, then on to the back wall.
+        if (argOf('--out') !== null && !(c.plant ?? []).length) {
+          await p.ev(`document.getElementById('floor-fit').click()`);
+          await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < 9; k++) b.click(); })()`);
+          await p.ev(`document.getElementById('floor-drawing').focus()`);
+          for (let k = 0; k < 6; k++) await p.key('ArrowUp', 'ArrowUp', true);
+          i = await rested(p);
+          writeFileSync(join(argOf('--out'), 'floor3d-inside.png'), await p.shot());
+          // and on to the back wall
+          for (let k = 0; k < 200 && i.eye[2] > back + 1e-6; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 6 === 5) i = await rested(p); }
+          await rested(p);
+          writeFileSync(join(argOf('--out'), 'floor3d-walk-in-close.png'), await p.shot());
+        }
         // a wheel out at the dolly limit: the page scrolls, the camera does not move
         await p.ev(`document.getElementById('floor-fit').click()`);
         await p.wheel(400, 30);
@@ -486,7 +670,7 @@ const ROWS = {
   },
 
   cutaway: {
-    what: 'the cut-away: with the target within a unit of the band, turned to the back, the band is lowered to its foot strip; turned to the front, it stands again; from the floor\'s centre it never lowers',
+    what: 'the cut-away: looking level across the floor from its front, a wall between the eye and the target is lowered to its foot strip, and stands again once the eye looks down from the entry; and the eye turned at the back wall\'s face stays in front of it',
     base: { run: quiet(), media: REDUCE },
     plants: [['the cut-away\'s segment test dropped', { plant: [P(ROOM, '        const cut = cutaway(eye, target, world);', '        const cut = new Set();')] }]],
     async run(chrome, c) {
@@ -495,34 +679,37 @@ const ROWS = {
       try {
         const d = [];
         const f = {};
+        const lowered = (i) => i.walls.filter(([, h]) => Math.abs(h - L.CUTAWAY_H) < 1e-3).map(([id]) => id);
         await p.ev(`document.getElementById('floor-drawing').focus()`);
-        const turnBack = async () => {
-          let i = await p.inspect();
-          for (let k = 0; k < 400 && Math.abs(Math.abs(i.azimuth) - Math.PI) > 0.1; k++) { await p.key('ArrowLeft', 'ArrowLeft'); if (k % 4 === 3) i = await p.inspect(); }
-          return p.settle(500);
-        };
-        const turnFront = async () => {
-          let i = await p.inspect();
-          for (let k = 0; k < 400 && Math.abs(i.azimuth) > 0.1; k++) { await p.key('ArrowRight', 'ArrowRight'); if (k % 4 === 3) i = await p.inspect(); }
-          return p.settle(500);
-        };
-        // the control: from the centre, turned to the back, the eye sees over the band
-        let i = await turnBack();
-        f.centre = { band: i.band, az: deg(i.azimuth).toFixed(1) };
-        if (i.band < i.limits.box.max.y - 1e-6) d.push(`turned to the back from the floor's centre, the band is lowered to ${i.band} — the derivation says the eye sees over it`);
-        i = await turnFront();
-        // the target slid toward the band, within a unit of it
-        for (let k = 0; k < 300 && i.target[2] > i.limits.box.min.z + 0.8; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 4 === 3) i = await p.inspect(); }
-        i = await p.settle(300);
-        f.target = i.target;
-        if (i.target[2] > i.limits.box.min.z + 1) d.push(`CONTROL: the target could not be brought within a unit of the band (z ${i.target[2].toFixed(2)})`);
-        i = await turnBack();
-        f.back = { band: i.band, az: deg(i.azimuth).toFixed(1) };
-        if (Math.abs(i.band - L.CUTAWAY_H) > 1e-3) d.push(`turned to the back with the target by the band, the band stands ${i.band} tall — not lowered to ${L.CUTAWAY_H}`);
+        let i = await rested(p);
+        f.entry = { lowered: lowered(i) };
+        // level: the eye tilted down to the polar limit, then swept across the floor (Shift + an arrow) until its line to
+        // the target runs through a wall in front of it
+        for (let k = 0; k < 120 && i.polar < i.limits.polar.max - 1e-3; k++) { await p.key('ArrowDown', 'ArrowDown'); if (k % 8 === 7) i = await p.inspect(); }
+        i = await rested(p);
+        for (const [key, presses] of [['ArrowLeft', 40], ['ArrowRight', 80]]) {
+          for (let k = 0; k < presses && lowered(i).length === 0; k++) { await p.key(key, key, true); i = await rested(p, 250); }
+        }
+        f.level = { polar: deg(i.polar).toFixed(1), target: i.target, lowered: lowered(i), walls: i.walls.length };
+        if (lowered(i).length === 0) d.push(`looking level across the floor from its front and swept across it, no wall of ${i.walls.length} was lowered — the cut-away met nothing between the eye and the target`);
         if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-cutaway.png'), await p.shot());
-        i = await turnFront();
-        f.front = { band: i.band };
-        if (Math.abs(i.band - i.limits.box.max.y) > 1e-3) d.push(`turned to the front again, the band stands ${i.band} tall — not restored`);
+        // back to the entry: everything that was lowered stands again
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        i = await rested(p);
+        const still = i.walls.filter(([id, h]) => f.level.lowered.includes(id) && h < L.CUTAWAY_H + 1e-3);
+        if (still.length > 0) d.push(`back at the entry, ${still.map(([id]) => id).join(', ')} still stand lowered`);
+        // the eye brought to the back wall's face (Shift + ArrowUp), then turned to look along the wall each way
+        const back = i.limits.bound.eye.min.z;
+        for (let k = 0; k < 400 && i.eye[2] > back + 1e-6; k++) { await p.key('ArrowUp', 'ArrowUp', true); if (k % 8 === 7) i = await rested(p); }
+        i = await rested(p);
+        f.atWall = { eye: i.eye };
+        if (Math.abs(i.eye[2] - back) > 1e-6) d.push(`CONTROL: Shift + ArrowUp did not bring the eye to the back wall's face (z ${i.eye[2].toFixed(3)}, the face's bound ${back.toFixed(3)})`);
+        for (const key of ['ArrowLeft', 'ArrowRight', 'ArrowRight']) {
+          for (let k = 0; k < 30; k++) await p.key(key, key);
+          i = await rested(p);
+          if (i.eye[2] < back - 1e-6) d.push(`turned with ${key} at the back wall, the eye stands at z ${i.eye[2].toFixed(3)} — behind the face's bound ${back.toFixed(3)}`);
+        }
+        f.turned = { eye: i.eye, az: deg(i.azimuth).toFixed(1) };
         return { defects: d, facts: f };
       } finally { p.close(); }
     },
@@ -533,7 +720,7 @@ const ROWS = {
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['the stop condition dropped', { plant: [P(LOOP, '        if (raf !== null || next === 0) {', '        if (true) {')] }],
-      ['the restart on a late resource dropped', { plant: [P(PAINT, "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    wake();", "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');")] }],
+      ['the restart on a late resource dropped', { plant: [P(PAINT, "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    standShade();\n                    wake();", "                ready: () => {\n                    onTerm(furnitureGroup, 'furniture');\n                    standShade();")] }],
       ['the controls\' change not wired to the loop', { plant: [P(PAINT, "    controls.addEventListener('change', wake);", '')] }],
       ['the held loop\'s step sleep dropped (a frame each display refresh)', { plant: [P(LOOP, '            timer = window.setTimeout(() => {\n                timer = null;\n                wake();\n            }, next);', '            schedule();')] }],
       ['a settling frame queuing its successor past the one pending frame (two chains, doubling each tick)', { plant: [P(LOOP, '        if (raf !== null || next === 0) {\n            schedule();', '        if (raf !== null || next === 0) {\n            raf = window.requestAnimationFrame(frame);')] }],
@@ -619,11 +806,16 @@ const ROWS = {
   },
 
   labels: {
-    what: 'the labels: the status reads the same from in front of its desk and from behind it; a Tab onto a desk\'s name moves the target to that desk; every desk is a row of the list view while a label behind the eye is not drawn',
+    what: 'the labels: the status reads the same from in front of its desk and from behind it, and from both it and the bubble start to the right of its sitter\'s face, the bubble over the status and clear of it; every status and bubble a plaque at most three quarters its own colour, its ink at WCAG AA on it over white and over black; a Tab onto a desk\'s name moves the target to that desk; every desk is a row of the list view while a label behind the eye is not drawn',
     base: { run: quiet(), media: REDUCE },
     plants: [
       ['the status drawn on the monitor only, with no label', { plant: [P('js/floor3d/floor-labels.js', '            const wanted = [...world.labels]', "            const wanted = [...world.labels].filter((l) => l.kind !== 'status')")] }],
-      ['a focused name leaving the target where it was', { plant: [P('js/floor3d/floor-labels.js', "            element.addEventListener('focus', () => focused(held.get(idOf(label)).desk));", '')] }],
+      ['a focused name leaving the target where it was', { plant: [P('js/floor3d/floor-labels.js', '                focused({ x: (slab.left + slab.right) / 2, z: (slab.back + slab.front) / 2 }, seat);', '')] }],
+      ['every label centred on its point, the status over its sitter\'s face', { plant: [P('js/floor3d/floor-labels.js', '        object.center.set(label.anchor.pin.x, label.anchor.pin.y);', '')] }],
+      ['the bubble hanging from the status\'s point, over the status', { plant: [P('js/floor/floor-world.js', "anchor: beside(PIN.stand), model", "anchor: beside(PIN.hang), model")] }],
+      ['the status moved along the floor\'s x, not the camera\'s right (on the viewer\'s left from behind)', { plant: [P('js/floor/floor-world.js', 'return { x: p.x + right.x * reach, y: p.y + anchor.height / UNIT, z: p.z + right.z * reach };', 'return { x: p.x + reach, y: p.y + anchor.height / UNIT, z: p.z };')] }],
+      ['the status\'s plaque opaque', { plant: [P('css/mezzanine.css', '        background: color-mix(in srgb, var(--scene-monitor) 75%, transparent);', '        background: var(--scene-monitor);')] }],
+      ['the status in the screen\'s teal on its translucent plaque', { plant: [P('css/mezzanine.css', '    background: var(--scene-monitor);\n    color: var(--ink);', '    background: var(--scene-monitor);\n    color: var(--scene-monitor-on);')] }],
     ],
     async run(chrome, c) {
       const p = await open(chrome, c);
@@ -631,8 +823,12 @@ const ROWS = {
       try {
         const d = [];
         const f = {};
-        // Tab from the stage onto the first desk's name
+        // Tab from the stage onto the elevator's control, the layer's first, and on onto the first desk's name
         await p.ev(`document.getElementById('floor-drawing').focus()`);
+        await p.key('Tab', 'Tab');
+        await sleep(200);
+        f.first = await p.ev(`document.activeElement?.dataset?.key ?? null`);
+        if (f.first !== 'elevator') d.push(`a Tab from the stage focused ${f.first}, not the elevator's control`);
         await p.key('Tab', 'Tab');
         await sleep(400);
         const focused = await p.ev(`document.activeElement?.dataset?.key ?? null`);
@@ -641,15 +837,46 @@ const ROWS = {
         f.focused = focused;
         if (desk === undefined) d.push(`a Tab from the stage focused ${focused}, not a desk's name`);
         else if (Math.abs(i.target[0] - (desk.left + desk.right) / 2) > 1e-3 || Math.abs(i.target[2] - (desk.back + desk.front) / 2) > 1e-3) d.push(`focusing ${focused}'s name left the target at ${i.target.map((v) => v.toFixed(2))}, not on its desk`);
-        // the status from the front and from behind
-        const status = async () => p.ev(`(() => { const e = document.querySelector('.floor3d-status[data-key="${focused}"]'); return e === null ? null : { text: e.textContent, w: Math.round(e.getBoundingClientRect().width), shown: e.style.display !== 'none' }; })()`);
+        // the status from the front and from behind: the same text; it and the bubble each on the viewer's right of the
+        // sitter's face from both, the bubble over the status and clear of it
+        const box = (kind) => `(() => { const e = document.querySelector('.floor3d-${kind}[data-key="${focused}"]'); if (e === null) return null; const r = e.getBoundingClientRect(), o = document.getElementById('floor3d-labels').getBoundingClientRect(); return { text: e.textContent, w: Math.round(r.width), shown: e.style.display !== 'none', left: r.left - o.left, top: r.top - o.top, bottom: r.bottom - o.top }; })()`;
+        const status = async () => {
+          const face = (await p.inspect()).faces.find((x) => x.key === focused) ?? null;
+          const e = await p.ev(box('status'));
+          return e === null ? null : { ...e, face, bubble: await p.ev(box('bubble')) };
+        };
+        const besideFace = (s, side) => {
+          if (s.face === null) { d.push(`CONTROL: ${focused}'s sitter has no face drawn ${side} — its status's place was not read`); return; }
+          if (!(s.left > s.face.x)) d.push(`${side}, ${focused}'s status starts at x ${s.left.toFixed(0)}, not to the right of its sitter's face at x ${s.face.x.toFixed(0)}`);
+          if (s.bubble === null) d.push(`CONTROL: ${focused} has no bubble ${side} — its place was not read`);
+          else if (!(s.bubble.left > s.face.x)) d.push(`${side}, ${focused}'s bubble starts at x ${s.bubble.left.toFixed(0)}, not to the right of its sitter's face at x ${s.face.x.toFixed(0)}`);
+          else if (!(s.bubble.bottom <= s.top)) d.push(`${side}, ${focused}'s bubble reaches down to y ${s.bubble.bottom.toFixed(1)}, over its status, whose top is at y ${s.top.toFixed(1)}`);
+        };
+        const out = argOf('--out') !== null && !(c.plant ?? []).length ? argOf('--out') : null;
         const front = await status();
+        if (out !== null) writeFileSync(join(out, 'floor3d-labels-front.png'), await p.shot());
         for (let k = 0; k < 400 && Math.abs(Math.abs(i.azimuth) - Math.PI) > 0.05; k++) { await p.key('ArrowLeft', 'ArrowLeft'); if (k % 4 === 3) i = await p.inspect(); }
         await sleep(400);
         const behind = await status();
-        f.status = [front, behind];
+        if (out !== null) writeFileSync(join(out, 'floor3d-labels-behind.png'), await p.shot());
+        f.status = [front, behind].map((s) => s && { text: s.text, w: s.w, left: Math.round(s.left), top: Math.round(s.top), face: s.face && Math.round(s.face.x), bubble: s.bubble && [Math.round(s.bubble.left), Math.round(s.bubble.bottom)] });
         if (front === null || behind === null) d.push(`${focused} has no status label`);
-        else if (front.text !== behind.text || front.w !== behind.w || !front.shown || !behind.shown) d.push(`the status read ${JSON.stringify(front)} in front and ${JSON.stringify(behind)} behind`);
+        else {
+          if (front.text !== behind.text || front.w !== behind.w || !front.shown || !behind.shown) d.push(`the status read ${JSON.stringify(f.status[0])} in front and ${JSON.stringify(f.status[1])} behind`);
+          besideFace(front, 'in front');
+          besideFace(behind, 'from behind');
+        }
+        // every status and bubble a plaque the scene shows through, its ink at WCAG AA on it laid over white and over black —
+        // the colours as the browser computed them, `color-mix()` resolved
+        const plaques = await p.ev(`[...document.querySelectorAll('#floor3d-labels .floor3d-status, #floor3d-labels .floor3d-bubble')].map((e) => { const s = getComputedStyle(e); return [e.dataset.key + '/' + e.dataset.kind, s.color, s.backgroundColor]; })`);
+        f.plaques = plaques.length;
+        if (!plaques.some(([id]) => id.endsWith('/bubble'))) d.push('CONTROL: no bubble on the floor — the bubble\'s plaque was not read');
+        for (const [id, ink, ground] of plaques) {
+          const [fg, bg] = [rgba(ink), rgba(ground)];
+          const worst = Math.min(...[[0, 0, 0], [1, 1, 1]].map((under) => contrast(fg.slice(0, 3), bg.slice(0, 3).map((v, k) => v * bg[3] + under[k] * (1 - bg[3])))));
+          if (!(bg[3] <= PLAQUE_MOST)) d.push(`${id}'s plaque is ${ground}, more than ${PLAQUE_MOST} of its own colour`);
+          if (!(worst >= AA)) d.push(`${id}'s ink ${ink} reads at ${worst.toFixed(2)}:1 on its plaque ${ground} over white or black, under AA's ${AA}:1`);
+        }
         // a label behind the eye: the target on the front desk, the eye turned to the band's side of it, brought in close
         // and down to the floor's level — looking at the front edge, the back row is behind it
         const frontDesk = readingOrder(i.desks).at(-1);
@@ -702,10 +929,12 @@ const ROWS = {
         await p.ev(`for (const id of ['floor3d-labels', 'floor3d-marks']) document.getElementById(id).style.visibility = 'hidden'`);
         await sleep(200);
         const img = png(await p.shot());
-        const r = 6;
+        // the patch at the face's own scale (`FACE_PATCH`), measured at the target's distance, where the face lies — so how
+        // close the zoom came scales the patch with the face rather than leaving it between the features
+        const r = Math.max(1, Math.round((FACE_PATCH * face.h * p.stage.h) / (2 * i.distance * Math.tan(FOV / 2))));
         const at = { x: Math.round(p.stage.x + face.x), y: Math.round(p.stage.y + face.y) };
         let ink = 0;
-        for (let y = at.y - r; y <= at.y + r; y++) {
+        for (let y = at.y - Math.round(r / 3); y <= at.y + Math.round(r / 3); y++) {
           for (let x = at.x - r; x <= at.x + r; x++) {
             const o = (y * img.width + x) * 4;
             if (0.299 * img.rgba[o] + 0.587 * img.rgba[o + 1] + 0.114 * img.rgba[o + 2] < 90) ink++;
@@ -713,7 +942,7 @@ const ROWS = {
         }
         if (ink === 0) d.push(`${first}'s face patch at ${at.x},${at.y} holds no ink — the face is blank`);
         if (argOf('--out') !== null) writeFileSync(join(argOf('--out'), `floor3d-face${(c.plant ?? []).length ? '-planted' : ''}.png`), await p.shot());
-        return { defects: d, facts: { desk: first, at, distance: i.distance.toFixed(2), ink } };
+        return { defects: d, facts: { desk: first, at, r, distance: i.distance.toFixed(2), ink } };
       } finally { p.close(); }
     },
   },
@@ -722,11 +951,11 @@ const ROWS = {
     what: '§ 6\'s budget on the cap floor, each term against its own bound and then the total: draw calls, triangles, texture memory and the .glb transfer',
     base: { run: capFloor(), media: REDUCE },
     plants: [
-      ['the character merge dropped (an intern\'s laptop parts each a call)', { plant: [P('js/floor3d/creature-paint.js', '        groups.push(mergeGeometries(laptop, false));', '        groups.push(...laptop);'), P('js/floor3d/creature-paint.js', '        materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));')] }],
+      ['the character merge dropped (an intern\'s laptop parts each a call)', { plant: [P('js/floor3d/creature-paint.js', '        groups.push(mergeGeometries(laptop, false));', '        groups.push(...laptop);'), P('js/floor3d/creature-paint.js', '        materials.push(toon({ map: open, vertexColors: true, transparent: true, opacity: 1 }));', '        for (let i = 1; i < groups.length; i++) materials.push(toon({ map: open, vertexColors: true, transparent: true, opacity: 1 }));')] }],
       ['the furniture instancing dropped (a mesh a placement)', { plant: [P('js/floor3d/furniture.js', '        const mesh = new InstancedMesh(geometry, material, placements.length);\n\n        placements.forEach((m, i) => mesh.setMatrixAt(i, m));', '        for (const m of placements.slice(1)) { const one = new InstancedMesh(geometry, material, 1); one.setMatrixAt(0, m); group.add(one); meshes.push(one); }\n        const mesh = new InstancedMesh(geometry, material, 1);\n\n        placements.slice(0, 1).forEach((m, i) => mesh.setMatrixAt(i, m));')] }],
       ['the wall instancing dropped (a mesh a wall)', { plant: [P(ROOM, "        for (const kind of ['edge', 'partition']) {\n            const of = world.walls.filter((w) => w.kind === kind);", "        for (const kind of world.walls.map((w) => w.id)) {\n            const of = world.walls.filter((w) => w.id === kind);")] }],
       ['every part\'s facets ×4 (a lathe of 96 segments)', { plant: [P('js/floor3d/part-geometry.js', 'seat: Object.freeze({ lathe: 24, sphere: [16, 10], bead: [8, 6], tube: [2, 6], cone: 8, cylinder: 20, torus: [8, 24], curve: 4, bevel: 2 }),', 'seat: Object.freeze({ lathe: 96, sphere: [64, 40], bead: [32, 24], tube: [8, 24], cone: 32, cylinder: 80, torus: [32, 96], curve: 16, bevel: 8 }),'), P('js/floor3d/part-geometry.js', 'chibi: Object.freeze({ lathe: 12, sphere: [10, 7], bead: [6, 4], tube: [1, 4], cone: 6, cylinder: 10, torus: [5, 12], curve: 2, bevel: 1 }),', 'chibi: Object.freeze({ lathe: 48, sphere: [40, 28], bead: [24, 16], tube: [4, 16], cone: 24, cylinder: 40, torus: [20, 48], curve: 8, bevel: 4 }),')] }],
-      ['a second cab box in the doorway', { plant: [P(ROOM, '    doorway.add(cab, ...leaves);', "    doorway.add(cab, onTerm(new Mesh(doorBox, cabMaterial), 'fixed'), ...leaves);")] }],
+      ['a second cab room in the doorway', { plant: [P(ROOM, '        cab.geometry = cabGeometry(world.band.cab, world.band, cabRead);', "        cab.geometry = cabGeometry(world.band.cab, world.band, cabRead);\n        doorway.add(onTerm(new Mesh(cab.geometry, cab.material), 'fixed'));")] }],
       ['every face at the 512 px bucket', { plant: [P('js/floor3d/creature-paint.js', 'export const FACE_TEXTURE = 256;', 'export const FACE_TEXTURE = 512;')] }],
       ['a 3 MB file added to the kind map', { plant: [P('art:floor/models/kenney-furniture-kit/map.js', "    desk: 'desk.glb',", "    desk: 'bulky.glb',")], files: { '/art/floor/models/kenney-furniture-kit/bulky.glb': Buffer.alloc(3 * 1048576) } }],
     ],
@@ -749,7 +978,7 @@ const ROWS = {
         const total = Object.values(t).reduce((n, x) => n + x.calls, 0);
         if (S < desks || I < 8 * desks) d.push(`CONTROL: the cap floor drew ${S} seats and ${I} interns — not ${desks} desks each at the cap`);
         if (t.characters.calls > S + 2 * I) d.push(`characters ${t.characters.calls} calls > S + 2I = ${S + 2 * I}`);
-        if (t.furniture.calls > 22 * K) d.push(`furniture ${t.furniture.calls} calls > 22 k = ${22 * K} (k = ${K}, the most primitives a kit file carries)`);
+        if (t.furniture.calls > FURNITURE) d.push(`furniture ${t.furniture.calls} calls > 22 k + ${DRESSINGS} = ${FURNITURE} (k = ${K}, the most primitives a kit file carries; a dressing each dressed kind)`);
         if (t.walls.calls > BUDGET.walls) d.push(`walls ${t.walls.calls} calls > ${BUDGET.walls}`);
         if (t.fixed.calls > BUDGET.fixed) d.push(`fixed ${t.fixed.calls} calls > ${BUDGET.fixed}`);
         if (t.fixed.calls > fixedOf(i.room.members)) d.push(`fixed ${t.fixed.calls} calls > the ${fixedOf(i.room.members)} its members count (${JSON.stringify(i.room.members)})`);
@@ -762,8 +991,54 @@ const ROWS = {
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         if (argOf('--out') !== null && !(c.plant ?? []).length) writeFileSync(join(argOf('--out'), 'floor3d-cap.png'), await p.shot());
         const perDesk = (x) => (x / desks).toFixed(1);
-        return { defects: d, facts: { desks, S, I, k: K, members: i.room.members, fixedOf: fixedOf(i.room.members), terms: t, calls: total, triangles: i.triangles, perDesk: { calls: perDesk(total), triangles: perDesk(i.triangles) }, textureMB: mb.toFixed(1), textures: i.textures.length, glbMB: glbMB.toFixed(3), glb: glb.length, memory: i.memory } };
+        return { defects: d, facts: { desks, S, I, k: K, furnitureBound: FURNITURE, members: i.room.members, fixedOf: fixedOf(i.room.members), terms: t, calls: total, triangles: i.triangles, perDesk: { calls: perDesk(total), triangles: perDesk(i.triangles) }, textureMB: mb.toFixed(1), textures: i.textures.length, glbMB: glbMB.toFixed(3), glb: glb.length, memory: i.memory } };
       } finally { p.close(); }
+    },
+  },
+
+  look: {
+    what: 'the look pass on the cap floor, at night and by day: the light in the phase the windows show (LOOK\'s colours, intensities summing to π, no tone curve, the pixel ratio capped), and the ground shade over its whole population — a rect a still body, a placement standing on the floor, the wall cells\' area in runs, the band\'s foot, and a pool a floor lamp after dark only',
+    base: { run: capFloor(), media: REDUCE },
+    plants: [
+      ['the furniture\'s footprints dropped', { plant: [P('js/floor3d/furniture.js', '        footprints: () => footprints,', '        footprints: () => [],')] }],
+      ['the light never tinted for the phase', { plant: [P(PAINT, '        phase = phaseOf(sceneIn);', "        phase = 'unset';")] }],
+    ],
+    async run(chrome, c) {
+      const d = [];
+      const facts = {};
+      for (const hour of [23, 12]) {
+        const phase = skyPhase(hour);
+        const p = await open(chrome, { ...c, run: atHour(c.run, hour) }, { w: 1400, h: 1000, timezone: 'UTC' });
+        if (p.failed) return { defects: [p.failed], facts };
+        try {
+          await sleep(4000);
+          const i = await p.settle(1500);
+          const k = i.look;
+          const want = LOOK.phases[phase];
+          const pop = k.population;
+          facts[phase] = { phase: k.phase, hemi: k.hemi, sun: k.sun, pixelRatio: k.pixelRatio, shade: k.shade, population: pop };
+          if (k.phase !== phase) d.push(`at ${hour}:00 the light is in the ${k.phase} phase, not ${phase}`);
+          if (k.hemi.sky !== want.sky || k.sun.colour !== want.sun) d.push(`${phase}: the hemisphere's sky ${k.hemi.sky} and the sun ${k.sun.colour} — not ${want.sky} and ${want.sun}`);
+          if (k.hemi.ground !== LOOK.hemi.ground || Math.abs(k.hemi.intensity + k.sun.intensity - Math.PI) > 1e-2) d.push(`${phase}: the hemisphere's ground ${k.hemi.ground} at ${k.hemi.intensity} and the sun at ${k.sun.intensity} — not ${LOOK.hemi.ground}, summing to π`);
+          if (k.toneMapping !== 0) d.push(`${phase}: tone mapping ${k.toneMapping}, not none`);
+          if (k.pixelRatio > LOOK.pixelRatio) d.push(`${phase}: the pixel ratio ${k.pixelRatio} > ${LOOK.pixelRatio}`);
+          if (pop.still === 0 || pop.standing === 0 || pop.wallArea === 0 || pop.lamps === 0) d.push(`CONTROL: ${phase}: the cap floor holds ${JSON.stringify(pop)} — a term of the shade's population was not measured`);
+          if (k.shade.body !== pop.still) d.push(`${phase}: ${k.shade.body} body shades for ${pop.still} still bodies`);
+          if (k.shade.furniture !== pop.standing) d.push(`${phase}: ${k.shade.furniture} furniture shades for ${pop.standing} placements standing on the floor`);
+          if (Math.abs(k.shade.wallArea - pop.wallArea) > 1e-6) d.push(`${phase}: the wall shades cover ${k.shade.wallArea.toFixed(4)} square units, the wall cells at the floor ${pop.wallArea.toFixed(4)}`);
+          if (k.shade.band !== pop.band) d.push(`${phase}: ${k.shade.band} band lines for ${pop.band} band`);
+          const pools = poolShows(phase) ? pop.lamps : 0;
+          if (k.shade.pool !== pools) d.push(`${phase}: ${k.shade.pool} lamp pools, not ${pools}`);
+          if (k.shade.drawn !== k.shade.body + k.shade.furniture + k.shade.wall + k.shade.band + k.shade.pool) d.push(`${phase}: the decal draws ${k.shade.drawn} instances for its ${JSON.stringify(k.shade)}`);
+          if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+          if (argOf('--out') !== null && !(c.plant ?? []).length) {
+            writeFileSync(join(argOf('--out'), `floor3d-look-${phase}.png`), await p.shot());
+            await closeUp(p, 'aimla-impl-1', 7);
+            writeFileSync(join(argOf('--out'), `floor3d-look-${phase}-close.png`), await p.shot());
+          }
+        } finally { p.close(); }
+      }
+      return { defects: d, facts };
     },
   },
 
@@ -796,7 +1071,7 @@ const ROWS = {
   },
 
   clips: {
-    what: 'the clock, on the page: every moving held body shows the loop frame its time since the paint and its key\'s offset name, its time SET from the latest paint even across a long task; two seats in one state at one instant differ in phase; a walker steps its walk at the frame its time names',
+    what: 'the clock, on the page: every moving held body shows the loop frame its time since the paint and its key\'s offset name, its time SET from the latest paint even across a long task; two seats in one state at one instant differ in phase; a walker steps its walk at the frame its time names on a walk leg and stands on any other',
     base: { run: capFloor(), media: [] },
     plants: [
       ['the clock advanced by a capped delta a frame, not set', { plant: [P(BODIES, '        const since = now - paintedAt;\n', '        const since = (b.kept = Math.min(now - paintedAt, (b.kept ?? 0) + 50));\n')] }],
@@ -856,12 +1131,13 @@ const ROWS = {
             const i = await p.inspect();
             const r = i.clock.find((x) => x.key === w.key);
             const at = i.faces.find((x) => x.key === w.key);
-            const want = CHARACTERS.CLIPS.walk[Math.floor(r.t / ms) % CHARACTERS.CLIPS.walk.length];
-            if (r.frame !== null && (r.frame !== Math.floor(r.t / ms) || r.pose !== want)) d.push(`the walker ${r.key} at ${r.t.toFixed(0)} ms is on frame ${r.frame} showing ${r.pose}, not ${Math.floor(r.t / ms)} showing ${want}`);
+            // stepping on a walk leg, its standing frame on any other (a stand, a cab, an `inside` wait)
+            const want = CHARACTERS.CLIPS.walk[r.leg === 'walk' ? Math.floor(r.t / ms) % CHARACTERS.CLIPS.walk.length : 0];
+            if (r.frame !== null && (r.frame !== Math.floor(r.t / ms) || r.pose !== want)) d.push(`the walker ${r.key} at ${r.t.toFixed(0)} ms is on frame ${r.frame} showing ${r.pose} on its ${r.leg} leg, not ${Math.floor(r.t / ms)} showing ${want}`);
             await sleep(300);
             const at2 = (await p.inspect()).faces.find((x) => x.key === w.key);
             if (at !== undefined && at2 !== undefined && at.x === at2.x && at.y === at2.y) d.push(`the walker ${r.key} stood still between two frames with motion on`);
-            f.walker = [r.key, r.frame, r.pose];
+            f.walker = [r.key, r.frame, r.leg, r.pose];
           }
         } finally { p.close(); }
       }
@@ -870,10 +1146,11 @@ const ROWS = {
   },
 
   motion: {
-    what: 'what moves off the bodies: a walker leaving by the elevator walks with the leaves opening over the cab and shut again; a sleeper\'s z\'s and a marker light in turn; the frame loop draws them at the loop\'s rate and stops once they have ended',
+    what: 'what moves off the bodies: a walker leaving by the elevator walks with the leaves opening over the cab and shut again, and is seen in the cab until they have; a sleeper\'s z\'s and a marker light in turn; the frame loop draws them at the loop\'s rate and stops once they have ended',
     base: { run: later('leave-stale'), media: [] },
     plants: [
-      ['the elevator\'s leaves never moved', { plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * leafLevel(world.doors, f);', '        const shut = 1;')] }],
+      ['the elevator\'s leaves never moved', { plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * (open ?? leafLevel(world.doors, f));', '        const shut = 1;')] }],
+      ['a rider hidden the moment it leaves the floor', { plant: [P(BODIES, '            c.mesh.visible = p !== null && p.shown;', "            c.mesh.visible = p !== null && p.where === 'floor';")] }],
       ['the marks lit once and never stepped', { plant: [P(CLIP, 'characters.zLevels(f % characters.SLEEP_LOOP))', 'characters.zLevels(0))'), P(CLIP, 'characters.markerLevel(f % characters.SLEEP_LOOP)]', 'characters.markerLevel(0)]')] }],
     ],
     async run(chrome, c) {
@@ -901,7 +1178,7 @@ const ROWS = {
         }
         if (reads[0] === '[]') d.push('CONTROL: no sleeper or marker on the floor — the marks were not read');
         else if (f.marks === 1) d.push(`the marks read ${reads[0]} at every read across a whole pulse — they do not step`);
-        let open = false, walked = false, shot = false;
+        let open = false, walked = false, shot = false, rode = 0;
         // the pictures: near the back desk the elevator stands by, the walker walking out from it
         if (out !== null) await closeUp(p, readingOrder((await p.inspect()).desks)[0], 6);
         for (let t = 0; t < 400; t++) {
@@ -910,6 +1187,12 @@ const ROWS = {
           const l = i.room.leaves;
           const walker = i.clock.find((r) => r.kind === 'walker' && r.frame !== null);
           walked ||= walker !== undefined;
+          // a boarder in the cab with its leaves not yet shut is in sight, as the 2-D floor draws it behind them
+          const rider = i.clock.find((r) => r.kind === 'walker' && r.where === 'cab' && r.frame !== null);
+          if (rider !== undefined && l !== null && l[0][0] < l[0][1] - 1e-6) {
+            rode++;
+            if (!rider.shown) { d.push(`the rider ${rider.key} at ${rider.t.toFixed(0)} ms is hidden in the cab with its leaves at ${(l[0][0] / l[0][1]).toFixed(2)} of shut`); break; }
+          }
           if (l !== null && l[0][0] < l[0][1] - 1e-6) {
             if (!open) f.leaves.push(l.map(([w, full]) => +(w / full).toFixed(2)));
             open = true;
@@ -922,10 +1205,76 @@ const ROWS = {
         const i = await p.inspect();
         f.end = i.room.leaves;
         if (!walked) d.push('CONTROL: no walker was in flight — the leaves were not read against a walk');
+        else if (rode === 0 && !d.length) d.push('CONTROL: no rider was read in the cab with its leaves open — the cab was not read');
+        f.rode = rode;
         if (!open) d.push('the walker left by the elevator and its leaves never opened');
         if (i.room.leaves !== null && Math.abs(i.room.leaves[0][0] - i.room.leaves[0][1]) > 1e-6) d.push('the leaves are not shut again once the walk has ended');
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  cab: {
+    what: 'through the elevator\'s leaves, held open, the cab\'s room is seen, each of its surfaces in a colour of its own as the page resolves the 2-D cab\'s, and nothing of it outside the doorway — from the close view and from an eye raised over the band',
+    // The leaves are SERVED held open, so the cab is looked at as long as the view takes on a loaded host — the `motion`
+    // row holds that they open over a walk; this one is about what they open onto.
+    base: { run: fixtureRun('leave-stale'), media: [], plant: [P(ROOM, '        const shut = 1 - (1 - LEAF_OPEN) * (open ?? leafLevel(world.doors, f));', '        const shut = LEAF_OPEN;')] },
+    plants: [
+      ['the cab never clipped to its doorway', { plant: [P(ROOM, 'new MeshBasicMaterial({ vertexColors: true, clippingPlanes: cabClip })', 'new MeshBasicMaterial({ vertexColors: true })')] }],
+      ['every cab surface given the back wall\'s colour', { plant: [P(ROOM, "surfaces: Object.fromEntries(Object.entries(CAB_SURFACES).map(([name, [cls]]) => [name, bytes(style(cls).fill)])),", "surfaces: Object.fromEntries(Object.entries(CAB_SURFACES).map(([name]) => [name, bytes(style('cab-back').fill)])),")] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c, { kit: false });
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const out = argOf('--out') !== null && c.plant.length === 1 ? argOf('--out') : null;
+        // the view the operator reads: close to the back desk the elevator stands by, slid along to the elevator before it
+        await closeUp(p, readingOrder((await p.inspect()).desks)[0], 8);
+        for (let k = 0; k < 3; k++) await p.key('ArrowLeft', 'ArrowLeft', true);
+        const i = await p.settle(2500);
+        const l = i.room.leaves;
+        if (l === null || l[0][0] / l[0][1] > 0.2) return { defects: [`CONTROL: the leaves are not held open (${JSON.stringify(l)}) — the cab was not seen`], facts: {} };
+        if (out !== null) writeFileSync(join(out, 'floor3d-cab-open.png'), await p.shot());
+        const colours = i.room.cab;
+        if (colours === null) return { defects: ['the cab\'s colours were never resolved — no cab was built behind the doorway'], facts: {} };
+        const names = Object.keys(colours.surfaces);
+        for (const [k, a] of names.entries()) {
+          for (const b of names.slice(k + 1)) {
+            if (colours.surfaces[a].join() === colours.surfaces[b].join()) d.push(`the cab's ${a} and ${b} resolve to one colour, rgb(${colours.surfaces[a].join(', ')}) — the surfaces do not separate`);
+          }
+        }
+        // The far wall is one even tone (`CAB_SHADE.ceiling` of the ink over the back's colour), so a pixel of it inside the
+        // box's projected rect but outside the opening's is the cab seen past its doorway. Read from this view and from one
+        // raised over the band.
+        const far = colours.surfaces.back.map((v, k) => v + (colours.ink[k] - v) * CAB_SHADE.ceiling);
+        const stray = {};
+        const seenFrom = async (pose) => {
+          const at = await p.inspect();
+          const img = png(await p.shot());
+          // the rect of the opening, and of the whole box — the only place any of the cab can be drawn, so the band's own
+          // picture elsewhere, whatever its colours, is never read
+          const rect = (qs, m) => [Math.min(...qs.map((q) => q.x)) - m, Math.max(...qs.map((q) => q.x)) + m, Math.min(...qs.map((q) => q.y)) - m, Math.max(...qs.map((q) => q.y)) + m].map((v, k) => v + (k < 2 ? p.stage.x : p.stage.y));
+          const [x0, x1, y0, y1] = rect(at.cab.opening, 2);
+          const [bx0, bx1, by0, by1] = rect(at.cab.box, 0);
+          let inside = 0, outside = 0;
+          for (let y = Math.max(0, Math.floor(by0)); y < Math.min(img.height, by1); y++) {
+            for (let x = Math.max(0, Math.floor(bx0)); x < Math.min(img.width, bx1); x++) {
+              const o = (y * img.width + x) * 4;
+              if (far.every((v, k) => Math.abs(img.rgba[o + k] - v) <= 2)) (x >= x0 && x <= x1 && y >= y0 && y <= y1 ? inside++ : outside++);
+            }
+          }
+          stray[pose] = { inside, outside };
+          if (inside === 0) d.push(`CONTROL: from the ${pose}, no pixel of the cab's far wall (rgb ${far.map(Math.round).join(', ')}) shows in its doorway — the wall was not found`);
+          else if (outside > 0) d.push(`from the ${pose}, ${outside} pixels of the cab's far wall show outside its doorway's projected rect — the cab is seen past the band`);
+        };
+        await seenFrom('close view');
+        for (let k = 0; k < 8; k++) await p.key('PageUp', 'PageUp');
+        await p.settle(2500);
+        await seenFrom('raised eye');
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: { cab: colours, stray } };
       } finally { p.close(); }
     },
   },
@@ -967,6 +1316,223 @@ const ROWS = {
         const i = await p.inspect();
         f.after = i.terms.transient.calls;
         if (seen && i.transient.birds + i.transient.envelopes + i.transient.rings > 0) d.push(`after the round the transient drawings are still drawn: ${JSON.stringify(i.transient)}`);
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  restroom: {
+    what: 'a restroom door set into its side wall (the shipped default\'s, `right`): the wall over its doorway drawn as lintels from their box\'s foot; its leaf drawn at the world\'s box in the wall\'s thickness, as long as it is shut from the back jamb, and its field centred on the flag\'s plane; with the eye low inside the room facing that side wall and the target past it, every lintel of a lowered column lowered to nothing with it',
+    base: { run: fixtureRun('idle-visit'), media: [] },
+    plants: [
+      ['the lintel stood on the floor, not at its box\'s foot', { plant: [P(ROOM, 'makeTranslation(w.box.x, w.box.y, w.box.z)', 'makeTranslation(w.box.x, 0, w.box.z)')] }],
+      ['the side leaf laid across the room as a face-on door\'s, not in the wall', { plant: [P(ROOM, '                leaf.scale.set(b.w, b.h, b.d * shut);', '                leaf.scale.set(b.d * shut, b.h, b.w);')] }],
+      ['a lintel lowered only when the eye meets it, not with its column', { plant: [P(ROOM, ': toward(w.h, w.box.h, cut.has(id) || w.column.some((c) => cut.has(c)), 0);', ': toward(w.h, w.box.h, cut.has(id), 0);')] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c);
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const f = {};
+        const E = 1e-6;
+        const out = argOf('--out') !== null && !(c.plant ?? []).length ? argOf('--out') : null;
+        const quick = () => p.ev(`document.getElementById('floor3d-canvas').inspect({ terms: false })`);
+        let i = await quick();
+        const side = () => i.room.restroom.filter((r) => r.facing !== 'back');
+        if (side().length === 0 || i.room.lintels.length === 0) return { defects: [`CONTROL: no restroom door set into a side wall, or no lintel, on the page — ${JSON.stringify(i.room.restroom.map((r) => r.facing))}, ${i.room.lintels.length} lintel(s)`], facts: {} };
+        f.doors = side().map((r) => r.id);
+        f.lintels = i.room.lintels.length;
+        for (const l of i.room.lintels) {
+          if (Math.abs(l.foot - l.y) > E || Math.abs(l.h - l.full) > E) d.push(`the lintel ${l.id} is drawn from ${l.foot} up ${l.h} units — not from its box's foot ${l.y} up its full ${l.full}`);
+        }
+        // the leaf in the wall's thickness at the world's box, as long as it is shut from the back jamb, and the field
+        // centred on the flag's plane — read across the page's paints, each of which stands the doors' meshes afresh and
+        // the next frame places them, so a box counts once a frame has placed it
+        let read = 0;
+        for (let t = 0; t < 100 && read < 10; t++) {
+          await sleep(200);
+          i = await quick();
+          if (!side().every((r) => r.drawn.leaf.slice(3).some((v) => v !== 1))) continue;
+          read++;
+          for (const r of side()) {
+            const [x, y, z, sx, sy, sz] = r.drawn.leaf;
+            const b = r.drawn.bar;
+            if ([x - b.x, y - b.y, z - b.z, sx - b.w, sy - b.h].some((v) => Math.abs(v) > E) || !(sz > 0 && sz <= b.d + E)) {
+              d.push(`${r.id}'s leaf is drawn at ${JSON.stringify(r.drawn.leaf)} — not its box ${JSON.stringify(b)} in the wall, as long as it is shut from the back jamb`);
+            }
+            const [fx, fy, fz, fw, fh, fd] = r.drawn.field;
+            const s = r.drawn.sign;
+            if ([fx - s.x, fy - s.y, fw - s.w, fh - s.h, fz + fd / 2 - s.z].some((v) => Math.abs(v) > E)) {
+              d.push(`${r.id}'s field is drawn at ${JSON.stringify(r.drawn.field)} — not centred on the flag's plane at ${JSON.stringify(s)}`);
+            }
+          }
+          if (d.length > 0) break;
+        }
+        f.reads = read;
+        if (read === 0) d.push('CONTROL: no frame placed the side door\'s leaf and field — they were not read');
+        // seen through the side wall: the eye turned to the wall's outside (`+x`, azimuth +90°), the segment to the target
+        // meets that wall's cells, and every lintel of a column with a lowered wall is lowered to nothing
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        // the azimuth turned to `az` by the arrow keys, each press read once its damped turn has settled
+        const turnTo = async (az) => {
+          const off = async () => { await sleep(400); i = await quick(); return Math.abs(Math.atan2(Math.sin(i.azimuth - az), Math.cos(i.azimuth - az))); };
+          let gap = await off();
+          await p.key('ArrowLeft', 'ArrowLeft');
+          const key = (await off()) < gap ? 'ArrowLeft' : 'ArrowRight';
+          gap = await off();
+          for (let k = 0; k < 120 && gap > 0.15; k++) {
+            await p.key(key, key);
+            const next = await off();
+            if (next > gap) break;
+            gap = next;
+          }
+          await sleep(1200);
+          i = await quick();
+        };
+        // the target slid to `goal` (the door, by default) by Shift + the arrows: a press kept where it brings the target
+        // nearer once its damped pan has settled, and undone by the opposite key where it does not
+        const toDoor = async (goal = side()[0].at) => {
+          const opposite = { ArrowLeft: 'ArrowRight', ArrowRight: 'ArrowLeft', ArrowUp: 'ArrowDown', ArrowDown: 'ArrowUp' };
+          const gapNow = async () => { await sleep(900); i = await quick(); return Math.hypot(goal.x - i.target[0], i.target[1], goal.z - i.target[2]); };
+          let gap = await gapNow();
+          for (let k = 0; k < 40 && gap > 0.3; k++) {
+            let moved = false;
+            for (const key of Object.keys(opposite)) {
+              await p.key(key, key, true);
+              const next = await gapNow();
+              if (next < gap - 0.05) { gap = next; moved = true; break; }
+              await p.key(opposite[key], opposite[key], true);
+              gap = await gapNow();
+            }
+            if (!moved) break;
+          }
+          f.pan = [...(f.pan ?? []), { goal: [goal.x, goal.z].map((v) => +v.toFixed(2)), at: i.target.map((v) => +v.toFixed(2)) }];
+        };
+        // seen through the side wall from inside the room: the eye cannot stand outside a side wall (FLOOR.md § 4.5),
+        // so the view faces the door's wall from the room — the target at the door, the eye turned to the room's side of
+        // it, brought in close and low, then walked at the wall (Shift + ArrowUp) until the eye stands at its bound. The
+        // target, ahead of the eye along the floor, is then past the wall, and the eye's line to it crosses the door's
+        // column below its top.
+        const door = side()[0].at;
+        // turned from the entry to face the wall: a quarter turn in arrow presses, each the keys' own step
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        const quarter = Math.round(Math.PI / 2 / turnOf(PAN_STEP_PX, p.stage.w));
+        for (let k = 0; k < quarter; k++) { const key = door.x > 0 ? 'ArrowLeft' : 'ArrowRight'; await p.key(key, key); }
+        await sleep(1500);
+        // the target along the door's wall a unit and a half from its centre, clear of the doorway, so the line crosses a
+        // full wall cell of the door's column, not its opening
+        await toDoor({ x: door.x, z: door.z - 1.5 });
+        for (let k = 0; k < 30 && i.distance > 1.8; k++) { await p.ev(`document.getElementById('floor-zoom-in').click()`); await sleep(300); i = await quick(); }
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        for (let k = 0, was = null; k < 60 && (was === null || Math.abs(i.eye[0] - was) > 1e-6); k++) { was = i.eye[0]; await p.key('ArrowUp', 'ArrowUp', true); await sleep(500); i = await quick(); }
+        await sleep(1500);
+        i = await quick();
+        const lowered = i.room.lintels.filter((l) => l.column);
+        f.through = { az: deg(i.azimuth).toFixed(1), eye: i.eye.map((v) => +v.toFixed(2)), target: i.target.map((v) => +v.toFixed(2)), columnLowered: lowered.length, standing: lowered.filter((l) => l.h > E).map((l) => l.id) };
+        if (lowered.length === 0) d.push(`CONTROL: turned to ${deg(i.azimuth).toFixed(1)}°, the eye lowered no wall of a side door's column — the column rule was not read`);
+        else if (f.through.standing.length > 0) d.push(`seen through the side wall with its column lowered, the lintels ${f.through.standing.join(', ')} still stand — floating over the lowered wall`);
+        // the picture: from inside the room, beside the door, close
+        if (out !== null) {
+          for (let k = 0; k < 8; k++) await p.key('PageUp', 'PageUp');
+          await turnTo(-0.7);
+          await toDoor();
+          await p.ev(`(() => { const b = document.getElementById('floor-zoom-in'); for (let k = 0; k < 12; k++) b.click(); })()`);
+          await sleep(2500);
+          writeFileSync(join(out, 'floor3d-restroom-door.png'), await p.shot());
+          for (let k = 0; k < 4; k++) await p.key('PageUp', 'PageUp');
+          await sleep(1500);
+          writeFileSync(join(out, 'floor3d-restroom-door-raised.png'), await p.shot());
+        }
+        if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
+        return { defects: d, facts: f };
+      } finally { p.close(); }
+    },
+  },
+
+  ride: {
+    what: 'the ride from the 3-D floor (FLOOR.md § 4.5): a drag across the doorway turns the camera and rides nothing; a click on the drawn doorway opens the leaves and then the cab dialog, its doors drawn by the one cab path; a floor\'s stop navigates to that floor\'s 3-D route, which arrives; and the elevator\'s keyboard control opens the cab on Enter',
+    base: { run: quiet() },
+    plants: [
+      ['the doorway not a pointer target', { plant: [P(PAINT, '        return first !== undefined && room.isDoorway(first.object);', '        return false;')] }],
+      ['a 3-D start arriving on the 2-D route (the page handing the screen the 2-D route kind)', { plant: [P('js/floor/floor-page.js', '        route,\n        reduce:', "        route: '2d',\n        reduce:")] }],
+      ['the cab drawn by nothing (the renderer\'s own empty `paintCab`)', { plant: [P(PAINT, '                paintCab,', '                paintCab() {},')] }],
+      ['the elevator\'s control with no keyboard route', { plant: [P('js/floor3d/floor-labels.js', "        if (event.key === 'Enter' || event.key === ' ') {", '        if (false) {')] }],
+    ],
+    async run(chrome, c) {
+      const p = await open(chrome, c, { kit: false });
+      if (p.failed) return { defects: [p.failed], facts: {} };
+      try {
+        const d = [];
+        const f = {};
+        const cab = () => p.ev(`(() => { const c = document.getElementById('floor-cab'); return { open: c.open, drawn: document.querySelector('#floor-cab-doors svg.cab-scene') !== null, path: location.pathname }; })()`);
+        let i = await p.settle(800);
+        if (i.doorway === null) return { defects: ['the page draws no doorway — the ride was not read'], facts: {} };
+        const at = { x: p.stage.x + i.doorway.x, y: p.stage.y + i.doorway.y };
+        f.doorway = at;
+        // a drag that starts on the doorway is the camera's, not a press
+        const before = i.azimuth;
+        await p.drag(80, 0, { at });
+        i = await p.settle(800);
+        f.dragged = [before, i.azimuth];
+        if (Math.abs(i.azimuth - before) < 1e-3) d.push('CONTROL: a drag across the doorway did not turn the camera — the drag was not read');
+        if ((await cab()).open) d.push('a drag across the doorway opened the cab');
+        // the camera back to the entry pose, so the doorway is where it was drawn
+        await p.ev(`document.getElementById('floor-fit').click()`);
+        i = await p.settle(1500);
+        const door = { x: p.stage.x + i.doorway.x, y: p.stage.y + i.doorway.y };
+        await p.b.page('Input.dispatchMouseEvent', { type: 'mouseMoved', x: door.x, y: door.y });
+        await p.b.page('Input.dispatchMouseEvent', { type: 'mousePressed', x: door.x, y: door.y, button: 'left', buttons: 1, clickCount: 1 });
+        await p.b.page('Input.dispatchMouseEvent', { type: 'mouseReleased', x: door.x, y: door.y, button: 'left', buttons: 0, clickCount: 1 });
+        // the leaves open before the cab: read them while the ride is `opening`
+        let opened = false;
+        let c1 = null;
+        for (let t = 0; t < 40; t++) {
+          await sleep(100);
+          const r = (await p.inspect()).room.leaves;
+          opened ||= r !== null && r[0][0] < r[0][1] * 0.9;
+          c1 = await cab();
+          if (c1.open) break;
+        }
+        f.clicked = { opened, cab: c1 };
+        if (!opened) d.push('a click on the doorway did not open the leaves');
+        if (!c1.open) d.push('a click on the doorway did not open the cab');
+        else if (!c1.drawn) d.push('the cab opened with nothing drawn behind its doors — not the one cab path');
+        // inside: the stops answer; a real click on another floor's stop
+        let stop = null;
+        for (let t = 0; t < 40 && stop === null; t++) {
+          await sleep(100);
+          stop = await p.ev(`(() => { if (document.getElementById('floor-cab-panel').inert) return null; const b = document.querySelector('#floor-cab-stops li[data-stop="kappa"] button'); if (b === null) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`).catch(() => null);
+        }
+        if (stop === null) d.push('the cab\'s buttons never answered, or it offers no stop for kappa');
+        else {
+          await p.b.page('Input.dispatchMouseEvent', { type: 'mousePressed', x: stop.x, y: stop.y, button: 'left', buttons: 1, clickCount: 1 });
+          await p.b.page('Input.dispatchMouseEvent', { type: 'mouseReleased', x: stop.x, y: stop.y, button: 'left', buttons: 0, clickCount: 1 });
+          let path = null;
+          for (let t = 0; t < 80; t++) {
+            await sleep(100);
+            path = await p.ev('location.pathname').catch(() => null);
+            if (path !== null && path !== '/floor/aimla/3d') break;
+          }
+          f.arrived = path;
+          if (path !== '/floor/kappa/3d') d.push(`the ride to kappa arrived at ${path}, not /floor/kappa/3d`);
+        }
+        // the keyboard route, on the floor the ride arrived at: Tab from the stage to the elevator, Enter
+        for (let t = 0; t < 100; t++) { await sleep(100); if ((await p.ev(`document.querySelector('#floor3d-labels [data-key="elevator"]') !== null && document.getElementById('floor-cab').open === false`).catch(() => false))) break; }
+        await sleep(1500);
+        await p.ev(`document.getElementById('floor-drawing').focus()`);
+        await p.key('Tab', 'Tab');
+        await sleep(200);
+        f.focused = await p.ev(`document.activeElement?.dataset?.key ?? null`);
+        if (f.focused !== 'elevator') d.push(`a Tab from the stage focused ${f.focused}, not the elevator's control`);
+        await p.b.page('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+        await p.b.page('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+        let c2 = null;
+        for (let t = 0; t < 40; t++) { await sleep(100); c2 = await cab(); if (c2.open) break; }
+        f.keyed = c2;
+        if (!c2.open) d.push('Enter on the elevator\'s control did not open the cab');
         if (p.errors.length > 0) d.push(`uncaught: ${p.errors[0]}`);
         return { defects: d, facts: f };
       } finally { p.close(); }

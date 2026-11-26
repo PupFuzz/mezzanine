@@ -262,16 +262,15 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             'never disabled' => ["                'aria-disabled': riding ? 'true' : null,", '', 'controlDefects'],
             'no negative delay' => ['    return { delay: doorDelay - ride.elapsed_ms, motion: ride.ms - doorDelay };', '    return { delay: Math.max(0, doorDelay - ride.elapsed_ms), motion: ride.ms - doorDelay };', 'leafDefects'],
             'the delay without the door offset' => ['    return { delay: doorDelay - ride.elapsed_ms, motion: ride.ms - doorDelay };', '    return { delay: -ride.elapsed_ms, motion: ride.ms - doorDelay };', 'leafDefects'],
-            'the leaves closing inside' => ["            // `entering`, `inside`, `chosen`, `leaving`: the floor's leaves stand open behind the cab.\n            return 'transform:scaleX(.12)';",
-                '            return `animation:leaf-close ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;', 'leafDefects'],
+            'the leaves closing inside' => ["    }[ride.phase] ?? 'open';", "    }[ride.phase] ?? 'closes';", 'leafDefects'],
             'a walk adding to the ride' => ["            const leaves = riding\n                ? rideLeaves(scene.ride)", "            const leaves = riding && (scene.doors ?? []).length === 0\n                ? rideLeaves(scene.ride)", 'leafDefects'],
             'a word in the cab' => ["    const style = cabLeaves(ride);\n", "    const style = cabLeaves(ride);\n\n    node('text', {}, cab).textContent = 'B';\n", 'cabDefects'],
             // card#12038's RED: the ride's doors quantised again — by any step count — red the step check itself.
             'the ride doors stepped' => ["const RIDE_DOOR_EASING = 'ease-in-out';", "const RIDE_DOOR_EASING = 'steps(2)';", 'steppedDefects'],
             'the ride doors stepped, the cab alone' => ["        case 'chosen':\n".'            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING}',
                 "        case 'chosen':\n".'            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms steps(4)', 'steppedDefects'],
-            'the band doors linear' => ['            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms forwards`;',
-                '            return ride.ms === 0 ? \'transform:scaleX(.12)\' : `animation:leaf-open ${motion}ms linear ${delay}ms forwards`;', 'leafDefects'],
+            'the band doors linear' => ['            return `animation:leaf-open ${band.motion}ms ${RIDE_DOOR_EASING} ${band.delay}ms forwards`;',
+                '            return `animation:leaf-open ${band.motion}ms linear ${band.delay}ms forwards`;', 'leafDefects'],
             // card#12039's REDs: the cab cropped again, the palette not carried, a stale palette kept, the frame or the
             // lamp painted off the carrier.
             'the cab sliced' => ["preserveAspectRatio: 'xMidYMid meet'", "preserveAspectRatio: 'xMidYMid slice'", 'paletteDefects'],
@@ -389,6 +388,11 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
             // card#13033: `FloorData#roomTilesets()` — one room's held map's tilesets, no room entered, the page woken.
             'one room\'s tilesets by re-entering every room' => ["        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n", "        await this.prefetch();\n", 'doorViewDefects', 'floor-data.js'],
             'one room\'s tilesets as every row\'s' => ['namedTilesets([this.#building.room(installId)?.held?.map ?? null])', 'namedTilesets((this.#rows() ?? []).flatMap((row) => row.rooms.map((room) => this.#building.room(room.install_id)?.held?.map ?? null)))', 'doorViewDefects', 'floor-data.js'],
+            // card#13033 slice 3: a side restroom door drawn in its wall — billboarded face-on again, its lintels' undersides
+            // not drawn, or its recess in the wall's colour.
+            'the side door billboarded face-on' => ["            } else if (door !== null && door.facing !== 'back') {", '            } else if (false) {', 'doorViewDefects', 'door-view.js'],
+            'a lintel\'s underside not drawn' => ['    if (b.z2 > b.z1 && b.x2 > b.x1 && b.y1 > CAB.eye) {', '    if (false) {', 'doorViewDefects'],
+            'the recess in the wall\'s colour' => ["    doorway: Object.freeze({ face: 'dv-recess', top: 'dv-recess' }),", "    doorway: Object.freeze({ face: 'dv-wall', top: 'dv-wall' }),", 'doorViewDefects'],
             'one room\'s tilesets with no wake' => ["        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n        this.#wake();\n", "        await this.#tilesets.load(namedTilesets([this.#building.room(installId)?.held?.map ?? null]));\n", 'doorViewDefects', 'floor-data.js'],
         ] as $what => $control) {
             [$from, $to, $check] = $control;
@@ -866,7 +870,7 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
         // Every surface class is painted by STYLE, and each face's class strokes its own fill (the plan's § 7: no hairline).
         $plain = $this->withoutColourMixBlocks($run['style']);
 
-        foreach (['dv-floor', 'dv-ceiling', 'dv-accent', 'dv-wall', 'dv-back', 'dv-partition', 'dv-partition-cap', 'dv-desk', 'dv-desk-edge', 'dv-monitor', 'dv-skirting'] as $part) {
+        foreach (['dv-floor', 'dv-ceiling', 'dv-accent', 'dv-wall', 'dv-back', 'dv-partition', 'dv-partition-cap', 'dv-desk', 'dv-desk-edge', 'dv-monitor', 'dv-skirting', 'dv-recess'] as $part) {
             if (preg_match('/\.'.preg_quote($part, '/').'\{fill:([^;}]+);stroke:([^;}]+);stroke-width:[\d.]+/', $plain, $m) !== 1 || $m[1] !== $m[2]) {
                 $defects[] = "STYLE does not paint .{$part} a fill stroked by itself";
             }
@@ -1099,6 +1103,29 @@ class TheElevatorIsAControlOnTheDrawingTest extends TestCase
 
         if ($s9['wakes'] !== 2) {
             $defects[] = "S9: two calls of roomTilesets() woke the page {$s9['wakes']} time(s), not 2";
+        }
+
+        // S10 (card#13033): a restroom door set into a side wall is drawn IN that wall — its doorway's recess at the wall
+        // column's outer face in the theme's recess colour, the side strips behind it and the column's cells cut to a lintel
+        // whose underside shows, and the flag facing the eye at its plate's place — never its tile billboarded face-on.
+        foreach ($v['s10'] as $theme => $s) {
+            if (! $s['found'] || ($s['palette']['--dv-recess'] ?? null) !== $s['recess_owed']) {
+                $defects[] = "S10 ({$theme}): the door view does not carry {$theme}'s recess colour: ".json_encode($s['palette']);
+            }
+
+            if ($s['face_on']) {
+                $defects[] = "S10 ({$theme}): the side door is billboarded face-on at its tile";
+            }
+
+            if ($s['recess'] !== 8 || $s['strips_cut'] !== 8 || $s['undersides'] !== 8) {
+                $defects[] = "S10 ({$theme}): the doorway is not cut through its wall — of its 8 rows, {$s['recess']} recess strips, {$s['strips_cut']} side strips cut to the lintel, {$s['undersides']} lintel undersides drawn";
+            }
+
+            if ($s['flag'] !== $s['flag_owed']) {
+                $defects[] = "S10 ({$theme}): the door's flag is not its theme's flag document at ".json_encode($s['flag_owed']).': '.json_encode($s['flag']);
+            }
+
+            array_push($defects, ...$this->doorViewCensusDefects("S10 ({$theme})", $s));
         }
 
         return $defects;

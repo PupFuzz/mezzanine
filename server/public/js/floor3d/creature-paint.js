@@ -33,7 +33,6 @@ import {
     Color,
     CylinderGeometry,
     Float32BufferAttribute,
-    MeshToonMaterial,
     PlaneGeometry,
     SRGBColorSpace,
     Skeleton,
@@ -42,6 +41,7 @@ import {
     Vector3,
 } from '../vendor/three/three.module.js';
 import { mergeGeometries } from '../vendor/three/examples/jsm/utils/BufferGeometryUtils.js';
+import { toon } from './toon.js';
 import { rasterise } from './svg-texture.js';
 import { DETAIL, partGeometry } from './part-geometry.js';
 
@@ -221,8 +221,9 @@ async function atlases(document, docs, layout) {
  * @param {object} characters the character tree's module (`resources/characters/index.js`): `bodyParts`, `chibiParts`,
  *        `faceDocument`, `lidDocument`, `BONES`, `BONE_PARENT`, `POSES`
  * @param {string} key the seat key or the intern key
- * @param {{species?: string, chibi?: boolean, pose?: string, height?: number, textureSize?: number}} [opt] `height` the
- *        character's world height its frame rect stands (`floor-world.js`'s figure; 1 by default)
+ * @param {{species?: string, chibi?: boolean, pose?: string, height?: number, textureSize?: number}} [opt] `species` the
+ *        body built — for an intern its own species, never its seat's (`chibiParts()`); `height` the character's world
+ *        height its frame rect stands (`floor-world.js`'s figure; 1 by default)
  * @returns {Promise<{mesh: SkinnedMesh, parts: object, pose: function(string): void, blink: function(boolean): void,
  *          fade: function(number): void, textures: function(): object[], dispose: function(): void}>}
  */
@@ -305,13 +306,13 @@ export async function createCreature(document, characters, key, { species, chibi
         return t;
     };
     const open = texture(sheets.open), shut = texture(sheets.shut), paint = texture(paintCanvas);
-    const material = new MeshToonMaterial({ map: open, vertexColors: true, alphaTest: 0.35 });
+    const material = toon({ map: open, vertexColors: true, alphaTest: 0.35 });
 
     wearPaint(material, paint);
     const materials = [material];
 
     if (laptop.length > 0) {
-        materials.push(new MeshToonMaterial({ map: open, vertexColors: true, transparent: true, opacity: 1 }));
+        materials.push(toon({ map: open, vertexColors: true, transparent: true, opacity: 1 }));
     }
 
     // ---- the skeleton: the fixed hierarchy, each bone at its joint ----

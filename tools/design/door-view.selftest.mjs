@@ -14,10 +14,13 @@
 //   bookcase on the last row off the centre line, two pieces on one foot line, every floor cell accent — and again with its
 //   tile layers dragged by each offset `DRAGS` names, on both sides of half a cell and below zero), `charlie` (two rooms of
 //   different heights, and again with a tileset the loader lacks), `delta` (a planned floor: a hallway and a room placed
-//   below it), `echo` (a planned room off the 8-px lattice, so a partition cell and a desk straddle the centre line), and
-//   the bare routes R2–R4. Each reading is the plan's § 3.5 shape: centimetres in the rider's frame, and document order.
+//   below it), `echo` (a planned room off the 8-px lattice, so a partition cell and a desk straddle the centre line),
+//   `foxtrot` (card#13033: restroom doors set into its left and right edges and into a partition, and one standing free —
+//   each side door's wall cut to a lintel, its recess and its flag, in both themes and dragged), and the bare routes R2–R4.
+//   Each reading is the plan's § 3.5 shape: centimetres in the rider's frame, and document order.
 // - ORDER — the plan's § 10 random-scene check, committed (design review round 3's m6): random floors of one or two rooms,
-//   runs of wall cells, desks at unaligned y, standing pieces (some on the last row, some layers dragged off the grid) — and
+//   runs of wall cells, desks at unaligned y, standing pieces (some on the last row, some layers dragged off the grid), half
+//   the rooms a restroom door set into a side wall (the pairs its recess meets counted, so the leg cannot pass unmeasured) — and
 //   planned floors, a hallway and one room placed below it with its origin on and off the floor's 8-px lattice — each
 //   built by `doorView()` itself; rays from the eye through the doorway; for every pair of bodies one ray meets at different
 //   depths the nearer must be painted later, and for every pair it meets AT THE SAME DEPTH — a tie, which the first version
@@ -33,7 +36,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { alphaMap, bravoMap, charlieMap, held, kit, makeMap, resolve, scripted, stopRow } from './door-view-fixtures.mjs';
+import { alphaMap, bravoMap, charlieMap, foxtrotMap, held, kit, makeMap, resolve, restroomDoorOf, scripted, stopRow } from './door-view-fixtures.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = join(HERE, '..', '..');
@@ -203,6 +206,63 @@ async function fixtures(o) {
         say(pair.length === 2 && pair[0].tile < pair[1].tile, `${who}: two pieces on one foot line are not painted in the floor page's tile order (round 3's m4)`);
     }
 
+    // ── foxtrot (card#13033): restroom doors set into the footprint's left and right edges and into a partition, and one
+    // standing free — in both themes, and with its tile layers dragged 3 px (the drawn cell is not the placed one) ─────────
+    for (const theme of [null, 'cottage']) {
+        for (const offset of [null, 3]) {
+            const who = `foxtrot${theme === null ? '' : ` (${theme})`}${offset === null ? '' : ` dragged ${offset} px`}`;
+            const map = foxtrotMap(o, offset);
+            const { building, tilesets } = await held(o, { foxtrot: { map } });
+            const v = doorView(stopRow('foxtrot', ['foxtrot'], theme), building, tilesets, o.themes);
+            const module = o.modules[v.theme];
+            const cells = o.mapTiles.mapTiles(map, { x: 0, y: 0 }, () => o.read, 'foxtrot').filter((c) => c.kind === 'restroom-door');
+            const lintel = 144 * SCALE;
+            const span = (foot) => Array.from({ length: 8 }, (_, k) => foot - 64 + k * T);
+            const at = (x) => (b) => close(b.x1, X(x)) && close(b.x2, X(x));
+            // Each side door as this leg places it by hand: its tile's column, its wall face and foot line, the column it is
+            // set into and that column's outer face, and whether the column is the footprint's edge (a wall) or a partition.
+            const sides = [
+                { name: 'left-edge', col: 1, facing: 'left', face: 8, foot: 328, column: 0, outer: 0, edge: true },
+                { name: 'right-edge', col: 31, facing: 'right', face: 312, foot: 472, column: 312, outer: 320, edge: true },
+                { name: 'partition', col: 14, facing: 'right', face: 176, foot: 408, column: 176, outer: 184, edge: false },
+            ];
+
+            for (const d of sides) {
+                const cell = cells.find((c) => c.col === d.col);
+                const flag = o.svgUri(module.scenery(o.mapTiles.sceneryInput(cell, 'foxtrot', { facing: d.facing, plates: o.mapTiles.RESTROOM_PLATES.side }, 'flag')));
+                const [near, far] = d.facing === 'right' ? [d.face - 2, d.face - 38] : [d.face + 2, d.face + 38];
+                const flags = v.bodies.filter((b) => b.kind === 'billboard' && b.piece === 'restroom-door' && close(b.z1, Z(d.foot)) && close(b.z2, Z(d.foot)));
+                const column = v.bodies.filter((b) => (b.kind === 'wall' || b.kind === 'partition') && close(b.x1, X(d.column + T)) && close(b.x2, X(d.column)));
+                const over = (b) => span(d.foot).some((y) => close(b.z1, Z(y)));
+                const strips = v.bodies.filter((b) => b.kind === 'side-wall' && at(d.outer)(b));
+                const recess = v.bodies.filter((b) => b.kind === 'doorway' && at(d.outer)(b));
+
+                say(!v.bodies.some((b) => b.kind === 'billboard' && b.piece === 'restroom-door' && b.y1 === 0 && close(b.z1, Z(d.foot))),
+                    `${who}: the ${d.name} door is billboarded face-on at its tile, not set into its wall`);
+                say(flags.length === 1 && close(Math.max(flags[0].x1, flags[0].x2), Math.max(X(near), X(far))) && close(Math.min(flags[0].x1, flags[0].x2), Math.min(X(near), X(far)))
+                    && close(flags[0].y1, 112 * SCALE) && close(flags[0].y2, 144 * SCALE),
+                    `${who}: the ${d.name} door's flag is not the plate at x ${near}..${far} px, 112..144 px over its foot line y ${d.foot}: ${JSON.stringify(flags.map((b) => [b.x1, b.x2, b.y1, b.y2].map((n) => +n.toFixed(1))))}`);
+                say(flags.length === 1 && flags[0].href === flag, `${who}: the ${d.name} door's flag's document is not the theme's \`flag\` view of it`);
+                say(d.edge
+                    ? column.filter(over).length === 8 && column.filter(over).every((b) => close(b.y1, lintel)) && column.filter((b) => !over(b)).every((b) => b.y1 === 0)
+                    : column.length > 0 && column.filter(over).length === 0 && column.every((b) => b.y1 === 0),
+                    `${who}: the ${d.name} door's column is not cut to a lintel at ${lintel.toFixed(1)} cm over its doorway alone (a partition no taller left out): ${column.filter(over).length} bodies over the span, y1 ${[...new Set(column.map((b) => +b.y1.toFixed(1)))]}`);
+                say(!d.edge || (strips.filter(over).length === 8 && strips.filter(over).every((b) => close(b.y1, lintel)) && strips.filter((b) => !over(b)).every((b) => b.y1 === 0)),
+                    `${who}: the ${d.name} door's side strip is left whole behind the cut — ${strips.filter((b) => over(b) && close(b.y1, lintel)).length} of 8 strips over its doorway cut to the lintel`);
+                say(recess.length === 8 && recess.every((b) => over(b) && b.y1 === 0 && close(b.y2, lintel)),
+                    `${who}: the ${d.name} door's recess is not 8 row strips at its column's outer face x ${d.outer}, the floor to the lintel: ${recess.length}`);
+            }
+
+            const back = cells.find((c) => c.col === 10);
+            const face = v.bodies.find((b) => b.kind === 'billboard' && close(b.z1, Z(208)));
+
+            say(face !== undefined && close(face.x1, X(back.x + 64)) && close(face.x2, X(back.x)) && close(face.y2, lintel)
+                && face.href === o.svgUri(module.scenery(o.mapTiles.sceneryInput(back, 'foxtrot'))),
+                `${who}: the back door touching no wall is not billboarded face-on at its tile, as before`);
+            say(v.bodies.filter((b) => b.kind === 'doorway').length === 24, `${who}: ${v.bodies.filter((b) => b.kind === 'doorway').length} recess strips — 24 owed, 8 for each side door and none for the back door`);
+        }
+    }
+
     // ── S6: charlie, two rooms of different heights; and its second room naming a tileset the loader lacks ────────
     {
         const { building, tilesets } = await held(o, { charlie: { map: charlieMap(o, 296) }, 'charlie-2': { map: charlieMap(o, 496) } });
@@ -364,6 +424,23 @@ function scene(o, rnd, oy = null) {
             }
         }
 
+        // Half the rooms a restroom door set into a side wall (card#13033): a wall column over the tile's rows and a few
+        // past them, at the footprint's edge or inside it, the door's tile against its left or right side.
+        if (rnd() < 0.5) {
+            const door = restroomDoorOf(o);
+            const [cols, rows] = [door.w / T, door.h / T];
+            const right = rnd() < 0.5;
+            const edge = rnd() < 0.5;
+            const wall = edge ? (right ? W - 1 : 0) : cols + 1 + Math.floor(rnd() * (W - 2 * cols - 2));
+            const row = rows + Math.floor(rnd() * (H - rows));
+
+            for (let r = Math.max(1, row - rows + 1 - Math.floor(rnd() * 6)); r <= Math.min(H - 1, row + Math.floor(rnd() * 6)); r++) {
+                walls.push([wall, r]);
+            }
+
+            pieces.push({ gid: door.gid, col: right ? wall - cols : wall + 1, row });
+        }
+
         for (let n = Math.floor(rnd() * 9); n > 0; n--) {
             const p = standing[Math.floor(rnd() * standing.length)];
             const cols = W - Math.ceil(p.w / T);
@@ -487,6 +564,8 @@ function order(o, { scenes = 260, rays = 220, planned = 100, seeds = [12345, 777
         let bodies = 0;
         let pieces = 0;
         let floors = 0;
+        let doors = 0;
+        let doorPairs = 0;
 
         for (let s = 0; s < scenes; s++) {
             const v = scene(o, rnd, oy);
@@ -498,6 +577,7 @@ function order(o, { scenes = 260, rays = 220, planned = 100, seeds = [12345, 777
             floors++;
             bodies += v.bodies.length;
             pieces += v.bodies.filter((b) => b.kind === 'billboard').length;
+            doors += v.bodies.filter((b) => b.kind === 'doorway').length / 8;
 
             const seen = v.bodies.map((b, i) => ({ b, i })).filter(({ b }) => inFrustum(b));
 
@@ -510,6 +590,10 @@ function order(o, { scenes = 260, rays = 220, planned = 100, seeds = [12345, 777
                         const [near, far] = [hits[p], hits[q]];
                         let front;
                         let back;
+
+                        if (near.b.kind === 'doorway' || far.b.kind === 'doorway') {
+                            doorPairs++;
+                        }
 
                         if (far.t - near.t > EPS) {
                             pairs++;
@@ -544,12 +628,12 @@ function order(o, { scenes = 260, rays = 220, planned = 100, seeds = [12345, 777
         const list = [...violations.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ×${n}`).join('; ');
 
         if (print || total > 0) {
-            console.log(`  ${who}: ${floors} floors drawn of ${scenes}, ${bodies} bodies (${pieces} pieces), ${rays} rays each; ${pairs} (near, far) pairs owed an order, ${ties} ties`
+            console.log(`  ${who}: ${floors} floors drawn of ${scenes}, ${bodies} bodies (${pieces} pieces, ${doors} side doors), ${rays} rays each; ${pairs} (near, far) pairs owed an order, ${ties} ties, ${doorPairs} pairs with a door's recess`
                 + ` — violations ${total}${total ? `: ${list}` : ''}; ties no rule names: ${unowed.size === 0 ? 'none' : [...unowed.entries()].map(([k, n]) => `${k} ×${n}`).join('; ')}`);
         }
 
-        if (floors < scenes / 2 || pairs === 0 || ties === 0) {
-            defects.push(`${who}: the order leg measured nothing — ${floors} floors drawn, ${pairs} pairs, ${ties} ties`);
+        if (floors < scenes / 2 || pairs === 0 || ties === 0 || doorPairs === 0) {
+            defects.push(`${who}: the order leg measured nothing — ${floors} floors drawn, ${pairs} pairs, ${ties} ties, ${doorPairs} pairs with a door's recess`);
         }
 
         if (total > 0) {
@@ -631,6 +715,21 @@ const PLANTS = [
             'const y0 = Math.floor(exact.y / T) * T;\n\n        return { ...exact, y: y0, h: Math.ceil((exact.y + exact.h) / T) * T - y0 };')],
     ['a monitor at its own distance, not its desk\'s', 'order', 'over monitor',
         (t) => edit(VIEW(t), "y1: DESK_H, y2: MONITOR_TOP }), { mx, rank: 1 });", "y1: DESK_H, y2: MONITOR_TOP }), { rank: 1 });")],
+    // card#13033 slice 3: a side restroom door drawn in its wall.
+    ['a side door billboarded face-on at its tile (the view before the door was set into its wall)', 'fixtures', 'billboarded face-on at its tile',
+        (t) => edit(VIEW(t), "} else if (door !== null && door.facing !== 'back') {", '} else if (false) {')],
+    ['the lintel left solid', 'fixtures', 'column is not cut to a lintel',
+        (t) => edit(VIEW(t), 'const y1 = lintelAt(w.x, w.y, (d) => d.doorway.x);', 'const y1 = 0;')],
+    ['a partition the lintel leaves nothing of kept', 'fixtures', 'the partition door\'s column is not cut',
+        (t) => edit(VIEW(t), 'if (y1 < full) {', 'if (true) {')],
+    ['the side strip left whole behind the cut', 'fixtures', 'side strip is left whole behind the cut',
+        (t) => edit(VIEW(t), 'y1: lintelAt(edge, y, (d) => d.outer), y2: ROOM_H }', 'y1: 0, y2: ROOM_H }')],
+    ['the flag drawn from the plan document', 'fixtures', 'flag\'s document is not the theme\'s `flag` view',
+        (t) => edit(VIEW(t), "sceneryInput(cell, g.seed, door, 'flag')", 'sceneryInput(cell, g.seed, door)')],
+    ['the flag stood on the drawn cell\'s foot, not the placed doorway\'s', 'fixtures', 'dragged 3 px: the left-edge door\'s flag is not the plate',
+        (t) => edit(VIEW(t), 'const foot = door.doorway.y + door.doorway.h;', 'const foot = cell.y + cell.h;')],
+    ['a side door\'s recess painted after every other body, through the random floors', 'order', 'doorway over',
+        (t) => edit(VIEW(t), '    const extent = placement.extent;\n', '    bodies.sort((a, b) => (a.body.kind === \'doorway\') - (b.body.kind === \'doorway\'));\n    const extent = placement.extent;\n')],
 ];
 
 for (const [red, leg, says, plant] of PLANTS) {

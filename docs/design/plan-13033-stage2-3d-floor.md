@@ -256,8 +256,8 @@ height without a new constant; the only number this section chooses is none.
   walls: [{ id, box: {x, y, z, w, h, d}, kind: 'edge'|'partition' }],   // from door-view.js's wall classification, hoisted
   pieces: [{ kind, at: {x, z}, size: {w, d}, seed, index, theme }],      // every standing scenery tile, foot at its cell's floor line
   desks: [{ key, at, parts: { desk, chair, monitor, sideTable, props }, sitter: { key, species, pose, glyph, lighting, side: 'band' } | null,
-            interns: [{ key, species, at, laptop, typing }], screen: { glyph, line } }],
-  walkers: [{ key, species, chibi, effect }],  // the scene's in-flight § 6.2 effects, each positioned by route.js's pointAt() at draw time
+            interns: [{ key, seat_species, at, laptop, typing }], screen: { glyph, line } }],   // an intern's body: internSpeciesOf(key, seat_species), as 2-D's chibiFrame()
+  walkers: [{ key, character, chibi, effect }],  // character: walkerCharacter(effect), the 2-D painter's tree inputs; the scene's in-flight § 6.2 effects, each positioned by route.js's pointAt() at draw time
   elevator: { at, leaves: {…} }, restroom: { at, leaf: {…} }, birdhouse: {…},
   labels: [{ key, kind: 'name'|'chip'|'facts'|'bubble'|'notice', anchor: {x, depth, height}, text|model }] }
 ```
@@ -390,14 +390,23 @@ curve); one mesh per part (§ 6's budget).
   heights § 3.1 names; a doorway is a gap in the run (`wallRuns()` in `themes/paint.js` already finds straight
   stretches and free ends, and is reused).
 - **Standing scenery** (the 17 standing kinds) and **the desk set** (`desk`, `chair`, `monitorFrame`, `sideTable`,
-  `deskProps`) come from the Kenney kit by the slice-1 mapping where it has a piece, each `.glb` loaded once and
+  `deskProps`) come from the Kenney kit by the slice-1 mapping where it has a piece — each standing piece turned and
+  stood against the wall its tile touches, its back to it, or behind its foot line in open floor (§ 15.3's rule W) —
+  each `.glb` loaded once and
   **instanced** per placement — one `InstancedMesh` per **(primitive, material)** pair a file carries, so a file of
   three primitives is three instanced meshes (§ 6 counts them so) — **recoloured from the theme's `PALETTE`**: the
   renderer maps each piece's colour slots — its named materials, or the entries of its palette texture, whichever
   the files carry (§ 3.2's unverified note) — to palette keys (`desk.wood`, `floor.boards`, `accent.*`), the map a
   data file beside the kind map, so a cottage desk and a studio desk are the same mesh in different paint. A kind
   the kit lacks gets a first-party part list in `resources/floor/themes/<name>/pieces-3d.js` (the theme API gains
-  **`piece3d(kind, inputs)`**, optional: a theme that exports none falls back to the kit's or the house theme's).
+  **`piece3d(kind, inputs)`**, optional: a theme that exports none falls back to the kit's or the house theme's). A
+  kit piece that carries things the kit lacks is **dressed** (card#13033, the operator's report that the 3-D snack
+  tables stood bare): the kind map lists it as `DRESSED`, and the theme's optional **`dressing3d(kind, inputs)`** — the
+  house theme's where a theme exports none — answers the height and depth the kit's piece is fitted to and the part
+  list standing on it, in the same frame as `piece3d`'s; `floor3d/furniture-placements.js` places both. The snack
+  tables are the dressed kinds: the kit's table at the 2-D table's top, and on it what each theme's 2-D picture
+  carries — the house theme's cloth, coffee maker, donut box and cups, the `cottage` theme's gingham, teapot, cake stand
+  and teacups — every theme dressing its own, from part builders the themes share (`themes/parts-3d.js`).
 - **Which way a desk faces, and who sits where (M4).** The operator's ruling of 2026-10-06 (card#11046 comment
   10125, `FLOOR.md` § 10.4 item 2): *"The agents are sitting behind the desk, so the drawers face the agent (we
   shouldn't see the the desk drawers - we'd be seeing the other side)"*. So the sitter is on the **band side** of the
@@ -481,7 +490,7 @@ on a late resource and the frame count (§ 8 item 5). Built in slice 4 with the 
 
 | Row | Class | 3-D counterpart | Changed in the set? |
 |---|---|---|---|
-| A1 arrive, A2 depart (and the walk note's 6a turn-back, AT-D3-36) | edge | the `walk` clip stepping through the route's legs at `pointAt()`, heading per leg; the leaves two sliding boxes at `leafLevel()`; the call plate a pressed box; the cab interior behind the doorway as a dark box (the cab's own drawing stays the modal's); `turnRound()`'s legs are legs | no |
+| A1 arrive, A2 depart (and the walk note's 6a turn-back, AT-D3-36) | edge | the `walk` clip stepping through the route's `walk` legs at `pointAt()`, standing on every other leg, heading per leg; the leaves two sliding boxes at `leafLevel()`; the call plate a pressed box; the cab interior behind the doorway as a dark box (the cab's own drawing stays the modal's); `turnRound()`'s legs are legs | no |
 | A3 work | held | `work` (`type-a`/`type-b`); blink = the face texture's two frames (open, closed) at the loop's cadence — `faceDocument()` takes `blink` | no |
 | A4 think | held | `think` (`lean-back`), the same blink | no |
 | A5 tool-swap | edge | the screen texture cross-fades over 250 ms — two textures, opacity | no |
@@ -516,7 +525,11 @@ right-drag panning, two fingers on touch.** A walk mode was offered and not chos
 **rotates** (`mouseButtons.LEFT = ROTATE`, `touches.ONE = ROTATE`, the defaults); **right-drag** and a two-finger
 drag **pan** the target across the floor (`RIGHT = PAN`, `TWO = DOLLY_PAN`, the defaults — `screenSpacePanning`
 false, so a pan slides along the floor plane rather than the screen's); the wheel and a pinch **dolly**
-(`enableZoom`, the default). This restores the right-drag pan the operator dropped for stage 1 (`FLOOR.md` § 14
+(`enableZoom`, the default). **Alt + a left-drag raises and lowers the eye** (the operator's answer A on card#13033 to
+*"is there a way to adjust the height of my perspective from the floor?"*): the renderer's own `pointerdown` listener,
+added before the library's, takes an Alt + left press and stops it there, so the library neither turns nor pans for
+it, and the drag's vertical movement is handed to the acts' `rise(dy)` (below); every other press is the library's,
+Shift + a left-drag its pan as before. This restores the right-drag pan the operator dropped for stage 1 (`FLOOR.md` § 14
 item 49: *right-drag is the browser's default*) — dropped there because a fixed pose cannot be panned; here the pan
 is the ruling's *move around*, and the operator chose it. The stage suppresses `contextmenu` (the library's
 `connect()` already prevents it on its element). ⚠ **This is the one page whose pointer gestures do not come
@@ -531,8 +544,8 @@ controls are configured with, and the probe reads it):
 - **Elevation**: `minPolarAngle` = 0 (straight down), `maxPolarAngle` = **88°** from vertical (*just above the floor
   plane* — 2° keeps the floor a surface rather than a line; one constant, § 12 item 2);
 - **Never below the floor** — one guard, and the arithmetic that makes a second one dead (canon #6): the polar limit
-  keeps the camera above its TARGET's height, and the target's box (next bullet) keeps the target at or above the
-  plane — so the camera's `y` is `target.y + d · cos(polar) ≥ 0 + d · cos(88°) > 0` for every `d > 0`. **The near
+  keeps the camera above its TARGET's height, and the target's box (next bullet; as built, its height bound) keeps
+  the target at or above the plane — so the camera's `y` is `target.y + d · cos(polar) ≥ 0 + d · cos(88°) > 0` for every `d > 0`. **The near
   plane's bottom corners are above the floor too** (the review's minor): with `near` = **0.05** units the lowest
   corner of the near plane sits `near · (cos 88° + tan(fov/2) · sin 88°)` ≈ 0.022 units under the eye, and the eye is
   at least `1.2 · cos 88°` ≈ 0.042 above the plane, so the corner is ≥ 0.02 above it — `near` is 0.05 and not 0.1
@@ -540,11 +553,38 @@ controls are configured with, and the probe reads it):
   grid of targets, polars and the minimum distance (§ 8 item 3), and the browser leg's plant widens the polar limit
   past 90° and reads the camera's `y` under a drag that pushes down (§ 8 item 5). No collider and no third guard:
   the review's stop rule applies, and none was needed;
-- **Within the floor — the target's box clamp**: after every controls update the renderer clamps the target into
-  the extent box (`y` from 0 to `ROOM_H_U`) and, if it moved, moves the camera by the same vector — three lines in
+- **Within the floor — the target's box clamp** (superseded: the clamp holds the eye, the ⭐ note at this bullet's end): after every controls update the renderer clamps the target into
+  the extent box (`y` from 0 to `ROOM_H_U`, the range the eye's rise moves it through) and, if it moved, moves the
+  camera by the same vector — three lines in
   `floor-paint.js`, the box `view-limits.js`'s. Why not the library's target radius: that is a sphere about a point,
   and the floor is a box. **One clamp**: the keyboard acts (below) write the target through the same controls and
   are clamped by the same lines — there is no second clamp in `view-limits.js`;
+  ⭐ **As built (card#13033, the eye moves in — `FLOOR.md` § 4.5): the clamp holds the EYE, not the target.** The
+  box above stopped a pan with the target at the back edge and the eye still the fit's 22-odd units in front, so the
+  viewer could never enter the office; and the clamp's `update()` after it re-applied the damped pan still owed,
+  leaving the drawn target past the band's face, which the cut-away then counted as the band between — the back
+  wall's drop. Now `view-limits.js`'s `confine()` (pure) holds the eye in front of the back wall's face and inside
+  the floor's sides, each by the near plane's reach, and in front no farther out than the dolly limit; the target
+  keeps only its height. A move that would carry the eye out is resolved by what moved, taken in two parts: the
+  target's move with the previous offset slides the pair back by its overshoot (a pan stops at a wall and slides
+  along it, distance and angles kept); then the offset's change about that target brings the eye along its line to
+  the legal distance nearest the update's, the dolly minimum to its limit (a turn or a dolly out at a wall comes in,
+  never nearer than the minimum — nearer, the near plane's corners would dip under the floor, so the turn stops; a
+  dolly toward a target past the back wall stops at the wall), or keeps the previous offset where that line has no
+  legal point. `confineControls()` writes it into the controls, drops the damped pan still owed on a slid axis,
+  turns the camera to the target and sets the controls' own last pose to the held one — the library tells a change,
+  and so the renderer's wake, from that pose, and a pointer move pushing the eye at the wall again would otherwise
+  read as no change and rest the camera where no frame drew it — and nothing updates the controls after it. `floor-paint.js`'s one `clamp()` calls
+  it after every update: the frame, every act, a label's focus. The accepted cost: at the fit a view turned off the front
+  past the angle whose sine is the floor's half-width over the eye's distance along the floor is brought in (about
+  27° on the-burrow, `asin(10.05 / 21.9)`); inside the office the orbit's centre lies past the back wall, so a
+  turn there swings the eye along the walls; and since a pan walks — the operator's answer A on card#13033: the eye's
+  height, pitch and facing kept, no step down, no tipping to look down, the target never forced into the office —
+  the eye at the back wall from the opening view looks past it, the room having left the frame below; a walk at desk
+  level starts from an eye brought down first with Page Down, which once the target is on the floor lowers the eye
+  alone, tilting toward level (the operator's answer to Q4, `camera-acts.js`'s `lift()`). A build that held the
+  target in the office instead, the eye closing in on it at the wall, was reverted on that answer.
+  `configureControls()` is the controls' and camera's one configuration, the renderer's and the probe's;
 - **A pan slides along the floor, never up the screen (M5)**: the library's `screenSpacePanning` is set explicitly to
   the floor-plane mode (to confirm in slice 4); the property — a vertical pan gesture leaves the target's `y`
   unchanged and moves it along the floor — is the browser leg's (§ 8 item 5);
@@ -556,30 +596,41 @@ controls are configured with, and the probe reads it):
   farther scrolls the page instead — to confirm in slice 4 against the library's wheel handling; the test: a wheel at
   the limit changes `scrollY` and not the distance;
 - **Far plane and decals**: the far plane is past the fit's maximum distance with a margin, and the face patch, the
-  contact disc and the status's surfaces stand off the geometry they lie on by enough that no z-fighting shows at any
+  ground shade (§ 14) and the status's surfaces stand off the geometry they lie on by enough that no z-fighting shows at any
   distance the limits allow — a property read by eye on the sandbox at slice 4 (a z-fight is a shimmer no node probe
   sees) with the near and far figures printed by the leg;
 - **Entry (B2)**: the target at the extent's centre, the camera at azimuth 0 (in front) and **polar 50°** — stage
   1's home tilt, so the floor opens as the slab showed it — at the fit distance: set directly from those spherical
   figures, never by a library fit (`camera-controls`'s fit rounds to an axis view; `OrbitControls` has none). *Fit the
   floor* is the same pose, re-derived on resize; a setting, no glide (§ 6.5). The browser leg asserts the polar angle
-  is 50° ± 0.5° at entry and after *Fit*;
+  is 50° ± 0.5° at entry and after *Fit*. ⚠ **As built (card#13033, the operator's *"fit the entire floor in the full
+  available width of the browser"*): the entry's distance is not the sphere's fit** but the least at which the room
+  box's eight corners project inside the stage less `ENTRY_MARGIN` (8 px) — `stack-model.js`'s `framingDistance()`,
+  the focus pose's search — so the floor spans the stage's width, or its height on a stage too short for that; the
+  `maxDistance` above keeps the sphere's reach, 1.5 × the farther of that fit and the entry's distance (`FLOOR.md`
+  § 12's *Floor 3-D camera*);
 - **Smoothing**: damping on with motion, **off under `prefers-reduced-motion`** (read once at construction,
   `floor/main.js`'s rule) so every move is a cut; the loop of § 3.5 runs while the view settles.
 
 **The keyboard reaches rotation and tilt — a seat ruling (M3, § 12 item 3), consistent with `/building` where the
 arrows turn the view:** `←`/`→` rotate (azimuth), `↑`/`↓` tilt (polar, within the limits), **Shift + arrows pan** the
-target along the floor, `+`/`−` dolly, *Fit the floor* the entry pose. **The keys are wired where the 2-D page's are
+target along the floor, **Page Up / Page Down raise and lower the eye**, `+`/`−` dolly, *Fit the floor* the entry
+pose. **The keys are wired where the 2-D page's are
 — in the hoisted page `floor/floor-page.js`, by `wire/camera-keys.js`'s `cameraKeys()` and `offerKeys()` — over the
 act set the RENDERER CONTRACT supplies (M4, § 4)**: `floor3d/camera-acts.js` is the 3-D renderer's act set — `drag(dx,
-dy, modifiers)` with `modifiers.shift` deciding pan over rotate/tilt, `zoomStep(n)`, `fit()`, `camera()` answering
+dy, modifiers)` with `modifiers.shift` deciding pan over rotate/tilt, `zoomStep(n)`, `rise(dy)` and `riseStep(n)` lifting the
+target and the eye by one vector — the drag's `dy` px of the scene at the target's distance (the library's own pan
+rate), a key's `n` steps of `RISE_STEP`, a share of the room's height (`FLOOR.md` § 12's *Floor 3-D camera*) — so the view's direction and distance are
+kept and the clamp holds the height in the box — `fit()`, `camera()` answering
 `{ bounds }` for the wire's gate — each a call on the controls' public rotate, tilt, pan and dolly methods (to
 confirm in slice 4) ending in an update and the clamp; the arrows' step is the per-pixel turn constant the building
 acts hold today, **hoisted to `wire/camera.js` beside `PAN_STEP_PX`** at its second caller. **The keys wire is
 extended by one optional argument**: `cameraKeys()` hands the key event's modifiers (`{ shift }`) as `drag()`'s third
 argument (the 2-D acts read two and ignore it, as they ignore `pan()`'s point since stage 1; L69 already lets a
-Shift-arrow through, refusing only Ctrl, Meta and Alt). `offerKeys()` advertises `+ - ArrowLeft ArrowRight ArrowUp
-ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown`. The library's own key listener is never
+Shift-arrow through, refusing only Ctrl, Meta and Alt). Page Up and Page Down are handed to `riseStep()` as one
+step each — only on a screen whose acts offer it, so on the 2-D pages they stay the browser's and scroll.
+`offerKeys()` advertises `+ - ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp
+Shift+ArrowDown PageUp PageDown` (`floor3d/camera-acts.js`'s `SHORTCUTS`). The library's own key listener is never
 connected, so the keys have one reader.
 
 **Keyboard focus** on a desk's label (`:focus-visible`, stage 1's predicate) moves the target to that desk (the
@@ -590,20 +641,23 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
 ### 3.7 Through walls, desks and characters — occlusion and cut-away
 
 - **Nothing is a camera collider (B1).** Walls and the band are never colliders: the cut-away below is what handles
-  them, and a collider on a wall would stop the eye at a wall the cut-away has already lowered. Desks are not
+  the walls (the band it no longer lowers: the eye never stands behind it, this section's ⭐ notes), and a collider on a wall would stop the eye at a wall the cut-away has already lowered. Desks are not
   colliders either, **chosen and justified**: a camera that dollies into a desk clips it by the near plane and the
   same gesture reversed un-clips it — a transient the viewer chose, as in every orbit viewer; the minimum distance
   (1.2 units from a target that is a desk's point) keeps the eye out of the slab for every target but one chosen
   deep inside a desk's box by a pan, and a four-rays-a-frame collision test against every desk to defend that one
   case is machinery for a state the viewer causes and reverses. Characters are never colliders for the same reason.
   With no collider the library needs no collision support, which is what let § 2.1 choose `OrbitControls`.
+  ⭐ **As built (card#13033): the eye is bounded by the office's back and side walls** (§ 3.6's as-built note) —
+  a bound on where the eye stands, applied after the library's update, not a collider: nothing is tested against a
+  wall's mesh, and the internal walls stay the cut-away's.
 - **Walls between the eye and the target are cut away.** Each render, one ray from the camera to the target over
   the wall and band meshes; every wall it meets is **lowered** to `CUTAWAY_H` = 0.15 units (its foot strip — the 2-D
   rule's *every other wall shows only its top edge*, kept as the cut-away's form) over **150** ms (a cut under
   `reduce`), and restored when clear. The decision is pure — `cutaway(camera, target, walls)` → the set of ids — and
   the renderer scales; the probe plants a wall on the segment and reads the set. **Walls are instanced one per wall
   run so each lowers on its own** (per-instance transforms; the two heights two instanced meshes — M1's count), to
-  confirm in slice 4. **The band is a wall for this rule**: when the ray meets it — a target near the band seen from
+  confirm in slice 4. **The band is a wall for this rule** (superseded — the ⭐ note at this bullet's end): when the ray meets it — a target near the band seen from
   behind the room — the band lowers to its foot strip **with everything on it**: the elevator's doorway and its
   leaves, the clock, the windows are the band's children and go down with it, and a ride or an A1/A2 door motion in
   flight keeps animating at the foot (nothing stops; the motion is just low), restored with the band when the camera
@@ -614,6 +668,12 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
   back sees OVER the band. The browser leg therefore **places the target first** — a pan to within 1 unit of the band
   — then rotates to the back and reads the band at `CUTAWAY_H`, then to the front and reads it restored (§ 8 item 5);
   a leg that rotated from the centre would pass with the cut-away deleted. Built in slice 4 with the renderer (M6).
+  ⭐ **As built (card#13033): the band is no longer a body of the cut-away.** With the eye held in front of the
+  band's face (§ 3.6's as-built note) the eye is never behind the room, so the case above has no route; and with the
+  target free past the face — where a pan into the office leaves it — the band's body would be met by every such
+  segment and drop with the eye in front of it, which is the defect the operator reported. `cutaway()` tests the
+  walls alone; the band always stands — nothing lowers it, so no browser leg reads its height — and the browser leg's
+  `cutaway` row lowers a wall looking level across the floor and holds the eye in front of the face turned there.
 
 - **Desks and characters are never cut away**: they are the facts; a desk between the eye and the target is a
   reason to orbit, and the labels (§ 3.9) stay readable over it because they are screen-space.
@@ -676,12 +736,13 @@ distance and angles — the browser's scroll-into-view, as stage 1 argued it und
 § 10.4 item 6's *labels over the scene* are, in 3-D, **HTML elements positioned by `CSS2DRenderer`**: per desk a
 **name** (`<a>` to the drill-down, `FONT_NAME`), the **status** (the operator's Q4 answer, comment 17086: the
 monitor's glyph word and action line — the strings `desk-render.js` decides for the screen, `monitor: 'off'`
-drawing the label's *off* form — computed by `floor-world.js` as a label of kind `status` anchored over the monitor's
-top, `anchor3d` height `MONITOR_TOP` over `SCALE` plus a line, so it floats above the desk and, being screen-space,
-faces the camera from every angle), a **state chip**, the **facts card** (the plated facts the painter draws:
+drawing the label's *off* form — computed by `floor-world.js` as a label of kind `status` at the height `MONITOR_TOP`
+over `SCALE` plus a line, and, being screen-space, facing the camera from every angle; since the operator's ruling of
+2026-11-19 it hangs beside its sitter on the viewer's right from that height rather than over the monitor, the bubble
+standing on the same point — `FLOOR.md` § 12's *3-D thought plaques*), a **state chip**, the **facts card** (the plated facts the painter draws:
 label, currency, lag, gauge, badges, flag, quiet age — the same strings `desk-render.js` decides, the same
 `.visually-hidden` rule for culled ones), and the **bubble** (the task title, `task-bubble.js`'s layout), each at
-§ 3.1's `anchor3d` height; **within one desk the labels' order is fixed — name, status, chip, facts, bubble — and
+§ 3.1's `anchor3d` height (the bubble beside its sitter, over the status); **within one desk the labels' order is fixed — name, status, chip, facts, bubble — and
 the desks are in `readingOrder()`**, so the container's document order is that sequence per desk in that desk
 order, the status label second so a screen reader hears the desk's state right after its name; per floor the **notices** and the **overflow strip** as a flowed list under the stage (a
 strip is a list of desks without a slot; in 3-D they stand on a bench past the floor's front edge, as the 2-D strip
@@ -703,10 +764,10 @@ the same way, never appended; the probe plants a late-arriving desk and reads th
 | `floor/floor-walls.js` (hoist) | none | `wallBodies(maps, rooms)` — the edge/partition classification out of `door-view.js`, which calls it | `door-view.selftest.mjs` (control) |
 | `resources/characters/creatures.js` (changed, M7) | none | per species `shape` — the half-outline, the features with their anchors, the face/hat/neck/hand anchors — read by `build()` (2-D) and by `creatures-3d.js`; `faceDocument()` | `tools/characters/selftest.mjs`: the sheet pixel-equal per species before and after; `distinct.browser.mjs` unchanged |
 | `resources/characters/creatures-3d.js` (new, a manifest row) | none, no Three | `bodyParts()`, `chibiParts()`, `BONES`, `POSES`, `CLIPS` | `tools/characters/selftest.mjs` gains the 3-D legs (§ 8 item 2) |
-| `floor3d/view-limits.js` (new) | none | `limits(extent)`: the polar and distance limits, the near plane, the target's box, the entry pose; `cutaway()` | `view-limits-probe.mjs` |
+| `floor3d/view-limits.js` (new) | none | `limits(extent)`: the polar and distance limits, the near plane, the target's box (as built, card#13033: the eye's bound and the target's height, held by `confine()`; the controls set by `configureControls()`), the entry pose; `cutaway()` | `view-limits-probe.mjs` |
 | `floor3d/camera-acts.js` (new) | none (the controls injected) | the renderer contract's `keys.acts` (§ 3.6): `drag(dx, dy, modifiers)`, `zoomStep(n)`, `fit()`, `camera()` — each a call on the injected controls' public methods and an update, to confirm in slice 4 | `camera-acts-probe.mjs` with a stub controls object recording the calls |
 | `floor3d/creature-paint.js` (new) | Three | a part list → one skinned mesh over one skeleton per character (§ 3.3's two-call property), the face texture, `POSES`/`CLIPS` → stepping clips, one mixer per character with its time set per § 3.5 — the library's skinning, clip and mixer classes the starting point, to confirm in slices 3 and 5 | the browser leg; `sheet3d.browser.mjs` (slice 3) |
-| `floor3d/furniture.js` (new) | Three, `GLTFLoader` | the kit's files loaded once, the kind → file map (data, in `resources/floor/models/kenney-furniture-kit/map.js`, a manifest row), the palette recolour map, one `InstancedMesh` per (primitive, material) per theme | the browser leg; the map's totality under node (every standing `KINDS` member and desk part maps to a file or a `piece3d`) |
+| `floor3d/furniture.js` (new) | Three, `GLTFLoader` | the kit's files loaded once, the kind → file map (data, in `resources/floor/models/kenney-furniture-kit/map.js`, a manifest row), the palette recolour map, one `InstancedMesh` per (primitive, material) per theme; where each placement stands is `floor3d/furniture-placements.js`'s (pure, a dressed piece's two placements included) | the browser leg; the map's totality under node (every standing `KINDS` member and desk part maps to a file or a `piece3d`, every `DRESSED` kind to a file the house theme dresses); `snack-dressing-probe.mjs` (`TheSnackTablesAreDressedIn3dTest`) |
 | `floor3d/svg-texture.js` (hoist) | DOM | `pictureSvg()` and the SVG → canvas → `CanvasTexture` step out of `building/floor-picture.js`, which calls it | `picture-probe.mjs` (control) |
 | `floor3d/floor-paint.js` (new) | Three, `CSS2DRenderer`, `OrbitControls` | the renderer over `#floor3d-canvas`: plane, band, walls, pieces, desks, characters, walkers, labels (inserted in reading order), lights, the controls configured from `view-limits.js`, the target clamp after `update()`, the cut-away applied, the frame loop of § 3.5, `renderer.info` exposed for the budget leg | the browser leg |
 | `floor3d/main.js` (new) | DOM entry | `startFloorPage(document, window, { renderer: worldRenderer, route: '3d' })` and the WebGL check — the second caller of the hoisted page, nothing else | `Floor3dPageWiringTest` (the ids both ways, `startFloorPage(` once with `route: '3d'`, `createPainter(` absent, `cameraGestures(` absent, `OrbitControls` imported from the vendored addon only, `listenToKeyEvents` nowhere) |
@@ -752,7 +813,7 @@ prints the per-desk cost, and an authored floor past the cap is read against it,
 
 | Figure | Budget | Derivation at the cap | Plant (seen red) |
 |---|---|---|---|
-| Draw calls (`renderer.info.render.calls`) — **asserted per term, then as a total** | **≤ 260** | **characters** — a seat ≤ 1 call (body and face one material, § 3.3), an intern ≤ 2 (its laptop): asserted as `≤ S + 2 I` over the S seats and I interns drawn — 6 + 96 = 102 at the cap; **furniture** — one instanced mesh per (primitive, material): the 17 standing kinds + the 5 desk parts (the side table with its stools one of them), times the primitives per file the slice-1 record counts (`k`, ≤ 3 expected): asserted as `≤ 22 k` with `k` read off the loaded files (the side table's couch is one mesh per primitive per couch length the floor stands — § 9 slice 5's *Amended*); **walls** — instanced per run, one mesh per height, **the lighter cap sharing the run's material** (a vertex tone, not a second material): `≤ 2`; **the fixed at-rest terms** — plane 1 per grid (1), the band's wall 1, the windows' glazing instanced 1, the window sky 1, the clock's dial and two hands 3, the elevator's two leaves 2, its frame and call plates instanced 1, the cab's interior box 1, the restroom's leaf 1, the birdhouse 1, the contact discs instanced 1, the screens 6 — `≤ 20`, each counted from the world's own members; **the transient term**, bounded — A20's ring ≤ 1, each bird in flight 2 (its merged body and its envelope) for at most one bird per desk of the floor (A19 sends one per destination desk; A22 one per crossing) ≤ 2 × 6, A5's cross-fade a second screen texture per swapping desk ≤ 6 — `≤ 19` (**re-derived to `≤ 20` at slice 5**, A20's singing bird counted: § 9 slice 5's *As built* (k)); **labels, markers, z's, the status**: 0 (DOM) — **the honest sum is 102 + 22 k + 2 + 20 + 19 = 143 + 22 k, 209 at k = 3; the budget is that sum plus a margin of a quarter, 260**, so a regression in any one term reds against its own bound whatever `k` is, and the total catches a term the derivation forgot; the leg prints every term beside its bound | per term: the character merge dropped → characters > S + 2I; furniture instancing dropped → > 22 k; wall instancing dropped, or the cap a second material → > 2; a second cab box → the at-rest terms > 20; a bird drawn as four meshes → the transient term > 19 on a fixture with a post to every desk; and the total |
+| Draw calls (`renderer.info.render.calls`) — **asserted per term, then as a total** | **≤ 260** | **characters** — a seat ≤ 1 call (body and face one material, § 3.3), an intern ≤ 2 (its laptop): asserted as `≤ S + 2 I` over the S seats and I interns drawn — 6 + 96 = 102 at the cap; **furniture** — one instanced mesh per (primitive, material): the 17 standing kinds + the 5 desk parts (the side table with its stools one of them), times the primitives per file the slice-1 record counts (`k`, ≤ 3 expected): asserted as `≤ 22 k` with `k` read off the loaded files (the side table's couch is one mesh per primitive per couch length the floor stands — § 9 slice 5's *Amended*), **plus one call for each `DRESSED` kind's dressing** (card#13033's snack tables: `≤ 22 k + |DRESSED|`, the leg reading `DRESSED` off the kind map); **walls** — instanced per run, one mesh per height, **the lighter cap sharing the run's material** (a vertex tone, not a second material): `≤ 2`; **the fixed at-rest terms** — plane 1 per grid (1), the band's wall 1, the windows' glazing instanced 1, the window sky 1, the clock's dial and two hands 3, the elevator's two leaves 2, its frame and call plates instanced 1, the cab's room 1 (one vertex-coloured mesh), the restroom's leaf 1, the birdhouse 1, the ground shade instanced 1 (§ 14, in place of the contact discs), the screens 6 — `≤ 20`, each counted from the world's own members; **the transient term**, bounded — A20's ring ≤ 1, each bird in flight 2 (its merged body and its envelope) for at most one bird per desk of the floor (A19 sends one per destination desk; A22 one per crossing) ≤ 2 × 6, A5's cross-fade a second screen texture per swapping desk ≤ 6 — `≤ 19` (**re-derived to `≤ 20` at slice 5**, A20's singing bird counted: § 9 slice 5's *As built* (k)); **labels, markers, z's, the status**: 0 (DOM) — **the honest sum is 102 + 22 k + 2 + 20 + 19 = 143 + 22 k, 209 at k = 3; the budget is that sum plus a margin of a quarter, 260**, so a regression in any one term reds against its own bound whatever `k` is, and the total catches a term the derivation forgot; the leg prints every term beside its bound | per term: the character merge dropped → characters > S + 2I; furniture instancing dropped → > 22 k; wall instancing dropped, or the cap a second material → > 2; a second cab room → the at-rest terms > 20; a bird drawn as four meshes → the transient term > 19 on a fixture with a post to every desk; and the total |
 | Triangles (`renderer.info.render.triangles`) | **≤ 150,000** | a seat's creature ≤ 2,500 (a lathe of 24 × 16 plus features), a chibi ≤ 1,200, a kit piece ≤ 800 (read per file at slice 1), a desk set ≤ 2,000: 6 × 2,500 + 48 × 1,200 + 17 × 800 + 6 × 2,000 ≈ 98,200, plus walls and the plane under 1,000. **Read at slice 3 and held at slice 4:** the interns read a median of 2,296 at slice 3 — 48 of them alone over 110,000 — so slice 4 coarsens an intern's facets (`floor3d/part-geometry.js`'s `DETAIL.chibi`; a seat's are unchanged), and `node tools/characters/sheet3d.browser.mjs --calls` reads them at a median of 1,236, inside the 1,200-a-chibi derivation's margin; the leg asserts the total at the cap | the facets ×4 in a served copy of `part-geometry.js` → the characters alone past the budget |
 | Texture memory (the leg **walks the scene's textures** — every room and screen map, each creature's own (`textures()`: its two face atlases and its paint) and each skeleton's bone texture — and sums width × height × 4 bytes (16 for a float bone texture) × 4/3 for the mipmaps — not the renderer's texture count, which is a count) | **≤ 128 MB** | **Re-derived at slice 4 (2026-11-12), the slice-3 handoff's missing term added:** one plane texture per room grid and one for a hallway — the cap floor has one grid — **rasterised at one texel per scene px up to the texture cap** (stage 1's rule, `textureSize()`): at the cap 4,096 × 1,984 → ≈ 43 MB (the default's 1,784 × 696 is ≈ 6.6 MB; a planned floor of N rooms counts N), the band 4,096 × 160 → ≈ 3.5 MB; **the faces with their blink frame — two atlases per character** (m4): 54 × 2 at the 256 px bucket ≈ 37.7 MB; **the body's paint, one per character** (slice 3's (i)), as tall as the face atlas and as wide as its rectangle's aspect — `node tools/characters/sheet3d.browser.mjs --calls` prints each creature's (read: 134 × 256 a seat) — 54 × ≈ 0.18 MB ≈ 9.9 MB; the bone textures, one 8 × 8 float texture a skeleton, ≈ 0.06 MB over all 54; 6 screens at 256 × 160 ≈ 1.3 MB (the status label is DOM and holds no texture) — **≈ 95.5 MB built**, and the nearest desk's faces at the 512 px bucket, 9 × 2 ≈ 25.2 MB, kept as headroom for § 3.3's bucket, which slice 4 does not build — ≈ 121 MB, under the budget | every face at the 512 px bucket → over 128 MB (the faces alone ≈ 151 MB) |
 | `.glb` transfer | **≤ 2 MB** for the cap floor's files | the sum of the mapped files' bytes, read at slice 1 | a 3 MB dummy `.glb` added to the kind map → over |
@@ -849,6 +910,8 @@ recorded on the card*.
    floor's edge; `near` set to 0.1 → a corner under the plane at the limit); `cutaway()` names exactly the walls a
    segment meets (plant: a wall on the segment → in the set; moved off → not; the band from behind with a target
    1 unit from it → in; the band from behind with the target at the centre → NOT in, the B1 derivation as a control).
+   ⭐ As built (card#13033): the band's legs are gone with the band's body, a target past its face never naming it
+   in their place, and the probe drives `confine()` through the vendored controls (§ 3.6's as-built note).
    `camera-acts-probe.mjs`: each key maps to the controls call § 3.6 names (plant: `ArrowUp` reaching pan → the tilt
    leg reds; a Shift-arrow reaching rotate → the pan leg reds). **Gate 2's `.glb` clause** — `bin/asset-provenance.selftest.py`:
    **one RED per refusal** — an external buffer `uri`, an external image `uri`, an image that is not a PNG, an image
@@ -882,7 +945,9 @@ recorded on the card*.
    screen-space panning → `y` changes); a wheel at the dolly limit scrolls the page and moves no distance; **a pan to
    within 1 unit of the band, then a rotation to the back** drops the band and its leaves and clock to `CUTAWAY_H`,
    and a rotation to the front restores them (plant: the cut-away's ray cast dropped; control: the same rotation
-   from the centre must NOT drop it); **the frame loop stops**: after every clip has ended and the controls are still,
+   from the centre must NOT drop it) — ⭐ as built (card#13033), the pan legs carry the eye into the office to its
+   bound (plant: the confinement dropped) and the cut-away row lowers a wall looking level and reads the band
+   standing (§ 3.7's as-built note); **the frame loop stops**: after every clip has ended and the controls are still,
    no frame callback runs for a second (counted through the protocol; plant: the stop condition dropped → callbacks
    keep coming); **it restarts on a late resource** — a kit file answered after the first paint is drawn without a
    gesture (plant: the resource-ready restart dropped → the piece absent until a drag); **it wakes on a drag under
@@ -986,7 +1051,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    **the frame loop with its stop, its restarts and its `LOOP_FPS` rest rate, and the cut-away with its moving row**
    (M6: they are the renderer's own frame machinery and cannot wait for the clips), the lights, the fallback, **the renderer's `paintCab(host, ride)` a bare contract member until slice 6** — no
    statement and no stub: nothing reaches it before slice 6 provides the doorway control that starts a ride on this
-   page (m-6) — the shared chrome partial (hygiene), test 4,
+   page (m-6) (slice 6 hands on `cab-paint.js`'s `paintCab()`) — the shared chrome partial (hygiene), test 4,
    the browser leg's still rows and the camera, route and loop moving rows, the budget leg; the sandbox deployed and
    screenshots on the card — **the operator's reading** of the floor, where the two pills and the z-fight read are
    confirmed.
@@ -1051,9 +1116,10 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    order — and a break walker's thought (A25, A26) floats there over its head; (f) A5's cross-fade is continuous over the
    row's frames (its 250 ms), the old picture on a second plane on the transient term; (g) **no pressed call plate**: the
    2-D painter draws no press on the plate (the plates are the theme's surround, the press the walker's `stand` leg), so
-   the 3-D floor draws none either; (h) the cab's interior is a dark box over the doorway in front of the band's face (the
-   band's picture is opaque), the two leaves boxes in front of it narrowing toward the frame as the 2-D leaves do, all
-   three on the band so the cut-away lowers them with it; the walks' door spans reach the world as a leaf timeline
+   the 3-D floor draws none either; (h) the band's picture is open at the elevator's doorway (cleared, and cut by `alphaTest`), and
+   behind it stands the cab's room — `FLOOR.md` § 12's *Cab interior* fitted to the doorway as the 2-D band cab is (its open front the doorway, its depth at the door view's scale) and clipped to it as that cab is (`doorwayView()`), one vertex-coloured
+   mesh (revised by card#13033's cab follow-up; it was a dark box over the doorway) — the two leaves boxes in front of
+   it narrowing toward the frame as the 2-D leaves do, all three on the band (whose cut-away card#13033 retired, § 3.7); the walks' door spans reach the world as a leaf timeline
    (`floorWorld()`'s `doors`, `elevatorLeaf()`) read by the scene's own `leafLevel()`, so both floors read one timeline;
    (i) the house theme's `piece3d()` no longer draws the restroom door's leaf: `FLOOR.md` § 6.7 item 2 makes the leaf and
    the slider's field the renderer's at the scene's rects, which the world lifts (`restroom_doors`); the field is a
@@ -1077,7 +1143,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    painter draws nothing for it, so a 3-D walk would need a route the plan does not describe; A12's eased gauge (the
    gauge is the card's and the drill-down's); § 3.3's 512 px face bucket for the near desks (every face stays 256 px,
    § 6's texture row keeps the headroom) — choosing when a creature is re-rasterised and with what hysteresis is
-   mechanism the plan names and does not describe; the ride's leaves (`scene.ride`), slice 6's. The cap floor's figures,
+   mechanism the plan names and does not describe; the ride's leaves (`scene.ride`), slice 6's (built there). The cap floor's figures,
    read by `node tools/design/floor3d.browser.mjs --row budget` (2026-11-12, this host's SwiftShader): draw calls 154
    against 260 — characters 102 (S + 2 I, S = 6, I = 48), furniture 36 against 22 k = 88 (k = 4), walls 2, the fixed term
    14, exactly the count its members give (`fixedOf()`: a plane per grid, the band, the discs, a screen per monitor, the
@@ -1113,6 +1179,25 @@ on the last only when the operator has read the sandbox. Every slice: its plants
    `steps` leg holds the rise; its plants are the couch at the file's own depth, the lift only at the foot, and no lift.
 6. **The ride from the 3-D floor** — the doorway as the control, the cab modal, `ride-page.js`'s route kind, the
    arrival on the destination's 3-D route; `TheFloorsRideIsNavigationTest`'s shape on the new page.
+   **As built (2026-11-14, on the operator's choice of option A — the existing cab, no camera ride), where it departs
+   from the text above, each the coder's to argue at review:** (a) **the route kind is not a member `ride-page.js`
+   writes**: the handover the departing page writes is the navigation itself (`window.location.assign(ride.route)`),
+   whose route is the chosen stop's `href` with `#ride` (`wire/ride.js`'s `opened()`), and the destination reads the URL
+   alone — so the route kind rides in that URL's path, as the stops' `href`: the floor screen is handed the page's
+   `route` and offers every floor stop at `floorRoute(route, key, null)`, which `floor/floor-page.js`'s `routeOf()` now
+   calls too, the floor pages' one statement of § 3.8's URL shape (`ROUTE_SEGMENTS` moved with it); `ride-page.js` and
+   `ride.js` are unchanged, and the lobby's cab, whose stops are the plaques', still reaches `/floor/{floor}`;
+   (b) the doorway's pointer half is a press and release under `DRAG_SLOP_PX` whose ray meets an undrawn hit plane over
+   the elevator's frame (`room-paint.js`'s `isDoorway()`) before any wall, piece or room part — bodies and birds are not
+   in the ray's population, as the 2-D floor's walkers let the pointer through; its keyboard half is a `role="button"`
+   that `floor-labels.js` keeps first in the label layer (the band is the room's back), unseen until it has the
+   keyboard's focus and letting the pointer through to the canvas, its focus moving the target to the doorway as a
+   desk's name does — the `focused` hook now takes a floor point and a name; (c) the ride's band leaves (`scene.ride`,
+   slice 5's *not built*) are drawn: `cab-paint.js`'s band-leaf table is one function (`bandLeaves()`) that the 2-D
+   style (`rideLeaves()`, its strings unchanged) and the 3-D level (`rideLeafLevel()`, CSS's `ease-in-out` solved) both
+   read, the room stepping a frame a display refresh while they move; (d) `floor3d.blade.php` declares
+   `data-ride-reveals`. The checks: `TheThreeDFloorsRideIsNavigationTest` (its probe `three-d-ride-probe.mjs`) and the
+   browser leg's `ride` row.
 7. **The default** (gated on the operator's reading — Q3's answer A was *beside first*): `/floor/{floor}` serves the
    3-D view and `/floor/{floor}/2d` the drawing, the pills swapped, `FLOOR.md` § 4.4's table amended — one route change.
 8. **The building in volume** (the operator's *eventually*, comment 17050; its own operator gate before it starts):
@@ -1167,7 +1252,7 @@ on the last only when the operator has read the sandbox. Every slice: its plants
   searches for a differing pair and fails as a control if none.
 - A label behind the eye leaves the tree → owned by slice 4's list-view row.
 - The band's foot strip hides a ride's leaves at the moment a viewer behind the room wants them → owned by the
-  slice-4 reading; the leg only holds that the motion continues.
+  slice-4 reading; the leg only holds that the motion continues. Retired by card#13033: the band is never lowered.
 - A z-fight at the face patch, the disc or the status surface → owned by the slice-4 sandbox read; no node test
   sees it.
 - A 3-D URL written in the 2-D form, or a seat read as `3d` → owned by slice 4's URL rows and the route test.
@@ -1231,9 +1316,11 @@ Waits for a slice, with its reason:
    depth/height split is `anchor3d()` — no new figure.
 2. `maxPolarAngle` 88° from vertical; `minDistance` one character height; `maxDistance` 1.5 × the fit; the camera's
    near plane 0.05 units (derived in § 3.6 so the near plane's corners stay above the floor); the entry pose at the
-   home tilt from the front at the fit distance, set from the spherical figures; `enableDamping` on with the library's
+   home tilt from the front at the fit distance, set from the spherical figures (as built: the room box framed edge to
+   edge, § 3.6's *Entry*); `enableDamping` on with the library's
    factor, off under `reduce` (§ 3.6).
-3. **The keyboard map**: arrows rotate and tilt, Shift+arrows pan, `+`/`−` dolly, *Fit* the entry pose; the keys wire
+3. **The keyboard map**: arrows rotate and tilt, Shift+arrows pan, Page Up / Page Down raise and lower the eye (as
+   Alt + a vertical drag does), `+`/`−` dolly, *Fit* the entry pose; the keys wire
    hands the key event's modifiers to `drag(dx, dy, modifiers)` as an optional third argument; the keys are wired in
    the hoisted page over the renderer contract's `keys`; the library's key listener is never connected (§ 3.6).
 4. **A seat's character costs at most one draw call and an intern's at most two** — one skinned mesh over one skeleton per character, its joints
@@ -1251,9 +1338,10 @@ Waits for a slice, with its reason:
    before (no product impact on its own; canon #18).
 10. `three-mesh-bvh` is adopted only on its measured trigger (§ 2.1).
 11. No camera collider (§ 3.7); the cut-away lowers walls and the band to 0.15 units over 150 ms and never cuts a
-    desk or a character.
+    desk or a character. As built (card#13033): walls alone — the band is never lowered.
 12. The target's box clamp is three lines after `update()` in the renderer, the box `view-limits.js`'s — the one
-    first-party piece of camera mechanism, and the one clamp (§ 3.6).
+    first-party piece of camera mechanism, and the one clamp (§ 3.6). As built (card#13033): the one clamp holds the
+    eye in the office, `view-limits.js`'s `confine()`, with no update after it (§ 3.6's as-built note).
 
 ## 13. Operator questions — all four answered on 2026-11-11
 
@@ -1263,7 +1351,7 @@ for what the kit lacks and C held as the exit; the asset gate admits `.glb` (§ 
 revision 1's record, folded into § 3.2's table.
 
 **Q2 — The camera: orbit + pan + zoom, and the pan gesture. ANSWERED A** (comment 17079: *"Q2. A / Q3. A"*): orbit +
-pan + zoom, right-drag pans, two fingers on touch (§ 3.6). The walk mode (C) and Shift+drag (B) are not built.
+pan + zoom, right-drag pans, two fingers on touch (§ 3.6). The walk mode (C) is not built; B's Shift + a left-drag pans too, as the library's default beside the right-drag.
 
 **Q3 — Does 3-D replace the 2-D floor page, or sit beside it? ANSWERED A** (the same comment): beside first —
 `/floor/{key}/3d` built beside `/floor/{key}`, the default swap after the operator's reading (slice 7). The example as
@@ -1299,3 +1387,350 @@ screen's text is still read by orbiting to the front. The sitter's side is alrea
 state at every angle; the operator's answer is B's facings plus a status label, and slice 4 builds it.
 
 The building-in-volume slice (8) returns to the operator with its own questions before it starts.
+
+## 14. The look pass — light, ramp and ground shade (card#13033, 2026-11-20)
+
+**What this section is.** A design for ONE pass over the 3-D floor's look, sized to about half an hour of coding,
+written from the sandbox as it stood on 2026-11-20 (`/floor/sola/3d`, `/floor/aimla/3d`, and the 2-D floor beside
+each). It builds nothing the operator has already ruled and another branch is building (the opening fit, the thought
+bubble, the building view's removal, the cab's handrail). Its figures are `FLOOR.md` § 12's *Floor 3-D light*,
+*Floor 3-D ramp*, *Floor 3-D ground shade* and *Floor 3-D pixel ratio* rows; this section owns the derivation.
+
+### 14.1 The audit — what makes the floor read flat, ranked
+
+Each cause is read from the code and re-derivable; the screenshots are the sandbox's, taken with the UAT shot
+script at 1400 × 1000 and not committed (the repo holds no real floor's content).
+
+1. **Every lit face is the same brightness, and the floor is clipped.** `floor-paint.js` lights the scene with a
+   hemisphere light at 1.7 and a directional light at 2.2. A toon material's face is its colour times
+   `(sun × ramp + hemisphere) / π`: an up-facing face is `(2.2 + 1.7) / π ≈ 1.24` — past 1, so the floor's painted
+   boards clip to near-white (the 3-D floor's boards are paler than the same theme's on the 2-D floor) — and the
+   library's default ramp has two values, 0.7 and 1.0, split at `dot(N, L) = 0.4`, which the sun at `(-4, 8, 6)`
+   puts BOTH a top (0.74) and a front (0.56) above. A desk's top and its front are therefore one colour, and the
+   faces turned away are ≥ 0.9. Seen: a desk, a couch and the tank each read as one flat silhouette.
+2. **Nothing touches the floor.** Furniture, walls and the band meet the plane with no shade at the foot; only the
+   bodies have a mark (`body-paint.js`'s disc — a hard-edged black circle at 0.18), which reads as a hole, not a
+   shadow. Seen: desks and couches look pasted on; the partitions look like paper strips.
+3. **The room pays no attention to the hour.** The windows show A17's sky (night, with a moon), and the room is lit
+   as at noon; the 2-D floor has the same gap, but the 2-D art carries its own painted light and the 3-D kit does not.
+4. **The room floats in a flat field.** The clear colour is one flat `--house-trim`; nothing grounds the slab the
+   floor stands on. (Not in this pass — § 14.6.)
+5. **Furniture is one flat fill per part.** The kit is recoloured per material with no texture, edge or rim; § 10.4's
+   cream rim and inked line have no 3-D counterpart. (Not in this pass — § 14.6.)
+6. **The walls are bare slabs.** No cap tone, skirting or rail on the partitions and side walls, beside a band that
+   has all three. (Not in this pass — § 14.6.)
+
+Items 1–3 are one pass — the light rig, the ramp and one ground decal — and outrank the rest because they change
+every pixel of every object for one small module each. Characters are already real geometry (`creature-paint.js`'s
+skinned mesh), so "real 3-D characters" is not a pass that is owed.
+
+### 14.2 The shape, and what was rejected
+
+**Chosen: a balanced light rig that never clips, a four-value ramp shared by every toon material, and ONE instanced
+ground-shade decal** that replaces the bodies' discs and also lies under the furniture, along the walls' feet and
+(after dark) under the floor lamps. No shadow maps, no tone mapping, no post-processing.
+
+- **Rejected — shadow maps from the sun (PCF soft).** The mechanism costs what this floor budgets against: the
+  shadow pass draws every caster a second time, and `renderer.info.render.calls` counts it, so § 6's characters term
+  (`S + 2 I`, 102 at the cap) and furniture term double and the 260 budget reds; the creatures' face material is
+  `alphaTest` and a second, transparent material during a fade, each needing a depth material of its own; the
+  cut-away lowers walls, so shadows would sweep the room as the camera turns; and a shadow edge across a toon ramp's
+  hard step bands and acnes on the kit's low-poly faces. What it would buy over decals — furniture shading furniture
+  — is not what the audit found missing. A decal is also § 10.6's own rule, *"a contact shadow is a soft plum
+  ellipse at the foot"*.
+- **Rejected — ACES / AgX / Reinhard tone mapping.** Tone mapping exists to compress a scene whose light exceeds 1.
+  This rig is fixed, so the excess is removed at its cause (the sum of the lights) rather than compressed; and a
+  tone curve shifts every palette colour and the painted plane and band away from the 2-D floor's, and reaches the
+  screens' and the cab's `MeshBasicMaterial` too. `NoToneMapping` is pinned explicitly so a library default cannot
+  change it.
+- **Rejected — baking the corner darkening into the plane's canvas.** The plane is the theme's 2-D document, and a
+  wall's foot is the world's; drawing one into the other couples the texture's key to the walls.
+
+### 14.3 The spec
+
+**(a) One home for the figures — new `server/public/js/floor3d/look.js`, pure (no Three, no DOM).** Exports a frozen
+`LOOK` holding every figure of § 12's four rows, and `upFace(phase)` — the up-facing face's light,
+`(sun.intensity × sunColour + hemi.intensity × skyColour) / π` per channel in linear light. Nothing else in
+`floor3d/` writes one of these figures. The character tools' stage (`tools/characters/stage3d.js`) lights from it too,
+in the windowless `unset` phase, so the 3-D sheet and `distinct.browser.mjs --source 3d` judge a body under the light
+the floor draws it in, not a light of their own. Under this light the cat's grey-blue colourway and the raccoon's
+mauve-grey one read layout ΔE 9.4 apart at silhouette IoU 0.84 — under the distinctness bar — so the raccoon's fifth
+colourway is a deeper plum, `#7d6878` (from `#857a84`), which reads 11.1 apart.
+
+**(b) The lights — `floor-paint.js`'s `worldRenderer()`, the `hemi` and `sun` it already makes.**
+
+| | value |
+|---|---|
+| sun direction (from the target) | `(-0.24, 0.80, 0.55)` — still § 10.4 item 5's top-left; `sun.position.set(-2.4, 8, 5.5)` |
+| sun intensity | **1.1** |
+| hemisphere intensity | **2.04** (so `1.1 + 2.04 = π`: a white up-facing face is exactly its own colour) |
+| hemisphere ground colour | `#c9b8c4`, every phase |
+
+The phase is A17's sky as the scene already carries it for the windows: `sceneIn.band?.windows[0]?.sky ?? 'unset'`
+(`room-paint.js` reads the same member for `SKY_PAINT`). Set in `paint()`, a cut — nothing tweens, so reduced motion
+has nothing to turn off, and a snapshot paints the phase it holds.
+
+| phase | hemisphere sky | sun |
+|---|---|---|
+| `day`, `unset` | `#ffffff` | `#fff6e6` |
+| `dawn` | `#fff0ea` | `#ffe6cf` |
+| `dusk` | `#f8ecfb` | `#ffe2c2` |
+| `night` | `#dfe4ff` | `#ffe9c4` |
+
+The tint changes hue, never legibility: `upFace()` stays between 0.75 and 1 on every channel in every phase.
+
+Also in `worldRenderer()`: `renderer.toneMapping = NoToneMapping`, `renderer.outputColorSpace = SRGBColorSpace`
+(both the library's defaults, now stated), and `renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))`.
+
+**(c) The ramp — new `server/public/js/floor3d/toon.js`.** Exports `toon(params)`: a `MeshToonMaterial` with
+`gradientMap` the one shared ramp — a 16 × 1 `DataTexture`, `RedFormat`, `NearestFilter` both ways, no mipmaps,
+texel `i` covering `dot(N, L)` from `-1 + i/8`:
+
+| `dot(N, L)` | texels | value |
+|---|---|---|
+| below 0 | 0–7 | 0 |
+| 0 to 0.5 | 8–11 | 0.45 |
+| 0.5 to 0.75 | 12–13 | 0.90 |
+| 0.75 and up | 14–15 | 1.0 |
+
+With (b)'s sun a top is 1.0, a face toward the viewer's side 0.90, a face toward the left 0.45 and a face turned
+away 0 — in linear light 1.00 / 0.82 / 0.66 / 0.50 of the colour once the hemisphere is added, about 100 / 91 / 83 /
+74 % as displayed. **Every `new MeshToonMaterial(` in `floor3d/` becomes `toon(`** — the population is
+`grep -n "new MeshToonMaterial" server/public/js/floor3d/`, and after the change that grep prints `toon.js` alone.
+`floor-paint.js`'s `webglcontextrestored` handler flags `gradientMap` beside `map`.
+
+**(d) The ground shade — new `server/public/js/floor3d/ground-shade.js` (Three) over new pure
+`server/public/js/floor3d/shade-rects.js`.** This REPLACES `body-paint.js`'s `discGeometry`, `discMaterial`,
+`standDiscs()` and `DISC`; it does not sit beside them.
+
+- `shadeRects(world, footprints, still, phase)` (pure) returns a list of
+  `{ x, y, z, hw, hd, turn, round, soft, strength, glow }`:
+
+  | what | `hw`, `hd` (units) | `round` | `soft` | `strength` |
+  |---|---|---|---|---|
+  | a still body (the population `standDiscs()` drew: `wantedBodies()` with `at !== null`), at `at.y` | `0.16 × h` both | 1 | `0.14 × h` | 0.30 |
+  | a piece of furniture standing on the floor (`at.y === 0`, no `facing`), turned as it is | half its fitted footprint | 0.35 | 0.12 | 0.26 |
+  | a wall run at the floor | half the run's rect | 0 | 0.28 | 0.20 |
+  | the band's foot, a line (`hd` 0) along `world.band` | `band.w / 2`, 0 | 0 | 0.28 | 0.20 |
+  | a floor lamp's pool, only in a phase whose `SKY_PAINT` lights the city's windows (`city_lit` above 0: `night`, `dawn` and `dusk`; `look.js`'s `poolShows()`) | 0, 0 | 1 | 1.1 | 0.16, `glow` |
+
+  A **wall run** is the cells of `world.walls` with `box.y === 0` joined: consecutive cells of one row into a run
+  along `x`, then the cells left over joined along `z`; a cell is in one run. Runs overlap only where two meet, which
+  darkens the corner — wanted. A **footprint** is read off the matrix that stands the body (`furniture.js`'s
+  `footprintOf()`, as built with § 15.3's rule W): the plan centre of its box through `fitted()`'s matrix — or, for a
+  first-party piece (`piece3d()`'s: the tank, the copier, the cooler), its merged geometry's through `placedParts()`'s
+  — with its half width and depth at that matrix's scale, so it lies under the body wherever its anchor, turn and plan
+  put it; `createFurniture()` returns them as `footprints()`, with each one's kind, and a dressing none. A lamp's pool
+  is centred on its lamp's footprint.
+  `body-paint.js` returns its still bodies as `still()`. The lamp is the kind the kit map stands `lampRoundFloor` for:
+  `floor-lamp` (`look-probe.mjs`'s `pool` leg holds it to the map). `world.walls` holds no cell along the band's foot
+  (`floor/floor-walls.js` leaves the footprint's top row out, the band standing in for it — the probe's `band` leg
+  holds that on the shipped default), so the band's own line is kept.
+- `groundShade({ group })` draws them as ONE `InstancedMesh` of a unit quad lying on the floor, on the `fixed` term,
+  `0.003` above each rect's `y` (the discs' lift), with one `ShaderMaterial`: `transparent`, `depthWrite: false`,
+  `premultipliedAlpha: true`. Per instance: the matrix (translation and `turn` only), `extent` (`hw`, `hd`, `round`)
+  and `falloff` (`soft`, `strength`, `glow`). The vertex stage scales the quad to `hw + soft`, `hd + soft`; the
+  fragment stage takes the rounded-box distance `d` (corner radius `round × min(hw, hd)`), and
+  `a = strength × (1 − smoothstep(−0.5 × soft, soft, d))`. Shade writes `vec4(plum × a, a)`, plum `#3d2b3c` (§ 10.6's
+  shade); a pool writes `vec4(warm × a, 0)`, warm `#ffd9a0` — under premultiplied blending the first darkens and the
+  second adds, in one draw. A fragment outside the planes' union box (a uniform, from `world.planes`) is discarded,
+  so a side wall's shade never hangs over the edge of the floor. The colour goes through `#include <colorspace_fragment>`
+  BEFORE it is multiplied by `a`: the sRGB transfer of an already premultiplied colour would lighten the shade (by the
+  transfer's arithmetic a plum at 0.3 would be about 1.7× too light in red), so the stage writes the colour, converts it, then
+  premultiplies. The quad is scaled in the vertex stage, so the mesh is not frustum-culled by the unit quad's bounds.
+- `floor-paint.js`'s `paint()` calls it after `standFurniture()` and `bodies.paint()`, and the kit's `ready` calls it
+  again; it rebuilds only when the rect list or the planes changed (their JSON, as `standRoom()` keys the room).
+
+**(e) What does not change.** No material's colour, no texture, no geometry, no camera figure, no animation row. The
+cab stays unlit. The screens, the restroom flags and the ring stay `MeshBasicMaterial`.
+
+### 14.4 The population, the budget, and what is capped
+
+- **Materials:** the `grep` in (c). **Shade rects:** printed by `inspect().look.shade` — a count by kind; on the cap
+  floor it equals the still bodies plus the floor-standing placements plus the wall runs plus one (plus a pool a lamp
+  after dark). `inspect().look.population` prints the world's side: the still bodies, the placements standing on the
+  floor (`furniture.js`'s `standing()`, counted from the placements, not the footprints), the wall cells' area at the
+  floor, the band and the lamps.
+- **Draw calls:** the shade is one call and the discs it replaces were one — § 6's fixed term and the 260 total are
+  unchanged. No pass is added: one render of the scene per frame, as now.
+- **Fill:** the decals are small alpha quads; the largest is a side wall's run, `(d + 0.56) × 0.66` units.
+- **Capped:** the pixel ratio at 2 (a 3× phone draws 2.25× fewer pixels; a laptop at 1 or 2 is unchanged). The frame
+  loop still runs only while something moves; nothing in this pass asks for a frame.
+- **No WebGL 2 / no WebGL:** nothing here needs WebGL 2 (a `RedFormat` data texture, `fwidth`-free shader, one
+  instanced mesh — the scene instances already). No WebGL is § 7's fallback, unchanged.
+- **Reduced motion:** nothing in this pass moves.
+
+### 14.5 The checks, each seen red once
+
+Checks 1, 2 and 5 are `TheThreeDFloorsLightNeverClipsTest` over `tests/Feature/Floor/look-probe.mjs` (with the `band`
+and `pool` legs of (d), and its `furniture` leg — added with § 15.3's rule W — which holds each piece's shade inside its
+obstacle rect reaching to its wall and each lamp's pool on its lamp); check 3 is a leg of `Floor3dPageWiringTest`'s
+wiring; check 4 is `floor3d.browser.mjs`'s `look` row, run at night and by day on the cap floor (the phase set by the
+run's clock, the page held in UTC), which also holds the light's colours, its π sum, the absent tone curve and the pixel
+ratio's cap, and red under a second plant, the light never tinted for the phase.
+
+1. **No face clips** — a node test over `LOOK`: for every phase, every channel of `upFace(phase)` is at most 1 and
+   at least 0.75. Plant: the old 2.2 and 1.7 in a copy → 1.24, red.
+2. **The ramp separates the three faces a viewer sees** — the same test: with `LOOK`'s sun direction the ramp's
+   value at the up, the `+z` and the `−x` normals are three different numbers. Plant: the old `(-4, 8, 6)`
+   direction → two equal, red.
+3. **One ramp** — the `grep` in (c) as a lint leg beside the others. Plant: one `new MeshToonMaterial(` left in
+   `furniture.js`.
+4. **The shade covers its population** — `tools/design/floor3d.browser.mjs` reads `inspect().look.shade` against
+   the world's own counts; the walls by area, since a run count is the join's own answer. Plant: the furniture's
+   footprints dropped.
+5. **`shadeRects()` joins runs** — a node test: a straight wall of *n* cells is one rect of *n* cells' length; an L
+   is two. Plant: the join removed → *n* rects.
+6. **By eye, on the sandbox, before the PR:** `/floor/sola/3d` zoomed to a desk — its top, front and side three
+   tones; a soft plum pool under every desk, couch and body; the boards the 2-D floor's colour.
+
+### 14.6 Not defended, unverified, and the next passes
+
+- **Not defended:** a floor whose planes leave a gap inside their union box (the shade would cross the gap; no
+  shipped map has one — `world.planes` on the default map is one grid). A piece of furniture turned by other than a
+  quarter turn is drawn correctly (the quad turns with it).
+- **Settled in the build:** `world.walls` holds no cell along the band's foot, so the band's rect stays; the floor
+  lamp's kind is `floor-lamp`. **Unverified in this pass:** the figures by eye on the sandbox — every strength and colour here is derived, none has been seen
+  rendered, and the coder's reading at check 6 may move them inside § 12's rows.
+- **A smell, outside this pass:** `grep -rn lighting server/public/js/floor3d/` prints nothing, while the 2-D floor
+  dims a degraded desk by `desk.lighting` (`painter.js`'s `lighting-*` classes) and `floor-world.js` carries the
+  member. Whether the 3-D floor renders § 7's dimming another way was not traced here.
+
+**The next passes, ranked, one line each — the operator's to choose:**
+
+1. A backdrop: a soft vertical gradient and a floor slab with a dropped shade under the room, in place of the flat field.
+2. Wall dress: a lighter cap, a skirting and the band's rail carried round the side walls and partitions.
+3. Furniture surface: a cream rim and an inked edge on the kit (an outline pass or inverted hulls), § 10.4's line in 3-D.
+4. Lit things: a monitor's and a lamp's faint glow on the desk top after dark; the tank's water lit.
+5. A walking body's shade, moving with it (this pass keeps the discs' population: still bodies).
+6. The 3-D rendering of a degraded desk's dimming, if the smell above is confirmed.
+7. Real shadow maps, only if the operator wants furniture to shade furniture — with § 6's budget re-derived first.
+
+## 15. Placement review — where each floor's objects stand, 2-D and 3-D (2026-11-20)
+
+**The request (the operator, 2026-11-20, card#13033):** *"Also have Fable look at the placement of objects on each floor. Currently some objects are placed in ways that don't make sense. for example, the couch faces towards the viewer , and the sola PM office has a water coolor at the entrance instead of against a wall"*.
+
+**The result in one paragraph.** Both of the operator's examples are CODE rules, and neither is map data. The water cooler is placed sensibly in the map — it is in the back-wall row of the PM office — and the 3-D floor stands it, and every other tall piece on every floor, a tile-height in front of the wall it is drawn against (§ 15.2). One rule in the wall reader fixes that for every floor, and no map is edited. The couch faces the viewer because the operator's own decision 86 (`FLOOR.md` § 13 row 86, *"Couch A"*) drew it under and behind a row of interns who face the viewer; turning it is a change to that ratified layout and is put to the operator in § 15.5 — nothing about the couch is handed to the coder here.
+
+### 15.1 What was read, and how to re-read it
+
+- **The maps.** `GET /api/building/rooms/{install_id}/map` for each room `GET /api/building` lists under `layout.floors[].rooms[]`, as the logged-in UAT account, read-only. `source` says which are authored: `aimla` (`map_version` 1) and `solo-agents` (The Burrow, `map_version` 3). `sola`, `nook` and `treehouse` answer `source: "default"` — the shipped `resources/floor/default.tmj`, and the document the sandbox served for all three is equal to the one in this tree (compared as parsed JSON). So a change for the sola floor's furniture is a change to a repository file, and it lands on all three floors; the console's save path (`Admin\FloorController::update()`, a `map` string validated by `TiledMap`, stored as a `Revisions::ROOM_MAP` revision) is only for the two authored rooms.
+- **The population:** every cell of a map's tile layers whose tile's `kind` is a standing kind (`mapTiles()`; the kinds are `resources/floor/tiles/floor-plane.tsx`'s less `PLANE_KINDS`), and every desk's couches (`floor-world.js`'s `couchesOf()`). Re-derive it per map from `mapTiles()` — the lists below are that walk's output on the date above, not a figure to trust later.
+- **The pictures** (the session's scratch directory, not in the repository): `aimla-2d.png`, `aimla-3d-close.png`, `sola-2d.png`, `sola-3d-close.png`, `the-burrow-2d.png`, `the-burrow-3d.png`, `the-nook-2d.png`, `the-nook-3d.png`, `the-treehouse-2d.png`, `the-treehouse-3d.png`. The 3-D pictures are the opening view and one zoomed view; **no picture was taken from inside a room or from behind a piece**, so every 3-D statement below about a face or a gap is derived from the placement arithmetic (§ 15.2) and confirmed only as far as those two views show.
+
+### 15.2 The cause — a tile's rect is a PICTURE, and the 3-D floor stands the piece on the picture's bottom edge
+
+A standing tile's cell rect is `w` across and its picture's HEIGHT down (`mapTiles()`: `y = (row + 1) × tileheight − h`), and that whole rect is the piece's obstacle (`obstaclesOf()`). An author who wants a piece against the back wall puts the picture's TOP at the wall — `aimla`'s bookcase, plant, aquarium and snack table all have `y = 0` — so the foot line is a picture-height in front of the wall. The 3-D floor stands every piece **centred in depth on its foot line** (`floor-world.js`'s `pieceOf()`: `at({ x: s.x + s.w / 2, y: s.y + s.h })`; `furniture.js`'s `fitted()` centres the model's box on `at`), its front toward `+z`, whatever it stands beside. Three defects follow, on every floor:
+
+1. **A piece drawn against the back wall stands in the room.** The default map's water cooler: rect `x 1224, y 16, 40 × 120`, foot line `y = 136` — 1.36 units in front of the band in an office 3.12 units deep (the partition is row 39). The armchair (foot 96), floor lamp (136) and globe (136) beside it make a row across the office just inside its doorway (the gap in row 39 is columns 133–144). This is the operator's water cooler.
+2. **A piece beside a side wall stands with its SIDE to that wall and its front to the viewer**, and one against the wall in front of it faces that wall.
+3. **Half of every piece's depth is in front of its foot line** — outside its obstacle rect, so in a walker's lane; a piece on the map's last row overhangs the floor's front edge (`aimla`'s tall bookcase, foot 696, in `aimla-3d-close.png`; the default's front-left armchair, in `sola-3d-close.png`).
+
+The 2-D floor is not wrong by its own convention: its pictures are face-on symbols (`FLOOR.md` § 10.6 item 6 draws every tile unrotated), and a tall picture whose top meets the band reads as standing against it. **Nothing in the 2-D floor changes.**
+
+### 15.3 The fix — rule W: a piece stands against the wall its tile touches, its back to it
+
+One reading of the map, made once where the walls are already read (`floor/floor-walls.js`, beside `restroomDoorGeometry()`, which makes this same kind of reading for a door), carried by the scene, lifted by the world, and fitted by the furniture. It applies to every standing kind **except** `restroom-door` (its own geometry stands it) and the two `SNACK_TABLES` kinds (`scene.js` stands a visitor at the tile's front corners, `snackSpotOffset()`, so a table that moved off its foot line would leave its visitors standing short of it) — those keep today's placement exactly.
+
+**(a) `floor/floor-walls.js` — new export `standingAgainst(cell, g, bodies, T)`** → `{ against, face }`, scene px, from the PLACED cell as `restroomDoorGeometry()` reads it (`at = cellOf(cell, g, T)`, `top = at.y + T − cell.h`, `foot = at.y + T`, `f` the grid's footprint). `wallAt(x, y)` is true where `bodies` — the floor's `wallBodies()` as `x:y` keys, built once per scene by `wallKeys()` — holds that cell, **or** `y === f.y` — the footprint's top row, which the band stands in for and `wallBodies()` therefore leaves out. The first branch that holds wins:
+
+| `against` | holds when | `face` |
+|---|---|---|
+| `back` | for the nearest row `y_w`, searched from the row above the foot cell (`foot − 2T`) upward to `max(top − T − CENTRING.reach, f.y)`, `wallAt(x, y_w)` for every cell column `x` of the tile's width (as built — see below) | `f.y` where `y_w === f.y` (the band's face is the floor's back edge), else `y_w + T` |
+| `left` | for the nearer of the two columns `x_w ∈ { at.x − T, at.x − 2T }` that qualifies, `wallAt(x_w, y)` for every cell row `y` of the foot strip `[foot − min(cell.w, cell.h), foot)` | `x_w + T` — the wall's own face |
+| `right` | the same for `x_w ∈ { at.x + cell.w, at.x + cell.w + T }` | `x_w` |
+| `front` | `wallAt(x, foot)` for every cell column `x` of the tile's width | `foot` |
+| `null` | none | `null` |
+
+`CENTRING.reach` (`route.js`, 48 px) is reused as the reach: a strip shallower than the distance a walk keeps from a walkway's edge is not a walkway, so a piece that close to the wall above it is against it. The default map's largest such gap is the globe's (`y = 48`). A side wall is read up to one cell off the tile because the shipped default stands its left-wall pieces at `x = 16`, a cell clear of the wall in column 0 (its bookcase and armchair), where `aimla`'s stand at `x = 8`; so the piece's back goes to the wall's face, not the tile's edge, and its body may reach one cell outside its obstacle rect on that side — against a wall, where no walk passes. `back` is tried before the sides so a piece in a back corner keeps facing the room's front, as its picture shows it. `restroomDoorGeometry()`'s own read stays as it is: a doorway needs wall over the tile's whole HEIGHT, a piece over its plan depth — two properties, not one to merge.
+
+**(b) `floor/scene.js`** — where a scenery entry is pushed (the `scenery.push(...)` in the standing-kind loop), add `against` and `face` from `standingAgainst()` for the kinds rule W covers. Nothing else in the scene reads them; obstacles, the lattice and every 2-D document are untouched.
+
+**(c) `floor/floor-world.js` — `pieceOf(s)`**, for a piece that is not a side door, with `cx = s.x + s.w / 2`, `foot = s.y + s.h`:
+
+| `against` | `at` | `turn` | `anchor` |
+|---|---|---|---|
+| `null` (and the excluded kinds) — rule W off | `at({ x: cx, y: foot })` | — | covered kinds: `'front'`; excluded kinds: none (today's centre) |
+| `back` | `at({ x: cx, y: face })` | — | `'back'` |
+| `front` | `at({ x: cx, y: face })` | `Math.PI` | `'back'` |
+| `left` | `at({ x: face, y: foot − s.w / 2 })` | `Math.PI / 2` | `'back'` |
+| `right` | `at({ x: face, y: foot − s.w / 2 })` | `−Math.PI / 2` | `'back'` |
+
+`anchor` names the model face that lies on `at`: `'back'` its back (`−z` in the model's frame), `'front'` its front, absent its centre. So a free-standing piece stands BEHIND its foot line (defect 3), and a walled one with its back on the wall, facing the room (the signs match a side door's: `right` is `−π/2`).
+
+**(d) `floor3d/furniture-placements.js` — `placementsOf()`** passes `turn` and `anchor` through for every piece. Today `turn` travels only together with the side door's `facing`, `wall` and `flag`; split them, so a turned bookcase carries no door fields and `inputsOf()` is unchanged. A dressed kind is excluded from rule W, so its two placements are untouched.
+
+**(e) `floor3d/furniture.js`** — `fitted()` takes `anchor`: its centring translation in `z` is `−box.min.z` for `'back'`, `−box.max.z` for `'front'`, and the box's middle as today otherwise. `firstParty()` composes `translation(at) × rotationY(turn)` over a part list's merged geometry; it must honour `anchor` the same way, from that geometry's bounding box. *Unverified: whether a first-party part list is authored centred on its foot — the coder reads `piece3d()`'s frame before choosing where the shift goes.*
+
+**(f) Docs in the same change:** § 3.4's and `furniture.js`'s header sentence *"its foot on the floor and its front toward `+z`"*, `furniture-placements.js`'s placement shape (`anchor`), `floor-world.js`'s header (a new ⛔ paragraph for rule W), and `FLOOR.md` § 10.6 item 6 (one sentence: the 3-D floor turns and stands a piece by the wall its tile touches; the 2-D floor still draws every tile unrotated).
+
+**Why the walks stay clear.** Rule W reads no obstacle and writes none: the lattice is built from the same rects as today. It moves the 3-D body only (i) back, into the strip between a tile and the wall above it, which is at most `CENTRING.reach` deep and closed at the wall, and (ii) for a free or side-walled piece, to the span `[foot − depth, foot]`, inside the tile's own obstacle rect where the model's depth at the tile's width is no more than `min(w, h)`. That last condition is a property of each kit file and is **not verified here** — the probe leg below is what holds it.
+
+**The check (`floor-world-probe.mjs`, a new `standing` leg, each seen to fail first):** for every piece rule W covers, over the shipped default and a fixture carrying one piece of each `against` value — (1) its 3-D plan box (the model's box through `fitted()`'s matrix) lies inside its obstacle rect extended to `face` on the walled side; plant: restore the centred anchor, and the default's front-row armchair reds. (2) A `back` piece's back face is at `face`; plant: drop the band row from `wallAt()`, and `aimla`'s top row reads `null`. (3) A piece with open floor on every side reads `null` and keeps `turn` undefined; plant: widen the reach to the room's depth.
+
+**As built (2026-11-20), two departures, each forced by the `standing` leg's first check over the shipped default.** The kit's plant and armchair do not fit their tiles once turned to a side wall: the large plant (`8, 384, 80 × 128`) is 91 px deep at its 80-px width, 11 px past its rect into the room, and the armchair (`16, 632, 72 × 64`) is 72 px long along a 64-px foot strip, 8 px into the bookcase standing on the wall above it. So (i) a side piece stands centred on its foot strip, `foot − min(w, h) / 2` (the table's `foot − s.w / 2` where `w ≤ h`), and (ii) every covered piece carries a `plan` — its obstacle rect reaching to its wall's face, across and deep in its own frame — and `fitted()` and `placedParts()` shrink a body that would not fit it, in plan only, never in height (by `inside()`'s `min(1, plan.w / w, plan.d / d)`; `floor-world-probe.mjs` prints each shrunk piece's factor as `printed.shrunk` — on the shipped default the plant and the armchair, and no other). The obstacle and the walks stay as designed.
+
+**As built at review (2026-11-20), the `back` search reads from the foot up.** Searched from the picture's top, as first written, it missed two cases: a picture taller than its room reaches above it has its top above the band's row, so the band was never reached and the piece read free (a 120-px water cooler with its foot on row 8); and a picture crossing a partition read the wall beyond it, so the body stood on the far side of the partition (a 112-px bookcase with its foot at `y = 168` and a partition at `y = 120` read the band). So the search takes the NEAREST wall row from the row above the foot cell up to `max(top − T − CENTRING.reach, f.y)` (rows above the footprint's top row are no wall). It starts one row above the foot cell, not at it: a face on the foot cell's row would be the foot line itself, leaving the body no depth to stand in, so a piece painted with its foot on a wall run reads free rather than vanishing. The `standing` leg's fixture holds all three cases. The ground shade (§ 14.3 (d)) is laid from the matrix that stands each body (`furniture.js`'s `footprintOf()` over `fitted()` or `placedParts()`), so it follows the anchor, turn and plan, and a lamp's pool is centred on its lamp's body; `look-probe.mjs`'s `furniture` leg holds both.
+
+**Rejected — move the pieces in the maps so each foot line is at the wall.** A water cooler whose foot is 40 px from the wall has a rect starting 80 px ABOVE the room (`y = foot − h`), over the band. Whether a save admits it, how the 2-D floor layers it against the band, and what the obstacle rule and `tools/design/verify-floor.py`'s G-scenery leg make of a rect outside the grid were not established; it would also have to be repeated by hand in every authored map, and by every author afterwards. **Rejected — make a piece's obstacle its plan footprint instead of its picture** (the upstream change that would make the foot line mean one thing in both views): it is right in principle and moves every route on every floor, the 2-D layering of every piece near the band, `obstaclesOf()` and its Python copy. It is the change to propose if rule W's strip-behind-the-tile ever draws a walker through a body; nothing found here does.
+
+### 15.4 Per floor — what does not make sense, and what rule W does to it
+
+Rects are map px, `x, y, w × h`, foot = `y + h`. "W: back" means § 15.3's branch.
+
+**sola, The Nook, The Treehouse** (one document: `resources/floor/default.tmj`). Pictures: `sola-2d.png`, `sola-3d-close.png`.
+
+| piece (tile id) | rect | what is wrong | fix |
+|---|---|---|---|
+| water cooler (16) | 1224, 16, 40 × 120 | 3-D: 1.36 units off the PM office's back wall, in the row a visitor meets inside the doorway — the operator's example | W: back |
+| floor lamp (8) | 1144, 8, 40 × 128 | the same row, behind the doorway's own columns (133–144) | W: back |
+| globe (24) | 1184, 48, 40 × 88 | the same row | W: back |
+| armchair (9) | 1064, 32, 72 × 64 | 0.96 off the back wall, beside the partition | W: back — it faces the office |
+| aquarium (22) | 536, 24, 80 × 104 | 1.28 off the back wall, between two desks | W: back |
+| bookcase (5) | 1704, 16, 72 × 144 | 1.6 off the back wall in the office's back-right corner | W: back |
+| bookcase (4) | 16, 520, 72 × 112 | its side to the left wall, its shelves to the viewer | W: left — shelves face the room |
+| armchair (9) | 16, 632, 72 × 64 | on the last row: faces out of the room and overhangs the front edge | W: left — faces along the front of the room, inside the floor |
+| plant (12), plant (7) | 8, 384, 80 × 128; 1744, 192, 28 × 72 | none (round; beside a wall) | W turns them; no visible change |
+| floor lamp (8) | 1576, 536, 40 × 128 | none — it stands at the end of the inventory desk's couch, clear of the restroom doorway (rows 74–81 of column 222) | W: none; it steps behind its foot line |
+| snack tables (13, 14), restroom door (15) | — | none found | untouched |
+
+**aimla** (authored, revision 1). Pictures: `aimla-2d.png`, `aimla-3d-close.png`.
+
+| piece (tile id) | rect | what is wrong | fix |
+|---|---|---|---|
+| bookcase (5), plant (12), aquarium (22) | 208, 0, 72 × 144; 288, 0, 80 × 128; 376, 0, 80 × 104 | 1.04–1.44 off the back wall, a row standing in the lounge | W: back |
+| bookcase (5) | 8, 552, 72 × 144 | PM office, last row: side to the left wall, overhangs the front edge | W: left |
+| bookcase (4) | 8, 416, 72 × 112 | PM office: side to the left wall | W: back — corrected at review: a wall row lies within the reach above its picture, and `back` is read before the sides, so it faces the office's front with its back to that wall rather than to the left wall |
+| water cooler (16) | 1736, 200, 40 × 120 | side to the right wall | W: right |
+| coat rack (20), plant (6) | 8, 232, 40 × 136; 1712, 376, 56 × 104 | none (round; beside a wall) | W turns them; no visible change |
+| armchair (9) ×2, bean bag (23), floor lamp (8) | 216, 192; 304, 216; 376, 192; 464, 136 | **accepted, not changed:** the lounge's seats stand in a row facing the PM office's partition 1.2 units in front of them, rather than each other. They are free-standing, so no wall says which way they face, and a rule that guessed a "social centre" would be a second placement decision beside the map's. If the operator wants a facing here it is a map property (§ 15.5, question 2) | W: none; each steps behind its foot line |
+| snack tables, restroom door | — | none found | untouched |
+
+**The Burrow** (`solo-agents`, authored, revision 3). Pictures: `the-burrow-2d.png`, `the-burrow-3d.png` (the opening view only — the least-examined floor).
+
+| piece (tile id) | rect | what is wrong | fix |
+|---|---|---|---|
+| bookcase (5) | 640, 256, 72 × 144 | foot on the partition in front of it (row 50): its shelves face that wall | W: right (column 89) — shelves face the room |
+| armchair (9) | 640, 408, 72 × 64 | none of substance (0.28 off the partition behind it) | W: back |
+| bookcase (4), plant (6) | 1232, 408, 72 × 112; 1840, 408, 56 × 104 | 1.04–1.12 off the partition behind them | W: back |
+| plant (12), floor lamp (8) | 1224, 272, 80 × 128; 1856, 272, 40 × 128 | none (round; in a front corner) | W: right; no visible change |
+
+No piece on any floor stands in a doorway or overlaps another in plan, by the rects above against each map's wall gaps (default: row 39, columns 133–144; `aimla`: row 47, columns 64–75; The Burrow: the gaps in rows 12 and 88). **No map is edited by this review, so there is no document to save through the console.**
+
+### 15.5 For the operator — the couch, and one optional question
+
+**1. The couch.** It is a code rule: `placementsOf()` stands every couch with no turn (`add('sideTable', { at, w, h, d })`), the kit's front is `+z`, and `couchesOf()` lays one couch along each ROW of the side table's seats — the layout `FLOOR.md` § 13 row 86 records as the operator's choice of 2026-10-27 (*"Couch A"*: a sofa under and behind each row of interns, who face the viewer as the desk's sitter does by the ruling of 2026-10-06). A couch in a row along `x` can only face the viewer or the band. Options:
+- **A — keep it, as a bench beside the desk facing the room.** Example: the back row's couches face the aisle between the rows; the front row's face the open front of the room, which is what reads as "towards the viewer". No cost.
+- **B — turn each couch a quarter-turn so it runs back from the desk's end and faces its sitter.** Example: at `sola-pm` the couch stands along the desk's right end, its interns in a line from front to back, looking across at the bear. Cost: the 2-D desk box is re-laid (`desk-layout.js`'s `stoolSlots()`, `couchFootprint()`, the side table's art in side view, the interns' sprites in profile or three-quarter, the interns' walk to their seats), and row 86 is amended — a slice of its own.
+- **C — the 3-D floor alone turns the couch and its interns to face the band.** Example: from the opening view you see sofa backs and the backs of heads. Rejected here: the two floors would disagree about which way the same intern faces.
+
+*Recommendation: B, as its own slice after rule W ships* — it is the only option in which the seating faces something, and it is a layout decision the operator made once already, so it is not the coder's to take from this review.
+
+**2. Optional — a facing for free-standing seats.** `aimla`'s lounge chairs (and any armchair an author stands away from a wall) face `+z`. If that is wanted otherwise, the place for it is a `facing` property on the TILE (four armchair tiles in `floor-plane.tsx`, as the bookcase already comes in two), read where rule W reads the wall — not a guess from the room's shape. *Recommendation: not now; decide it with question 1.*
+
+### 15.6 What could falsify this, and what is not defended
+
+- **A kit model deeper than its tile is wide or tall** would stand out of its obstacle rect once turned or stood behind its foot — the `standing` leg's first check is the catch. Not measured here.
+- **Anything that reads a piece's `at` as its centre** — a label, or a floor lamp's light on the lighting branch that is open beside this one — moves by up to half the piece's depth. Named for that branch's owner; not examined here.
+- **A piece an author stands within the reach of a wall on purpose but means free-standing** reads `back`. Not defended: no shipped map has one, and the reach is one named constant.
+- **Not validated:** rule W is designed from the code and the maps, not built; no 3-D picture shows a turned piece. The first build's screenshots from inside the PM office are the real check.

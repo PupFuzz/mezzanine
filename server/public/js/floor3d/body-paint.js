@@ -1,8 +1,9 @@
 /**
  * THE 3-D FLOOR's BODIES — every character the floor world (`floor/floor-world.js`) draws a body for: each sitter, each
- * intern, each walker, built by `floor3d/creature-paint.js`, with a contact disc under each still one, and the clock that
- * chooses each body's pose at the instant a frame is drawn. One of the renderer's parts, composed by
- * `floor3d/floor-paint.js`, which owns the frame; `docs/design/plan-13033-stage2-3d-floor.md` §§ 3.3 and 3.5.
+ * intern, each walker, built by `floor3d/creature-paint.js`, and the clock that chooses each body's pose at the instant a
+ * frame is drawn; the still ones are handed to the ground shade (`floor3d/ground-shade.js`) as `still()`. One of the
+ * renderer's parts, composed by `floor3d/floor-paint.js`, which owns the frame; `docs/design/plan-13033-stage2-3d-floor.md`
+ * §§ 3.3 and 3.5.
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * ⛔ THE CLOCK (plan § 3.5) IS `floor3d/clip-clock.js`'s, ASKED WHEN THE FRAME RUNS: a seated body's form `since` the paint
@@ -12,8 +13,9 @@
  *
  * ⛔ THE MARKS OVER A BODY ARE LABELS (plan § 3.5's A6, A7, A9 rows; § 3.9): the sleeper's three z's and a state marker,
  * each lit as the 2-D pulse lights it (`data-level` 0–3, the character tree's `zLevels()` and `markerLevel()`), and a
- * walker's thought bubble (A25's food thought, A26's restroom line), positioned by the marks' own `CSS2DRenderer` over
- * the canvas — DOM, so they cost no draw call — in the marks layer, apart from the desks' reading-ordered labels.
+ * walker's thought bubble (A25's food thought, A26's restroom line, and on its walk home its return line), positioned
+ * by the marks' own `CSS2DRenderer` over the canvas — DOM, so they cost no draw call — in the marks layer, apart from the
+ * desks' reading-ordered labels.
  *
  * ⛔ AN INTERN's LAPTOP IS ITS MATERIAL's OPACITY (A24, A10): shown or not as its stool's activity says, faded over the
  * row's frames a step a frame — from the opacity the scene says it starts at — and, on a walk, faded over the walk's
@@ -23,20 +25,18 @@
  * and a body the world no longer draws is disposed.
  */
 
-import { CircleGeometry, InstancedMesh, Matrix4, MeshBasicMaterial, Vector3 } from '../vendor/three/three.module.js';
+import { Vector3 } from '../vendor/three/three.module.js';
 import { CSS2DObject } from '../vendor/three/examples/jsm/renderers/CSS2DRenderer.js';
 import { createCreature } from './creature-paint.js';
 import { heldAt, inFlightAt, walkAt } from './clip-clock.js';
 import { onTerm } from './terms.js';
 import { walkerAt } from '../floor/floor-world.js';
+import { thoughtAt } from '../floor/scene.js';
 
 /** Where a body's marks float: this share of its height above its feet (over the head, clear of a raised hand). */
 const MARK_RISE = 1.08;
 /** Where a walker's thought bubble floats: this share of its height above its feet. */
 const THOUGHT_RISE = 1.45;
-
-/** The contact disc under each character: its radius as a share of the character's height. */
-const DISC = 0.22;
 
 /**
  * The bodies.
@@ -44,32 +44,33 @@ const DISC = 0.22;
  * @param {object} ctx
  * @param {Document} ctx.document
  * @param {object} ctx.creatures the group the bodies stand in
- * @param {object} ctx.room the group the contact discs stand in (the `fixed` term)
  * @param {function(): void} ctx.wake the frame loop's wake: a body built is drawn
  * @param {function(): object} ctx.art the art modules, once the page has them
  * @param {function(string[]): void} ctx.failed § 9 F14's report of an asset that could not be drawn
  * @param {function(): number} ctx.now the clock a body built between frames is placed at (`performance.now()`)
  * @param {object} ctx.marks the group the marks' label objects stand in (the marks layer's scene)
  */
-export function floorBodies({ document, creatures, room, wake, art, failed, now: clock, marks }) {
+export function floorBodies({ document, creatures, wake, art, failed, now: clock, marks }) {
     let world = null;
     let paintedAt = 0;
     /** key → `{ creature | null, spec, dead, mark, thought, read }` — `read` the clock's last answer, for `inspect()` */
     const bodies = new Map();
     /** intern key → its A24 fade in flight this paint (the world's desk rows) */
     let fades = new Map();
-    const discGeometry = new CircleGeometry(1, 20).rotateX(-Math.PI / 2);
-    const discMaterial = new MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.18, depthWrite: false });
-    let discs = null;
+    /** the bodies standing still at the last paint — each its foot and height, what the ground shade lies under */
+    let still = [];
 
     // A walker away from its desk stands as tall as the floor's seated bodies of its kind (the scene draws all alike).
     const seatHeight = () => world.desks.find((d) => d.sitter !== null)?.sitter.h ?? 1.2;
     const internHeight = () => world.desks.flatMap((d) => d.interns)[0]?.h ?? 0.56;
 
-    /** What the world draws a body for: each sitter, each intern, each walker — its key, body and where it stands. */
+    /**
+     * What the world draws a body for: each sitter, each intern, each walker — its key, body and where it stands. `key` and
+     * `species` are what the 2-D painter hands the character tree for the same body: a seat's key and its delivered
+     * `character.species`; an intern's key and its own delivered `subagents[].species` (card#13258).
+     */
     const wantedBodies = () => {
         const out = new Map();
-        const speciesOf = new Map(world.desks.map((d) => [d.key, d.sitter?.species ?? null]));
 
         for (const d of world.desks) {
             if (d.sitter !== null && d.sitter.pose !== 'empty-chair') {
@@ -77,39 +78,19 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             }
 
             for (const n of d.interns) {
-                out.set(n.key, { key: n.key, species: n.seat_species, chibi: true, h: n.h, at: n.at, pose: 'present', held: n.animation ?? null, walker: null, laptop: n.laptop });
+                out.set(n.key, { key: n.key, species: n.species, chibi: true, h: n.h, at: n.at, pose: 'present', held: n.animation ?? null, walker: null, laptop: n.laptop });
             }
         }
 
         for (const w of world.walkers) {
-            const fx = w.effect;
-            const body = w.chibi ? fx.intern_key : fx.seat_id;
-            const species = w.species ?? fx.seat_species ?? speciesOf.get(fx.seat_id) ?? null;
-            const seated = out.get(body);
+            const { key, species } = w.character;
+            const seated = out.get(key);
 
             // A walker is its body away from its desk: drawn under the walk, never twice.
-            out.set(body, { key: body, species, chibi: w.chibi, h: seated?.h ?? (w.chibi ? internHeight() : seatHeight()), at: null, pose: 'stand', held: null, walker: w });
+            out.set(key, { key, species, chibi: w.chibi, h: seated?.h ?? (w.chibi ? internHeight() : seatHeight()), at: null, pose: 'stand', held: null, walker: w });
         }
 
         return out;
-    };
-
-    const standDiscs = (wanted) => {
-        if (discs !== null) {
-            room.remove(discs);
-            discs.dispose();
-        }
-
-        const still = [...wanted.values()].filter((s) => s.at !== null);
-
-        discs = onTerm(new InstancedMesh(discGeometry, discMaterial, Math.max(1, still.length)), 'fixed');
-        discs.count = still.length;
-        still.forEach((s, i) => {
-            discs.setMatrixAt(i, new Matrix4().makeTranslation(s.at.x, s.at.y + 0.003, s.at.z).multiply(new Matrix4().makeScale(s.h * DISC, 1, s.h * DISC)));
-        });
-        discs.instanceMatrix.needsUpdate = true;
-        discs.computeBoundingSphere();
-        room.add(discs);
     };
 
     const standBodies = () => {
@@ -132,7 +113,19 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
                 const b = { creature: null, spec, dead: false, mark: null, thought: null, read: null };
 
                 bodies.set(key, b);
-                createCreature(document, art().characters, key, { species: spec.species ?? undefined, chibi: spec.chibi, pose: 'stand', height: spec.h })
+
+                // § 9 F14's asset ids, the 2-D painter's: an intern's sprite, or a seat's character.
+                const asset = spec.chibi ? `intern:${key}` : `character:${key}`;
+                const C = art().characters;
+
+                // No delivered species — a seat's or an intern's — is F14's, as in 2-D: never the key's own body, which is what
+                // the tree's `recipe()` draws for an absent species, and never the seat's.
+                if (typeof spec.species !== 'string') {
+                    failed([asset]);
+                    continue;
+                }
+
+                createCreature(document, C, key, { species: spec.species, chibi: spec.chibi, pose: 'stand', height: spec.h })
                     .then((c) => {
                         if (b.dead) {
                             c.dispose();
@@ -146,15 +139,14 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
                         place(b, clock());
                         wake();
                     }, () => {
-                        // § 9 F14's asset ids, the 2-D painter's: an intern's sprite, or a seat's character.
-                        failed([spec.chibi ? `intern:${key}` : `character:${key}`]);
+                        failed([asset]);
                     });
             }
 
             bodies.get(key).spec = spec;
         }
 
-        standDiscs(wanted);
+        still = [...wanted.values()].filter((s) => s.at !== null).map((s) => ({ at: s.at, h: s.h }));
     };
 
     /** A label over the scene in the marks layer: an element and its object. */
@@ -220,9 +212,9 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
         b.mark.object.position.set(b.spec.at.x, b.spec.at.y + b.spec.h * MARK_RISE, b.spec.at.z);
     };
 
-    /** A walker's thought bubble (A25, A26: the scene's `thought` on its effect), over its head wherever it is. */
-    const thinkBody = (b, p) => {
-        const lines = b.spec.walker?.effect.thought?.lines ?? null;
+    /** A walker's thought bubble `t` ms into its walk (A25, A26: `thoughtAt()` of its effect), over its head wherever it is. */
+    const thinkBody = (b, p, t) => {
+        const lines = thoughtAt(b.spec.walker.effect, t)?.lines ?? null;
 
         if (lines === null || p === null) {
             b.thought = drop(b.thought);
@@ -290,9 +282,10 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
     };
 
     /**
-     * One body at `now` (plan § 3.5's clock): a walker at its route's point, turned along its leg and stepping its walk; a
-     * seated body at its place in its held form `since` the paint. Answers when it next needs a frame: `0` every display
-     * frame (a walker in flight), a delay in ms (a held loop's or a laptop fade's next step), or `null` (still).
+     * One body at `now` (plan § 3.5's clock): a walker at its route's point, turned along its leg, stepping its walk on a
+     * walk leg and standing on every other; a seated body at its place in its held form `since` the paint. Answers when
+     * it next needs a frame: `0` every display frame (a walker in flight), a delay in ms (a held loop's or a laptop
+     * fade's next step), or `null` (still).
      */
     const place = (b, now) => {
         const c = b.creature;
@@ -310,9 +303,9 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             const { t, running } = inFlightAt(fx, span, since);
             const p = walkerAt(world.slab, s.walker, Math.min(t, span));
             const q = walkerAt(world.slab, s.walker, Math.max(0, Math.min(t, span) - 60));
-            const pose = walkAt(characters, fx, t, running);
+            const { pose, leg } = walkAt(characters, fx, t, running);
 
-            c.mesh.visible = p !== null && p.where === 'floor';
+            c.mesh.visible = p !== null && p.shown;
 
             if (p !== null) {
                 // An intern on its seat's step stands at the height the world lifts it to and faces the front (`walkerAt()`).
@@ -333,8 +326,8 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             }
 
             b.mark = drop(b.mark);
-            thinkBody(b, p);
-            b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, pose, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
+            thinkBody(b, p, Math.min(t, span));
+            b.read = { key: s.key, kind: 'walker', animation_id: fx.animation_id, t, where: p?.where ?? null, shown: c.mesh.visible, pose, leg, frame: running ? Math.floor(t / fx.frame_interval_ms) : null, now };
 
             return running ? 0 : null;
         }
@@ -371,6 +364,9 @@ export function floorBodies({ document, creatures, room, wake, art, failed, now:
             fades = new Map(world.effects.filter((e) => e.kind === 'desk' && e.effect.animation_id === 'A24').map((e) => [e.key, e.effect]));
             standBodies();
         },
+
+        /** The bodies standing still at the last paint (a walker is not one): `[{ at, h }]`. */
+        still: () => still,
 
         /** Every body at `now`; when the next frame is needed — `0`, a delay in ms, or `null` (every body still). */
         place(now) {

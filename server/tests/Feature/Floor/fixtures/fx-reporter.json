@@ -59,7 +59,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -256,7 +257,7 @@
         {
           "at_ms": 100,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:16.100Z",
             "install_id": "aimla",
@@ -278,7 +279,7 @@
         {
           "at_ms": 200,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:17.200Z",
             "install_id": "aimla",
@@ -298,7 +299,7 @@
         {
           "at_ms": 300,
           "envelope": {
-            "feed_version": 3,
+            "feed_version": 4,
             "t": "seat.delta",
             "server_time": "2026-08-23T14:23:18.300Z",
             "install_id": "aimla",

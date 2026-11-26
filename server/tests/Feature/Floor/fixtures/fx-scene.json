@@ -60,7 +60,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -737,7 +738,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -916,7 +918,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1344,7 +1347,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -1780,7 +1784,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2216,7 +2221,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -2652,7 +2658,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3083,7 +3090,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -3561,7 +3569,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4398,7 +4407,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -4737,7 +4747,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5325,7 +5336,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5426,56 +5438,64 @@
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:10.004Z"
+                          "started_at": "2026-08-23T14:20:10.004Z",
+                          "species": "sloth"
                         },
                         {
                           "call_id": "01K3TB00000000000000000101",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:11.004Z"
+                          "started_at": "2026-08-23T14:21:11.004Z",
+                          "species": "axolotl"
                         },
                         {
                           "call_id": "01K3TB00000000000000000102",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:12.004Z"
+                          "started_at": "2026-08-23T14:22:12.004Z",
+                          "species": "watermelon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000103",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:13.004Z"
+                          "started_at": "2026-08-23T14:20:13.004Z",
+                          "species": "peapod"
                         },
                         {
                           "call_id": "01K3TB00000000000000000104",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:14.004Z"
+                          "started_at": "2026-08-23T14:21:14.004Z",
+                          "species": "pineapple"
                         },
                         {
                           "call_id": "01K3TB00000000000000000105",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:15.004Z"
+                          "started_at": "2026-08-23T14:22:15.004Z",
+                          "species": "elephant"
                         },
                         {
                           "call_id": "01K3TB00000000000000000106",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:16.004Z"
+                          "started_at": "2026-08-23T14:20:16.004Z",
+                          "species": "cabbage"
                         },
                         {
                           "call_id": "01K3TB00000000000000000107",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:17.004Z"
+                          "started_at": "2026-08-23T14:21:17.004Z",
+                          "species": "avocado"
                         }
                       ],
                       "subagents_open": 9,
@@ -5562,56 +5582,64 @@
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:10.004Z"
+                          "started_at": "2026-08-23T14:20:10.004Z",
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TB00000000000000000201",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:11.004Z"
+                          "started_at": "2026-08-23T14:21:11.004Z",
+                          "species": "bear"
                         },
                         {
                           "call_id": "01K3TB00000000000000000202",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:12.004Z"
+                          "started_at": "2026-08-23T14:22:12.004Z",
+                          "species": "raccoon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000203",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:13.004Z"
+                          "started_at": "2026-08-23T14:20:13.004Z",
+                          "species": "corn"
                         },
                         {
                           "call_id": "01K3TB00000000000000000204",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:14.004Z"
+                          "started_at": "2026-08-23T14:21:14.004Z",
+                          "species": "kiwi"
                         },
                         {
                           "call_id": "01K3TB00000000000000000205",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:15.004Z"
+                          "started_at": "2026-08-23T14:22:15.004Z",
+                          "species": "capybara"
                         },
                         {
                           "call_id": "01K3TB00000000000000000206",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:16.004Z"
+                          "started_at": "2026-08-23T14:20:16.004Z",
+                          "species": "cat"
                         },
                         {
                           "call_id": "01K3TB00000000000000000207",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:17.004Z"
+                          "started_at": "2026-08-23T14:21:17.004Z",
+                          "species": "elephant"
                         }
                       ],
                       "subagents_open": 9,
@@ -5888,7 +5916,8 @@
                           "title": "draft the D1 event schema",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:23:31.004Z"
+                          "started_at": "2026-08-23T14:23:31.004Z",
+                          "species": "carrot"
                         }
                       ],
                       "subagents_open": 1,
@@ -5989,56 +6018,64 @@
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:10.004Z"
+                          "started_at": "2026-08-23T14:20:10.004Z",
+                          "species": "sloth"
                         },
                         {
                           "call_id": "01K3TB00000000000000000101",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:11.004Z"
+                          "started_at": "2026-08-23T14:21:11.004Z",
+                          "species": "axolotl"
                         },
                         {
                           "call_id": "01K3TB00000000000000000102",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:12.004Z"
+                          "started_at": "2026-08-23T14:22:12.004Z",
+                          "species": "watermelon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000103",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:13.004Z"
+                          "started_at": "2026-08-23T14:20:13.004Z",
+                          "species": "peapod"
                         },
                         {
                           "call_id": "01K3TB00000000000000000104",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:14.004Z"
+                          "started_at": "2026-08-23T14:21:14.004Z",
+                          "species": "pineapple"
                         },
                         {
                           "call_id": "01K3TB00000000000000000105",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:15.004Z"
+                          "started_at": "2026-08-23T14:22:15.004Z",
+                          "species": "elephant"
                         },
                         {
                           "call_id": "01K3TB00000000000000000106",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:16.004Z"
+                          "started_at": "2026-08-23T14:20:16.004Z",
+                          "species": "cabbage"
                         },
                         {
                           "call_id": "01K3TB00000000000000000107",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:17.004Z"
+                          "started_at": "2026-08-23T14:21:17.004Z",
+                          "species": "avocado"
                         }
                       ],
                       "subagents_open": 9,
@@ -6125,56 +6162,64 @@
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:10.004Z"
+                          "started_at": "2026-08-23T14:20:10.004Z",
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TB00000000000000000201",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:11.004Z"
+                          "started_at": "2026-08-23T14:21:11.004Z",
+                          "species": "bear"
                         },
                         {
                           "call_id": "01K3TB00000000000000000202",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:12.004Z"
+                          "started_at": "2026-08-23T14:22:12.004Z",
+                          "species": "raccoon"
                         },
                         {
                           "call_id": "01K3TB00000000000000000203",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:13.004Z"
+                          "started_at": "2026-08-23T14:20:13.004Z",
+                          "species": "corn"
                         },
                         {
                           "call_id": "01K3TB00000000000000000204",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:14.004Z"
+                          "started_at": "2026-08-23T14:21:14.004Z",
+                          "species": "kiwi"
                         },
                         {
                           "call_id": "01K3TB00000000000000000205",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:15.004Z"
+                          "started_at": "2026-08-23T14:22:15.004Z",
+                          "species": "capybara"
                         },
                         {
                           "call_id": "01K3TB00000000000000000206",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:16.004Z"
+                          "started_at": "2026-08-23T14:20:16.004Z",
+                          "species": "cat"
                         },
                         {
                           "call_id": "01K3TB00000000000000000207",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:17.004Z"
+                          "started_at": "2026-08-23T14:21:17.004Z",
+                          "species": "elephant"
                         }
                       ],
                       "subagents_open": 9,
@@ -6459,56 +6504,64 @@
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:10.004Z"
+                          "started_at": "2026-08-23T14:20:10.004Z",
+                          "species": "dragonfruit"
                         },
                         {
                           "call_id": "01K3TB00000000000000000301",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:11.004Z"
+                          "started_at": "2026-08-23T14:21:11.004Z",
+                          "species": "frog"
                         },
                         {
                           "call_id": "01K3TB00000000000000000302",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:12.004Z"
+                          "started_at": "2026-08-23T14:22:12.004Z",
+                          "species": "frog"
                         },
                         {
                           "call_id": "01K3TB00000000000000000303",
                           "title": null,
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:13.004Z"
+                          "started_at": "2026-08-23T14:20:13.004Z",
+                          "species": "fox"
                         },
                         {
                           "call_id": "01K3TB00000000000000000304",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:14.004Z"
+                          "started_at": "2026-08-23T14:21:14.004Z",
+                          "species": "banana"
                         },
                         {
                           "call_id": "01K3TB00000000000000000305",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:22:15.004Z"
+                          "started_at": "2026-08-23T14:22:15.004Z",
+                          "species": "pepper"
                         },
                         {
                           "call_id": "01K3TB00000000000000000306",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "coder",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:20:16.004Z"
+                          "started_at": "2026-08-23T14:20:16.004Z",
+                          "species": "penguin"
                         },
                         {
                           "call_id": "01K3TB00000000000000000307",
                           "title": "draft the event schema appendix and cross-check every captured payload against the reporter fixtures before the merge la",
                           "subagent_type": "general-purpose",
                           "activity_state": "working",
-                          "started_at": "2026-08-23T14:21:17.004Z"
+                          "started_at": "2026-08-23T14:21:17.004Z",
+                          "species": "pig"
                         }
                       ],
                       "subagents_open": 9,

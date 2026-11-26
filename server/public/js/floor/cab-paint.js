@@ -3,7 +3,7 @@
  * module*; hoisted out of `floor/painter.js` at its second caller, the lobby, card#12113). The cab's room in depth
  * (`drawCabInterior()`, card#12051), the views its open doors look out on (`drawFloorView()`, a floor's stop's own floor,
  * card#12987, with its bare room `drawOfficeView()`, and `drawLobbyView()`, card#12113), the cab dialog's drawing (`paintCab()`), its colours (`cabTheme()`), the ride's leaf
- * motion (`rideLeaves()`, `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`), the one URI a drawn document
+ * motion (`rideLeaves()` and `rideLeafLevel()`, one table for both floors' band leaves, and `cabLeaves()`), the classes all of them paint with (`CAB_STYLE`), the one URI a drawn document
  * is shown by (`svgUri`, which the floor's painter imports), the lobby's theme loader (`loadThemes()`) and the scene's themes
  * input (`themeInputs()`, which the floor's painter re-exports).
  *
@@ -22,6 +22,9 @@
  */
 
 const SVG = 'http://www.w3.org/2000/svg';
+
+/** The elevator control's accessible name, on every page that draws one (§ 4.1, § 4.5) — the ride's, as the cab is. */
+export const ELEVATOR_NAME = 'the elevator — ride to another floor';
 
 /** The theme registry — `resources/floor/themes/index.js`, by the asset route (FLOOR.md § 10.6 item 1). */
 export const THEME_REGISTRY = '/art/floor/themes/index.js';
@@ -176,6 +179,7 @@ export const CAB_STYLE = `
 .dv-skirting{fill:var(--dv-skirting,var(--house-trim));stroke:var(--dv-skirting,var(--house-trim));stroke-width:.5}.dv-shade-stop{stop-color:var(--scene-ink)}.dv-back-shade{fill:var(--scene-ink)}
 .dv-partition-cap{fill:var(--dv-partition-cap,var(--house-trim));stroke:var(--dv-partition-cap,var(--house-trim));stroke-width:.5}
 .dv-monitor{fill:var(--dv-monitor,var(--scene-paper));stroke:var(--dv-monitor,var(--scene-paper));stroke-width:.5}
+.dv-recess{fill:var(--dv-recess,var(--ground-deep));stroke:var(--dv-recess,var(--ground-deep));stroke-width:.5}
 .lobby-view-skirting{fill:var(--scene-stool)}.lobby-view-sky-stop{stop-color:var(--scene-glass)}.lobby-view-day-stop{stop-color:var(--scene-paper)}.lobby-view-shade-stop{stop-color:var(--scene-ink)}.lobby-view-back-shade{fill:var(--scene-ink)}
 .lobby-view-sun{fill:var(--scene-paper);opacity:.3}.lobby-view-mat{fill:var(--lobby-mat)}.lobby-view-door-frame{fill:var(--door-edge)}.lobby-view-handle{fill:var(--door-edge)}.lobby-view-mullion{fill:none;stroke:var(--door-frame);stroke-width:.5}
 ${unmixed(MIXED)}@supports (fill:color-mix(in srgb,currentColor 50%,transparent)){${MIXED}}
@@ -201,32 +205,104 @@ function doorTiming(ride) {
 }
 
 /**
- * The ride's band leaves (§ 4.5, card#11795), as a `style` — or `null` when no ride holds them, and the walks'
- * door spans draw them. `opening` opens them; `entering` to `leaving` hold them open while the viewer is in the
- * cab; `staying` and `arriving` draw them open and close them once the phase's fade is over. Each motion is
- * placed at the phase's elapsed time — `animation-delay: (door_delay − elapsed)` — so a re-paint mid-phase
- * neither restarts nor reorders it. A phase of no length (`prefers-reduced-motion`) moves nothing.
+ * The ride's band leaves (§ 4.5, card#11795) — what they do in a phase, the one table both floors draw them from: `opening`
+ * opens them; `entering` to `leaving` hold them open while the viewer is in the cab; `staying` and `arriving` draw them
+ * open and close them once the phase's fade is over. A phase of no length (`prefers-reduced-motion`) moves nothing:
+ * `opening` stands them open, `staying` and `arriving` shut. `null` when no ride holds them, and the walks' door spans
+ * draw them.
+ *
+ * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
+ * @returns {{leaves: 'open'|'opens'|'closes'|'shut', delay: number, motion: number}|null} `delay` and `motion` as
+ *          `doorTiming()` gives them
+ */
+function bandLeaves(ride) {
+    if (ride === null || ride === undefined) {
+        return null;
+    }
+
+    const still = ride.ms === 0;
+    const leaves = {
+        opening: still ? 'open' : 'opens',
+        staying: still ? 'shut' : 'closes',
+        arriving: still ? 'shut' : 'closes',
+    }[ride.phase] ?? 'open';
+
+    return { leaves, ...doorTiming(ride) };
+}
+
+/**
+ * The ride's band leaves as a `style` (`bandLeaves()`'s table) — or `null` when no ride holds them, or a still phase
+ * leaves them shut. Each motion is placed at the phase's elapsed time — `animation-delay: (door_delay − elapsed)` — so a
+ * re-paint mid-phase neither restarts nor reorders it.
  *
  * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
  * @returns {string|null}
  */
 export function rideLeaves(ride) {
-    if (ride === null || ride === undefined) {
+    const band = bandLeaves(ride);
+
+    switch (band?.leaves) {
+        case 'opens':
+            return `animation:leaf-open ${band.motion}ms ${RIDE_DOOR_EASING} ${band.delay}ms forwards`;
+        case 'closes':
+            return `animation:leaf-close ${band.motion}ms ${RIDE_DOOR_EASING} ${band.delay}ms both`;
+        case 'open':
+            return 'transform:scaleX(.12)';
+        default:
+            return null;
+    }
+}
+
+/**
+ * The ride's band leaves `sinceMs` after the paint that read `ride` (`bandLeaves()`'s table), as how far open they are —
+ * 0 shut, 1 fully open — for a renderer that steps them itself (the 3-D floor's), on the same `ease-in-out` curve the
+ * 2-D leaves' animation runs. `null` when no ride holds them.
+ *
+ * @param {{phase: string, elapsed_ms: number, ms: number, door_delay_ms: number|null}|null} ride `scene.ride`
+ * @param {number} sinceMs
+ * @returns {{open: number, moving: boolean}|null} `moving` while the motion has not ended
+ */
+export function rideLeafLevel(ride, sinceMs) {
+    const band = bandLeaves(ride);
+
+    if (band === null) {
         return null;
     }
 
-    const { delay, motion } = doorTiming(ride);
-
-    switch (ride.phase) {
-        case 'opening':
-            return ride.ms === 0 ? 'transform:scaleX(.12)' : `animation:leaf-open ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms forwards`;
-        case 'staying':
-        case 'arriving':
-            return ride.ms === 0 ? null : `animation:leaf-close ${motion}ms ${RIDE_DOOR_EASING} ${delay}ms both`;
-        default:
-            // `entering`, `inside`, `chosen`, `leaving`: the floor's leaves stand open behind the cab.
-            return 'transform:scaleX(.12)';
+    if (band.leaves === 'open' || band.leaves === 'shut') {
+        return { open: band.leaves === 'open' ? 1 : 0, moving: false };
     }
+
+    const t = Math.min(1, Math.max(0, (sinceMs - band.delay) / band.motion));
+    const eased = easeInOut(t);
+
+    return { open: band.leaves === 'opens' ? eased : 1 - eased, moving: t < 1 };
+}
+
+/**
+ * CSS's `ease-in-out` at `t` — `cubic-bezier(0.42, 0, 0.58, 1)` by the CSS Easing Functions specification — the curve's
+ * x solved for `t` by bisection, its y answered.
+ */
+function easeInOut(t) {
+    if (t <= 0 || t >= 1) {
+        return t <= 0 ? 0 : 1;
+    }
+
+    const bezier = (s, a, b) => 3 * a * s * (1 - s) ** 2 + 3 * b * s ** 2 * (1 - s) + s ** 3;
+    let lo = 0;
+    let hi = 1;
+
+    for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+
+        if (bezier(mid, 0.42, 0.58) < t) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+
+    return bezier((lo + hi) / 2, 0, 1);
 }
 
 /**
@@ -269,6 +345,27 @@ export const CAB = Object.freeze({ w: 200, d: 140, h: 230, eye: 155, back: 120, 
 export const LANDING = Object.freeze({ view: 230, back: 230 + CAB.d });
 
 /**
+ * WHAT STANDS IN THE CAB's ROOM (§ 12's *Cab interior*), in centimetres: the kick plate along each side wall's foot
+ * (`kick` high); the handrail along each side wall, its bar `rail.h` tall centred `rail.y` up, standing `rail.off` off the
+ * wall on a post at each end, and running the wall's length but `rail.end` at each end; and the ceiling's light, a panel
+ * `light.w` across and `light.d` deep in the middle of the ceiling. `drawCabInterior()` draws them, and the 3-D floor's
+ * cab stands them (`floor/floor-world.js`'s band `cab`).
+ */
+export const CAB_FITTINGS = Object.freeze({
+    kick: 10,
+    rail: Object.freeze({ y: 95, h: 4, off: 5, end: 10 }),
+    light: Object.freeze({ w: 68, d: 64 }),
+});
+
+/**
+ * HOW DEEP THE CAB's SHADE IS AT ITS FAR END — the room's ink over each surface where it meets the far wall, clear where
+ * it meets the open front: the side walls (and their kick plates), the floor, and the ceiling, whose share is also the far
+ * wall's even shade, so the corner is one tone and the far wall reads as the deepest surface. `drawCabInterior()` lays
+ * them as overlays, and the 3-D floor's cab on its vertices (`floor3d/room-paint.js`).
+ */
+export const CAB_SHADE = Object.freeze({ side: 0.32, floor: 0.4, ceiling: 0.3 });
+
+/**
  * THE CAB's INTERIOR, REUSABLE (card#12051): the room of `CAB` drawn in one-point perspective into `parent`, fitted to
  * `box` (`{x, y, w, h}`, the frame — the room's cross-section where `lens` cuts it — in `parent`'s units) — the ceiling and
  * its light, the floor and its tiles, the two side walls and their handrails, and the far wall, each surface shaded so the
@@ -305,16 +402,16 @@ export function drawCabInterior(parent, box, id = 'cab', lens = CAB) {
     const g = node('g', { class: 'cab-room' }, parent);
     const defs = node('defs', {}, g);
     // The depth the ceiling's shade reaches at the back wall, and the back wall's own even shade.
-    const FAR = 0.3;
+    const FAR = CAB_SHADE.ceiling;
     // Each overlay deepens toward the back: clear at the near edge, the room's ink at the far one.
     const shade = (name, x1, y1, x2, y2, far) => {
         const grad = node('linearGradient', { id: `${id}-${name}`, x1, y1, x2, y2 }, defs);
         node('stop', { offset: 0, class: 'cab-shade-stop', 'stop-opacity': 0 }, grad);
         node('stop', { offset: 1, class: 'cab-shade-stop', 'stop-opacity': far }, grad);
     };
-    shade('shade-left', 0, 0, 1, 0, 0.32);
-    shade('shade-right', 1, 0, 0, 0, 0.32);
-    shade('shade-floor', 0, 1, 0, 0, 0.4);
+    shade('shade-left', 0, 0, 1, 0, CAB_SHADE.side);
+    shade('shade-right', 1, 0, 0, 0, CAB_SHADE.side);
+    shade('shade-floor', 0, 1, 0, 0, CAB_SHADE.floor);
     shade('shade-ceiling', 0, 0, 0, 1, FAR);
     const glow = node('radialGradient', { id: `${id}-glow`, cx: 0.5, cy: 0, r: 0.75 }, defs);
     node('stop', { offset: 0, class: 'cab-glow-stop', 'stop-opacity': 0.55 }, glow);
@@ -360,26 +457,28 @@ export function drawCabInterior(parent, box, id = 'cab', lens = CAB) {
         node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-seam' }, g);
     }
 
-    // A kick plate along each side wall's foot, and a handrail at hip height running the wall's length but 10 cm at each
+    // A kick plate along each side wall's foot, and a handrail at hip height running the wall's length but `end` at each
     // end, standing off the wall on a post at each end — the part of it in view, its bar thinning with depth as the room does.
-    const [near, far] = [Math.max(0, Zof(CAB.d - 10)), Zof(10)];
+    const { kick, rail: bar, light } = CAB_FITTINGS;
+    const [near, far] = [Math.max(0, Zof(CAB.d - bar.end)), Zof(bar.end)];
     for (const side of [l, r]) {
-        face('cab-kick', pts(at(side, 10, 0), at(side, 10, D), at(side, 0, D), at(side, 0, 0)), side < 0 ? 'shade-left' : 'shade-right');
-        const rail = side - Math.sign(side) * 5;
-        for (const Z of [Zof(CAB.d - 10), far].filter((v) => v >= 0)) {
-            const [p, q] = [at(side, 95, Z), at(rail, 95, Z)];
+        face('cab-kick', pts(at(side, kick, 0), at(side, kick, D), at(side, 0, D), at(side, 0, 0)), side < 0 ? 'shade-left' : 'shade-right');
+        const rail = side - Math.sign(side) * bar.off;
+        for (const Z of [Zof(CAB.d - bar.end), far].filter((v) => v >= 0)) {
+            const [p, q] = [at(side, bar.y, Z), at(rail, bar.y, Z)];
             node('line', { x1: p[0], y1: p[1], x2: q[0], y2: q[1], class: 'cab-rail-post' }, g);
         }
-        face('cab-rail', pts(at(rail, 97, near), at(rail, 97, far), at(rail, 93, far), at(rail, 93, near)));
-        const [a, b] = [at(rail, 96.5, near), at(rail, 96.5, far)];
+        const [head, foot] = [bar.y + bar.h / 2, bar.y - bar.h / 2];
+        face('cab-rail', pts(at(rail, head, near), at(rail, head, far), at(rail, foot, far), at(rail, foot, near)));
+        const [a, b] = [at(rail, head - 0.5, near), at(rail, head - 0.5, far)];
         node('line', { x1: a[0], y1: a[1], x2: b[0], y2: b[1], class: 'cab-rail-shine' }, g);
     }
 
     // The ceiling light: a lit panel in the middle of the ceiling, and its soft glow — when it lies in view.
-    const [lightNear, lightFar] = [Zof(CAB.d / 2 + 32), Zof(CAB.d / 2 - 32)];
+    const [lightNear, lightFar] = [Zof(CAB.d / 2 + light.d / 2), Zof(CAB.d / 2 - light.d / 2)];
     if (lightFar > 0) {
         const z0 = Math.max(0, lightNear);
-        const panel = pts(at(-34, top, z0), at(34, top, z0), at(34, top, lightFar), at(-34, top, lightFar));
+        const panel = pts(at(-light.w / 2, top, z0), at(light.w / 2, top, z0), at(light.w / 2, top, lightFar), at(-light.w / 2, top, lightFar));
         const [gx, gy] = at(0, top, Zof(CAB.d / 2));
         node('ellipse', { cx: gx, cy: gy + 2 * sy, rx: 46 * sx, ry: 14 * sy, class: 'cab-light-glow' }, g);
         node('polygon', { points: panel, class: 'cab-light' }, g);
@@ -555,10 +654,11 @@ const VIEW_LIGHTS = Object.freeze({
  * `scene.ride.view`), PROJECTED into `parent` and clipped to `box` with `throughDoor()`'s lens — the floor plane, the
  * ceiling at the room's height with the bare room's lights, the accent runs flat on the plane, then every body in the order
  * the model answers it. A body whose projection lies wholly outside the doorway is culled; of a body's faces only those that
- * face the eye are drawn — its near face, its top where it is lower than the eye, its end where it lies wholly to one side
- * of the door's centre line. A standing piece is its theme's own document, an `<image>` on its foot line (§ 10.6 item 2's
- * asset shape), facing the rider (§ 14 item 48's ruling 1). A bare model — or none — is the bare room
- * (`drawOfficeView()`), in the stop's palette where the model names one.
+ * face the eye are drawn — its near face, its top where it is lower than the eye, its underside where it stands clear of
+ * the floor higher than the eye, its end where it lies wholly to one side of the door's centre line. A standing piece is
+ * its theme's own document, an `<image>` on its foot line (§ 10.6 item 2's asset shape), facing the rider (§ 14 item
+ * 48's ruling 1). A bare model — or none — is the bare room (`drawOfficeView()`), in the stop's palette where the model
+ * names one.
  *
  * ⛔ IT DECIDES NOTHING AND IS SCENERY (§ 6.3): no word, no seat, no character, no fact and no motion; no window and no
  * daylight (§ 10.6 item 3). ITS COLOURS ARE THE THEME's CARRIERS: the root group's `style` holds the model's palette as
@@ -626,7 +726,8 @@ function inDoorway(box, at, x1, x2, y1, y2, z1, z2) {
 
 /**
  * Each body kind's classes: its faces', and its top's where it is lower than the eye. A side-wall strip and a wall cell are
- * the room's wall; the far wall the bare room's back; a desk's top its desk colour over its edge, a monitor's back its own.
+ * the room's wall; the far wall the bare room's back; a desk's top its desk colour over its edge, a monitor's back its own;
+ * a side restroom door's recess strip the dark of its open doorway, in the wall's plane.
  */
 const BODY_CLASS = Object.freeze({
     'far-wall': Object.freeze({ face: 'dv-back', top: 'dv-back' }),
@@ -635,6 +736,7 @@ const BODY_CLASS = Object.freeze({
     partition: Object.freeze({ face: 'dv-partition', top: 'dv-partition-cap' }),
     'desk-top': Object.freeze({ face: 'dv-desk-edge', top: 'dv-desk' }),
     monitor: Object.freeze({ face: 'dv-monitor', top: 'dv-monitor' }),
+    doorway: Object.freeze({ face: 'dv-recess', top: 'dv-recess' }),
 });
 
 /** One body's faces that face the eye (`drawFloorView()`'s rule), or a standing piece's document on its foot line. */
@@ -659,6 +761,11 @@ function drawBody(room, at, pts, b) {
 
     if (b.z2 > b.z1 && b.x2 > b.x1 && b.y2 < CAB.eye) {
         node('polygon', { points: pts(at(b.x1, b.y2, b.z1), at(b.x2, b.y2, b.z1), at(b.x2, b.y2, b.z2), at(b.x1, b.y2, b.z2)), class: cls.top }, room);
+    }
+
+    // Its underside where it stands clear of the floor higher than the eye — a lintel over a side door's doorway.
+    if (b.z2 > b.z1 && b.x2 > b.x1 && b.y1 > CAB.eye) {
+        node('polygon', { points: pts(at(b.x1, b.y1, b.z1), at(b.x2, b.y1, b.z1), at(b.x2, b.y1, b.z2), at(b.x1, b.y1, b.z2)), class: cls.face }, room);
     }
 
     if (b.x2 > b.x1) {

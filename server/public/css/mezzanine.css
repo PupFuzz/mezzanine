@@ -391,9 +391,9 @@ main > form:has(label) input:not([type="checkbox"]):not([type="radio"]) {
  * `#lobby-room` the camera's layer: its size, its clip and its transform are `public/js/lobby/main.js`'s (from
  * `building-scene.js`'s `surfaceStyle()` and the camera), never this sheet's, so a placeholder page before the first
  * snapshot flows as text. The directory's and the readings' FACES are counter-scaled by `--lobby-zoom` /
- * `--lobby-scale`, which `directory.js`'s `showDirectory()` alone writes on the layer, so their text is the page's own
- * size at every zoom. ⛔ The plaque's face is a surface `tools/design/state-chip-colours.py` measures the state chips
- * over (`--lobby-plaque`).
+ * `--lobby-scale`, which `directory.js`'s `showDirectory()` alone writes on the layer, so their text is one size at every
+ * zoom — the page's own, or less on a small board (`directory.js`'s `boardText()`). ⛔ The plaque's face is a surface
+ * `tools/design/state-chip-colours.py` measures the state chips over (`--lobby-plaque`).
  */
 main > section.lobby {
     margin-inline: 8px;
@@ -417,8 +417,9 @@ main > section.lobby {
     color: var(--dim);
 }
 
-/* The two faces: the page's own text size, and every line read whole — a line wider than its box wraps, breaking inside a
-   word only where a word alone is wider (FLOOR.md § 4.1), so a plaque grows taller rather than hiding a figure. */
+/* The two faces: the page's own text size — which a small board scales down, face and all (`directory.js`) — and every
+   line read whole: a line wider than its box wraps, breaking inside a word only where a word alone is wider (FLOOR.md
+   § 4.1), so a plaque grows taller rather than hiding a figure. */
 .lobby .lobby-face {
     box-sizing: border-box;
     font-size: 1rem;
@@ -917,9 +918,52 @@ main > section.lobby {
     outline: 2px solid var(--lamp);
 }
 
+/*
+ * The elevator's control on the 3-D floor (`floor3d/floor-labels.js`): the doorway's keyboard button, standing at its
+ * centre. Unseen and letting the pointer through to the drawn doorway — a press there is the renderer's — until it holds
+ * the keyboard's focus, when it shows as a plaque.
+ */
+.floor3d-elevator {
+    opacity: 0;
+    pointer-events: none;
+    font-weight: 700;
+}
+
+.floor3d-elevator:focus {
+    outline: none;
+}
+
+.floor3d-elevator:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--lamp);
+}
+
+/*
+ * The status on the 3-D floor — the screen's strings, hanging beside the sitter 2 px under the line its bubble stands on
+ * (`floor/floor-world.js`'s `PIN`), so the two never touch: a dark plaque the scene shows through, its text the page's
+ * ink. At the 75 % share below the ink holds 5.0:1 against the plaque laid over pure white, the lightest thing it can
+ * stand in front of (WCAG AA's 4.5:1 for its 12 px text). The screen's teal would need 85 % to hold it, so the status
+ * reads in the ink, lit or off. It and the bubble hold no control, so a press on either reaches the camera: beside the
+ * sitters they stand where a drag to turn the view begins.
+ */
 .floor3d-status {
+    margin-top: 2px;
+    pointer-events: none;
     background: var(--scene-monitor);
-    color: var(--scene-monitor-on);
+    color: var(--ink);
+}
+
+/*
+ * A thought on the 3-D floor — a desk's bubble, standing beside its sitter, and a walker's thought — on the light plaque
+ * at 70 % (below): its ink holds 5.9:1 against the plaque laid over pure black, the darkest thing it can stand in front
+ * of (WCAG AA's 4.5:1).
+ */
+.floor3d-bubble {
+    max-width: 200px;
+    border-radius: 14px;
+    background: var(--lobby-plaque);
+    white-space: normal;
+    pointer-events: none;
 }
 
 @supports (color: color-mix(in srgb, currentColor 50%, transparent)) {
@@ -928,23 +972,17 @@ main > section.lobby {
     }
 
     .floor3d-status {
-        background: color-mix(in srgb, var(--scene-monitor) 92%, transparent);
+        background: color-mix(in srgb, var(--scene-monitor) 75%, transparent);
     }
-}
 
-.floor3d-status[data-lit="off"] {
-    color: var(--faint);
+    .floor3d-bubble {
+        background: color-mix(in srgb, var(--lobby-plaque) 70%, transparent);
+    }
 }
 
 .floor3d-facts {
     font-size: 11px;
     color: var(--lobby-plaque-dim);
-}
-
-.floor3d-bubble {
-    max-width: 200px;
-    border-radius: 14px;
-    white-space: normal;
 }
 
 @keyframes floor3d-badge-in {
@@ -955,7 +993,6 @@ main > section.lobby {
 
 .floor3d-thought {
     font-style: italic;
-    pointer-events: none;
 }
 
 /*

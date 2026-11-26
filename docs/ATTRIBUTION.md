@@ -67,19 +67,21 @@ very fact it exists to check.
 
 | Path | Origin | Source URL | Author | SPDX | Retrieved | SHA-256 |
 |---|---|---|---|---|---|---|
-| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `5c1b9a5ccded89972eaf9a5d341243734a2d4e331778a454e7101399fb7f0499` |
-| `resources/characters/creatures-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `10b106f3589d4f76ec09e31b6b33beddb1d0fae5a298da4f5cc251e47fea4521` |
+| `resources/characters/creatures.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `835d62791c4911cba340cd7489e8a889ceae3fdd252fbcb7513b5410513ab0f0` |
+| `resources/characters/creatures-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `f7d3cbe19c9980e058a71ef7bf4b5dbc99e458cfb20903faeb43fffd436e46f7` |
 | `resources/characters/seed.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-27 | `f177f48274181682957d47e5428efcb88501c2b495236311d76b3dbd6fdbcc4f` |
-| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `8e23d673a48b3d3e940b51637e205abd4a20a27a6ec823064d0394e225bbbe9b` |
+| `resources/characters/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `7a97c0fe10b7720aab62df0972b45e67951caf192f90c300ad93f56b38be3c7e` |
 | `resources/floor/tiles/floor-plane.tsx` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-25 | `9d37334bed46f1454c7cd3a82e99d7179cf618daaf7c5e1bf72927754c5ac8a2` |
 | `resources/floor/tiles/floor-plane/wall-strip.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-04 | `7e3c516867896cf61896d9e8557c9c0b8f349408432dca2b1d58d569202426d6` |
 | `resources/floor/default.tmj` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-09-12 | `f9fcf0884ae29ba08bccee3a7d78acd3d24dbee4010436f69f6dc7a5213d1f4e` |
 | `resources/floor/furniture-box.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-28 | `025b287ea0f0c89a8aeebf54a44f4489adc9e4d9ee5c22ba57514aad6b5ca38a` |
 | `resources/floor/themes/index.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `4dc1acb3c0e8a074766db39d16d4baac67c09eec87a59e6eb770ac0d48ea416a` |
-| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `ef1143a9c160dd5a52805012ecf6746a9af6d991850b2518057130aaa30ea583` |
-| `resources/floor/themes/studio/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-12 | `52ab82329006edc3747587cf28193b3e1a4e86918c3bf1e5cb30c5907fb6c685` |
-| `resources/floor/themes/cottage/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-08 | `5e85ec3c27a1498e9a98839104c67b52bcb2f755ae9a18e8fc73fab9fea4245f` |
+| `resources/floor/themes/studio/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `5e605e92f16b07ab730a54ed63b16ad04a9446126f8637a3533c7bd42a6c0e12` |
+| `resources/floor/themes/studio/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `bd3102bd712ae60c242dfa92560cc1fcb8b260351c3f3184c3c32b020fc80153` |
+| `resources/floor/themes/cottage/theme.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-15 | `16b5809e6d6ee46b7fe28d16781b860ba2f75424966056aed8984689b517a4ca` |
+| `resources/floor/themes/cottage/pieces-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `3f98cb81162d1809955d811c937123adcfbdfe598a1ab2a4a8799c80c149eb1a` |
 | `resources/floor/themes/paint.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `673bf79eba995a33bd285aa08488a92a2b8e6fef665f1cc20440cbab1fdbb6a0` |
+| `resources/floor/themes/parts-3d.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `9d34f8f4191c11ea91044fe494771b96b27b9c29b60da051f22ca9d6ca1a5891` |
 | `resources/floor/tiles/floor-plane/accent.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `437c9295c17acba54ee563516aa8f24ad73431b1a9e6d25bd72013c97de6fdd3` |
 | `resources/floor/tiles/floor-plane/armchair.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `abe8944932787bd3372ef18f059f37166960e36bc1df9cc0102612dc7357e670` |
 | `resources/floor/tiles/floor-plane/book-pile.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `37fb464552f477fe02ebe0157ff19dac9319425a1ef0693a9d36a85be350ca08` |
@@ -92,7 +94,7 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane/plant.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-10-07 | `1cf4c0c61b87f54750c93332abea6783328e6f2df238144daf3aae804210dfb7` |
 | `resources/floor/tiles/floor-plane/snack-table.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `dfd1836bc5ca5e512fc34a9b6a01635b762a41ec149d3d30b7e3d2248dcf19dc` |
 | `resources/floor/tiles/floor-plane/snack-table-low.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `4963e1ae7c30b13f8547528a7be5b4c9ae20f509ed8f64760c6665d2d437406e` |
-| `resources/floor/tiles/floor-plane/restroom-door.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-02 | `46fae0d509afa4bfe5061173954e17c05ab636ac9bf704b94cbfbb8ed195c647` |
+| `resources/floor/tiles/floor-plane/restroom-door.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-14 | `fa390fd1234a65480d11970fd3d9949476cab1350d991e78fd2c849975e497f8` |
 | `resources/floor/tiles/floor-plane/aquarium.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `94ab95ceedab9ac89642330bc2c8b823579e80e0b4a5ce01fa788fe99dd736b4` |
 | `resources/floor/tiles/floor-plane/bean-bag.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `280f24018fe554c51c403d128c3b2b1f2a3924dac0f42aca8de8046c6a18f7a7` |
 | `resources/floor/tiles/floor-plane/coat-rack.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `3f9b1c96f2e9beb40c6adaf50b0cebd09ea7c995454953f709399169bbdeb433` |
@@ -102,7 +104,7 @@ very fact it exists to check.
 | `resources/floor/tiles/floor-plane/globe.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `0a09bfaa1e4ca023809a7deda5afa0b79110efe2daea2709eec32ca9d17385e1` |
 | `resources/floor/tiles/floor-plane/water-cooler.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `f4677b63a1c80497156d9e48cc5643e7b0a37f4c4994bc48b2e7446e12650ab6` |
 | `resources/floor/tiles/floor-plane/whiteboard.svg` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-04 | `3e695bde0dcaec0e978b622b00927e618f43b089796b399523bd28b53d4e5753` |
-| `resources/floor/models/kenney-furniture-kit/map.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `37f787edf052ac8abe1b500a5dc0d33c8c52ac5ffc2e1b12c0b6ed997252073c` |
+| `resources/floor/models/kenney-furniture-kit/map.js` | first-party | https://github.com/PupFuzz/mezzanine | Mezzanine contributors | MIT | 2026-11-11 | `528b36fc3455853d705a8ca3aeed490ae72c7cd88296d5cd9c0ba043e5f02caf` |
 | `resources/floor/models/kenney-furniture-kit/bookcaseOpen.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `750702218d68c062b15dfef6ab06a4014d1cfa8bd05f02e57c53b7e13bec157c` |
 | `resources/floor/models/kenney-furniture-kit/books.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `b8dc56e5d29f6fc1f4727fccb1b9642627fee9942c48060a00034e98df02701c` |
 | `resources/floor/models/kenney-furniture-kit/chairDesk.glb` | licensed | https://kenney.nl/assets/furniture-kit | Kenney | CC0-1.0 | 2026-11-11 | `46406619186034cbe92b19b79a5f1a8e3f442a17a70a7524ef2c0ad0f35095c6` |

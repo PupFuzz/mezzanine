@@ -25,8 +25,9 @@
  */
 
 import { mapDesks, mapGrid } from './floor-layout.js';
-import { mapTiles } from './map-tiles.js';
+import { RESTROOM_PLATES, SIDE_DOOR_BOX, mapTiles } from './map-tiles.js';
 import { deskSlab } from './desk-geometry.js';
+import { CENTRING } from './route.js';
 
 /**
  * A grid's cells in the floor page's tile order — `mapTiles()` under the grid's seed where it is a room.
@@ -121,4 +122,123 @@ export function wallBodies(grids, cellsOf, T, slabs) {
     }
 
     return walls;
+}
+
+/**
+ * card#13033 — A RESTROOM DOOR's GEOMETRY, from the wall it is set into (FLOOR.md § 6.7 item 2; § 12's *Restroom door*):
+ * computed once per door from the floor's wall BODIES — exactly what the 3-D floor and the cab's door view stand — and
+ * read by every consumer. The tile spans the rows from its top, `cellOf().y + T − cell.h` (`cellOf()` answers the painted
+ * FOOT cell), to its foot; where the distinct rows of wall bodies in the column against its right edge number every cell
+ * row of its height the door faces `right`, its left edge likewise `left`, both `right`, neither `back`. A door touching
+ * the footprint's top row cannot count that row, since `wallBodies()` leaves it out (the band stands there), and so
+ * reads `back`.
+ *
+ * `back` answers today's face-on door: `{ facing, face: null, doorway: null, draw: null, plates }`, `plates` the tile's
+ * (`RESTROOM_PLATES.back`). A side door, in scene px for `right` (`left` mirrors in x), every figure from the PLACED cell
+ * (`cellOf()`), as the wall bodies are, so the doorway is cut from exactly the wall cells the facing counted: the wall
+ * FACE `x_w`, the placed tile's right edge; the DOORWAY, the wall strip over the span from the placed foot line back by
+ * the tile's width (`{x, y, w: T, h}`);
+ * the 2-D drawing box (`SIDE_DOOR_BOX`) and the `side` plates in its px, mirrored as `box.w − x − w` for `left`.
+ *
+ * @param {object} cell a `restroom-door` cell of `g` (`mapTiles()`)
+ * @param {object} g its grid
+ * @param {list<{x: number, y: number}>} walls the floor's `wallBodies()`
+ * @param {number} T the floor's cell (`floorCell()`)
+ */
+export function restroomDoorGeometry(cell, g, walls, T) {
+    const at = cellOf(cell, g, T);
+    const top = at.y + T - cell.h;
+    const rows = (x) => new Set(walls.filter((w) => w.x === x && w.y >= top && w.y < top + cell.h).map((w) => w.y)).size;
+    const full = cell.h / T;
+    const facing = rows(at.x + cell.w) === full ? 'right' : rows(at.x - T) === full ? 'left' : 'back';
+
+    if (facing === 'back') {
+        return Object.freeze({ facing, face: null, doorway: null, draw: null, plates: RESTROOM_PLATES.back });
+    }
+
+    // Placed as the walls are (`at`), never by the drawn pixels: a layer dragged off the cell grid moves the tile's
+    // picture, and the doorway still lines up with the wall column and rows the facing was read from.
+    const right = facing === 'right';
+    const face = right ? at.x + cell.w : at.x;
+    const foot = at.y + T;
+    const B = SIDE_DOOR_BOX;
+    const mirror = (r) => Object.freeze(right ? r : { ...r, x: B.w - r.x - r.w });
+
+    return Object.freeze({
+        facing,
+        face,
+        doorway: Object.freeze({ x: right ? face : face - T, y: foot - cell.w, w: T, h: cell.w }),
+        draw: Object.freeze({ x: right ? face - B.face : face - (B.w - B.face), y: foot - B.rise, w: B.w, h: B.h }),
+        plates: Object.freeze(Object.fromEntries(Object.entries(RESTROOM_PLATES.side).map(([k, r]) => [k, mirror(r)]))),
+    });
+}
+
+/**
+ * The wall bodies' cells as `x:y` keys (scene px) — what `standingAgainst()` reads a wall off, built once per scene.
+ *
+ * @param {list<{x: number, y: number}>} walls the floor's `wallBodies()`
+ * @returns {Set<string>}
+ */
+export function wallKeys(walls) {
+    return new Set(walls.map((w) => `${w.x}:${w.y}`));
+}
+
+/**
+ * WHICH WALL A STANDING PIECE STANDS AGAINST — the 3-D floor's rule W (`docs/design/plan-13033-stage2-3d-floor.md`
+ * § 15.3): read once per piece, here beside `restroomDoorGeometry()`, from the PLACED cell as that reads a door (`at`,
+ * `top` the tile's top row, `foot` its foot line), over the cell grid's columns the tile covers. A cell is wall where
+ * `bodies` holds it or it lies on the footprint's top row, which the band stands in for. The first that holds:
+ * - `back`: the NEAREST row that is wall across the tile's width, searched from the row above the tile's foot cell up to
+ *   `T + CENTRING.reach` above the tile's top or to the footprint's top row, whichever is lower down (a picture taller
+ *   than its room reaches above that row) — a strip shallower than a walk keeps from a walkway's edge is no walkway, and
+ *   a wall the picture crosses is the one the body stands in front of; its face the floor's back edge for the band's
+ *   row, else the row's foot. The foot cell's own row is never read: a face there would leave the body no depth, so a
+ *   piece painted with its foot on a wall run stands free;
+ * - `left` / `right`: the column against that edge of the tile, or one cell past it, is wall over the tile's foot strip
+ *   (`min(w, h)` deep, where a turned piece stands) — a cell clear of the wall is how the shipped default stands its
+ *   left-wall pieces; its face the wall's own;
+ * - `front`: the row under the foot line is wall across the tile's width; its face the foot line;
+ * - none: `{ against: null, face: null }`.
+ * `back` is read before the sides, so a piece in a back corner faces the room's front as its picture does. A door's read
+ * stays its own: a doorway needs wall over the tile's whole height, a piece over its plan depth.
+ *
+ * @param {object} cell a standing cell of `g` (`mapTiles()`)
+ * @param {object} g its grid
+ * @param {Set<string>} bodies the floor's wall cells (`wallKeys()`)
+ * @param {number} T the floor's cell (`floorCell()`)
+ * @returns {{against: ?('back'|'left'|'right'|'front'), face: ?number}} the face in scene px: a `y` for `back` and
+ *          `front`, an `x` for the sides
+ */
+export function standingAgainst(cell, g, bodies, T) {
+    const at = cellOf(cell, g, T);
+    const top = at.y + T - cell.h;
+    const foot = at.y + T;
+    const f = g.footprint;
+    // The cell grid's columns and rows the tile covers: a tile narrower than a whole number of cells covers the last one.
+    const span = Math.ceil(cell.w / T) * T;
+    const wallAt = (x, y) => y === f.y || bodies.has(`${x}:${y}`);
+    const across = (y) => Array.from({ length: span / T }, (_, k) => at.x + k * T).every((x) => wallAt(x, y));
+    const strip = Math.ceil(Math.min(cell.w, cell.h) / T) * T;
+    const down = (x) => Array.from({ length: strip / T }, (_, k) => foot - strip + k * T).every((y) => wallAt(x, y));
+    const answer = (against, face) => Object.freeze({ against, face });
+
+    for (let y = foot - 2 * T; y >= Math.max(top - T - CENTRING.reach, f.y); y -= T) {
+        if (across(y)) {
+            return answer('back', y === f.y ? f.y : y + T);
+        }
+    }
+
+    const left = [at.x - T, at.x - 2 * T].find(down);
+
+    if (left !== undefined) {
+        return answer('left', left + T);
+    }
+
+    const right = [at.x + span, at.x + span + T].find(down);
+
+    if (right !== undefined) {
+        return answer('right', right);
+    }
+
+    return across(foot) ? answer('front', foot) : answer(null, null);
 }

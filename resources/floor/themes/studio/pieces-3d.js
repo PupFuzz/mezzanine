@@ -17,20 +17,7 @@
 // slider's field are not the theme's (FLOOR.md § 6.7 item 2): the renderer draws them at the scene's rects, the leaf's
 // motion and the field's state the scene's (`floor3d/room-paint.js`).
 
-/** A part: a shape and its parameters, where it stands, its turn in degrees, its scale and its colour. */
-function part(shape, params, at, colour, rotate = [0, 0, 0], scale = [1, 1, 1]) {
-    return Object.freeze({ shape, params: Object.freeze(params), at: Object.freeze(at), rotate: Object.freeze(rotate), scale: Object.freeze(scale), colour });
-}
-
-/** A box `w × h × d` whose foot centre is at `(x, y, z)`. */
-function block(w, h, d, x, y, z, colour) {
-    return part('box', { size: [w, h, d] }, [x, y + h / 2, z], colour);
-}
-
-/** An upright cylinder of radius `r`, `h` tall, its foot centre at `(x, y, z)`. */
-function post(r, h, x, y, z, colour) {
-    return part('cylinder', { radius: r, height: h }, [x, y + h / 2, z], colour);
-}
+import { block, part, post, tableCloth, tilted } from '../parts-3d.js';
 
 const PIECES = Object.freeze({
     // A bottled cooler: a cabinet with a dark recess and a tap, a blue bottle upside down on top.
@@ -123,8 +110,13 @@ const PIECES = Object.freeze({
         ];
     },
     // The door into the restroom: its frame and pediment, the sill, the dark recess, its sign plate — the leaf over the
-    // recess is the renderer's.
-    'restroom-door': (P, { w, h }) => {
+    // recess is the renderer's. A door set into a side wall is `sideDoor()`'s.
+    'restroom-door': (P, inputs, rules) => {
+        if (inputs.facing !== undefined && inputs.facing !== 'back') {
+            return sideDoor(P, inputs, rules);
+        }
+
+        const { w, h } = inputs;
         const d = 0.12, jamb = w * 0.12, head = h * 0.1;
 
         return [
@@ -138,19 +130,174 @@ const PIECES = Object.freeze({
     },
 });
 
+/** How far the frame stands proud of each face of the wall it lines, units. */
+const FRAME_LIP = 0.01;
+/** The flag's thickness, units — the field the renderer lays on it is a shade thicker, so both faces show it. */
+const PLATE_T = 0.01;
+/** How far the pictogram's figures stand proud of each face of the flag, units. */
+const FIGURE_PROUD = 0.004;
+/** The bracket's section, units: a bar along the flag's top from inside the frame out to the flag's far edge. */
+const BRACKET = 0.02;
+
+/**
+ * THE RESTROOM DOOR SET INTO A SIDE WALL (FLOOR.md § 6.7 item 2), in the piece's frame — its origin the wall face's foot
+ * centre over the doorway, `x` along the wall (the near jamb toward `+x` for a `right` door, `−x` for a `left`), its front
+ * toward `+z`, the room; the wall's thickness `wall` behind it (`−z`), cut away over the doorway to the tile's height `h`.
+ * The frame lines the cut: the sill, a jamb at each end of the doorway, and the head from the flag's bottom up to the
+ * lintel — no recess (the cut is the doorway) and no pediment. The FLAG projects into the room at the near jamb's end:
+ * a plate `flag.gap` out from the face, `flag.out` across and from `flag.y` up `flag.h`, its top flush under the lintel;
+ * hung from a bracket along its top that runs from inside the frame to its far edge; the pictogram — the two figures the
+ * 2-D flag draws in its upper 18 px — standing proud of both its faces in the line colour (`ink`). The field on its lower
+ * half and the leaf in the doorway are the renderer's.
+ */
+function sideDoor(P, { w, h, facing, wall, flag }, { line: ink }) {
+    const end = (facing === 'right' ? 1 : -1) * w / 2;
+    const depth = wall + 2 * FRAME_LIP;
+    const back = -wall / 2;
+    const jamb = w * 0.12;
+    const top = flag.y + flag.h;
+    const reach = flag.gap + flag.out;
+    // the pictogram's box, as the 2-D flag draws it: the plate's upper 18 of its 32 px
+    const ph = flag.h * 18 / 32;
+    const thick = PLATE_T + 2 * FIGURE_PROUD;
+    const across = (k) => flag.gap + flag.out * k;
+    const head = (k) => part('sphere', { r: ph * 0.14 }, [end, top - ph * 0.3, across(k)], ink, [0, 0, 0], [thick / (ph * 0.28), 1, 1]);
+
+    return [
+        block(w, 0.03, depth, 0, 0, back, P.sill),
+        block(jamb, flag.y, depth, -(w - jamb) / 2, 0, back, P.frame),
+        block(jamb, flag.y, depth, (w - jamb) / 2, 0, back, P.frame),
+        block(w, h - flag.y, depth, 0, flag.y, back, P.frame),
+        block(PLATE_T, flag.h, flag.out, end, flag.y, across(0.5), P.plate),
+        block(BRACKET, BRACKET, reach + FRAME_LIP, end, top - BRACKET, (reach - FRAME_LIP) / 2, ink),
+        head(0.36),
+        block(thick, ph * 0.4, ph * 0.24, end, top - ph * 0.86, across(0.36), ink),
+        head(0.64),
+        part('cone', { radius: ph * 0.24, height: ph * 0.4, dir: [0, 1, 0] }, [end, top - ph * 0.86, across(0.64)], ink, [0, 0, 0], [thick / (ph * 0.48), 1, 1]),
+    ];
+}
+
 /** The kinds this module draws. */
 export const KINDS_3D = Object.freeze(Object.keys(PIECES));
+
+/** One donut at `c`, lying in its box tipped toward the front: a dough ring, its topping over its top half, sprinkles on one. */
+function donut(P, c, k, topping) {
+    const R = 2.8 * k, t = 1.3 * k, tip = -60;
+    const at = (p) => tilted(p, tip).map((v, i) => v + c[i]);
+    const icing = topping === 'glazed' ? P.glaze : topping === 'chocolate' ? P.chocolate : P.icing;
+    const parts = [
+        part('torus', { radius: R, tube: t }, c, P.dough, [tip, 0, 0]),
+        part('torus', { radius: R, tube: t * 0.95 }, at([0, 0, t * 0.3]), icing, [tip, 0, 0]),
+    ];
+
+    if (topping === 'sprinkled') {
+        [30, 95, 160, 220, 280, 335].forEach((deg, i) => {
+            const a = deg * Math.PI / 180;
+
+            parts.push(part('box', { size: [1.4 * k, 0.5 * k, 0.5 * k] }, at([R * Math.cos(a), R * Math.sin(a), t * 1.2]), P.sprinkles[i % P.sprinkles.length], [tip, 0, deg + 60]));
+        });
+    }
+
+    return parts;
+}
+
+/** One cream cup at `(x, y, z)`: a tapered body banded in gold, coffee at its brim, its handle to the right. */
+function cup(P, x, y, z, k) {
+    return [
+        part('lathe', { points: [[2.8 * k, 6.2 * k], [2.5 * k, 3 * k], [2.2 * k, 0.6 * k], [1.6 * k, 0]] }, [x, y, z], P.cup),
+        post(2.62 * k, 1.1 * k, x, y + 2.8 * k, z, P.band),
+        post(2.6 * k, 0.3 * k, x, y + 5.4 * k, z, P.coffee),
+        part('torus', { radius: 1.2 * k, tube: 0.4 * k }, [x + 2.9 * k, y + 3.4 * k, z], P.cup),
+    ];
+}
+
+/**
+ * A SNACK TABLE's DRESSING — what `theme.js`'s `snackTable()` draws on the table, standing on the kit's table: a cloth over
+ * the top whose front hangs in scallops, the coffee maker at the left (its foot with the hotplate, its tower, its hood,
+ * the carafe of coffee on the plate, its lamp a fixed warm dot), the open donut box (`n` donuts — a glazed, a chocolate,
+ * a sprinkled — its lid tipped back) and `n` cups, the first at the back right and the rest in front of the box. The
+ * 2-D steam curl is a drawn line and has no body here.
+ *
+ * Laid out as the 2-D picture lays them, at its scale: `k` is a 2-D picture px at the tall table's 72 px across, so the
+ * low set is the same things, smaller; the table's top stands at the 2-D table's `top` (its picture px, `px` units
+ * each), and its depth is half its width.
+ */
+function snackDressing(P, { top, n }, { w, px }) {
+    const k = w / 72;
+    const T = top * px;
+    const d = w / 2;
+    const cloth = 0.8 * k;
+    const base = T + cloth;
+    const parts = [];
+
+    // the cloth: a sheet over the top, its front's hem a band hanging in scallops
+    parts.push(...tableCloth({ w, d, top: T, thick: cloth, over: 1.2 * k, drop: 3 * k, span: w - 4 * k, pitch: 8 * k }, P.cloth));
+
+    // the coffee maker, its left edge 5 px in from the table's
+    const mx = -w / 2 + 5 * k, mw = 19 * k, mh = 31 * k, zm = -d / 2 + 7 * k;
+    const cx = mx + 6.5 * k, cz = zm + 1.5 * k, plate = base + 3.4 * k;
+
+    parts.push(block(mw + k, 3.4 * k, 11 * k, mx + mw / 2, base, zm, P.maker));
+    parts.push(block(7 * k, mh - 11.4 * k, 9 * k, mx + mw - 3.5 * k, plate, zm - k, P.maker));
+    parts.push(block(mw, 8 * k, 11 * k, mx + mw / 2, base + mh - 8 * k, zm, P.maker));
+    parts.push(part('lathe', { points: [[0, 6 * k], [4.3 * k, 6 * k], [4.5 * k, 3 * k], [3.6 * k, 0]] }, [cx, plate, cz], P.coffee));
+    parts.push(part('lathe', { points: [[3.2 * k, 13 * k], [4.2 * k, 9 * k], [4.4 * k, 6 * k]] }, [cx, plate, cz], P.carafe));
+    parts.push(block(1.2 * k, 5 * k, 1.2 * k, cx - 5 * k, plate + 4 * k, cz, P.maker));
+    parts.push(part('sphere', { r: 1.3 * k }, [mx + mw - 3.5 * k, base + 6 * k, zm + 3.7 * k], P.lamp));
+
+    // the donut box, open: a tray with its lid tipped back from its back edge, the donuts in it
+    const bx = -w / 2 + 25 * k, bw = 28 * k, bd = 18 * k, wall = 5 * k, side = 0.8 * k, zb = -k;
+    const lid = 16 * k, tip = 20 * Math.PI / 180;
+
+    parts.push(block(bw, side, bd, bx + bw / 2, base, zb, P.box));
+    parts.push(block(bw, wall, side, bx + bw / 2, base, zb + bd / 2 - side / 2, P.box));
+    parts.push(block(bw, wall, side, bx + bw / 2, base, zb - bd / 2 + side / 2, P.box));
+    parts.push(block(side, wall, bd, bx + side / 2, base, zb, P.box));
+    parts.push(block(side, wall, bd, bx + bw - side / 2, base, zb, P.box));
+    parts.push(part('box', { size: [bw, lid, side] }, [bx + bw / 2, base + wall + (lid / 2) * Math.cos(tip), zb - bd / 2 - (lid / 2) * Math.sin(tip)], P.box, [-20, 0, 0]));
+
+    const pitch = bw / (n + 0.4);
+
+    ['glazed', 'chocolate', 'sprinkled'].slice(0, n).forEach((topping, i) => {
+        parts.push(...donut(P, [bx + pitch * (i + 0.7), base + side + 2.4 * k, zb], k, topping));
+    });
+
+    // the cups: the first at the back right, the rest along the front
+    [[w / 2 - 10 * k, -d / 2 + 6 * k], [w / 2 - 19 * k, d / 2 - 4 * k], [w / 2 - 28 * k, d / 2 - 4 * k]].slice(0, n).forEach(([x, z]) => {
+        parts.push(...cup(P, x, base, z, k));
+    });
+
+    return { top: T, d, parts };
+}
+
+/**
+ * A kit kind's DRESSING — what the theme stands on the kit's piece — in `palette`'s colours, or `null` for a kind it does
+ * not dress: `top`, the height the kit's piece is fitted to; `d`, the depth it is fitted to; and `parts`, a part list in
+ * the piece's frame (above), standing on that top.
+ *
+ * @param {object} palette the theme's `PALETTE`
+ * @param {object} snack the theme's 2-D snack tables, by kind: `top`, the table top's height in picture px, and `n`
+ * @param {string} kind a standing kind
+ * @param {{w: number, h: number, px: number}} inputs the tile's width and height in world units, and a picture px's
+ * @returns {{top: number, d: number, parts: list<object>}|null}
+ */
+export function dressings3d(palette, snack, kind, inputs) {
+    return snack[kind] === undefined ? null : Object.freeze(snackDressing(palette['snack-table'], snack[kind], inputs));
+}
 
 /**
  * A standing kind's part list in `palette`'s colours, or `null` for a kind it does not draw.
  *
  * @param {object} palette the theme's `PALETTE`
  * @param {string} kind a standing kind (`../index.js`'s `KINDS`)
- * @param {{w: number, h: number}} inputs the tile's width and height, world units
+ * @param {{w: number, h: number, facing?: string, wall?: number, flag?: object}} inputs the tile's width and height, world
+ *        units — and for a restroom door set into a side wall its facing, the wall's thickness and its flag
+ *        (`floor3d/furniture-placements.js`'s `inputsOf()`)
+ * @param {{line: string}} rules the theme's paint rules: the line colour a pictogram is drawn in
  * @returns {list<object>|null}
  */
-export function pieces3d(palette, kind, { w, h }) {
+export function pieces3d(palette, kind, inputs, rules) {
     const draw = PIECES[kind];
 
-    return draw === undefined ? null : Object.freeze(draw(palette[kind], { w, h }));
+    return draw === undefined ? null : Object.freeze(draw(palette[kind], inputs, rules));
 }

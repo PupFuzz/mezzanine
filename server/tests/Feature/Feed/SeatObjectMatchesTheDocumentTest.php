@@ -39,17 +39,30 @@ class SeatObjectMatchesTheDocumentTest extends FeedTestCase
             'the § 8.2.1 parser found almost nothing — it has stopped reading the document');
         $this->assertContains('derivation.fold_lag_ms', $declared,
             'the parser missed a field the document certainly declares');
+        $this->assertContains('subagents.call_id', $declared,
+            'the parser missed an array element\'s member, so no subagents[] member is compared');
 
         // § 8.2.1's `idle_nudge_after_s` is ABSENT from the object when the install declares no
         // horizon (card#9418), so a horizon is configured here or the declared member could never
         // be found present. Its absence when unconfigured is `IdleSinceAndHorizonTest`'s.
         config(['mezzanine.idle_nudge_after_s' => 600]);
 
-        $this->deliver($this->cleanTurn());
+        // An OPEN DISPATCH beside the clean turn, so `subagents[]` has an element and its members — `species`
+        // (card#13258) among them — are compared too; with an empty array they are exempt as a null parent's.
+        $dispatch = $this->ulid();
+        $this->deliver([
+            ...$this->cleanTurn(),
+            $this->event('tool.start', [
+                'call_id' => $dispatch, 'tool_name' => 'Agent', 'descriptor' => null, 'descriptor_truncated' => false,
+                'agent_scope' => 'main', 'parent_call_id' => null, 'harness_call_ref' => 'toolu_d', 'open_calls_before' => 0,
+            ]),
+            $this->event('subagent.spawn', ['call_id' => $dispatch, 'title' => 'draft', 'title_truncated' => false, 'subagent_type' => 'coder']),
+        ]);
         $this->fold();
 
         $object = SeatObject::forSeatRef($this->seatRef, $this->clockMs);
         $this->assertNotNull($object);
+        $this->assertCount(1, $object['subagents'], 'the control: the fixture has an open intern whose members are compared');
 
         $actual = $this->flatten($object);
 
@@ -141,7 +154,8 @@ class SeatObjectMatchesTheDocumentTest extends FeedTestCase
 
         $table = substr($doc, $start, $end - $start);
 
-        preg_match_all('/^\|\s*`([a-z_]+(?:\.[a-z_]+)?(?:\[\])?)`\s*\|/m', $table, $m);
+        // `[]` may follow the field (`badges[]`) or sit between it and an element member (`subagents[].call_id`).
+        preg_match_all('/^\|\s*`([a-z_]+(?:\[\])?(?:\.[a-z_]+)?(?:\[\])?)`\s*\|/m', $table, $m);
 
         // `subagents[].call_id` is how the document spells a member of an array-valued field.
         return array_values(array_unique(array_map(
